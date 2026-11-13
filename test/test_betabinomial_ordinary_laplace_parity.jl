@@ -61,6 +61,33 @@ const _BBL_FORM = bf(@formula(cbind(successes, failures) ~ x + (1 | g)))
     end
 end
 
+# Near-binomial data (large MLE precision): the precision phi = exp(-2 log sigma) is bounded as the
+# default BetaBinomial route bounds it (log sigma in [-15, 15]). Before the bound, a line search ran
+# off to phi of about 1e30 and these three returned a nonsense log-likelihood (about 0) with
+# `converged = false`. Same bounds as above; references from `test/parity/gen_bb_laplace_parity.R`.
+@testset "BetaBinomial (1 | g) marginal = :Laplace on near-binomial data vs drmTMB 0.8.1, three data sets" begin
+    for k in 8:10
+        route = "bb_$k"
+        d = _bbl_data(route)
+        ref = TOML.parsefile(joinpath(_BBL_DIR, route, "ref.toml"))
+        @test ref["max_grad"] < 1e-6 && ref["drmTMB_version"] == "0.8.1"
+        fit = drm(_BBL_FORM, BetaBinomial(); data = d, marginal = :Laplace)
+        est, se = _bbl_named(fit)
+        @testset "$route" begin
+            @test is_converged(fit)
+            @test fit.marginal === :Laplace
+            @test abs(est["sigma_(Intercept)"]) <= 15
+            @test abs(loglik(fit) - ref["loglik"]) <= 1e-4
+            for (nm, r, s) in zip(ref["names"], ref["theta"], ref["se"])
+                @test haskey(est, nm)
+                tol = startswith(nm, "resd_") ? 5e-3 : 1e-3 * s
+                @test abs(est[nm] - r) <= tol
+                @test isfinite(se[nm]) && abs(se[nm] / s - 1) <= 1e-3
+            end
+        end
+    end
+end
+
 @testset "BetaBinomial :Laplace post-fit functions and refusals" begin
     d = _bbl_data("bb_1")
     fit = drm(_BBL_FORM, BetaBinomial(); data = d, marginal = :Laplace)

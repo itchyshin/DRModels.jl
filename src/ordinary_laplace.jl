@@ -559,18 +559,49 @@ end
 # (precision phi = exp(-2 log sigma), the convention of the default route). The default
 # `marginal = :LA` integrates the group effect by quadrature, so it differs from drmTMB's
 # Laplace value; this opt-in reproduces drmTMB.
+const _BB_LOGSIGMA_BOUND = 15.0   # the default BetaBinomial route clamps log sigma to [-15, 15]
+
 function _fit_betabinomial_ordinary_laplace(fam::BetaBinomial, s, ntr, Xμ, gidx, G, nmμ, nmσ, grp, g_tol;
                                             se::Bool = true)
     n = length(s); pμ = size(Xμ, 2)
     Q = _ordinary_laplace_Q(G)
     kind = Val(:betabinomial_fixed)
     aux_from, θβ0, θσ0 = _betabinomial_laplace_setup(s, ntr, Xμ; raw_scales = true)
-    fg = (θ, b0, grad) -> _phylo_mean_laplace_nuisance_fg(
-        kind, aux_from, n, Xμ, gidx, Q, 0.0, θ; grad = grad, b0 = b0, raw_scales = true,
-        newton_tol = _ORDINARY_LAPLACE_NEWTON_TOL, offset = nothing)
+    # The precision phi = exp(-2 log sigma) is bounded as the default BetaBinomial route bounds it
+    # (log sigma in [-15, 15], `_fit_betabinomial_ranef`, betabinomial.jl). Without a bound a line
+    # search can run to phi of 1e30 on near-binomial data, where loggamma loses all digits and
+    # the returned log-likelihood is nonsense. Beyond the bound the objective is flat in log sigma,
+    # so its gradient there is exactly zero (what automatic differentiation gives the default route).
+    fg = function (θ, b0, grad)
+        ls = θ[pμ+1]; out = abs(ls) > _BB_LOGSIGMA_BOUND
+        θc = θ
+        out && (θc = copy(θ); θc[pμ+1] = clamp(ls, -_BB_LOGSIGMA_BOUND, _BB_LOGSIGMA_BOUND))
+        r = _phylo_mean_laplace_nuisance_fg(
+            kind, aux_from, n, Xμ, gidx, Q, 0.0, θc; grad = grad, b0 = b0, raw_scales = true,
+            newton_tol = _ORDINARY_LAPLACE_NEWTON_TOL, offset = nothing)
+        (grad && out && r[end]) && (r[2][pμ+1] = 0.0)
+        return r
+    end
+    # Near-binomial data can make the inner mode solve fail beyond a moderate precision (the objective
+    # is then the failed-fit sentinel 1e18), and the outer search may stop on or beside that region. The
+    # lowest finite objective seen is kept; if the search ends on the sentinel, that point is reported
+    # (never the sentinel as a log-likelihood), with `converged = false`.
+    bestv = Ref(Inf); bestθ = Ref{Union{Nothing,Vector{Float64}}}(nothing)
+    fgb = function (θ, b0, grad)
+        r = fg(θ, b0, grad)
+        v = r[1]
+        if r[end] && isfinite(v) && v < 1e17 && v < bestv[]
+            bestv[] = v; bestθ[] = Float64.(θ)
+        end
+        return r
+    end
     θ0 = vcat(θβ0, θσ0, log(0.4))
     ctx = "ordinary Laplace BetaBinomial (1 | $grp)"
-    θ̂, nllhat, conv, V, nll, grad! = _ordinary_laplace_optimize(fg, θ0, n, G, g_tol; se = se, context = ctx)
+    θ̂, nllhat, conv, V, nll, grad! = _ordinary_laplace_optimize(fgb, θ0, n, G, g_tol; se = se, context = ctx)
+    if !(isfinite(nllhat) && nllhat < 1e17) && bestθ[] !== nothing
+        θ̂ = bestθ[]; nllhat = bestv[]; conv = false
+        V = _ordinary_laplace_vcov(nll, θ̂, n; se = se, context = ctx)
+    end
     blocks = [:mu => 1:pμ, :sigma => (pμ+1):(pμ+1), :resd => (pμ+2):(pμ+2)]
     names = [:mu => nmμ, :sigma => nmσ, :resd => [String(grp)]]
     auxhat = aux_from(θ̂[pμ+1])

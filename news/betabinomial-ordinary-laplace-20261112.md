@@ -10,3 +10,10 @@
   log-likelihood is above drmTMB's Laplace value by 0.0009 to 0.24 on seven simulated sets (a known
   engine difference), while `fitted()` with the random effect at zero agrees with drmTMB's
   `predict(fit, newdata, type = "mean")` to 4.4e-4 or better. See the marginal-approximation guide.
+- **BetaBinomial `marginal = :Laplace` is bounded like the default route.** On near-binomial data
+  (large precision) the search could run the precision to 1e30 and report a nonsense log-likelihood.
+  `log sigma` is now limited to [-15, 15] as on the default route. If the inner solve fails near
+  the end of the search, the fit reports the best finite point with `converged = false` instead
+  of a failed-objective value. On 52 extra simulated sets (22 from review, 30 new) every fit has
+  a finite log-likelihood; some near-binomial fits (precision 60 to 400, few groups) still stop
+  short of drmTMB's mode and say so with `converged = false`.

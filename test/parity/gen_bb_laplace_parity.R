@@ -69,3 +69,23 @@ for (k in seq_along(cfg)) {
   write_ref(paste0("bb_", k), f, c("mu_(Intercept)", "mu_x", "sigma_(Intercept)", "resd_g"), d,
             "BetaBinomial, one (1 | g), sigma ~ 1")
 }
+
+# Three near-binomial data sets (precision phi 30 to 150, small group SD) where the MLE precision is
+# large. An unbounded precision let the optimiser run off to phi of 1e30 and return a nonsense
+# log-likelihood with `converged = false`; these are the regression targets for the bound on log sigma.
+hard <- list(
+  list(route = "bb_8",  seed = 8802, G = 45, m = 6,  sd = 0.3, phi = 30),
+  list(route = "bb_9",  seed = 5013, G = 45, m = 6,  sd = 0.3, phi = 150),
+  list(route = "bb_10", seed = 5014, G = 20, m = 12, sd = 0.3, phi = 150)
+)
+for (s in hard) {
+  set.seed(s$seed)
+  g <- rep(seq_len(s$G), each = s$m); n <- length(g); x <- stats::rnorm(n)
+  eta <- -0.3 + 0.5 * x + stats::rnorm(s$G, 0, s$sd)[g]; mu <- stats::plogis(eta)
+  ntr <- sample(8:30, n, TRUE)
+  pp <- stats::rbeta(n, mu * s$phi, (1 - mu) * s$phi); succ <- stats::rbinom(n, ntr, pp)
+  d <- data.frame(g = paste0("g", g), x = x, successes = succ, failures = ntr - succ)
+  f <- drmTMB(bf(cbind(successes, failures) ~ x + (1 | g), sigma ~ 1), family = beta_binomial(), data = d)
+  write_ref(s$route, f, c("mu_(Intercept)", "mu_x", "sigma_(Intercept)", "resd_g"), d,
+            sprintf("BetaBinomial, one (1 | g), near-binomial (phi %g), sigma ~ 1", s$phi))
+}
