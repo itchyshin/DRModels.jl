@@ -57,9 +57,9 @@ resolve_priors(group_form, Gaussian(); data = grouped, priors = group_priors)
 group_fit = drm(group_form, Gaussian(); data = grouped, priors = group_priors)
 ```
 
-The supported routes are Gaussian `mu` and `sigma` (with at most that one mean
-random intercept) and fixed-effect binomial-logit `mu`. Random slopes, multiple
-or structured random effects, random-effect SD formulas, REML, existing
+The supported routes are Gaussian `mu` and `sigma` (with up to two distinct iid
+mean random intercepts) and fixed-effect binomial-logit `mu`. Random slopes, more
+than two intercepts or structured random effects, random-effect SD formulas, REML, existing
 phylogenetic penalties, missing responses or predictors, non-unit weights, and
 other families are refused. For separated binomial data,
 a finite optimum requires all separating directions to be regularized; a prior
@@ -75,8 +75,8 @@ not yet qualified.
 
 ## Gamma prior on a random-intercept SD
 
-A Gaussian ML model with one unlabelled iid random intercept in `mu` can use a
-Gamma density on that group's natural standard deviation. Supply its exact
+A Gaussian ML model with one or two distinct unlabelled iid random intercepts
+in `mu` can use Gamma densities on selected natural standard deviations. Supply each exact
 name and inspect the resolved target before fitting:
 
 ```julia
@@ -88,6 +88,18 @@ resolve_priors(group_form, Gaussian(); data = grouped, priors = priors)
 fit = drm(group_form, Gaussian(); data = grouped, priors = priors)
 ```
 
+For crossed intercepts, name each group to choose which SD to regularize:
+
+```julia
+crossed = merge(grouped, (observer = [1, 2, 1, 2, 2, 1, 2, 1],))
+cross_form = bf(@formula(y ~ x + (1 | site) + (1 | observer)))
+cross_priors = drm_priors(
+    drm_prior_sd_gamma(dpar = "mu", group = "site", shape = 2, rate = 3),
+    drm_prior_sd_gamma(dpar = "mu", group = "observer", shape = 2.5, rate = 2))
+resolve_priors(cross_form, Gaussian(); data = crossed, priors = cross_priors)
+cross_fit = drm(cross_form, Gaussian(); data = crossed, priors = cross_priors)
+```
+
 `shape` must be finite and greater than one, and `rate` must be finite and
 positive. The Gamma density is with respect to the SD itself; it does not add
 a log-SD Jacobian. The normalized penalty is added once for the shared SD,
@@ -97,9 +109,11 @@ penalties and total objective are stored separately in `fit.penalty`.
 `update` repeats the prior unless explicitly replaced or dropped by changing
 the estimator.
 
-This route requires complete observations, unit weights and a unique iid
-mean random intercept; random slopes, multiple or structured blocks and REML
+This route requires complete observations, unit weights and distinct iid
+mean random-intercept groups; random slopes, more than two or structured blocks and REML
 are outside this slice. Write the random intercept only once in the formula.
+Two grouping columns that encode the same partition are refused because their
+separate SDs cannot be identified from the likelihood.
 Currently, Julia's `@formula` collapses repeated identical terms such as
 `(1 | site) + (1 | site)` before the prior target is checked. The resolver
 therefore cannot reject that spelling as a duplicate; drmTMB in R rejects it.

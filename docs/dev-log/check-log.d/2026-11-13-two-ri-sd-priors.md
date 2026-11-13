@@ -1,0 +1,1 @@
+| 2026-11-13 | **Two random-intercept SD priors** | Independent dense-Gaussian oracle and focused Julia tests | Focused validation recorded in after-task note; full suite and live bridge validation pending | Noether |
