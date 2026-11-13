@@ -64,9 +64,17 @@ fit_slope_sd = drm(bf(@formula(y ~ x + (0 + x | site)), @formula(sigma ~ 1),
 struct SkewNormal end
 
 @drm_entry function drm(f::DrmFormula, fam::SkewNormal; data, g_tol::Real = 1e-8,
-             nAGQ::Union{Nothing,Int} = nothing)
+             nAGQ::Union{Nothing,Int} = nothing,
+             marginal::Union{Nothing,Symbol} = nothing)
     _drm_entry_guard(f, fam, data)   # #1027 #1022
+    # `marginal` exists only so that `update` / `bootstrap` can repeat a fit of the one-`(1 | g)`
+    # Laplace route (its fit is tagged `:Laplace`); it is refused everywhere else, never ignored.
+    marginal === nothing || marginal === :Laplace || throw(ArgumentError(
+        "SkewNormal() accepts `marginal = :Laplace` only (its random-intercept route); " *
+        "got `marginal = :$marginal`."))
     if !isempty(_sd_parts(f)) || !isempty(_sdphylo_parts(f))
+        marginal === nothing ||
+            _refuse_unsupported_kwargs((:marginal,), f, fam, (:control, :data, :g_tol, :nAGQ, :weights))
         nodes = nAGQ === nothing ? _RANEF1D_AGHQ_K : nAGQ
         nodes >= 1 || throw(ArgumentError("nAGQ must be ≥ 1; got $nodes"))
         return _drm_skewnormal_sd_regression(f, fam; data, g_tol, nAGQ = nodes)
@@ -75,7 +83,7 @@ struct SkewNormal end
         "nAGQ is currently supported for SkewNormal random-effect SD regression only."))
     # #1123: drop missing/NaN-response rows (warned), like every other univariate fitter.
     missing_fit = _fit_observed_response_rows(f, data) do data_observed
-        drm(f, fam; data = data_observed, g_tol = g_tol)
+        drm(f, fam; data = data_observed, g_tol = g_tol, marginal = marginal)
     end
     missing_fit !== nothing && return missing_fit
 
@@ -84,8 +92,11 @@ struct SkewNormal end
     _, re, mv, st = _split_ranef(rhs[:mu])
     (mv === nothing && st === nothing) ||
         error("SkewNormal() does not support meta_V / structured markers")
-    isempty(re) ||
-        error("SkewNormal() supports fixed effects only (no random effect on the mean)")
+    # One ordinary `(1 | g)` on the mean: drmTMB's Laplace objective (`zi_re_laplace.jl`); every
+    # other random-effect shape stays refused (the route re-checks and names it).
+    isempty(re) || return _drm_zi_re_laplace(f, fam; data = data, g_tol = g_tol)
+    marginal === nothing ||
+        _refuse_unsupported_kwargs((:marginal,), f, fam, (:control, :data, :g_tol, :nAGQ, :weights))
     for (pname, r) in f.forms          # no parameter may carry a random effect
         pname === :mu && continue
         _, re2, mv2, st2 = _split_ranef(r)

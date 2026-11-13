@@ -258,9 +258,14 @@ function _drm_poisson_fit(f::DrmFormula, fam::Poisson; data, tree = nothing, K =
     end
     # `nAGQ = nothing` resolves to 5 nodes on the plain `(1 | g)` routes; the
     # predictor-dependent-SD routes above choose their own default.
+    nAGQ_user = nAGQ                         # kept to tell a user-supplied `nAGQ` from the default
     nAGQ = nAGQ === nothing ? 5 : nAGQ
     Ainv === nothing || throw(ArgumentError(
         "Poisson `Ainv` is currently supported for predictor-dependent animal SD regression only."))
+    if nAGQ_user !== nothing && any(p -> p in (:zi, :hu), first.(f.forms)) &&
+       !isempty(_split_ranef(Dict(f.forms)[:mu])[2])
+        _aghq_reject(fam, "`zi`/`hu` combined with a random effect (Laplace only; `nAGQ` is not used)")
+    end
     _scalar_laplace_requested(marginal) &&     # Arc 2: TMB-convention Laplace, ordinary (1 | g)
         return _drm_ordinary_laplace(f, fam; data = data, tree = tree, K = K, A = A,
                                      coords = coords, g_tol = g_tol, se = se, method = method)
@@ -268,7 +273,7 @@ function _drm_poisson_fit(f::DrmFormula, fam::Poisson; data, tree = nothing, K =
     missing_fit = _fit_observed_response_rows(f, data) do data_observed
         drm(f, fam; data = data_observed, tree = tree, K = K, A = A,
             coords = coords, g_tol = g_tol, se = se, marginal = marginal,
-            method = method, nAGQ = nAGQ, ids = ids)
+            method = method, nAGQ = nAGQ_user, ids = ids)
     end
     missing_fit !== nothing && return missing_fit
     A = _resolve_relatedness_labels(f, data, A, ids; coords = coords)   # #957: match `A` by label
@@ -367,8 +372,14 @@ function _drm_poisson_fit(f::DrmFormula, fam::Poisson; data, tree = nothing, K =
     if !isempty(re)                                       # random intercept (1|g) → GHQ marginal
         isva && (haskey(rhs, :zi) || haskey(rhs, :hu)) &&
             _va_reject(fam, "`zi`/`hu` combined with a random effect")
-        (haskey(rhs, :zi) || haskey(rhs, :hu)) &&
-            error("Poisson() random effects cannot be combined with `zi`/`hu` yet")
+        if haskey(rhs, :zi) || haskey(rhs, :hu)
+            # One ordinary `(1 | g)` with `zi`: drmTMB's Laplace objective (`zi_re_laplace.jl`).
+            # Laplace is the only integrator on this route, so `:AGHQ` and REML are refused.
+            (isaghq || nAGQ_user !== nothing) &&
+                _aghq_reject(fam, "`zi`/`hu` combined with a random effect (Laplace only; `nAGQ` is not used)")
+            reml && _reject_reml_route(fam, "`zi`/`hu` combined with a random effect")
+            return _drm_zi_re_laplace(f, fam; data = data, g_tol = g_tol)
+        end
         if length(re) > 1                                 # (1|g)+(1|h)+… crossed/multiple intercepts → sparse Laplace
             isva && _va_reject(fam, "crossed/multiple random intercepts")
             reml && _reject_reml_route(fam, "crossed/multiple random intercepts")

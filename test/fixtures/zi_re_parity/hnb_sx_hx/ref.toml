@@ -1,0 +1,10 @@
+route = "hnb_sx_hx"
+drmTMB_version = "0.8.1"
+R_version = "4.6.1"
+note = "hurdle NB2, sigma ~ x, hu ~ x"
+tmb_names = ["beta_mu", "beta_mu", "beta_sigma", "beta_sigma", "beta_zi", "beta_zi", "log_sd_mu"]
+names = ["mu_(Intercept)", "mu_x", "sigma_(Intercept)", "sigma_x", "hu_(Intercept)", "hu_x", "resd_g"]
+loglik = -497.66997998300627
+max_grad = 2.646559e-10
+theta = [0.28216414728340811, 0.38952664675559373, -0.60430276443467856, 0.035816723737237967, -0.73896486847309051, -0.41714556522961183, -0.52568769140052107]
+se = [0.1661273628004945, 0.10416142967375547, 0.31175002647774097, 0.27544683916327978, 0.12570434678468834,  0.139536891782885, 0.22309804701640323]

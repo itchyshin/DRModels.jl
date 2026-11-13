@@ -263,8 +263,11 @@ function _drm_negbinomial2_fit(f::DrmFormula, fam::NegBinomial2; data, tree = no
     if !isempty(re)                                       # random effect on the mean → GHQ/Laplace or VA (#136)
         isva && (haskey(rhs, :zi) || haskey(rhs, :hu)) &&
             _va_reject(fam, "`zi`/`hu` combined with a random effect")
-        (haskey(rhs, :zi) || haskey(rhs, :hu)) &&
-            error("NegBinomial2() random effects cannot be combined with `zi`/`hu` yet")
+        if haskey(rhs, :zi) || haskey(rhs, :hu)
+            # One ordinary `(1 | g)` with `zi` / `hu`: drmTMB's Laplace objective (`zi_re_laplace.jl`).
+            # Laplace is the only integrator on this route (`:AGHQ` is refused above, REML earlier).
+            return _drm_zi_re_laplace(f, fam; data = data, g_tol = g_tol)
+        end
         if length(re) > 1
             isva && _va_reject(fam, "crossed/multiple random intercepts")
             if _has_indep_slopes(re)
@@ -1498,16 +1501,24 @@ struct TruncatedNegBinomial2 end
 
 @drm_entry function drm(f::DrmFormula, fam::TruncatedNegBinomial2; data,
              g_tol::Real = 1e-8, se::Bool = true,
-             nAGQ::Union{Nothing,Int} = nothing)
+             nAGQ::Union{Nothing,Int} = nothing,
+             marginal::Union{Nothing,Symbol} = nothing)
     _drm_entry_guard(f, fam, data)   # #1027 #1022
+    # `marginal` exists only so that `update` / `bootstrap` can repeat a fit of the one-`(1 | g)`
+    # Laplace route (its fit is tagged `:Laplace`); it is refused everywhere else, never ignored.
+    marginal === nothing || marginal === :Laplace || throw(ArgumentError(
+        "TruncatedNegBinomial2() accepts `marginal = :Laplace` only (its random-intercept route); " *
+        "got `marginal = :$marginal`."))
     if !isempty(_sd_parts(f)) || !isempty(_sdphylo_parts(f))
+        marginal === nothing ||
+            _refuse_unsupported_kwargs((:marginal,), f, fam, (:control, :data, :g_tol, :nAGQ, :se, :weights))
         nodes = nAGQ === nothing ? _SD_IID_AGHQ_K : nAGQ
         nodes >= 1 || throw(ArgumentError("nAGQ must be ≥ 1; got $nodes"))
         return _drm_truncated_negbin2_sd_regression(f, fam; data, g_tol, se,
                                                     nAGQ = nodes)
     end
     missing_fit = _fit_observed_response_rows(f, data) do data_observed
-        drm(f, fam; data = data_observed, g_tol = g_tol)
+        drm(f, fam; data = data_observed, g_tol = g_tol, marginal = marginal)
     end
     missing_fit !== nothing && return missing_fit
 
@@ -1515,11 +1526,16 @@ struct TruncatedNegBinomial2 end
         "nAGQ is currently supported for TruncatedNegBinomial2 random-effect SD regression only."))
     _lss_only_gaussian_guard(f, fam)   # #544: refuse, never silently drop, sd() parts
     rhs = Dict(f.forms)
-    for (_, r) in f.forms
+    for (pname, r) in f.forms
         _, re, mv, st = _split_ranef(r)
-        (isempty(re) && mv === nothing && st === nothing) ||
-            error("TruncatedNegBinomial2() currently supports fixed effects only")
+        (isempty(re) && mv === nothing && st === nothing) && continue
+        # One ordinary `(1 | g)` on `mu`: drmTMB's Laplace objective (`zi_re_laplace.jl`); every
+        # other random-effect shape stays refused (the route re-checks and names it).
+        pname === :mu && return _drm_zi_re_laplace(f, fam; data = data, g_tol = g_tol)
+        error("TruncatedNegBinomial2() currently supports fixed effects only")
     end
+    marginal === nothing ||
+        _refuse_unsupported_kwargs((:marginal,), f, fam, (:control, :data, :g_tol, :nAGQ, :se, :weights))
     # Refuse, never silently drop, a formula part this family does not consume.
     # Before this guard `drm(bf(y ~ x, sigma ~ 1, zi ~ w), TruncatedNegBinomial2())`
     # dropped `zi` from the likelihood without a word and fitted the plain

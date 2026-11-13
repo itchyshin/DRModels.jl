@@ -478,6 +478,7 @@ end
 # exact z-score and skip Φ⁻¹(Φ(z)), which otherwise loses upper-tail
 # precision and caps |r| at about 8.13.
 function _quantile_residuals(fit::DrmFit, rng)
+    _refuse_multi_re_laplace(fit, "residuals(type = :quantile)")
     haskey(fit.means, :mu) ||
         throw(ArgumentError("residuals(type=:quantile) is univariate-only"))
     fam = fit.family
