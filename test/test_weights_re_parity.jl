@@ -138,6 +138,14 @@ _wr_rep(d, w) = (idx = reduce(vcat, [fill(i, Int(w[i])) for i in eachindex(w)]);
         # a meta model with a random effect is still refused, as is REML
         @test_throws ArgumentError drm(bf(@formula(yi ~ x1 + meta_V(vi) + (1 | g)), @formula(sigma ~ 1)),
                                        Gaussian(); data = d, weights = d.w)
+        # `weights` with `meta_V` and REML is refused by name (a weighted restriction term is not
+        # implemented), with or without a mean random intercept, whether or not `meta_V` REML exists.
+        for ff in (f, bf(@formula(yi ~ x1 + meta_V(vi) + (1 | g)), @formula(sigma ~ 1)))
+            err = try drm(ff, Gaussian(); data = d, weights = d.w, method = :REML); nothing catch e; e end
+            @test err isa ArgumentError
+            msg = err isa Exception ? sprint(showerror, err) : ""
+            @test occursin("`weights` together with `meta_V` and method = :REML", msg)
+        end
     end
 
     @testset "bivariate Gaussian (residual route)" begin

@@ -1568,6 +1568,12 @@ function _drm_gaussian_fit(f::DrmFormula, fam::Gaussian; data, K = nothing, A = 
     end
     phylo_coupled &&
         throw(ArgumentError("drm: `phylo_coupled` is an internal bridge option for Gaussian mu+sigma phylo fits (ML or REML)"))
+    # `meta_V` with prior `weights` fits by ML only. Refused by name here, ahead of the REML
+    # validator below, so the answer stays right whether or not `meta_V` REML is implemented:
+    # a weighted meta-analysis needs a weighted X' Omega^-1 X restriction term.
+    method === :REML && metav !== nothing && _ctl_weights_or_nothing(length(y)) !== nothing &&
+        throw(ArgumentError("drm: `weights` together with `meta_V` and method = :REML is not implemented. " *
+            "Use method = :ML for a weighted `meta_V` fit, or drop `weights` to use REML."))
     if method === :REML
         # REML (opt-in) is implemented for (a) the fixed-effect univariate
         # Gaussian location–scale cell and (b) a single mean random intercept
