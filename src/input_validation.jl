@@ -211,6 +211,20 @@ function _structured_marker_kinds(f::DrmFormula)
 end
 
 """
+    _refuse_spatial_k_and_coords(coords_only::Bool)
+
+A `spatial(1 | g)` term takes its covariance from `K` or from `coords`, never
+both: the fitters used one and dropped the other without a word. `coords_only`
+is true for the routes that build `spatial()` from coordinates alone.
+"""
+function _refuse_spatial_k_and_coords(coords_only::Bool)
+    which = coords_only ? "Give `coords = …` only (this route builds the spatial covariance from site coordinates)." :
+                          "Give either `coords = …` (the covariance is built from site coordinates) or `K = …` (a precomputed covariance matrix), not both."
+    throw(ArgumentError("drm: `spatial()` was given both `K = …` and `coords = …`, and only one of them " *
+        "can define the spatial covariance. " * which))
+end
+
+"""
     _require_structured_keywords_used(f, fam; tree, K, A, coords)
 
 A supplied `tree`, `K`, `A` or `coords` must have a formula marker that reads
@@ -223,6 +237,8 @@ function _require_structured_keywords_used(f::DrmFormula, fam; tree = nothing, K
     (tree === nothing && K === nothing && A === nothing && Ainv === nothing &&
      coords === nothing) && return nothing
     kinds = _structured_marker_kinds(f)
+    (K !== nothing && coords !== nothing && :spatial in kinds && !(:relmat in kinds)) &&
+        _refuse_spatial_k_and_coords(fam isa Union{Gaussian,Binomial})
     unused(kw, marker) = throw(ArgumentError("drm: `$kw = …` was supplied but the formula " *
         "has no $marker term, so `$kw` would be ignored and an unstructured model fitted. " *
         "Add the marker to the formula or drop the `$kw` argument."))

@@ -181,6 +181,9 @@ fit = drm(
         throw(ArgumentError("drm: `method` must be :ML (default) or :REML (got :$method)"))
     rhs = Dict(f.forms)
     fixed, structured_marker = _bivariate_q4_marker(rhs)
+    (structured_marker !== nothing && structured_marker[1] in (:structured_q2, :structured_q4) &&
+     structured_marker[2] === :spatial && K !== nothing && coords !== nothing) &&
+        _refuse_spatial_k_and_coords(true)
     # A8: known bivariate sampling covariance (drmTMB's meta_vcov_bivariate) is
     # consumed by the residual route only in this slice.
     V !== nothing && structured_marker !== nothing &&
