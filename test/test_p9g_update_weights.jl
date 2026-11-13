@@ -52,3 +52,38 @@ using Test, Random
     @test weights(re_plain) === nothing
     @test loglik(re_plain) ≈ loglik(direct_u) atol = 1e-10
 end
+
+@testset "update() weights wording and the missing-row case (P9g)" begin
+    Random.seed!(20261113)
+    n = 120
+    x = randn(n)
+    y = convert(Vector{Union{Missing,Float64}}, 0.4 .+ 0.7 .* x .+ 0.8 .* randn(n))
+    y[[7, 50]] .= missing
+    w = 0.5 .+ rand(n)
+    dm = (; y, x)
+    f = bf(@formula(y ~ 1 + x), @formula(sigma ~ 1))
+    wm = Test.@test_logs (:warn, r"dropped") match_mode = :any drm(f, Gaussian(); data = dm, weights = w)
+    @test length(weights(wm)) == 118                      # one per KEPT row, shorter than `data`
+
+    # The message names the recommended form (one weight per row of `data`) and the
+    # shorter `weights(fit)`. It must not claim that `weights(fit)` fails or that only a
+    # full-length vector works: both statements are false (see the PR text).
+    err = try
+        update(wm, f; data = dm)
+        nothing
+    catch e
+        e
+    end
+    @test err isa ArgumentError
+    msg = sprint(showerror, err)
+    @test occursin("one weight per row of `data`", msg)
+    @test occursin("KEPT row", msg)
+    @test !occursin("full-length", msg)
+
+    # The recommended form works and equals a fresh weighted fit on the same data.
+    re_full = Test.@test_logs (:warn, r"dropped") match_mode = :any update(wm, f; data = dm, weights = w)
+    fresh = Test.@test_logs (:warn, r"dropped") match_mode = :any drm(f, Gaussian(); data = dm, weights = w)
+    @test coef(re_full) == coef(fresh)
+    @test loglik(re_full) == loglik(fresh)
+    @test length(weights(re_full)) == 118
+end
