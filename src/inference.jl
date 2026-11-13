@@ -2429,15 +2429,12 @@ function _marginal_simulator(fit::DrmFit, data; K=nothing, A=nothing, tree=nothi
             "`meta_V(...)` + random-effect fit (pass the same `data` and `tree` / `K` / `A` " *
             "used to fit it); the conditional fallback would drop the random effect"))
     end
-    # P11c: Gamma and Binomial `(1 | g) + (0 + x | g)` have no fresh-draw simulator. Falling back to the
-    # conditional draw (random effects at zero) would collapse the variance-component interval without a
-    # message, so refuse until the fresh draw exists.
+    # P11c: Gamma and Binomial fits with two or more ordinary random-effect terms have no fresh-draw
+    # simulator (independent slope with intercept, crossed or nested intercepts, mixed shapes). Falling
+    # back to the conditional draw (random effects at zero) would collapse the variance-component interval
+    # without a message, so refuse, naming the shape the user fitted.
     if sim === nothing && _is_no_fresh_draw_slope_fit(fit)
-        throw(ArgumentError("no fresh random-effect draw is implemented for $(nameof(typeof(fit.family)))() " *
-            "with `(1 | g) + (0 + x | g)`, so `bootstrap_summary` / `bootstrap` and the default " *
-            "`simulate(fit; data = data)` are refused: the conditional fallback (random effects set to zero) " *
-            "would collapse the variance-component interval without a message. " *
-            "`simulate(fit; data = data, re = :zero)` still draws responses with the random effects at zero."))
+        throw(ArgumentError(_no_fresh_draw_message(fit)))
     end
     return sim
 end
@@ -2448,6 +2445,37 @@ function _is_no_fresh_draw_slope_fit(fit::DrmFit)
     haskey(rhs, :mu) || return false
     _, re, metav, structured, _ = _split_ranef(rhs[:mu]; allow_phylo_slope = true)
     return metav === nothing && structured === nothing && length(re) >= 2
+end
+
+# The refusal text names the terms the user fitted and the kind of shape, and offers only an escape
+# that works for the family: `simulate(...; re = :zero)` works for Gamma, but a fitted Binomial of
+# these shapes does not carry trials on this base, so it is not offered there.
+function _no_fresh_draw_message(fit::DrmFit)
+    _, re, _, _, _ = _split_ranef(Dict(fit.formula.forms)[:mu]; allow_phylo_slope = true)
+    rk = [try _re_kind(lhs) catch; (:other, nothing) end for (lhs, _) in re]
+    kinds = first.(rk)
+    bar(k, v, lhs, grp) = k === :intercept ? "(1 | $grp)" : k === :slope ? "(0 + $v | $grp)" :
+                          k === :corr ? "(1 + $v | $grp)" : "($lhs | $grp)"
+    terms = join((bar(k, v, lhs, grp) for ((k, v), (lhs, grp)) in zip(rk, re)), " + ")
+    groups = [grp for (_, grp) in re]
+    shape = if all(==(:intercept), kinds)
+        "crossed or nested random intercepts"
+    elseif length(unique(groups)) == 1 && all(in((:intercept, :slope)), kinds)
+        "an independent random slope with an intercept"
+    else
+        "a mix of random intercepts and slopes"
+    end
+    fam = string(nameof(typeof(fit.family)), "()")
+    escape = fit.family isa Gamma ?
+        "To draw responses with the random effects set to zero (a conditional draw, not a fresh draw), " *
+        "call `simulate(fit; data = data, re = :zero)`; the bootstrap has no such option." :
+        "`simulate(fit; data = data, re = :zero)` does not work for a Binomial fit of this shape on this " *
+        "version (the fitted object does not carry trials), so no draw is available yet. " *
+        "A single `(1 | g)` keeps its fresh draw."
+    return "no fresh random-effect draw is implemented for $fam with $shape ($terms), so " *
+        "`bootstrap_summary` / `bootstrap_result` / `bootstrap_ci` and the default " *
+        "`simulate(fit; data = data)` are refused: the fallback would draw responses with the random " *
+        "effects set to zero, which collapses the variance-component interval without a message. " * escape
 end
 
 function _is_meta_gaussian_re(fit::DrmFit)
