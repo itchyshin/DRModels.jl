@@ -4024,8 +4024,43 @@ end
 function _has_sd_regression_block(fit)
     return any(fit.blocks) do (p, _)
         s = String(p)
-        p === :sd || p === :sd_phylo || startswith(s, "sd_") || startswith(s, "sdtarget_")
+        (p === :sd && !_is_intercept_only_sd_block(fit, p)) || p === :sd_phylo ||
+            startswith(s, "sd_") || startswith(s, "sdtarget_")
     end
+end
+
+# The Binomial and Beta structured routes (`animal`, `relmat`, `spatial`, `phylo`) store the plain
+# log SD of `animal(1 | g)` in a block named `:sd` whose only coefficient is the intercept. That is
+# one SD per grouping, not an SD regression, so `vc` and `re_sd` read it (see
+# `_intercept_only_sd`). Any covariate on the SD makes the block longer and keeps the refusal.
+function _is_intercept_only_sd_block(fit, p::Symbol)
+    p === :sd && hasproperty(fit, :coefnames) || return false
+    k = findfirst(pair -> first(pair) === p, fit.coefnames)
+    return k !== nothing && last(fit.coefnames[k]) == ["(Intercept)"]
+end
+
+# `(; group, sd)` for a fit whose only SD parameter is an intercept-only `:sd` block, else `nothing`.
+# The grouping factor is read from the fitted `mu` formula (one structured term, or one `(1 | g)`),
+# and `sd` is the SD the likelihood used (`fit.scales[:sd_group]`, which carries the smooth guard on
+# the log SD), falling back to `exp` of the coefficient.
+function _intercept_only_sd(fit)
+    k = findfirst(pair -> first(pair) === :sd, fit.blocks)
+    k === nothing && return nothing
+    _is_intercept_only_sd_block(fit, :sd) || return nothing
+    any(pair -> first(pair) in (:resd, :recov), fit.blocks) && return nothing
+    fit.formula isa DrmFormula || return nothing
+    rhs = get(Dict(fit.formula.forms), :mu, nothing)
+    rhs === nothing && return nothing
+    groups = Symbol[last(t) for t in _collect_structured(rhs)]
+    if isempty(groups)
+        _, re = _split_ranef(rhs)[1:2]
+        groups = Symbol[last(t) for t in re]
+    end
+    length(groups) == 1 || return nothing
+    j = only(last(fit.blocks[k]))
+    sdg = get(fit.scales, :sd_group, nothing)
+    sd = sdg isa AbstractVector && length(sdg) >= 1 ? Float64(first(sdg)) : exp(fit.theta[j])
+    return (; group = only(groups), sd)
 end
 
 """
@@ -4082,6 +4117,8 @@ function re_sd(fit::DrmFit; scale::Symbol = :native, tree = nothing)
     scale in (:native, :drmtmb) ||
         throw(ArgumentError("re_sd: `scale` must be :native or :drmtmb, got $(repr(scale))."))
     d = Dict{Symbol,Float64}()
+    isd = _intercept_only_sd(fit)
+    isd === nothing || (d[isd.group] = isd.sd)
     for (p, r) in fit.blocks
         if p === :resd
             nms = first(cn[2] for cn in fit.coefnames if cn[1] === :resd)
