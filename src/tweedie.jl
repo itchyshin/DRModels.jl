@@ -804,7 +804,7 @@ function predict_parameters(fit::DrmFit{Tweedie}, newdata;
         "predict_parameters: this fit did not retain its formula"))
     type in (:response, :link) || throw(ArgumentError(
         "predict_parameters: `type` must be :response or :link"))
-    forms = Dict(f.forms)
+    forms = _forms_with_implied_dpars(fit, Dict(f.forms))
     if K !== nothing
         targets = _gamma_sd_targets(f)
         length(targets) == 1 && only(targets).target.level === :relmat ||
