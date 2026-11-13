@@ -365,8 +365,9 @@ above, and it does so by delegation rather than by a second engine.
     kernel), a correlated `(1 + x | g)` block beside a random slope term or on the same
     grouping as another term,
     ordinary σ-RE (including ordinary `sd(g, sigma)`, which native drmTMB admits
-    under REML), a `sigma` predictor with a multi-term mean, `meta_V()`, missing
-    responses on the new routes, and other random-slope structures. Separate
+    under REML), a `sigma` predictor with a multi-term mean, `meta_V()` beside a `sigma` predictor, a random slope or a
+    `phylo`/`relmat`/`animal` term (`meta_V()` alone or with ordinary `(1 | g)` intercepts and a constant `sigma` fits
+    under REML), missing responses on the new routes, and other random-slope structures. Separate
     opt-in Poisson Cox–Reid routes are described under [`Poisson`](@ref); their
     recovery evidence is limited and does not establish general non-Gaussian
     REML support. This is not AI-REML. The retained
