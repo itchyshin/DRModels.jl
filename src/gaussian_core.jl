@@ -3131,6 +3131,17 @@ function _delta_se(Xp::AbstractMatrix, Vp::AbstractMatrix, η::AbstractVector,
     return abs.(_link_deriv(fam, p, η)) .* se_link
 end
 
+# `nu` (Student, SkewNormal, Tweedie) and `zoi` / `coi` (ZeroOneBeta) are always
+# estimated, with an intercept-only predictor when the user wrote no formula for
+# them. The fit keeps their coefficient block but `bf()` only stores the formulas
+# the user wrote, so add the implied `~ 1` for prediction.
+function _forms_with_implied_dpars(fit::DrmFit, forms::AbstractDict)
+    for (p, _) in fit.blocks
+        p in (:nu, :zoi, :coi) && !haskey(forms, p) && (forms[p] = ConstantTerm(1))
+    end
+    return forms
+end
+
 """
     predict_parameters(fit, newdata; type = :response, se = false)
         -> Dict{Symbol,Vector{Float64}}  (se = false)
@@ -3142,7 +3153,9 @@ Population-level prediction of **every** distributional parameter at `newdata`
 The returned `Dict` has one entry per
 distributional parameter the model carries — always `:mu` and (when the family
 uses it) `:sigma`, plus any family extras present (`:nu`, `:zi`, `:hu`, `:zoi`,
-`:coi`). For supported Binomial, BetaBinomial, Poisson, NB2, zero-truncated NB2, Gamma, Beta,
+`:coi`), also when the extra has no formula of its own and is fitted as a
+constant (`nu` for Student, SkewNormal and Tweedie; `zoi` and `coi` for
+ZeroOneBeta). For supported Binomial, BetaBinomial, Poisson, NB2, zero-truncated NB2, Gamma, Beta,
 Student, or Tweedie random-effect SD fits with `sd(group) ~ …`, it also contains
 `:sd`: the random-effect SD evaluated for
 each row's group, repeated for rows in the same group.
@@ -3190,7 +3203,7 @@ function predict_parameters(fit::DrmFit, newdata; type::Symbol = :response,
     f = fit.formula
     f === nothing && error("predict_parameters: this fit did not retain its formula")
     type in (:response, :link) || error("predict_parameters: `type` must be :response or :link")
-    forms = Dict(f.forms)
+    forms = _forms_with_implied_dpars(fit, Dict(f.forms))
     nd = NamedTuple(pairs(newdata))
     nrows = length(first(values(nd)))
     V = se ? vcov(fit) : nothing
