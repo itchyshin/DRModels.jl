@@ -31,8 +31,9 @@
 #   * exactly one ordinary `(1 | g)` on `mu` (Poisson may add one `offset(...)`,
 #     #941); no `(1 + x | g)`, `(0 + x | g)`,
 #     crossed/multiple terms, structured markers, `meta_V`, `zi`/`hu`;
-#   * NegBinomial2 / Gamma / Beta with `sigma ~ 1` (no random effect on sigma,
-#     no coupled location–scale `(1 | p | g)`);
+#   * NegBinomial2 / Gamma / Beta with `sigma ~ 1` or fixed-effect `sigma` covariates (no
+#     random effect on sigma, no coupled location–scale `(1 | p | g)`); covariates on
+#     `sigma` use the adaptive quadrature at one node, which is the Laplace approximation;
 #   * maximum likelihood only (`method = :REML` is refused).
 #
 # The family `drm` methods delegate here with one line placed before any of
@@ -97,8 +98,8 @@ function _ordinary_laplace_reject(fam, what)
     throw(ArgumentError(
         "marginal = :Laplace is not available for $(nameof(typeof(fam)))() with $what. " *
         "This route covers exactly one ordinary random intercept `(1 | g)` on the mean for " *
-        "Poisson, Binomial, NegBinomial2, Gamma and Beta (`sigma ~ 1` for the three scale " *
-        "families), fitted by maximum likelihood. Omit `marginal` (the default `:LA`) for " *
+        "Poisson, Binomial, NegBinomial2, Gamma and Beta (fixed-effect `sigma` formulas " *
+        "for the three scale families), fitted by maximum likelihood. Omit `marginal` (the default `:LA`) for " *
         "other models."))
 end
 

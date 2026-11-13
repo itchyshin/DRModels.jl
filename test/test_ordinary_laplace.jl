@@ -488,8 +488,10 @@ const _OL_FAMS = (:poisson, :nb2, :binomial, :gamma, :beta)
         refuse(bf(@formula(y ~ x)), Poisson(), dp, r"no random effect")
         refuse(bf(@formula(y ~ x + (1 | g)), @formula(zi ~ 1)), Poisson(), dp, r"a `zi` formula")
         refuse(bf(@formula(y ~ x + (1 | g))), Poisson(), dp, r"`method = :REML`"; method = :REML)
-        refuse(bf(@formula(y ~ x + (1 | g)), @formula(sigma ~ z)), NegBinomial2(), dn,
-               r"non-constant `sigma` formula")
+        # fixed-effect covariates on `sigma` are fitted since the sigma-formula route
+        # (parity pinned in test_sigma_formula_laplace_parity.jl); this line pinned the old refusal
+        @test drm(bf(@formula(y ~ x + (1 | g)), @formula(sigma ~ z)), NegBinomial2(); data = dn,
+                  marginal = :Laplace).marginal === :Laplace
         refuse(bf(@formula(y ~ x + (1 | g)), @formula(sigma ~ 1 + (1 | g))), NegBinomial2(), dn,
                r"random effect on `sigma`")
         refuse(bf(@formula(y ~ x + (1 | p | g)), @formula(sigma ~ 1 + (1 | p | g))), NegBinomial2(), dn,
