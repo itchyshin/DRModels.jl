@@ -15,7 +15,7 @@
 #   (2) an independent dense oracle (own Newton, ForwardDiff derivatives, no DRModels internals):
 #       reml_loglik and ml_loglik equal the oracle's restricted / ML Laplace values to 1e-8, and the
 #       restricted value at the fitted alpha is not beaten by perturbing alpha.
-using DRModels, Test, LinearAlgebra, ForwardDiff, DelimitedFiles, Statistics
+using DRModels, Test, LinearAlgebra, ForwardDiff, DelimitedFiles, Statistics, Logging
 
 const _GMC_DIR = joinpath(@__DIR__, "fixtures", "gaussian_musigma_corr_reml")
 const _GMC_R = Dict(
@@ -141,5 +141,62 @@ end
             Gaussian(); data = d, method = :REML)
         @test_throws Exception drm(bf(@formula(y ~ 1 + x1 + (1 | p | g)), @formula(sigma ~ 1 + (1 | p | g)),
             @formula(sd(g) ~ 1)), Gaussian(); data = d, method = :REML)
+    end
+end
+
+# Rows with a missing response are dropped before the fit (with a warning that gives the count), as on the
+# other random-effect routes (#1089). The fit equals the fit on the complete rows, under REML and ML.
+# `docs/src/capabilities.md` says so; the second test keeps that sentence true.
+@testset "REML (1 | p | g) with missing responses: dropped, equal to the complete-case fit" begin
+    d = _gmc_load("s1")
+    n = length(d.y)
+    ymiss = Vector{Union{Missing,Float64}}(d.y)
+    miss = collect(7:17:n)
+    ymiss[miss] .= missing
+    keep = setdiff(1:n, miss)
+    dm = (; y = ymiss, x1 = d.x1, x2 = d.x2, x3 = d.x3, g = d.g)
+    dc = (; y = d.y[keep], x1 = d.x1[keep], x2 = d.x2[keep], x3 = d.x3[keep], g = d.g[keep])
+    for meth in (:REML, :ML)
+        fit = @test_logs (:warn, r"missing/NaN response") match_mode = :any drm(_gmc_formula(:s1), Gaussian(); data = dm, method = meth)
+        ref = drm(_gmc_formula(:s1), Gaussian(); data = dc, method = meth)
+        @test fit.converged && ref.converged
+        @test fit.theta == ref.theta
+        @test fit.loglik == ref.loglik
+    end
+    caps = read(joinpath(@__DIR__, "..", "docs", "src", "capabilities.md"), String)
+    row = only(filter(l -> occursin("labelled pair `(1 \\| p \\| g)` in both `mu` and `sigma` (fixed-effect predictors, no `sd()` formula) with `method = :REML`", l),
+                      split(caps, '\n')))
+    @test !occursin(r"missing responses[^.]*refused", row)
+    @test occursin("missing response are dropped", row)
+end
+
+# Correlation near the boundary. On these two datasets drmTMB 0.8.1 converges (REML log-likelihood -235.221 and
+# -443.4403, eta_cor -10 and 10.91) while this route does not reach a usable optimum: the correlation runs to
+# the edge, the objective is almost flat there, and the standard errors are not finite. The ML route on the
+# same data fails too (it is the shared engine, not this slice). The contract tested here is honesty, not
+# agreement: the fit is not reported as converged, no failure sentinel is shown as a log-likelihood, and the
+# standard errors are not finite numbers. If the optimiser is later fixed, the first two assertions of each
+# branch still hold.
+@testset "REML (1 | p | g) near the correlation boundary: an honest failure, never a sentinel logLik" begin
+    for case in ("b2", "b4")
+        raw, hdr = readdlm(joinpath(_GMC_DIR, "data_$(case).csv"), ','; header = true)
+        col(nm) = raw[:, findfirst(==(nm), vec(hdr))]
+        d = (; y = Float64.(col("y")), x1 = Float64.(col("x1")), x2 = Float64.(col("x2")), g = String.(col("g")))
+        f = bf(@formula(y ~ x1 + x2 + (1 | p | g)), @formula(sigma ~ 1 + x1 + (1 | p | g)))
+        fit = Logging.with_logger(Logging.NullLogger()) do
+            drm(f, Gaussian(); data = d, method = :REML)
+        end
+        ll = Logging.with_logger(Logging.NullLogger()) do
+            loglikelihood(fit)
+        end
+        @test isnan(ll) || ll > -1e15                      # the -1e18 failure value is never shown as a logLik
+        @test ll != -1e18
+        if is_converged(fit)
+            @test isfinite(ll) && all(isfinite, stderror(fit))   # a real fit is allowed
+        else
+            @test string(convergence_status(fit)) != "converged"
+            @test !all(isfinite, stderror(fit))                  # Inf, never a made-up finite SE
+        end
+        @test !(is_converged(fit) && isnan(ll))
     end
 end

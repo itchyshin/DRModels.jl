@@ -1797,8 +1797,9 @@ function _drm_gaussian_fit(f::DrmFormula, fam::Gaussian; data, K = nothing, A = 
                   "mean and `(1 | $sgrp)` on sigma) — the per-group 2×2 Laplace block this " *
                   "route uses requires one group per observation shared by both axes; " *
                   "different/crossed groups are not implemented (#745)")
-        # `has_missing_response` is already refused above this point for ANY non-empty
-        # `re`. `method === :REML` is refused by the generic validator above EXCEPT for the
+        # Rows with a missing response never reach this point on a `(… | g)` route: they are
+        # dropped first, with a warning (#1089, `_fit_observed_response_rows`), so the fit below
+        # sees complete responses. `method === :REML` is refused by the generic validator above EXCEPT for the
         # labelled `(1 | p | g)` pair in both mu and sigma (`reml_musigma_corr`), which is
         # served by the labelled branch just before this comment; every other shape here is
         # ML/complete-response only by construction.
