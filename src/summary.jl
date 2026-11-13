@@ -67,6 +67,7 @@ function _block_title(p::Symbol)
     p === :resid   && return "Residual scale (log σ)"
     p === :recov   && return "Random-effect covariance (Cholesky)"
     p === :phylocov && return "Group-level covariance Σ_a (log-Cholesky; Wald intervals uncalibrated)"
+    p === _BIV_RE_GROUP_BLOCK && return "Group-level covariance Σ_g (log-Cholesky)"
     return String(p)
 end
 
@@ -86,7 +87,7 @@ function _block_null_note(p::Symbol)
                                                 "intercept ⇔ σ = 1 (unit-dependent); slope ⇔ equal dispersion")
     p in (:resd, :resid)            && return ("H0: coefficient = 0 on log σ_b",
                                                 "NOT the σ_b = 0 boundary")
-    p in (:recov, :phylocov)        && return ("H0: Cholesky entry = 0 (no single interpretable null)",)
+    p in (:recov, :phylocov, _BIV_RE_GROUP_BLOCK) && return ("H0: Cholesky entry = 0 (no single interpretable null)",)
     p === :temporal_phi             && return ("H0: φ = 0 (atanh scale)",)
     p === :temporal_decay           && return ("H0: log λ = 0 ⇔ λ = 1 (depends on the time unit)",)
     p === :temporal_pac             && return ("H0: partial autocorrelation = 0 (atanh scale)",)

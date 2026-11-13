@@ -127,7 +127,7 @@ end
 # fit's boundary variance components correctly (#639) — the per-parameter naming
 # gap only affected `_fixed_effect_structure` (:mu1/:mu2/… vs the univariate :mu).
 const _VARIANCE_COMPONENT_BLOCKS =
-    (:resd, :resid, :recov, :phylocov, :resd_mu, :resd_sigma, :sd, :sd_phylo)
+    (:resd, :resid, :recov, :phylocov, _BIV_RE_GROUP_BLOCK, :resd_mu, :resd_sigma, :sd, :sd_phylo)
 
 # Variance-component block symbols present in `fit` (with a non-empty range).
 function _variance_component_blocks(fit::DrmFit)
