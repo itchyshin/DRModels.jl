@@ -1,4 +1,4 @@
-# Time-balanced (LPT) assignment for N=16 shards, recomputed 2026-11-08 on top of test-speed d64c28713.
+# Time-balanced (LPT) assignment for N=16 shards, recomputed 2026-11-08 on top of test-speed d64c28713. test_aliased_design_all_routes.jl
 # Weights: per-file seconds from times_w3 (one full-suite measurement), test_crossed_tweedie.jl set to 22 s.
 # Wave-5 integration (2026-11-08): regenerated against the merged tree. Files unassigned in the earlier assignment were added greedily to the least-loaded shard.
 # Conservative estimates (s) for unmeasured files: test_binomial_phylo_spatial_q2_sd.jl=300, test_q2_weak_optimum.jl=300, every other unmeasured file=120. New files added: test_q2_weak_optimum.jl

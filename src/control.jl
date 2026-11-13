@@ -694,13 +694,24 @@ macro drm_entry(fdef)
         # the extra-keyword splat added above is named `_drm_extra_kw`
         :(haskey(_drm_extra_kw, :data) && _record_factor_levels!($fname, _drm_extra_kw[:data]))
     end
+    # The fixed-effect design rank check (#1110) for every route but the Gaussian one, which
+    # makes its own call; `_apply_design_rank` flags the finished fit when the check found an alias.
+    precheck = if :data in names
+        :(_precheck_design_rank($fname, $famname, data))
+    elseif splat !== nothing
+        kwsplat2 = params.args[findfirst(a -> a isa Expr && a.head === :..., params.args)].args[1]
+        :(haskey($kwsplat2, :data) && _precheck_design_rank($fname, $famname, $kwsplat2[:data]))
+    else
+        :(haskey(_drm_extra_kw, :data) && _precheck_design_rank($fname, $famname, _drm_extra_kw[:data]))
+    end
     fdef.args[2] = quote
         $extra_check
         $pre
         $record
-        return _drm_run_controlled($fname, $famname, control, weights) do
+        $precheck
+        return _apply_design_rank(_drm_run_controlled($fname, $famname, control, weights) do
             $body
-        end
+        end)
     end
     return esc(:(Base.@__doc__ $fdef))
 end
