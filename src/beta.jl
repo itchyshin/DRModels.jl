@@ -190,6 +190,8 @@ function _drm_beta_sd_regression(f::DrmFormula, fam::Beta; data,
                                 coords = nothing, g_tol::Real = 1e-8,
                                 se::Bool = true, marginal::Symbol = :LA,
                                 nAGQ::Int = _SD_IID_AGHQ_K)
+    laplace_fit = _laplace_sd_route(f, fam, Val(:beta), marginal; data, g_tol)
+    laplace_fit === nothing || return laplace_fit
     marginal === :LA || throw(ArgumentError(
         "Beta `sd(group) ~ …` currently supports `marginal = :LA` only."))
     twofield = _drm_twofield_sd_route(f, fam; data, tree, K, A, coords, g_tol, se)
