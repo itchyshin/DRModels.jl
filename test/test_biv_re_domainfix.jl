@@ -158,3 +158,45 @@ end
         @test abs(parse(Float64, row[1][5]) - _df_one("$(name)_$(lowercase(string(method)))", "logLik")[2]) <= 1e-4
     end
 end
+
+@testset "bivariate ordinary (1 | p | g): every one of the six rejection returns gives exactly 1e18" begin
+    # Three of the six rejection sites were reached by no test (ML negative sum of squares, ML non-finite
+    # value from finite pieces, REML negative sum of squares). `reject_points.tsv` holds crafted trial
+    # points (made by `make_reject_points.jl`) where each of those sites is the one that fires. A fresh
+    # Julia process captures the route's own ML and REML objectives (the selection function replaced by
+    # a capture, so no fit runs) and evaluates them at the points. With the return at any one of these
+    # sites changed to `Inf`, the points of that site return `Inf` and this fails.
+    script = """
+    using DRModels, DelimitedFiles, Logging
+    cap = Ref{Any}(nothing)
+    DRModels._biv_re_best_start(run, obj, x0::AbstractVector) = (cap[] = obj; error("captured"))
+    fixd = $(repr(_FIXD))
+    f = bf(mu1 = @formula(y1 ~ x1 + (1 | p | g)), mu2 = @formula(y2 ~ x2 + (1 | p | g)),
+           sigma1 = @formula(sigma1 ~ 1), sigma2 = @formula(sigma2 ~ 1), rho12 = @formula(rho12 ~ 1))
+    m, h = readdlm(joinpath(fixd, "r7080.csv"), ',', Any; header = true)
+    cols = Pair{Symbol,Any}[]
+    for (j, n) in enumerate(String.(vec(h)))
+        c = m[:, j]; push!(cols, Symbol(n) => n == "g" ? String.(c) : Float64.(c))
+    end
+    pts = [split(l, '\\t') for l in readlines(joinpath(fixd, "reject_points.tsv"))]
+    for (method, keys) in ((:ML, ("ml217", "ml221")), (:REML, ("reml236",)))
+        try with_logger(NullLogger()) do; drm(f, Gaussian(); data = (; cols...), method = method); end catch e; end
+        obj = cap[]
+        for p in pts
+            p[1] in keys || continue
+            println("POINT ", p[1], " ", p[2], " ", repr(obj(parse.(Float64, split(p[3], ',')))))
+        end
+    end
+    """
+    jl = Base.julia_cmd()
+    out = IOBuffer()
+    ok = success(pipeline(`$jl --project=$(Base.active_project()) --startup-file=no -e $script`; stdout = out, stderr = devnull))
+    @test ok
+    rows = [split(l) for l in split(String(take!(out)), '\n') if startswith(l, "POINT")]
+    for (key, npts) in (("ml217", 12), ("ml221", 4), ("reml236", 3))
+        v = [parse(Float64, r[4]) for r in rows if r[2] == key]
+        @test length(v) == npts
+        @test all(isfinite, v)                              # an `Inf` return at the site fails here
+        @test count(==(1e18), v) >= ceil(Int, 0.75 * npts)   # and the points still reach the site
+    end
+end
