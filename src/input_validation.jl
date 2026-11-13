@@ -269,6 +269,7 @@ column lengths (#1022) and unused structured keywords (#1010).
 function _drm_entry_guard(f::DrmFormula, fam, data; tree = nothing, K = nothing,
                           A = nothing, Ainv = nothing, coords = nothing)
     _require_simple_bar_groups(f)
+    _require_no_colon_term(f)
     _require_family_dpars(f, fam)
     _require_supported_random_terms(f, data)
     _require_offset_supported(f, fam)
@@ -318,6 +319,41 @@ function _require_supported_random_terms(f::DrmFormula, data)
                     "too. Use a numeric 0/1 indicator column for one level, e.g. `(0 + $(v)_b | g)`, " *
                     "or put the factor in the fixed effects and keep `(1 | g)`."))
             end
+        end
+    end
+    return nothing
+end
+
+# ── formula spellings that are not a formula bundle or not Julia's ─────────────
+#
+# A bare `@formula(y ~ x)` (no `bf()`) used to fail dispatch with `MethodError: no method
+# matching drm(::FormulaTerm, ::Gaussian; ...)`. drmTMB says "`formula` must be created with
+# `drm_formula()` or `bf()`"; so does this, with the spelling that works. One method, for any
+# family and any keywords, so every route gives the same message.
+_fam_label(fam::Tuple) = "(" * join((_fam_label(x) for x in fam), ", ") * ")"
+_fam_label(fam) = string(nameof(typeof(fam))) * "()"
+function drm(f::FormulaTerm, fam; kwargs...)
+    throw(ArgumentError("drm: `formula` must be created with `bf()` (alias `drm_formula()`), " *
+        "not passed as a bare `@formula`. Write `drm(bf(@formula($f)), $(_fam_label(fam)); data = ...)`. " *
+        "drmTMB refuses a bare formula too (\"`formula` must be created with `drm_formula()` or `bf()`\")."))
+end
+
+# `x1:x2` is R's interaction, but Julia reads `:` as the range operator, which binds looser
+# than `+`: `y ~ x1 + x2 + x1:x2` is `(x1 + x2 + x1) : x2`. It then failed deep in the design
+# builder with "Cannot convert an object of type StepRangeLen{Float64,...} to Float64". A
+# colon at the top of a right-hand side is never a valid term here, so it is refused by name.
+# (A `:` hidden inside a function call, such as `log(x1:x2)`, is not detected.)
+function _require_no_colon_term(f::Union{DrmFormula,BivariateDrmFormula})
+    for (dpar, rhs) in f.forms
+        for t in _rhs_terms(rhs)
+            t isa FunctionTerm && t.f === (:) && length(t.args) == 2 || continue
+            # `(1 | g):h` is the nested-grouping refusal (`_require_simple_bar_groups`).
+            t.args[1] isa FunctionTerm && t.args[1].f === (|) && continue
+            throw(ArgumentError("drm: the `$dpar` formula contains `$(t.exorig)`, which uses `:`. " *
+                "Julia reads `:` as a range and not as an interaction, and it binds looser than `+`, " *
+                "so this is read as `($(t.args[1])) : $(t.args[2])`. drmTMB reads `:` as an interaction. " *
+                "Write the interaction with `&` (interaction only: `a & b`) or `*` " *
+                "(both main effects and the interaction: `a * b`)."))
         end
     end
     return nothing
