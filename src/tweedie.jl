@@ -1184,6 +1184,27 @@ _laplace_nuisance_d2(::Val{:tweedie_fixed}, aux, i, η) =
     ForwardDiff.derivative(ls -> _laplace_d2(Val(:tweedie_fixed), (y = aux.y, p = aux.p, logsigma = ls), i, η),
                            aux.logsigma)
 
+# The crossed route searches the power on the logit-(1,2) scale inside [-6, 6]. A search that
+# ends within `_TWEEDIE_POWER_EDGE_TOL` of either end has found the boundary of the window, not
+# an interior optimum, so the estimate is not an interior estimate. Such a fit is flagged
+# (`geometry = :power_at_bound`, which `convergence_status` reads as `:degenerate`, as it does for
+# every crossed Tweedie fit, whose `nu` variance is NaN) and warned about once.
+# The window, the search and the estimate are not changed.
+const _TWEEDIE_POWER_SEARCH_BOUND = 6.0
+const _TWEEDIE_POWER_EDGE_TOL = 1e-3
+_tweedie_power_at_bound(ηp::Real) = abs(ηp) >= _TWEEDIE_POWER_SEARCH_BOUND - _TWEEDIE_POWER_EDGE_TOL
+
+function _flag_tweedie_power_bound(fit::DrmFit, p̂::Real)
+    if get(task_local_storage(), :drm_quiet_boundary, false) !== true
+        lo = _logit12(-_TWEEDIE_POWER_SEARCH_BOUND); hi = _logit12(_TWEEDIE_POWER_SEARCH_BOUND)
+        @warn "drm (Tweedie, crossed random effects): the estimated power p = " * string(round(p̂; digits = 5)) *
+              " is at the end of its search interval (" * string(round(lo; digits = 5)) * ", " *
+              string(round(hi; digits = 5)) * "), so it is a bound, not an interior estimate. " *
+              "The other estimates are conditional on that power. `fit.geometry` is :power_at_bound."
+    end
+    return _withgeometry(fit, :power_at_bound)
+end
+
 function _fit_tweedie_crossed_laplace(fam::Tweedie, y, Xμ, comps, nmμ, nmσ, nmν, g_tol)
     length(comps) == 2 || error("_fit_tweedie_crossed_laplace requires two random-intercept components")
     yv = Float64.(y)
@@ -1224,6 +1245,7 @@ function _fit_tweedie_crossed_laplace(fam::Tweedie, y, Xμ, comps, nmμ, nmσ, n
     V = fill(NaN, length(theta), length(theta))
     V[1:nblk, 1:nblk] .= fit.vcov
     scales = merge(fit.scales, Dict(:nu => fill(p̂, n)))
-    return DrmFit(fam, blocks, names, theta, V, fit.loglik, fit.nobs, fit.converged,
+    out = DrmFit(fam, blocks, names, theta, V, fit.loglik, fit.nobs, fit.converged,
                  fit.means, fit.obs, scales)
+    return _tweedie_power_at_bound(Optim.minimizer(res)) ? _flag_tweedie_power_bound(out, p̂) : out
 end
