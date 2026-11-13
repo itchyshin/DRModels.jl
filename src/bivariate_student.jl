@@ -117,6 +117,7 @@ fit = drm(f, Student(); data = dat)
 """
 @drm_entry function drm(f::BivariateDrmFormula, fam::Student; data, g_tol::Real = 1e-8,
              method::Symbol = :ML, missing = nothing)
+    _require_simple_bar_groups(f)   # nested `g / h` and other compound groupings: a named refusal
     _require_formula_column_lengths(f, data)   # #1022: no ragged columns under @inbounds
     method === :ML ||
         throw(ArgumentError("drm: the bivariate Student-t route implements ML only " *
