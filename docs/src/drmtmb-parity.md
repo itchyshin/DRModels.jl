@@ -127,9 +127,13 @@ stayed within about 5e-4 of it. A later Poisson `(1 | g)` comparison
   requested label. Other LogNormal models refuse this selector. For families
   without a documented `:Laplace` route, use their default; a `marginal`
   keyword is not accepted by every family. `CumulativeLogit()` with one
-  `(1 | g)` has no `:Laplace` option, so it differs slightly from drmTMB
-  (log-likelihood and fitted values; fitted values by up to about 5e-3 on test
-  data): a known engine difference. Crossed and structured
+  `(1 | g)` has no `:Laplace` option: it integrates by quadrature, so its
+  log-likelihood is above drmTMB's Laplace value (by 0.0009 to 0.24 on seven
+  simulated test sets), a known engine difference. With the random effect at
+  zero, `fitted()` agrees with drmTMB's `predict(fit, newdata, type = "mean")`
+  to 4.4e-4 or better on those sets. drmTMB's own `fitted(fit)` uses the
+  random-effect modes, which the Julia ordinal fit does not store, so no
+  like-for-like comparison of that quantity is available. Crossed and structured
   non-Gaussian routes generally use Laplace by default, with exact Gaussian
   calculations for the delegated LogNormal routes.
 - **Match the integration rule for the comparison.** On the named adaptive-

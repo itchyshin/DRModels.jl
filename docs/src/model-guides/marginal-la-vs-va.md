@@ -90,9 +90,12 @@ On these six families (Poisson, Binomial, NegBinomial2, Gamma, Beta and
 BetaBinomial), `:Laplace` covers one ordinary `(1 | g)` on the mean (`sigma ~ 1`
 for the scale families), by maximum likelihood. `CumulativeLogit()` with one
 `(1 | g)` has no `:Laplace` option: it integrates by quadrature, so its
-log-likelihood and fitted values differ slightly from drmTMB's Laplace values
-(fitted values by up to about 5e-3 on test data). This is a known engine
-difference, not a fault. `Student()` accepts it too for one ordinary
+log-likelihood is above drmTMB's Laplace value (by 0.0009 to 0.24 on seven
+simulated test sets). With the random effect at zero, `fitted()` agrees with
+drmTMB's `predict(fit, newdata, type = "mean")` to 4.4e-4 or better on those
+sets. drmTMB's own `fitted(fit)` uses the random-effect modes, which the Julia
+ordinal fit does not store, so no like-for-like comparison of that quantity is
+available. The log-likelihood gap is a known engine difference, not a fault. `Student()` accepts it too for one ordinary
 `(1 | g)` on the mean (`sigma` and `nu` may carry fixed-effect formulas). A
 Gaussian random intercept on `sigma`, `sigma ~ 1 + (1 | g)`, with a fixed-effect
 mean also accepts it. `LogNormal()` accepts the selector for one ordinary mean

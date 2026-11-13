@@ -6,5 +6,7 @@
   logLik on the same data. The route covers `sigma ~ 1`, maximum likelihood, no offset; anything
   else is refused by name. `fitted(fit)` on a Laplace fit is still the population value (the
   random-effect modes are not stored yet).
-- **Documented:** `CumulativeLogit()` with one `(1 | g)` has no `marginal = :Laplace` option and
-  differs slightly from drmTMB (a known engine difference). See the marginal-approximation guide.
+- **Documented:** `CumulativeLogit()` with one `(1 | g)` has no `marginal = :Laplace` option; its
+  log-likelihood is above drmTMB's Laplace value by 0.0009 to 0.24 on seven simulated sets (a known
+  engine difference), while `fitted()` with the random effect at zero agrees with drmTMB's
+  `predict(fit, newdata, type = "mean")` to 4.4e-4 or better. See the marginal-approximation guide.
