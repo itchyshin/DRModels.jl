@@ -4121,9 +4121,10 @@ function _bootstrap_result(
         try
             # Marginal draw when the fit has random effects (#459); the plain
             # `simulate(fit0; re = :zero)` is conditional and collapses a variance-component CI.
-            # `re = :zero` keeps the fallback's previous draw (#1092 changed the
-            # `simulate` default; this path is reached only without a simulator).
-            ysim = simulate_fn === nothing ? simulate(fit0; rng=rr, re=:zero) : simulate_fn(rr)
+            # This keeps the fallback's previous (conditional) draw (#1092 changed the
+            # `simulate` default; this path is reached only without a simulator). It calls the
+            # draw directly: `simulate(re = :zero)` now uses the population-level values (P9i).
+            ysim = simulate_fn === nothing ? _simulate_conditional(fit0, rr) : simulate_fn(rr)
             datab = _bootstrap_data(formula, data, ysim)
             fitb = _without_boundary_warnings(() -> refit(datab))
             # Not the raw `.converged` field: this gate also rejects a degenerate

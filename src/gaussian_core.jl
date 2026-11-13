@@ -3486,7 +3486,8 @@ function simulate(fit::DrmFit; nsim::Integer = 1, rng = default_rng(), newdata =
     re in (:marginal, :zero) || throw(ArgumentError(
         "simulate: `re` must be :marginal (fresh random effects, the default) or " *
         ":zero (random effects set to zero), got :$re"))
-    src = newdata === nothing ? fit : _fit_for_simulate_newdata(fit, newdata)
+    src = newdata === nothing ? (re === :zero ? _fit_random_effects_zero(fit) : fit) :
+          _fit_for_simulate_newdata(fit, newdata)
     draw = if newdata === nothing && re === :marginal && _simulate_needs_marginal(fit)
         _simulate_marginal_draw(fit, data; K, A, tree, coords)
     else
@@ -3549,6 +3550,34 @@ function _simulate_marginal_draw(fit::DrmFit, data; K = nothing, A = nothing,
     return sim
 end
 
+# One CONDITIONAL draw from the stored `means` / `scales` (they contain the fitted modes on
+# the older sd-formula engines). The bootstrap fallback without a fresh-draw simulator uses
+# this, as `simulate(fit; re = :zero)` did before P9i.
+function _simulate_conditional(fit::DrmFit, rng)
+    _is_fixed_prior_fit(fit) && fit.estim_method === :MAP && throw(ArgumentError("simulate: simulation from a $(_prior_kind_label(fit)) fit is not yet qualified"))
+    return _simulate_once(fit, rng)
+end
+
+# `re = :zero` without `newdata`: draw with every random effect set to zero. Most fits store
+# the population-level `means[:mu]` / `scales[:sigma]` already. The older sd-formula engines
+# store the CONDITIONAL values (the fitted modes are inside them) and keep the population value
+# next to it: `:sigma_fixed` (Gaussian, Gamma, BetaBinomial and structured sigma routes) or
+# `:sigma_population` (NB2) for sigma, and `:mu_population` for the mean. Swap those in, so the
+# draw carries no random-effect variation, as documented (P9i).
+function _fit_random_effects_zero(fit::DrmFit)
+    psig = get(fit.scales, :sigma_population, get(fit.scales, :sigma_fixed, nothing))
+    pmu = get(fit.scales, :mu_population, nothing)
+    (psig === nothing && pmu === nothing) && return fit
+    means = copy(fit.means)
+    scales = copy(fit.scales)
+    pmu === nothing || (means[:mu] = pmu)
+    psig === nothing || (scales[:sigma] = psig)
+    return DrmFit(fit.family, fit.blocks, fit.coefnames, fit.theta, fit.vcov,
+                  fit.loglik, fit.nobs, fit.converged, means, fit.obs, scales, fit.formula,
+                  fit.nll, fit.nllgrad, nothing, fit.estim_method, fit.reml_loglik,
+                  fit.ml_loglik, fit.marginal)
+end
+
 # Population-level (RE = 0) parameter table for `simulate(...; newdata)`. Rebuilds
 # a shallow `DrmFit` whose `means` / `scales` have one row per `newdata` row so
 # `_simulate_once` can reuse every family branch unchanged.
@@ -3559,7 +3588,7 @@ end
 # so newdata simulation is population level, as for every other fit.
 _simulate_newdata_bookkeeping_key(k::Symbol) =
     k in (:q2_restarts, :sd, :sd_group, :sd_group_index, :sigma_fixed, :sigma_random_effect,
-          :sigma_random_effect_slope, :sigma_group_index) ||
+          :sigma_random_effect_slope, :sigma_group_index, :sigma_population, :mu_population) ||
     startswith(String(k), "sdtarget_")
 
 function _fit_for_simulate_newdata(fit::DrmFit, newdata)
