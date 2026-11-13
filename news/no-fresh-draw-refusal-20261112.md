@@ -9,4 +9,4 @@
   which still works. For Binomial that call fails on this version (the fit does not carry trials),
   so the message says no draw is available yet.
   A single `(1 | g)` is unchanged for both families. Gamma `(0 + x | g)` and `(1 + x | g)` are refused too (see the separate note on Gamma slopes).
-  Decision P11c: refuse until the fresh draw exists.
+  This is a maintainer decision: refuse until the fresh draw exists.

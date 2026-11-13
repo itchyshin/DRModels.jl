@@ -1,6 +1,6 @@
 using DRModels, Test, Random
 
-# P11c: Gamma and Binomial `(1 | g) + (0 + x | g)` have no fresh random-effect draw. Before this
+# Gamma and Binomial `(1 | g) + (0 + x | g)` have no fresh random-effect draw. Before this
 # change `bootstrap_summary` fell back to a draw with the random effects at zero and returned a
 # table (a variance-component interval that collapses); it now refuses by name.
 @testset "no fresh draw: Gamma and Binomial (1 | g) + (0 + x | g) refuse bootstrap and default simulate" begin
@@ -27,12 +27,12 @@ using DRModels, Test, Random
     @test size(bootstrap_summary(f1; data = dg, B = 2, rng = Random.Xoshiro(1)), 1) == length(coef(f1))
 end
 
-# P11c follow-up (review section 3): the guard refuses EVERY Gamma and Binomial fit with two or more
+# The guard refuses EVERY Gamma and Binomial fit with two or more
 # ordinary random-effect terms that has no fresh-draw simulator, not only `(1 | g) + (0 + x | g)`.
 # Probed on main: all of these shapes had no fresh draw (silent fallback to random effects at zero, or
 # a failed refit / "does not carry trials" error). Each refusal must name the shape actually fitted
 # and offer only an escape that works for the family.
-function _p11c_data(seed)
+function _no_fresh_draw_data(seed)
     r = Random.Xoshiro(seed); n = 300
     gi = rand(r, 1:20, n); hi = rand(r, 1:10, n); si = rand(r, 1:3, n)
     x = randn(r, n); z = randn(r, n)
@@ -45,7 +45,7 @@ function _p11c_data(seed)
 end
 
 @testset "no fresh draw: every refused Gamma and Binomial shape names itself; escapes work or are not offered" begin
-    d = _p11c_data(11)
+    d = _no_fresh_draw_data(11)
     shapes = [
         ("(1 | g) + (0 + z | g)", "an independent random slope with an intercept"),
         ("(1 | g) + (1 | h)", "crossed or nested random intercepts"),
@@ -88,7 +88,7 @@ end
 end
 
 @testset "no fresh draw: shapes that keep a working simulator or were never in scope do not refuse" begin
-    d = _p11c_data(11)
+    d = _no_fresh_draw_data(11)
     # a single (1 | g) keeps its fresh draw for both families: default simulate and bootstrap work
     fg = drm(bf(@formula(y ~ x + (1 | g))), DRModels.Gamma(); data = d)
     fb = drm(bf(@formula(cbind(s, f) ~ x + (1 | g))), Binomial(); data = d)
@@ -96,7 +96,7 @@ end
         @test length(simulate(fit; data = d, rng = Random.Xoshiro(1))) == length(d.x)
         @test size(bootstrap_summary(fit; data = d, B = 2, rng = Random.Xoshiro(1)), 1) == length(coef(fit))
     end
-    # single-term Gamma slope shapes are covered by test_gamma_slope_no_fresh_draw.jl (decision f)
+    # single-term Gamma slope shapes are covered by test_gamma_slope_no_fresh_draw.jl
     # other families with crossed or independent-slope bars are untouched by the Gamma/Binomial guard
     fn = drm(bf(@formula(y ~ x + (1 | g) + (1 | h))), LogNormal(); data = d)
     @test size(bootstrap_summary(fn; data = d, B = 2, rng = Random.Xoshiro(1)), 1) == length(coef(fn))

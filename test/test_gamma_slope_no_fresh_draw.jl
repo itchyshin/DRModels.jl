@@ -1,6 +1,6 @@
 using DRModels, Test, Random
 
-# Decision f: a single Gamma `(0 + z | g)` or `(1 + z | g)` has no fresh random-effect draw either.
+# A single Gamma `(0 + z | g)` or `(1 + z | g)` has no fresh random-effect draw either.
 # Before this change `bootstrap_summary`, `bootstrap_result` and the default `simulate` fell back to a draw
 # with the random effects at zero (the variance-component interval collapses) and returned a table. They
 # now refuse by name, as the shapes with two or more terms already do.

@@ -2429,7 +2429,7 @@ function _marginal_simulator(fit::DrmFit, data; K=nothing, A=nothing, tree=nothi
             "`meta_V(...)` + random-effect fit (pass the same `data` and `tree` / `K` / `A` " *
             "used to fit it); the conditional fallback would drop the random effect"))
     end
-    # P11c: Gamma and Binomial fits with two or more ordinary random-effect terms (and a single Gamma
+    # Gamma and Binomial fits with two or more ordinary random-effect terms (and a single Gamma
     # `(0 + x | g)` / `(1 + x | g)`) have no fresh-draw simulator (independent slope with intercept, crossed or nested intercepts, mixed shapes). Falling
     # back to the conditional draw (random effects at zero) would collapse the variance-component interval
     # without a message, so refuse, naming the shape the user fitted.
@@ -2446,7 +2446,7 @@ function _is_no_fresh_draw_slope_fit(fit::DrmFit)
     _, re, metav, structured, _ = _split_ranef(rhs[:mu]; allow_phylo_slope = true)
     metav === nothing && structured === nothing || return false
     length(re) >= 2 && return true
-    # Decision f: a single Gamma `(0 + x | g)` or `(1 + x | g)` has no fresh draw either; it used to fall back
+    # A single Gamma `(0 + x | g)` or `(1 + x | g)` has no fresh draw either; it used to fall back
     # to random effects at zero without a message (the estimand changes, so it is refused like the rest).
     return fit.family isa Gamma && length(re) == 1 && _laplace_lhs_kind(re[1][1]) in (:slope, :corr)
 end
