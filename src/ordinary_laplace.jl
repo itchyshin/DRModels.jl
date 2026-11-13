@@ -343,6 +343,12 @@ _ordinary_laplace_Q(G::Int) = spdiagm(0 => ones(Float64, G))
 # costs about one extra inner step.
 const _ORDINARY_LAPLACE_NEWTON_TOL = 1e-13
 
+# Fitted-row modes for `fitted(fit)` (the conditional default) on the ordinary `(1 | g)` routes: one
+# inner-mode solve at the final θ̂ with the objective's own kernel `fg` (cold start, tolerance 1e-13),
+# loaded to the rows by the group index. It does not touch the fit's values, closures or optimiser state.
+_record_ordinary_laplace_modes!(scales, fg, θ̂, G, gidx) =
+    _record_laplace_modes!(scales, (θ, b0) -> fg(θ, b0, false), θ̂, zeros(G), gidx)
+
 function _fit_poisson_ordinary_laplace(fam::Poisson, y, Xμ, gidx, G, nmμ, grp, g_tol;
                                        se::Bool = true,
                                        offset::AbstractVector{<:Real} = zeros(length(y)))
@@ -364,8 +370,9 @@ function _fit_poisson_ordinary_laplace(fam::Poisson, y, Xμ, gidx, G, nmμ, grp,
     names = [:mu => nmμ, :resd => [String(grp)]]
     means = Dict(:mu => exp.(Xμ * θ̂[1:pμ] .+ off))
     obs = Dict(:mu => Vector{Float64}(y))
-    fit = DrmFit(fam, blocks, names, θ̂, V, -nllhat, n, conv, means, obs,
-                 Dict{Symbol,Vector{Float64}}())
+    scales = Dict{Symbol,Vector{Float64}}()
+    _record_ordinary_laplace_modes!(scales, fg, θ̂, G, gidx)   # modes for `fitted(fit)`
+    fit = DrmFit(fam, blocks, names, θ̂, V, -nllhat, n, conv, means, obs, scales)
     return _withnll(fit, nll, grad!)
 end
 
@@ -389,8 +396,9 @@ function _fit_binomial_ordinary_laplace(fam::Binomial, s, ntr, Xμ, gidx, G, nm�
     names = [:mu => nmμ, :resd => [String(grp)]]
     means = Dict(:mu => [_laplace_mean(kind, dot(@view(Xμ[i, :]), θ̂[1:pμ])) for i in 1:n])
     obs = Dict(:mu => [_laplace_obs(kind, aux, i) for i in 1:n])
-    fit = DrmFit(fam, blocks, names, θ̂, V, -nllhat, n, conv, means, obs,
-                 Dict(:trials => Float64.(nint)))
+    scales = Dict(:trials => Float64.(nint))
+    _record_ordinary_laplace_modes!(scales, fg, θ̂, G, gidx)   # modes for `fitted(fit)`
+    fit = DrmFit(fam, blocks, names, θ̂, V, -nllhat, n, conv, means, obs, scales)
     return _withnll(fit, nll, grad!)
 end
 
@@ -533,6 +541,7 @@ function _fit_scale_ordinary_laplace(fam, y, Xμ, gidx, G, nmμ, nmσ, grp, g_to
     means = Dict(:mu => [_laplace_mean(kind, dot(@view(Xμ[i, :]), θ̂[1:pμ]) + offv[i]) for i in 1:n])
     obs = Dict(:mu => [_laplace_obs(kind, auxhat, i) for i in 1:n])
     scales = Dict(:sigma => fill(exp(θ̂[pμ+1]), n))
+    _record_ordinary_laplace_modes!(scales, fg, θ̂, G, gidx)   # modes for `fitted(fit)`
     fit = DrmFit(fam, blocks, names, θ̂, V, -nllhat, n, conv, means, obs, scales)
     return _withnll(fit, nll, grad!)
 end

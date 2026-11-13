@@ -187,9 +187,10 @@ distributional parameters:
   accurate integration (adaptive quadrature), while drmTMB maximises a Laplace
   approximation, so the two packages stop at slightly different parameters. The
   drmTMB `fitted()` is the Laplace value, not an error on either side. A fit made with
-  `marginal = :Laplace` on one of those families keeps no random-effect modes, so the
-  default `fitted(fit)` refuses it: call `fitted(fit; re = :zero)`, or refit with the
-  default marginal. Pass
+  `marginal = :Laplace` on one ordinary `(1 | g)` of Poisson, NegBinomial2, Binomial, Gamma
+  or Beta keeps the inner-mode solve at the fitted parameters, so `fitted(fit)` is conditional
+  there and agrees with drmTMB's to 1e-6 on the cells checked (the Laplace fit is the same
+  objective as drmTMB's). Pass
   `fitted(fit; re = :zero)` for the population-level value with every random
   effect at zero, which is what `predict(fit, newdata)` returns on the GLM-type
   routes (and what `fitted(fit)` returned before the default changed). The
