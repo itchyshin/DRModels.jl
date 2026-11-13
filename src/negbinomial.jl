@@ -244,6 +244,16 @@ function _drm_negbinomial2_fit(f::DrmFormula, fam::NegBinomial2; data, tree = no
         # `sigma ~ 1` keeps the scalar-dispersion spine; a covariate `sigma`
         # formula routes to the per-observation log-dispersion path (#164).
         kind, grp = st
+        # `_split_ranef` reports only the FIRST structured marker. Without this check a second one
+        # (`spatial(1 | g) + animal(1 | h)`, `phylo(1 | g) + relmat(1 | h)`, ...) is dropped and the
+        # one-term fit is returned as if both had been fitted. Refuse it by name instead.
+        structured_all = _collect_structured(rhs[:mu])
+        length(structured_all) == 1 || throw(ArgumentError(
+            "NegBinomial2() fits one structured random effect (`phylo`, `relmat`, `animal` or `spatial`) " *
+            "on the mean, but the formula has $(length(structured_all)): " *
+            join(("$k(1 | $gname)" for (k, gname) in structured_all), ", ") *
+            ". A second structured term is not implemented here (it would be dropped, not fitted), " *
+            "so it is refused. Keep one structured term, or use `Gaussian()`, which fits two."))
         labels = getproperty(data, grp)
         if kind === :phylo
             tree === nothing && error("phylo(1 | $grp) needs `tree = …`")
