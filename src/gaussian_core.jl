@@ -2517,8 +2517,16 @@ models.
 
 **Random effects (`re`).** The default `re = :conditional` includes the fitted
 random-effect modes (the BLUPs for the Gaussian routes, the Laplace or adaptive
-quadrature modes for the others), exactly as drmTMB's `fitted()` does, so
-`fitted(fit)` equals drmTMB's `fitted(fit)` on the same model. `re = :zero` returns the
+quadrature modes for the others), as drmTMB's `fitted()` does. On the Gaussian,
+LogNormal and phylo routes, `fitted(fit)` equals drmTMB's `fitted(fit)` on the same
+model (1e-6 or better on the cells checked). On the routes that integrate the random
+intercept by adaptive quadrature (the default for one `(1 | g)` on Poisson, NegBinomial2,
+Binomial, Gamma, Beta and Student), the two packages maximise different objectives
+(adaptive quadrature here, a Laplace approximation in drmTMB), so the fitted values
+differ by about 2e-4 to 9e-3 on the reference cells checked. A fit made with
+`marginal = :Laplace` on Poisson, NegBinomial2, Binomial, Gamma, Beta or Student records no
+random-effect modes, so the default `fitted(fit)` refuses it: call `fitted(fit; re = :zero)` for the population-level value,
+or refit with the default marginal for the conditional value. `re = :zero` returns the
 population-level value, with every random effect at zero: the value `fitted(fit)`
 returned before this default changed (it is the value [`predict`](@ref) gives
 in-sample on the GLM-type routes). Neither is the marginal mean averaged over the random

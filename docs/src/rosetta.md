@@ -175,10 +175,18 @@ distributional parameters:
   product) while holding every other predictor at its reference (mean for numeric
   columns). It is pure data, so it composes directly:
   `predict_parameters(fit, prediction_grid(...))`.
-- **Fitted values agree by default.** drmTMB's `fitted(fit)` adds the fitted
+- **Fitted values agree by default, with one caveat.** drmTMB's `fitted(fit)` adds the fitted
   random-effect modes to each fitted row and returns the rows used in the fit.
   DRModels.jl's `fitted(fit)` does the same: the default is `re = :conditional`,
-  and a fit with a missing response returns the used rows only. Pass
+  and a fit with a missing response returns the used rows only. The values agree
+  with drmTMB's to 1e-6 or better on the Gaussian, LogNormal and phylo routes. On the routes
+  that integrate the random intercept by adaptive quadrature (the default for one
+  `(1 | g)` on Poisson, NegBinomial2, Binomial, Gamma, Beta and Student) they differ by
+  about 2e-4 to 9e-3 on the cells checked, because drmTMB maximises a Laplace
+  approximation and this package maximises the quadrature objective. A fit made with
+  `marginal = :Laplace` on one of those families keeps no random-effect modes, so the
+  default `fitted(fit)` refuses it: call `fitted(fit; re = :zero)`, or refit with the
+  default marginal. Pass
   `fitted(fit; re = :zero)` for the population-level value with every random
   effect at zero, which is what `predict(fit, newdata)` returns on the GLM-type
   routes (and what `fitted(fit)` returned before the default changed). The
