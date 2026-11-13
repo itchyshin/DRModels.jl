@@ -181,8 +181,9 @@ distributional parameters:
   and a fit with a missing response returns the used rows only. The values agree
   with drmTMB's to 1e-6 or better on the Gaussian, LogNormal and phylo routes. On the routes
   that integrate the random intercept by adaptive quadrature (the default for one
-  `(1 | g)` on Poisson, NegBinomial2, Binomial, Gamma, Beta and Student) they differ by
-  about 2e-4 to 9e-3 on the cells checked. Here the fitted modes come from the more
+  `(1 | g)` on Poisson, NegBinomial2, Binomial, BetaBinomial, Gamma, Beta, Tweedie and
+  CumulativeLogit) they differ by about 1e-4 to 5e-3 on the cells checked (Student agreed
+  to 1e-9 on its one cell, where the group SD is at the boundary). Here the fitted modes come from the more
   accurate integration (adaptive quadrature), while drmTMB maximises a Laplace
   approximation, so the two packages stop at slightly different parameters. The
   drmTMB `fitted()` is the Laplace value, not an error on either side. A fit made with

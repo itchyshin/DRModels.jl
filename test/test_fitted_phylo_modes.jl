@@ -310,11 +310,10 @@ end
 @testset "stored fit values equal those of the pre-change commit (P20a: no fitted parameter changed)" begin
     d = _pm_mr(_pm_data())
     cells = Dict(id => f for (id, f) in _PM_CELLS)
-    # the values were captured with Julia 1.13.3 and 1.10.12; other Julia versions can differ in the last bits
-    tag = VERSION >= v"1.13" && VERSION < v"1.14" ? "113" : VERSION >= v"1.10" && VERSION < v"1.11" ? "110" : nothing
-    if tag === nothing
-        @test_skip false
-    else
+    # The values were captured with Julia 1.13.3 and 1.10.12. Other Julia versions can differ in the
+    # last bits, so they are compared with the 1.10.12 values at the loose bound below.
+    tag = VERSION >= v"1.13" ? "113" : "110"
+    begin
         lines = filter(!isempty, readlines(joinpath(_PM_DIR, "p20_prechange_fit_values_$tag.txt")))
         checked = String[]
         # The values were captured on one machine (Totoro). Another CPU or BLAS build moves the last
