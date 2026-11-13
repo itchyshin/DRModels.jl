@@ -1954,6 +1954,10 @@ function _drm_gaussian_fit(f::DrmFormula, fam::Gaussian; data, K = nothing, A = 
             size(cmat, 1) == G || error("coords must have $G rows (one per `$grp` level)")
             # drmTMB's kernel: the range is FIXED at the median positive pairwise distance
             # (`_gaussian_spatial_sd_kernel`), not estimated. This is the relmat route with that K.
+            G >= 2 || error("spatial(1 | $(grp)) needs at least 2 distinct sites; got G=$(G).")
+            all(iszero, [sqrt(sum(abs2, cmat[k, :] .- cmat[l, :])) for k in 1:G for l in (k+1):G]) &&
+                error("spatial(1 | $(grp)): all site coordinates coincide; the median pairwise " *
+                      "distance that fixes the spatial range is not defined. Check for dropped coordinate variation.")
             Ksp = _gaussian_spatial_sd_kernel(cmat, G, grp)
             return _withformula(_fit_structured_gaussian(fam, y, Xμ, Xσ, gidx, G, Ksp, nmμ, nmσ, grp, g_tol;
                                                          reml = method === :REML), f)

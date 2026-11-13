@@ -1,5 +1,5 @@
 using DRModels
-using Test, Random, LinearAlgebra
+using Test, Random, LinearAlgebra, Statistics
 
 @testset "coordinate provider survives every bootstrap surface" begin
     rng = MersenneTwister(20260831)
