@@ -2429,8 +2429,8 @@ function _marginal_simulator(fit::DrmFit, data; K=nothing, A=nothing, tree=nothi
             "`meta_V(...)` + random-effect fit (pass the same `data` and `tree` / `K` / `A` " *
             "used to fit it); the conditional fallback would drop the random effect"))
     end
-    # P11c: Gamma and Binomial fits with two or more ordinary random-effect terms have no fresh-draw
-    # simulator (independent slope with intercept, crossed or nested intercepts, mixed shapes). Falling
+    # P11c: Gamma and Binomial fits with two or more ordinary random-effect terms (and a single Gamma
+    # `(0 + x | g)` / `(1 + x | g)`) have no fresh-draw simulator (independent slope with intercept, crossed or nested intercepts, mixed shapes). Falling
     # back to the conditional draw (random effects at zero) would collapse the variance-component interval
     # without a message, so refuse, naming the shape the user fitted.
     if sim === nothing && _is_no_fresh_draw_slope_fit(fit)
@@ -2444,7 +2444,11 @@ function _is_no_fresh_draw_slope_fit(fit::DrmFit)
     rhs = Dict(fit.formula.forms)
     haskey(rhs, :mu) || return false
     _, re, metav, structured, _ = _split_ranef(rhs[:mu]; allow_phylo_slope = true)
-    return metav === nothing && structured === nothing && length(re) >= 2
+    metav === nothing && structured === nothing || return false
+    length(re) >= 2 && return true
+    # Decision f: a single Gamma `(0 + x | g)` or `(1 + x | g)` has no fresh draw either; it used to fall back
+    # to random effects at zero without a message (the estimand changes, so it is refused like the rest).
+    return fit.family isa Gamma && length(re) == 1 && _laplace_lhs_kind(re[1][1]) in (:slope, :corr)
 end
 
 # The refusal text names the terms the user fitted and the kind of shape, and offers only an escape
@@ -2458,7 +2462,11 @@ function _no_fresh_draw_message(fit::DrmFit)
                           k === :corr ? "(1 + $v | $grp)" : "($lhs | $grp)"
     terms = join((bar(k, v, lhs, grp) for ((k, v), (lhs, grp)) in zip(rk, re)), " + ")
     groups = [grp for (_, grp) in re]
-    shape = if all(==(:intercept), kinds)
+    shape = if length(re) == 1 && kinds[1] === :slope
+        "a random slope without an intercept"
+    elseif length(re) == 1 && kinds[1] === :corr
+        "a correlated random intercept and slope"
+    elseif all(==(:intercept), kinds)
         "crossed or nested random intercepts"
     elseif length(unique(groups)) == 1 && all(in((:intercept, :slope)), kinds) && :intercept in kinds
         "an independent random slope with an intercept"

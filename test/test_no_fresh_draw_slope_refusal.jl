@@ -96,11 +96,7 @@ end
         @test length(simulate(fit; data = d, rng = Random.Xoshiro(1))) == length(d.x)
         @test size(bootstrap_summary(fit; data = d, B = 2, rng = Random.Xoshiro(1)), 1) == length(coef(fit))
     end
-    # single-term Gamma slope shapes are outside the guard (still the old fallback; tracked in #997)
-    for terms in ("(0 + z | g)", "(1 + z | g)")
-        f = drm(Core.eval(@__MODULE__, Meta.parse("bf(@formula(y ~ x + $terms))")), DRModels.Gamma(); data = d)
-        @test size(bootstrap_summary(f; data = d, B = 2, rng = Random.Xoshiro(1)), 1) > 0
-    end
+    # single-term Gamma slope shapes are covered by test_gamma_slope_no_fresh_draw.jl (decision f)
     # other families with crossed or independent-slope bars are untouched by the Gamma/Binomial guard
     fn = drm(bf(@formula(y ~ x + (1 | g) + (1 | h))), LogNormal(); data = d)
     @test size(bootstrap_summary(fn; data = d, B = 2, rng = Random.Xoshiro(1)), 1) == length(coef(fn))

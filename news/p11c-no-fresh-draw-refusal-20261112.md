@@ -8,5 +8,5 @@
   The message names the terms you fitted. For Gamma it points to `simulate(fit; data = data, re = :zero)`,
   which still works. For Binomial that call fails on this version (the fit does not carry trials),
   so the message says no draw is available yet.
-  A single `(1 | g)` is unchanged for both families. Gamma `(0 + x | g)` and `(1 + x | g)` are not covered
-  by this change and keep their old behaviour. Decision P11c: refuse until the fresh draw exists.
+  A single `(1 | g)` is unchanged for both families. Gamma `(0 + x | g)` and `(1 + x | g)` are refused too (see the separate note on Gamma slopes).
+  Decision P11c: refuse until the fresh draw exists.
