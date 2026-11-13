@@ -1,8 +1,7 @@
-- **`bootstrap_summary`, `bootstrap_result` and `bootstrap_ci` now refuse a Binomial fit with a single `(0 + x | g)` or `(1 + x | g)`.**
-  This changes what the call computes, so it is announced here. These two shapes have no fresh random-effect draw.
-  Until now the bootstrap quietly drew responses with the random effects set to zero, so the variance-component interval collapsed and a table came back as if nothing were wrong.
-  The call now stops with an error that names the fitted term, for example `no fresh random-effect draw is implemented for Binomial() with a random slope without an intercept ((0 + x | g))`.
-  The default `simulate(fit; data = data)` already stopped for these shapes with a general message; it now gives the same named message.
-  `simulate(fit; data = data, re = :zero)` does not work for a Binomial fit of this shape on this version (the fit does not carry trials), so the message says no draw is available yet.
-  A single `(1 | g)` is unchanged.
+- **`bootstrap_summary`, `bootstrap_result` and `bootstrap_ci` now refuse a Binomial fit whose random effects are anything other than one `(1 | g)`.**
+  This changes what the call computes, so it is announced here. The refused shapes are a single `(0 + x | g)` or `(1 + x | g)`, an intercept bar plus a slope bar on the same group such as `(1 | g) + (0 + x | g)`, and crossed bars such as `(1 | g) + (1 | h)` (Laplace and AGHQ). These shapes have no fresh random-effect draw.
+  Where the bootstrap used to run on them, it quietly drew responses with the random effects set to zero, so the variance-component interval collapsed and a table came back as if nothing were wrong. For `(1 + x | g)` that was already the case; for the other shapes it is what would happen as soon as the fit stores its trial counts.
+  The call now stops with an error that names the fitted terms, for example `no fresh random-effect draw is implemented for Binomial() with a random slope without an intercept ((0 + x | g))`.
+  The default `simulate(fit; data = data)` stops with the same named message for these shapes. `simulate(fit; data = data, re = :zero)` is not changed.
+  Fixed-effects-only fits and a single `(1 | g)` are unchanged.
   This is a maintainer decision: refuse until the fresh draw exists.
