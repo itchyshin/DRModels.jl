@@ -181,7 +181,11 @@ function _drm_ordinary_laplace(f::DrmFormula, fam; data, tree = nothing,
     if fam isa Binomial
         s, ntr = _binomial_response(f, data)
         _, Xμ, nmμ = _design(f.response, fixed_mu, data)
-        fit = _fit_binomial_ordinary_laplace(fam, s, ntr, Xμ, gidx, G, nmμ, grp, g_tol; se = se)
+        # :probit / :cloglog: the sparse kernel is logit-only, so the group integral is the existing adaptive
+        # quadrature at one node, which is the Laplace approximation (the same device as the correlated block).
+        fit = fam.link === :logit ?
+            _fit_binomial_ordinary_laplace(fam, s, ntr, Xμ, gidx, G, nmμ, grp, g_tol; se = se) :
+            _fit_binomial_ranef(fam, s, ntr, Xμ, gidx, G, nmμ, grp, g_tol; nq = 1)
     else
         y, Xμ, nmμ = _design(f.response, fixed_mu, data)
         if fam isa Poisson

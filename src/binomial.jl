@@ -316,8 +316,6 @@ function _drm_binomial_fit(f::DrmFormula, fam::Binomial; data, tree = nothing,
         "Binomial `tree1` and `tree2` are used only by `phylo_interaction()` SD models."))
     Ainv === nothing || throw(ArgumentError(
         "Binomial `Ainv` is currently supported for animal random-effect SD regression only."))
-    fam.link !== :logit && _scalar_laplace_requested(marginal) &&
-        throw(ArgumentError("Binomial links other than :logit are not available with `marginal = :Laplace`."))
     _scalar_laplace_requested(marginal) &&     # Arc 2: TMB-convention Laplace, ordinary (1 | g)
         return _drm_ordinary_laplace(f, fam; data = data, tree = tree, K = K, A = A,
                                      coords = coords, g_tol = g_tol, se = se, method = method)
