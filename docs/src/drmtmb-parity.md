@@ -74,12 +74,12 @@ R-versus-Julia parity through simulation recovery alone.
 
 ## Where DRModels.jl admits a model drmTMB refuses
 
-- **`Beta()` and `Binomial()` with `relmat` / `K =`.** DRModels.jl fits these
-  (Laplace approximation). drmTMB currently refuses `relmat` on `beta()` and
-  `binomial()` (listed there as planned), so there is no drmTMB fit to compare
-  with, and parity for these two cells is not claimed. `Beta` and `Binomial`
-  with `phylo` are admitted by both and are covered by the phylo row above
-  (#741, #742).
+- **`Beta()` and `Binomial()` with `relmat` / `K =` are not on this list.**
+  drmTMB 0.8.1 fits a single `relmat` intercept on `beta()` and on `binomial()`
+  (checked on a small simulated data set for this page), so they are comparison
+  cells, not models only DRModels.jl admits. The Binomial `relmat` cells with two
+  coefficients are listed below. `Beta` and `Binomial` with `phylo` are
+  admitted by both and are covered by the phylo row above (#741, #742).
 
 ## Comparison cells that are not parity targets
 
