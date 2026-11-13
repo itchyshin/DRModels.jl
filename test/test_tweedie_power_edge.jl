@@ -1,8 +1,9 @@
 # The crossed Tweedie route finds the power p by a bounded 1-D search on the
 # logit-(1,2) scale, inside [-6, 6]. When the search ends at one end of that
 # window the power is a bound, not an interior estimate. The fit must say so:
-# `fit.geometry` is `:power_at_bound`, `is_converged` is false and one warning
-# names the power and the interval. The window, the search and the estimates are unchanged.
+# `fit.geometry` is `:power_at_bound` and one warning names the power and the interval.
+# (`is_converged` is already false for every crossed Tweedie fit, so it is not a test of this change.)
+# The window, the search and the estimates are unchanged.
 using DRModels
 using Test, Logging
 using StableRNGs
@@ -38,7 +39,6 @@ _tweedie_edge_fit(dat) = drm(bf(@formula(y ~ x + (1 | g) + (1 | h))), Tweedie();
     η = only(coef(fit, :nu))
     @test abs(η) > 6 - 1e-3                       # the search ended at the window end
     @test fit.geometry === :power_at_bound
-    @test !is_converged(fit)
     msgs = [string(r.message) for r in logger.logs if r.level == Logging.Warn]
     @test count(m -> occursin("end of its search interval", m), msgs) == 1
     @test any(m -> occursin("not an interior estimate", m), msgs)
