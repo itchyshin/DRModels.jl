@@ -2521,7 +2521,7 @@ quadrature modes for the others), as drmTMB's `fitted()` does. On the Gaussian,
 LogNormal and phylo routes, `fitted(fit)` equals drmTMB's `fitted(fit)` on the same
 model (1e-6 or better on the cells checked). On the routes that integrate the random
 intercept by adaptive quadrature (the default for one `(1 | g)` on Poisson, NegBinomial2,
-Binomial, Gamma, Beta and Student), the two packages maximise different objectives
+Binomial, Gamma, Beta and Student), the modes come from the more accurate integration
 (adaptive quadrature here, a Laplace approximation in drmTMB), so the fitted values
 differ by about 2e-4 to 9e-3 on the reference cells checked. A fit made with
 `marginal = :Laplace` on Poisson, NegBinomial2, Binomial, Gamma, Beta or Student records no

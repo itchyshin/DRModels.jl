@@ -182,8 +182,10 @@ distributional parameters:
   with drmTMB's to 1e-6 or better on the Gaussian, LogNormal and phylo routes. On the routes
   that integrate the random intercept by adaptive quadrature (the default for one
   `(1 | g)` on Poisson, NegBinomial2, Binomial, Gamma, Beta and Student) they differ by
-  about 2e-4 to 9e-3 on the cells checked, because drmTMB maximises a Laplace
-  approximation and this package maximises the quadrature objective. A fit made with
+  about 2e-4 to 9e-3 on the cells checked. Here the fitted modes come from the more
+  accurate integration (adaptive quadrature), while drmTMB maximises a Laplace
+  approximation, so the two packages stop at slightly different parameters. The
+  drmTMB `fitted()` is the Laplace value, not an error on either side. A fit made with
   `marginal = :Laplace` on one of those families keeps no random-effect modes, so the
   default `fitted(fit)` refuses it: call `fitted(fit; re = :zero)`, or refit with the
   default marginal. Pass
