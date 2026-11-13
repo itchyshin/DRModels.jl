@@ -65,3 +65,20 @@ _reuse_same(a, b) = coef(a) == coef(b) && loglik(a) == loglik(b) && nobs(a) == n
         end
     end
 end
+
+# The second half of the fix, which a reuse test cannot see: a response typed
+# Vector{Union{Missing,Float64}} with no missing value, fitted from a FRESH formula object,
+# must still allow `predict(fit, newdata)`. Without the `Missing <: eltype(raw_response)`
+# clause in `_design` the stored schema treats the response as categorical and `predict` fails
+# with "could not build the `mu` design matrix" (KeyError: key 0.0).
+@testset "predict(newdata) after a fit on a Union{Missing,Float64} response (fresh formula)" begin
+    rng = Xoshiro(32); n = 80
+    x = randn(rng, n); y = 1 .+ 0.5x .+ exp.(0.3 .* x) .* randn(rng, n)
+    nd = (; x = [0.0, 1.0])
+    fu = _reuse_quiet(() -> drm(bf(@formula(y ~ x), @formula(sigma ~ x)), Gaussian();
+                                data = (; y = Vector{Union{Missing,Float64}}(y), x)))
+    ff = _reuse_quiet(() -> drm(bf(@formula(y ~ x), @formula(sigma ~ x)), Gaussian(); data = (; y, x)))
+    pu = predict(fu, nd)
+    @test all(isfinite, pu)
+    @test pu ≈ predict(ff, nd)
+end
