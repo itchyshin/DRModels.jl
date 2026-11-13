@@ -2429,40 +2429,54 @@ function _marginal_simulator(fit::DrmFit, data; K=nothing, A=nothing, tree=nothi
             "`meta_V(...)` + random-effect fit (pass the same `data` and `tree` / `K` / `A` " *
             "used to fit it); the conditional fallback would drop the random effect"))
     end
-    # A single Binomial `(0 + x | g)` or `(1 + x | g)` has no fresh-draw simulator. Falling back to the
-    # conditional draw (random effects at zero) would collapse the variance-component interval without a
-    # message, so refuse, naming the shape the user fitted.
-    if sim === nothing && _is_binomial_slope_no_fresh_draw_fit(fit)
-        throw(ArgumentError(_binomial_slope_no_fresh_draw_message(fit)))
+    # A Binomial fit whose random effects are anything other than one `(1 | g)` has no fresh-draw
+    # simulator on this route. Falling back to the conditional draw (random effects at zero) would
+    # collapse the variance-component interval without a message, so refuse, naming the fitted terms.
+    # The check does not depend on whether the fit stores its trial counts.
+    if sim === nothing && _is_binomial_no_fresh_draw_fit(fit)
+        throw(ArgumentError(_binomial_no_fresh_draw_message(fit)))
     end
     return sim
 end
 
-function _is_binomial_slope_no_fresh_draw_fit(fit::DrmFit)
-    fit.family isa Binomial && fit.formula isa DrmFormula || return false
+# The ordinary random-effect bars of a Binomial mean formula, or `nothing` when the fit has none, has a
+# structured or `meta_V` term (other routes own those), or is a single `(1 | g)` (it has a fresh draw).
+function _binomial_no_fresh_draw_bars(fit::DrmFit)
+    fit.family isa Binomial && fit.formula isa DrmFormula || return nothing
     rhs = Dict(fit.formula.forms)
-    haskey(rhs, :mu) || return false
+    haskey(rhs, :mu) || return nothing
     _, re, metav, structured, _ = _split_ranef(rhs[:mu]; allow_phylo_slope = true)
-    metav === nothing && structured === nothing || return false
-    return length(re) == 1 && _laplace_lhs_kind(re[1][1]) in (:slope, :corr)
+    metav === nothing && structured === nothing && !isempty(re) || return nothing
+    if length(re) == 1
+        k, _ = try _re_kind(re[1][1]) catch; (:other, nothing) end
+        k === :intercept && return nothing
+    end
+    return re
 end
 
-# The refusal text names the term the user fitted and the kind of shape. `simulate(...; re = :zero)` is
-# not offered: a fitted Binomial of this shape does not carry trials on this base.
-function _binomial_slope_no_fresh_draw_message(fit::DrmFit)
-    _, re, _, _, _ = _split_ranef(Dict(fit.formula.forms)[:mu]; allow_phylo_slope = true)
-    lhs, grp = re[1]
-    k, v = try _re_kind(lhs) catch; (:other, nothing) end
-    term = k === :slope ? "(0 + $v | $grp)" : k === :corr ? "(1 + $v | $grp)" : "($lhs | $grp)"
-    shape = k === :slope ? "a random slope without an intercept" :
-            k === :corr ? "a correlated random intercept and slope" : "a random-slope term"
-    return "no fresh random-effect draw is implemented for Binomial() with $shape ($term), so " *
+_is_binomial_no_fresh_draw_fit(fit::DrmFit) = _binomial_no_fresh_draw_bars(fit) !== nothing
+
+# The refusal text names the terms the user fitted and the kind of shape.
+function _binomial_no_fresh_draw_message(fit::DrmFit)
+    re = _binomial_no_fresh_draw_bars(fit)
+    kinds = Symbol[]
+    terms = String[]
+    for (lhs, grp) in re
+        k, v = try _re_kind(lhs) catch; (:other, nothing) end
+        push!(kinds, k)
+        push!(terms, k === :intercept ? "(1 | $grp)" : k === :slope ? "(0 + $v | $grp)" :
+                     k === :corr ? "(1 + $v | $grp)" : "($lhs | $grp)")
+    end
+    shape = length(re) > 1 ? "several random-effect terms" :
+            kinds[1] === :slope ? "a random slope without an intercept" :
+            kinds[1] === :corr ? "a correlated random intercept and slope" : "a random-slope term"
+    return "no fresh random-effect draw is implemented for Binomial() with $shape " *
+        "($(join(terms, " + "))), so " *
         "`bootstrap_summary` / `bootstrap_result` / `bootstrap_ci` and the default " *
         "`simulate(fit; data = data)` are refused: the fallback would draw responses with the random " *
         "effects set to zero, which collapses the variance-component interval without a message. " *
-        "`simulate(fit; data = data, re = :zero)` does not work for a Binomial fit of this shape on this " *
-        "version (the fitted object does not carry trials), so no draw is available yet. " *
-        "A single `(1 | g)` keeps its fresh draw."
+        "`simulate(fit; data = data, re = :zero)` gives such zero-effect draws where the fitted object " *
+        "supports them. A single `(1 | g)` keeps its fresh draw."
 end
 
 function _is_meta_gaussian_re(fit::DrmFit)
