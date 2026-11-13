@@ -1857,12 +1857,10 @@ function _drm_gaussian_fit(f::DrmFormula, fam::Gaussian; data, K = nothing, A = 
             error("drm (Gaussian): simultaneous mean + `sigma` random effects support a " *
                   "single `sigma` random INTERCEPT `(1 | g)` — got $(length(sigma_re)) term(s)")
         mgrp = re[1][2]; sgrp = sigma_re[1][2]
+        # Different grouping factors: the per-group 2×2 block of the same-group route does not
+        # apply; the dense Laplace engine with one latent field per factor does (constant SDs).
         mgrp === sgrp ||
-            error("drm (Gaussian): simultaneous mean + `sigma` random effects are implemented " *
-                  "only when both share the SAME grouping factor (got `(1 | $mgrp)` on the " *
-                  "mean and `(1 | $sgrp)` on sigma) — the per-group 2×2 Laplace block this " *
-                  "route uses requires one group per observation shared by both axes; " *
-                  "different/crossed groups are not implemented (#745)")
+            return _drm_gaussian_sigma_ranef_blocks(f, fam, y, Xμ, Xσ, re, sigma_re, nmμ, nmσ, data, g_tol, true)
         # `has_missing_response` and `method === :REML` are already refused above
         # this point for ANY non-empty `re` — the generic missing-response guard
         # and the `if method === :REML` validator both throw before a formula
@@ -1879,8 +1877,10 @@ function _drm_gaussian_fit(f::DrmFormula, fam::Gaussian; data, K = nothing, A = 
     if !isempty(sigma_re)                                      # random effect on log σ
         (isempty(re) && structured === nothing && metav === nothing) ||
             error("a random effect on `sigma` must be the only random structure (the mean must be fixed effects)")
+        # Beyond one `(1 | g)`: sigma slopes, two sigma groups (constant SDs, dense Laplace);
+        # shapes outside that list are refused by name inside.
         (length(sigma_re) == 1 && _re_kind(sigma_re[1][1])[1] === :intercept) ||
-            error("`sigma` random effects support a single random intercept `(1 | g)`")
+            return _drm_gaussian_sigma_ranef_blocks(f, fam, y, Xμ, Xσ, re, sigma_re, nmμ, nmσ, data, g_tol, true)
         sgrp = sigma_re[1][2]
         gidx, G = _group_index(getproperty(data, sgrp); col = sgrp)
         return _withformula(_fit_sigma_ranef_gaussian(fam, y, Xμ, Xσ, gidx, G, nmμ, nmσ, sgrp, g_tol;
@@ -2938,10 +2938,17 @@ at the MLE — drmTMB's `sigma()`.
 - Families with no separately fitted scale stored (e.g. Poisson, whose variance
   is fixed by the mean): returns an empty `Dict` — there is no free dispersion.
 
-For the BetaBinomial sigma-axis random-intercept route, this is the conditional
-plug-in scale at the fitted log-sigma random-effect modes. `ranef(fit)` exposes
-those modes; `predict_parameters()` reports the population-level sigma predictor
-and the separate `:sd` prediction for its random-effect SD.
+Random effects on sigma: the two engines store different things, and this returns what is stored.
+- Population-level (random effects set to zero), `exp.(Xσ·β̂_σ)`: the single Gaussian `sigma ~ ... + (1 | g)`
+  route, the same-group mean + sigma route, and the constant-SD sigma routes of
+  `src/sigma_ranef_blocks_laplace.jl` (LogNormal, Gamma, NegBinomial2 and BetaBinomial `sigma ~ ... + (1 | g)`;
+  Gaussian sigma `(0 + x | g)`, `(1 + x | g)`, `(1 | g) + (1 | h)`, and mean `(1 | g)` with sigma `(1 | h)` on a
+  different group). `fitted`, `residuals` (including quantile residuals, which are therefore not N(0, 1) when the
+  sigma random effects are large) and `simulate(...; re = :zero)` use these population values too.
+- Conditional plug-in scale at the fitted modes: the sd-formula engines (`sd(g, sigma) ~ ...`, e.g.
+  `gaussian_sigma_sd_laplace.jl`) and the BetaBinomial sigma-axis random-intercept route.
+  `ranef(fit)` exposes the modes; `predict_parameters()` reports the population-level sigma predictor and the
+  separate `:sd` prediction for its random-effect SD.
 
 A fit with a missing response returns the scale of the rows used only (length `nobs(fit)`),
 as [`fitted`](@ref) does; the R bridge payload keeps one value per input row.
