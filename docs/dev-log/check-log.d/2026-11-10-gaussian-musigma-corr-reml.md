@@ -1,0 +1,1 @@
+| 2026-11-10 | **G6b: Gaussian `(1 \| p \| g)` mu+sigma REML** (claude/g6b-gaussian-pg-reml-20261110) | `test/test_gaussian_musigma_corr_reml.jl` plus neighbouring Gaussian REML and labelled-route tests, Julia 1.13.3 on Totoro | green; REML logLik within 2e-9 of drmTMB 0.8.1 on 3 datasets, dense-oracle check to 1e-8 | Claude |
