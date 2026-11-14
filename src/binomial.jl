@@ -388,6 +388,15 @@ function _drm_binomial_fit(f::DrmFormula, fam::Binomial; data, tree = nothing,
                 grp = r[2]; gidx, G = _group_index(getproperty(data, grp); col = grp)
                 (ones(length(s)), gidx, G, String(grp))
             end
+            # Three or more crossed intercepts: the dense Laplace spine of the independent-term route
+            # (the two-component sparse route above is kept for exactly two, unchanged).
+            length(comps) > 2 && isaghq &&
+                _aghq_reject(fam, "three or more crossed random intercepts (AGHQ covers exactly two)")
+            length(comps) > 2 && _dense_laplace_guard(fam, sum(c[3] for c in comps))
+            length(comps) > 2 &&
+                return _withformula(_fit_indep_re_laplace(fam, Val(:binomial), collect(zip(s, ntr)),
+                                                          Xμ, nothing, nothing, comps,
+                                                          nmμ, String[], String[], g_tol), f)
             isaghq && return _withformula(_fit_binomial_crossed_aghq(fam, s, ntr, Xμ, comps, nmμ, g_tol; se = se), f)   # #761
             return _withformula(_fit_binomial_crossed_laplace(fam, s, ntr, Xμ, comps, nmμ, g_tol), f)
         end

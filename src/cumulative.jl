@@ -199,7 +199,12 @@ end
 end
 
 function _drm_cumulative_fit(f::DrmFormula, fam::CumulativeLogit; data, tree = nothing, g_tol::Real = 1e-8,
-             se::Bool = true)
+             se::Bool = true, marginal::Union{Nothing,Symbol} = nothing)
+    # `marginal` exists only so that `update` / `bootstrap` can repeat a fit of the independent
+    # intercept + slope Laplace route (its fit is tagged `:Laplace`); refused everywhere else.
+    marginal === nothing || marginal === :Laplace || throw(ArgumentError(
+        "CumulativeLogit() accepts `marginal = :Laplace` only (independent random intercept and slope); " *
+        "got `marginal = :$marginal`."))
     _drm_entry_guard(f, fam, data; tree = tree)   # #1027 #1022 #1010
     data = _cumulative_label_response(f, data)    # string/symbol labels -> codes 1..K
     # The response-mask wrapper rebuilds full-design outputs and does not yet
@@ -210,7 +215,7 @@ function _drm_cumulative_fit(f::DrmFormula, fam::CumulativeLogit; data, tree = n
         throw(ArgumentError("CumulativeLogit random-effect SD regression requires observed responses; remove incomplete rows before fitting."))
     end
     missing_fit = _fit_observed_response_rows(f, data) do data_observed
-        drm(f, fam; data = data_observed, tree = tree, g_tol = g_tol, se = se)
+        drm(f, fam; data = data_observed, tree = tree, g_tol = g_tol, se = se, marginal = marginal)
     end
     missing_fit !== nothing && return missing_fit
 
@@ -219,6 +224,8 @@ function _drm_cumulative_fit(f::DrmFormula, fam::CumulativeLogit; data, tree = n
         "CumulativeLogit() does not yet support predictor-dependent `sd_phylo()` formulas."))
     rhs = Dict(f.forms)
     fixed_mu, re, mv, st = _split_ranef(rhs[:mu])
+    marginal === nothing || (length(re) > 1 && _has_indep_slopes(re) && st === nothing && mv === nothing) ||
+        _refuse_unsupported_kwargs((:marginal,), f, fam, (:control, :data, :g_tol, :se, :tree, :weights))
     fixed_mu, offset_term = _extract_offset(fixed_mu)   # #938: offset(z), coefficient fixed at 1
     offset_term === nothing || (isempty(re) && mv === nothing && st === nothing) ||
         _refuse_offset_route(fam, "a random, structured or `meta_V` term on the mean")
@@ -285,6 +292,16 @@ function _drm_cumulative_fit(f::DrmFormula, fam::CumulativeLogit; data, tree = n
     end
     if !isempty(re)                    # random intercept/slope on mu → GHQ marginal (#563 S8)
         if length(re) > 1               # crossed/multiple intercepts (#738)
+            if _has_indep_slopes(re)    # `(1 | g) + (0 + x | g)`: drmTMB's Laplace objective (zi_re_laplace.jl)
+                isempty(sd_parts) || throw(ArgumentError(
+                    "CumulativeLogit() independent random intercept and slope terms do not combine with `sd(...)` formulas"))
+                for r in re
+                    kd, var = _re_kind(r[1])
+                    kd === :slope && _require_finite_data_column(data, var)
+                end
+                return _withformula(_fit_cumulative_indep_laplace(
+                    fam, yi, Xμ, K, _indep_slope_comps(re, data, length(yi)), nmμ, g_tol), f)
+            end
             all(_re_kind(r[1])[1] === :intercept for r in re) ||
                 error("CumulativeLogit() supports multiple random effects only as " *
                       "crossed/nested intercepts, e.g. `(1 | g) + (1 | h)`")

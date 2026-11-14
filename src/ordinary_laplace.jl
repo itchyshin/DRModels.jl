@@ -129,6 +129,11 @@ function _drm_ordinary_laplace(f::DrmFormula, fam; data, tree = nothing,
 
     _lss_only_gaussian_guard(f, fam)
     rhs = Dict(f.forms)
+    # Poisson / NB2 `zi` or `hu` with a random intercept: same Laplace objective, own front end.
+    if fam isa Union{Poisson,NegBinomial2} && (haskey(rhs, :zi) || haskey(rhs, :hu)) &&
+       !isempty(_split_ranef(rhs[:mu])[2])
+        return _drm_zi_re_laplace(f, fam; data = data, g_tol = g_tol)
+    end
     has_sigma = _ordinary_laplace_has_sigma(fam)
     for (pname, r) in f.forms
         pname === :mu && continue
@@ -153,6 +158,14 @@ function _drm_ordinary_laplace(f::DrmFormula, fam; data, tree = nothing,
     st === nothing || _ordinary_laplace_reject(fam, "a phylogenetic/structured random effect")
     # Independent intercept-plus-slope terms already take the dense TMB-convention Laplace by default.
     if length(re) > 1 && _has_indep_slopes(re) && !(fam isa Binomial && fam.link !== :logit)
+        return drm(f, fam; data = data, tree = tree, K = K, A = A, coords = coords,
+                   g_tol = g_tol, se = se, method = method)
+    end
+    # Three or more crossed intercepts `(1 | g) + (1 | h) + (1 | k)` for Binomial: the default route is the dense
+    # TMB-convention Laplace spine and tags its fit `:Laplace`, so `update()` (which repeats the stored tag) and an
+    # explicit `marginal = :Laplace` call must reach that same fit. Exactly two crossed intercepts keep the
+    # explicit refusal below (their default fit is tagged `:LA`).
+    if length(re) > 2 && fam isa Binomial && all(r -> _laplace_lhs_kind(r[1]) === :intercept, re)
         return drm(f, fam; data = data, tree = tree, K = K, A = A, coords = coords,
                    g_tol = g_tol, se = se, method = method)
     end
