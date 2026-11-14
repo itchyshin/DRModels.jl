@@ -248,6 +248,13 @@ function _drm_negbinomial2_fit(f::DrmFormula, fam::NegBinomial2; data, tree = no
         if kind === :phylo
             tree === nothing && error("phylo(1 | $grp) needs `tree = …`")
             return _withformula(_fit_nb2_phylo_laplace(fam, y, Xμ, Xσ, labels, tree, nmμ, nmσ, grp, g_tol; se = se), f)
+        elseif kind === :spatial && K === nothing && coords !== nothing
+            # Coordinate spatial intercept: drmTMB's fixed-range kernel, exp(-d / r) + 1e-6 I with
+            # r the median positive pairwise distance, exactly as the Poisson and Gamma routes.
+            _, Gsp = _group_index(labels)
+            Csp = _spatial_covariance_from_coords(grp, Gsp, coords, nothing)
+            return _withformula(_fit_nb2_relmat_laplace(fam, y, Xμ, Xσ, Csp, labels, nmμ, nmσ, grp, g_tol;
+                                                          se = se, normalize = true), f)
         elseif kind === :relmat || kind === :animal || kind === :spatial
             # General user-supplied PD covariance C on the mean intercept
             # (relatedness / animal model / precomputed spatial), with the NB2
