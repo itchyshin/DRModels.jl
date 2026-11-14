@@ -256,7 +256,7 @@ end
 
     @testset "large non-integer weights, Poisson default marginal vs brute-force quadrature" begin
         # Gap (fit minus brute-force quadgk of the weighted likelihood at the fitted parameters), measured
-        # on Totoro for max weight 1.97 / 9.4 / 37 / 71 / 187: -3.7e-5, -2.9e-4, -1.9e-4, -1.6e-4, -1.6e-4.
+        # on a Linux server for max weight 1.97 / 9.4 / 37 / 71 / 187: -3.7e-5, -2.9e-4, -1.9e-4, -1.6e-4, -1.6e-4.
         # It does not grow with the weights (finite-node adaptive quadrature), so 1e-3 is the largest
         # measured gap (2.9e-4) with 3x headroom.
         fp = bf(@formula(y_pois ~ x1 + (1 | g)))

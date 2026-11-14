@@ -5,7 +5,7 @@
 # returned before the default changed. With a missing response only the used rows are returned.
 #
 # Reference values: test/fixtures/p17_fitted/p17_fitted_r_reference.csv, written by
-# test/fixtures/p17_fitted/p17_fitted_r.R (drmTMB 0.8.1, R 4.6.1, run on Totoro) from the data in
+# test/fixtures/p17_fitted/p17_fitted_r.R (drmTMB 0.8.1, R 4.6.1, run on a Linux server) from the data in
 # test/fixtures/p17_fitted/data.csv. Nothing here draws random numbers except the synthetic
 # checks at the end, which use StableRNGs.
 using DRModels
@@ -251,7 +251,7 @@ end
 
 # ---------------------------------------------------------------------------------------------
 # Review fixes for #1324. R values: p17_fitted_review_reference.csv, from p17_fitted_review_r.R
-# (drmTMB 0.8.1, Totoro). The MR cells put a missing response on the rows where `y_gm` is NA.
+# (drmTMB 0.8.1, a Linux server). The MR cells put a missing response on the rows where `y_gm` is NA.
 # ---------------------------------------------------------------------------------------------
 function _fc_mask(d, name)
     na = ismissing.(d.y_gm)

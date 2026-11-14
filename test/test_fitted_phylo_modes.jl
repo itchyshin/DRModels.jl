@@ -6,7 +6,7 @@
 #
 # What is checked, per route:
 #   1. fitted(fit) against drmTMB 0.8.1 fitted() at 1e-6 (both engines reach the same logLik, checked first),
-#      fixtures: test/fixtures/p17_fitted/p17_fitted_phylo_reference.csv from p17_fitted_phylo_r.R (Totoro).
+#      fixtures: test/fixtures/p17_fitted/p17_fitted_phylo_reference.csv from p17_fitted_phylo_r.R (a Linux server).
 #      drmTMB 0.8.1 refuses phylo() for beta_binomial, so BetaBinomial has no R value; it is pinned to an
 #      independent recomputation only.
 #   2. fitted(fit) against an independent recomputation from the fitted parameters alone: the BLUP from the dense
@@ -316,7 +316,7 @@ end
     begin
         lines = filter(!isempty, readlines(joinpath(_PM_DIR, "p20_prechange_fit_values_$tag.txt")))
         checked = String[]
-        # The values were captured on one machine (Totoro). Another CPU or BLAS build moves the last
+        # The values were captured on one machine. Another CPU or BLAS build moves the last
         # bits of an optimised fit (seen on the GitHub runners: theta by up to 3e-8, logLik by 1e-10),
         # so the exact comparison is only meaningful on the capturing machine. Set
         # DRM_BITIDENTICAL_CHECK=1 there to compare with `==`; elsewhere the same values are checked

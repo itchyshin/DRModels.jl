@@ -12,7 +12,7 @@ import DelimitedFiles
 # `tweedie|crossed|lab0|q1|sd-none|cm0|ML`, `summary(fit$sdr, "fixed")`; pdHess TRUE,
 # is_converged TRUE). R order: mu (4), sigma, nu, log SD g, log SD g2. Julia order: mu (4),
 # sigma, log SD g, log SD g2, nu, so R values are listed in Julia order here.
-# Measured on Totoro, Julia 1.13.3: largest relative SE difference from R 2.5e-7; the bound
+# Measured on a Linux server, Julia 1.13.3: largest relative SE difference from R 2.5e-7; the bound
 # below is 1e-3, four orders of slack for BLAS and Brent noise, far below the 6.7 percent
 # discrepancy the SE comparison was built to catch.
 const _TWSE_LL_R = -724.7952281237
