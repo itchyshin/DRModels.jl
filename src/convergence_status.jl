@@ -127,6 +127,11 @@ column (#1110) is `:degenerate` through rule 2, as the design-rank rule of drmTM
 `:converged`. The raw optimiser flag is `fit.converged`.
 """
 function convergence_status(fit::DrmFit)
+    # A fit that ended at the lower log-SD search bound of the independent-term Laplace route
+    # (`_INDEP_LOGSD_GUARD`) has an SD of zero in practice: the optimiser flag is false there,
+    # so rule 1 would call it `:degenerate`. It is a boundary fit, as drmTMB's SD < 1e-4 rule 8.
+    haskey(fit.scales, :cond_logsd_wall) && isfinite(fit.loglik) &&
+        fit.loglik > _TWIN_SENTINEL_LOGLIK && return :boundary
     if !fit.converged || !isfinite(fit.loglik) || fit.loglik <= _TWIN_SENTINEL_LOGLIK
         return :degenerate
     end

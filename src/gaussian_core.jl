@@ -3003,6 +3003,10 @@ function residuals(fit::DrmFit; type::Symbol = :response, rng = Random.default_r
     end
 end
 
+# `fit.scales` keys that hold fit context or bookkeeping rather than a fitted
+# distributional parameter. They never appear in `sigma()`.
+_sigma_internal_key(k::Symbol) = k in (:cond_blup_unavailable, :cond_logsd_wall) || k in _COND_FIT_KEYS
+
 """
     sigma(fit)
 
@@ -3081,14 +3085,11 @@ function _sigma_all_rows(fit::DrmFit)
     # whole scale table, as before (e.g. `:zi`, `:nu`, `:sigma1`/`:sigma2`).
     sd_route = haskey(fit.scales, :sd_group) || haskey(fit.scales, :sd)
     ks = sort!(sd_route ? [k for k in keys(fit.scales) if k in (:sigma, :sigma1, :sigma2)] :
-                          [k for k in keys(fit.scales) if k !== :cond_blup_unavailable && !(k in _COND_FIT_KEYS)])
+                          [k for k in keys(fit.scales) if !_sigma_internal_key(k)])
+    has_context = length(ks) != length(fit.scales)
     isempty(ks) && return Dict{Symbol,Vector{Float64}}()
     (length(ks) == 1 && ks[1] === :sigma) && return fit.scales[:sigma]
-    (sd_route || haskey(fit.scales, :cond_blup_unavailable)) && return Dict(k => fit.scales[k] for k in ks)
-    # The `fitted()` record keys are internal: a fit that carries them returns its scale table
-    # without them, so `sigma(fit)` is the table it was before they existed.
-    return any(k -> haskey(fit.scales, k), _COND_FIT_KEYS) ?
-           filter(p -> !(first(p) in _COND_FIT_KEYS), fit.scales) : fit.scales
+    return (sd_route || has_context) ? Dict(k => fit.scales[k] for k in ks) : fit.scales
 end
 
 """
