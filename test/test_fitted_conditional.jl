@@ -50,8 +50,11 @@ end
 
 # (cell id, fitting closure). The ids are the gap-map cell keys (the 17 cells of P17a, the 4 of P17b).
 const _FC_CELLS = [
+    ("C|gaussian|(1|g)+weights", d -> drm(bf(@formula(y_g ~ x1 + (1 | g)), @formula(sigma ~ 1)), Gaussian(); data = d, weights = d.w)),
+    ("C|gaussian|(1|g)+weights+REML", d -> drm(bf(@formula(y_g ~ x1 + (1 | g)), @formula(sigma ~ 1)), Gaussian(); data = d, weights = d.w, method = :REML)),
     ("H|meta|(1|g)", d -> drm(bf(@formula(yi ~ x1 + (1 | g) + meta_V(vi)), @formula(sigma ~ 1)), Gaussian(); data = d)),
     ("H|meta|(1|g)+(1|g2)", d -> drm(bf(@formula(yi ~ x1 + (1 | g) + (1 | g2) + meta_V(vi)), @formula(sigma ~ 1)), Gaussian(); data = d)),
+    ("H|meta|(1|g)|REML", d -> drm(bf(@formula(yi ~ x1 + (1 | g) + meta_V(vi)), @formula(sigma ~ 1)), Gaussian(); data = d, method = :REML)),
     ("I|cumul|mu=x1+(1|g)+(1|g2)", d -> drm(bf(@formula(y_ord ~ x1 + (1 | g) + (1 | g2))), CumulativeLogit(); data = d)),
     ("J|poisson|(1|g)+(1|g2)+(1|h)", d -> drm(bf(@formula(y_pois ~ x1 + (1 | g) + (1 | g2) + (1 | h))), Poisson(); data = d)),
     ("J|gaussian|mu=(1|g)|sigma=x1", d -> drm(bf(@formula(y_g ~ x1 + (1 | g)), @formula(sigma ~ x1)), Gaussian(); data = d)),
@@ -67,15 +70,6 @@ const _FC_CELLS = [
     ("K|gaussian|NA in response|REML", d -> drm(bf(@formula(y_gm ~ x1), @formula(sigma ~ 1)), Gaussian(); data = d, method = :REML)),
     ("K|gaussian|NA in response + weights", d -> drm(bf(@formula(y_gm ~ x1), @formula(sigma ~ 1)), Gaussian(); data = d, weights = d.w)),
     ("K|poisson|NA in response", d -> drm(bf(@formula(y_pm ~ x1)), Poisson(); data = d)),
-]
-
-# Cells of the P17a list that this tree cannot fit yet: they need routes that are not on main (weights on
-# a random-effect fit, REML with meta_V and a random effect). Their R reference values are in the fixture.
-# They must keep refusing here; when a route lands, move the cell into `_FC_CELLS`.
-const _FC_NOT_YET_FITTABLE = [
-    ("C|gaussian|(1|g)+weights", d -> drm(bf(@formula(y_g ~ x1 + (1 | g)), @formula(sigma ~ 1)), Gaussian(); data = d, weights = d.w)),
-    ("C|gaussian|(1|g)+weights+REML", d -> drm(bf(@formula(y_g ~ x1 + (1 | g)), @formula(sigma ~ 1)), Gaussian(); data = d, weights = d.w, method = :REML)),
-    ("H|meta|(1|g)|REML", d -> drm(bf(@formula(yi ~ x1 + (1 | g) + meta_V(vi)), @formula(sigma ~ 1)), Gaussian(); data = d, method = :REML)),
 ]
 
 # Two more cells of the P17a list now fit (a LogNormal `sigma` random effect; a mean and a `sigma` random
@@ -95,12 +89,6 @@ _fc_tol(id) = occursin("cumul", id) ? 2e-5 : 1e-6
 @testset "fitted(): conditional default, used rows (P17a, P17b)" begin
     d = _fc_data()
     ref = _fc_reference()
-    @testset "the three P17a cells that need routes not on main still refuse" begin
-        for (id, fit_it) in _FC_NOT_YET_FITTABLE
-            @test haskey(ref, id)               # the R reference is committed for when the route lands
-            @test_throws Exception fit_it(d)
-        end
-    end
     @testset "the two P17a cells that fit but keep no modes: default refuses by name, re = :zero is drmTMB's population value" begin
         for (id, fit_it) in _FC_FITS_WITHOUT_MODES
             r = ref[id]
