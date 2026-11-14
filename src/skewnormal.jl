@@ -54,6 +54,31 @@ fit_slope_sd = drm(bf(@formula(y ~ x + (0 + x | site)), @formula(sigma ~ 1),
     Wald SE for `nu` is unreliable there. [`check_drm`](@ref) reports
     `skew_normal_nu_wald` and warns when any fitted |ν̂| < 0.5. This cutoff is an
     uncalibrated heuristic of this package; no Wald test is run (#1060).
+
+    The likelihood in the slant can have two or three local optima, mainly with
+    small samples, weakly skewed data or a covariate on `nu`. A fixed-effect fit
+    therefore also runs from four fixed extra starts (the default start with the
+    slant sign reversed, the first optimum with the slant coefficients negated,
+    and slant intercepts of +8 and -8). An extra start replaces the fit so far only
+    if all three hold: Optim reports convergence and every estimate is finite; its
+    log-likelihood, from a plain evaluation at the estimate, is higher by more than
+    1e-5; and the estimate is an interior optimum (positive definite Hessian, finite
+    standard errors, none inflated out of proportion). So a restart never gives a
+    lower log-likelihood, an unconverged fit or a degenerate one, whether or not
+    the default fit converged, and a fit whose default start is already best is
+    returned unchanged. There are no random numbers. The extra starts multiply the
+    run time of a fit by about 8 at n = 100 and n = 1000 and by 6 to 10 at
+    n = 10000 (milliseconds up to about 0.4 s); the time goes into the four extra
+    optimiser runs, which start far from the optimum. It is a multi-start, not a
+    global search: a still better optimum can exist.
+    A slant estimate that is large (say above 20 in absolute value) with a standard
+    error of similar size signals a flat likelihood (a ridge toward the half-normal
+    limit): the data do not pin the slant down. It happens with or without the
+    restarts. `fit.scales[:q2_restarts]` records
+    `[ran, winning start (0 = default), log-likelihood gain, converged flag changed]`.
+    The restarts are skipped when `control = DRMControl(start, multi_start, maxit,
+    optimizer)` takes over the optimiser. The random-effect SD route does not
+    restart.
     Predictor-dependent SD supports one ordinary mean
     intercept or independent numeric slope and uses one-dimensional adaptive
     Gauss–Hermite quadrature. It requires fixed `sigma ~ 1`, `nu ~ 1`, complete
@@ -247,6 +272,90 @@ function _fit_skewnormal_sd_regression(fam::SkewNormal, y, Xmu, Xsigma, Xnu,
                            Optim.iterations(res))
 end
 
+# Slant restarts. The skew-normal likelihood in the slant ν has two or three local optima on
+# some data sets (small n, weakly skewed or symmetric data, a covariate on the slant), and the
+# single default start (slant ±2 from the sample-skewness sign) can stop at a worse one than
+# drmTMB. The fit therefore also runs L-BFGS from four fixed starts (no random numbers):
+#   :flip    the default start with the sign of the slant intercept reversed
+#   :mirror  the first optimum with every slant coefficient negated
+#   :plus, :minus   the default start with slant intercept +8 and -8
+# A start at slant exactly 0 is not used: the moment-form score is flat there and L-BFGS stops
+# after a few steps at the Gaussian fit.
+#
+# The skip rule below (`start`, `multi_start`, `maxit`, `optimizer` in `control`) is the one of
+# `_beta_newton_polish`; the Binomial and Gamma restart routes have no control-based skip.
+#
+# Rule (`_skewnormal_slant_restarts`). A restart replaces the incumbent (the default fit, then the
+# best restart so far) only if ALL of these hold, checked in this order:
+#   1. Optim reports convergence and every estimate is finite;
+#   2. its objective, evaluated by a plain call of `nll` at the returned estimate, is lower than
+#      the incumbent's by more than `_SKEWNORMAL_RESTART_GAIN` (1e-5). The plain call is used
+#      because the objective Optim stores comes from dual numbers and is not trustworthy on a
+#      ridge to infinity (it can differ by thousands of nats there);
+#   3. the estimate is an interior optimum (`_skewnormal_interior_ok`: positive definite Hessian,
+#      finite standard errors, none inflated out of proportion).
+# So a restart never replaces a fit by an unconverged or degenerate one, and never by one with a
+# lower log-likelihood, whether or not the default fit itself converged. The runs this keeps out
+# push the slant to 1e3 .. 1e14 (the half-normal limit): a higher objective, but coefficients and
+# standard errors that mean nothing (6 of 360 simulated sets with Optim's flag alone). The rule
+# is stricter than `_q2_boundary_restarts`, the helper of the Binomial and Gamma routes, which
+# can swap one unconverged fit for another on noise, so this route has its own loop.
+const _SKEWNORMAL_RESTARTS = (:flip, :mirror, :plus, :minus)
+const _SKEWNORMAL_RESTART_SLANT = 8.0
+const _SKEWNORMAL_RESTART_GAIN = 1e-5
+
+# Interior optimum: rules 3 to 5 of `convergence_status` (a positive definite Hessian, finite
+# standard errors, none inflated out of proportion).
+function _skewnormal_interior_ok(nll, θ)
+    H = try
+        ForwardDiff.hessian(nll, θ)
+    catch e
+        e isa InterruptException && rethrow()
+        return false
+    end
+    all(isfinite, H) || return false
+    F = cholesky(Symmetric(Matrix(H)); check = false)
+    issuccess(F) || return false
+    V = inv(F)
+    se = _twin_standard_errors(V)
+    return _twin_vcov_positive_definite(V) && all(isfinite, se) && !_twin_inflated_se(se)
+end
+
+# Returns (result, winner, gain, flipped): the Optim result to keep, which start won (0 = the
+# default fit, k = k-th of `_SKEWNORMAL_RESTARTS`), the objective gain of the winner over the
+# default fit (plain `nll` calls), and whether the converged status changed.
+function _skewnormal_slant_restarts(nll, res0, θ0, iα, g_tol)
+    best, winner = res0, 0
+    f0 = nll(Optim.minimizer(res0))
+    f_best = isfinite(f0) ? f0 : Inf
+    for (k, kind) in enumerate(_SKEWNORMAL_RESTARTS)
+        th = copy(θ0)
+        if kind === :flip
+            th[iα] = -θ0[iα]
+        elseif kind === :mirror          # the first optimum, slant coefficients negated
+            th = copy(Optim.minimizer(res0)); th[iα:end] .*= -1
+        else
+            th[iα] = kind === :plus ? _SKEWNORMAL_RESTART_SLANT : -_SKEWNORMAL_RESTART_SLANT
+        end
+        r = try
+            Optim.optimize(nll, th, Optim.LBFGS(), Optim.Options(g_tol = g_tol); autodiff = :forward)
+        catch e
+            e isa InterruptException && rethrow()
+            nothing                      # a restart that errors is never preferred
+        end
+        r === nothing && continue
+        θr = Optim.minimizer(r)
+        (drm_optim_converged(r) && all(isfinite, θr)) || continue
+        f = nll(θr)
+        f_best - f > _SKEWNORMAL_RESTART_GAIN || continue     # also false for NaN
+        _skewnormal_interior_ok(nll, θr) || continue
+        best, f_best, winner = r, f, k
+    end
+    winner == 0 && return (res0, 0, 0.0, false)
+    first_ok = drm_optim_converged(res0) && _skewnormal_interior_ok(nll, Optim.minimizer(res0))
+    return (best, winner, f0 - f_best, !first_ok)
+end
+
 # Skew-normal location–scale–shape fit by maximum likelihood. θ = [βμ; βσ; βν]:
 # μ = Xμ βμ (mean, identity), log σ = Xσ βσ (SD, log link), ν = Xν βν (slant α,
 # identity). Per observation the public (μ, σ, α) are mapped to internal (ξ, ω, α)
@@ -288,12 +397,24 @@ function _fit_skewnormal(fam::SkewNormal, y, Xμ, Xσ, Xν, nmμ, nmσ, nmν, g_
     θ0[pμ+pσ+1] = α0                                   # slant init (identity)
     res = _ctl_optimize((x0, opts, method) -> Optim.optimize(nll, x0, method, opts; autodiff = :forward),
                        θ0; g_tol = g_tol)   # control: maxit / start / multi_start (#948 #994)
+    # Slant restarts (see `_SKEWNORMAL_RESTARTS`). Skipped when the user took control of the
+    # optimiser (`start`, `multi_start`, `maxit`, `optimizer`): their explicit choice stands.
+    restart_info = nothing
+    scope = _active_control_scope()
+    if scope === nothing || !_ctl_optim_requested(scope.control)
+        res, winner, gain, flipped = _skewnormal_slant_restarts(nll, res, θ0, pμ + pσ + 1, g_tol)
+        restart_info = (winner = winner, gain = gain, flipped = flipped)
+    end
     θ̂ = Optim.minimizer(res); V = _ctl_se(() -> _vcov_from_hessian(ForwardDiff.hessian(nll, θ̂)), θ̂)
     blocks = [:mu => 1:pμ, :sigma => (pμ+1):(pμ+pσ), :nu => (pμ+pσ+1):(pμ+pσ+pν)]
     names = [:mu => nmμ, :sigma => nmσ, :nu => nmν]
     means = Dict(:mu => _eta_with_offset(Xμ, θ̂[1:pμ], offset)); obs = Dict(:mu => Vector{Float64}(y))   # μ = response-scale mean
     scales = Dict(:sigma => exp.(Xσ * θ̂[(pμ+1):(pμ+pσ)]),
                   :nu => Xν * θ̂[(pμ+pσ+1):(pμ+pσ+pν)])
+    # bookkeeping as on the other restart routes: [ran, winning start (0 = default, k = k-th of
+    # `_SKEWNORMAL_RESTARTS`), logLik gain over the default start, converged status flipped]
+    restart_info === nothing || (scales[:q2_restarts] =
+        [1.0, Float64(restart_info.winner), Float64(restart_info.gain), restart_info.flipped ? 1.0 : 0.0])
     return _withiterations(
         _withnll(DrmFit(fam, blocks, names, θ̂, V, -nll(θ̂), n, drm_optim_converged(res), means, obs, scales), nll),
         Optim.iterations(res))
