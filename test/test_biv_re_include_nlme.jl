@@ -3,10 +3,15 @@
 # an independent REML fit of the same model by nlme::lme in long format (one row per observed entry;
 # random effects with a 2 x 2 covariance per group, a residual SD per response, and a residual
 # correlation between the two entries of one data row), made by fixtures/biv_re_include/reml_nlme.R
-# (R 4.6.1) on three generated data sets (reml_data1.csv to reml_data3.csv; 9 to 25 percent of the cells of
+# (R 4.6.1) on three generated data sets (reml_data1.csv to reml_data3.csv; 2.5 to 29.7 percent of the cells of
 # each response missing, some rows missing both, reml_data3 with three mu1 covariates).
 # Bounds: log-likelihood 1e-5 (the nlme optimiser stops about 6e-7 below the optimum on data set 3),
-# fixed effects 1e-4, variance parameters 1e-3.
+# fixed effects 1e-4. Variance parameters are set from the largest gap measured over the three data sets
+# (Julia 1.13.3), with a margin of about 3 to 4:
+#   Sigma entries   measured 9.2e-5 (Sigma12, set 3)   bound 3e-4
+#   sigma1, sigma2  measured 8.2e-6 (sigma2, set 3)    bound 3e-5
+#   rho             measured 5.6e-5 (set 3)            bound 2e-4
+# The gaps come from the nlme optimiser stopping short, so they do not change with the package's tolerances.
 using DRModels
 using Test
 using DelimitedFiles
@@ -49,10 +54,10 @@ end
             bn = k == 3 ? [r["r1"], r["x1"], r["xf2"], r["xf3"], r["r2"], r["x2"]] : [r["r1"], r["x1"], r["r2"], r["x2"]]
             @test maximum(abs.(b .- bn)) < 1e-4
             Lam = Matrix(fit.ranef.Sigma_g)
-            @test abs(Lam[1, 1] - r["Sigma11"]) < 1e-3 && abs(Lam[1, 2] - r["Sigma12"]) < 1e-3 && abs(Lam[2, 2] - r["Sigma22"]) < 1e-3
-            @test abs(exp(only(coef(fit, :sigma1))) - r["sigma1"]) < 1e-3
-            @test abs(exp(only(coef(fit, :sigma2))) - r["sigma2"]) < 1e-3
-            @test abs(DRModels.RHO_GUARD * tanh(only(coef(fit, :rho12))) - r["rho"]) < 1e-3
+            @test abs(Lam[1, 1] - r["Sigma11"]) < 3e-4 && abs(Lam[1, 2] - r["Sigma12"]) < 3e-4 && abs(Lam[2, 2] - r["Sigma22"]) < 3e-4
+            @test abs(exp(only(coef(fit, :sigma1))) - r["sigma1"]) < 3e-5
+            @test abs(exp(only(coef(fit, :sigma2))) - r["sigma2"]) < 3e-5
+            @test abs(DRModels.RHO_GUARD * tanh(only(coef(fit, :rho12))) - r["rho"]) < 2e-4
         end
     end
 end
