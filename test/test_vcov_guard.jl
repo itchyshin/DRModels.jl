@@ -61,6 +61,7 @@ end
         V, flat = _flat_logged(() -> DVG._vcov_from_hessian(H))
         @test flat == [3]
         @test all(isfinite, V[[1, 2, 4], [1, 2, 4]])
+        @test issymmetric(V[[1, 2, 4], [1, 2, 4]])
         @test isnan(V[3, 3])   # not the 1e15 a raw inverse would produce
     end
 
@@ -84,6 +85,7 @@ end
         @test bridge_diagnostics(fit_nb).boundary == [3]
         @test all(isnan, fit_nb.vcov[3, :]) && all(isnan, fit_nb.vcov[:, 3])
         @test all(isfinite, fit_nb.vcov[[1, 2, 4], [1, 2, 4]])
+        @test issymmetric(fit_nb.vcov[[1, 2, 4], [1, 2, 4]])
     end
 end
 
