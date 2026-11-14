@@ -1,5 +1,5 @@
 # fitted() keeps the random-effect modes on the two phylo groups, and quantile residuals / sigma return used rows
-# (P20a, P20c of the owner's answers on PR #1324).
+# (maintainer decisions of 11 Nov, on PR #1324).
 #
 #   group 1: Gaussian mean with ONE structured intercept: relmat(1 | g), animal(1 | g), dense phylo(1 | g)
 #   group 2: phylo(1 | g) Laplace fits for Poisson, NB2, Binomial, BetaBinomial, Gamma and Beta
@@ -180,7 +180,7 @@ const _PM_BOUND = 1e-6          # the bound used for every drmTMB comparison in 
                 bl, pop = _pm_blup_fitted(fit, d, d.y_g, Cg)
                 @test maximum(abs.(cond .- bl)) < 1e-9
                 @test maximum(abs.(zero .- pop)) < 1e-12
-                # P20b: residuals are y - fitted on the used rows
+                # residuals are y - fitted on the used rows
                 @test residuals(fit) == d.y_g .- cond
                 @test residuals(fit; re = :zero) == d.y_g .- zero
             end
@@ -245,7 +245,7 @@ const _PM_BOUND = 1e-6          # the bound used for every drmTMB comparison in 
                     @test maximum(abs.(cond .- r.cond)) < _PM_BOUND           # drmTMB fitted(fit)
                     @test maximum(abs.(zero .- r.pop)) < _PM_BOUND
                 end
-                # P20b
+                # residuals on the used rows
                 @test residuals(fit) ≈ _pm_resp(fam, du, cols) .- cond atol = 1e-12
             end
         end
@@ -348,7 +348,7 @@ end
 end
 
 # ---------------------------------------------------------------------------------------------------
-# P20c: residuals(type = :quantile) and sigma(fit) return the used rows
+# residuals(type = :quantile) and sigma(fit) return the used rows
 # ---------------------------------------------------------------------------------------------------
 @testset "residuals(type = :quantile) and sigma(fit) return used rows (P20c)" begin
     d = _pm_mr(_pm_data())

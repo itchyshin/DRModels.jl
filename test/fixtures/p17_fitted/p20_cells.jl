@@ -1,8 +1,8 @@
-# Fits shared by test/test_fitted_phylo_modes.jl and the pre-change capture script (P20, PR #1324).
+# Fits shared by test/test_fitted_phylo_modes.jl and the pre-change capture script (PR #1324).
 # The two phylo groups of the `fitted()` change:
 #   group 1: a Gaussian mean with ONE structured intercept, relmat(1 | g), animal(1 | g), dense phylo(1 | g)
 #   group 2: phylo(1 | g) Laplace fits for Poisson, NB2, Binomial, BetaBinomial, Gamma and Beta
-# Data and tree are the P17 fixtures; K and A are written by p17_fitted_phylo_r.R (rows in the first-seen
+# Data and tree are the p17_fitted fixtures; K and A are written by p17_fitted_phylo_r.R (rows in the first-seen
 # order of g, g01 ... g16). Ids match the cell names of that R script. The `*M` cells put a missing
 # response on the rows where `y_gm` is NA (16 of 160 rows).
 using DRModels

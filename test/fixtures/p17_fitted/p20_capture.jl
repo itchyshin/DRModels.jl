@@ -1,4 +1,4 @@
-# Writes the stored fit values (theta, logLik, vcov) of every P20 cell, exactly (`repr` round-trips a Float64).
+# Writes the stored fit values (theta, logLik, vcov) of every phylo-group cell, exactly (`repr` round-trips a Float64).
 # Run once on the pre-change commit (a6b12b0be) and once on the changed tree; the two files must be identical.
 #   julia --project=<proj> p20_capture.jl out.txt
 using DRModels, Logging

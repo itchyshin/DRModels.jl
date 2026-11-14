@@ -1225,7 +1225,7 @@ function _fit_tweedie_crossed_laplace(fam::Tweedie, y, Xμ, comps, nmμ, nmσ, n
     theta = vcat(fit.theta, [Optim.minimizer(res)])
     # The inner fits run with `se = false` and hold the power fixed, so `fit.vcov` is all NaN
     # and `stderror` used to report Inf for every coefficient although the fit had converged
-    # (G7). Take the SEs from one joint finite-difference Hessian of the same Laplace objective
+    # (fixed here). Take the SEs from one joint finite-difference Hessian of the same Laplace objective
     # over (mu, sigma, the two log SDs, the power), each point solved cold at a tight inner-mode
     # tolerance so the stencil sees the same mode solve everywhere.
     nG = comps[1][3] + comps[2][3]

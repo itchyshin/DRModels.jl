@@ -32,7 +32,7 @@ function _test_response_missing_parity(form, fam, data_missing, keep;
     @test fitted(fit_missing) ≈ fitted(fit_observed) atol = coef_atol rtol = coef_atol
     @test length(residuals(fit_missing)) == count(keep)
 
-    # sigma() returns the rows used too (P20c), so it lines up with fitted() and nobs
+    # sigma() returns the rows used too (maintainer decision of 11 Nov), so it lines up with fitted() and nobs
     scales = sigma(fit_missing)
     if scales isa AbstractDict
         @test all(

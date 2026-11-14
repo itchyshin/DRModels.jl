@@ -1,4 +1,4 @@
-# fitted() default: random-effect modes included, used rows only, as drmTMB 0.8.1 (P17a, P17b).
+# fitted() default: random-effect modes included, used rows only, as drmTMB 0.8.1 (maintainer decision of 10 Nov).
 #
 # `fitted(fit)` is conditional (`re = :conditional`): it adds the fitted random-effect modes, as
 # drmTMB's `fitted()` does. `fitted(fit; re = :zero)` is the population-level value `fitted(fit)`
@@ -48,7 +48,7 @@ function _fc_reference(file = "p17_fitted_r_reference.csv")
     return ref
 end
 
-# (cell id, fitting closure). The ids are the gap-map cell keys (the 17 cells of P17a, the 4 of P17b).
+# (cell id, fitting closure). The ids are the gap-map cell keys (the 17 cells of the fitted-values list, the 4 of the missing-response list).
 const _FC_CELLS = [
     ("C|gaussian|(1|g)+weights", d -> drm(bf(@formula(y_g ~ x1 + (1 | g)), @formula(sigma ~ 1)), Gaussian(); data = d, weights = d.w)),
     ("C|gaussian|(1|g)+weights+REML", d -> drm(bf(@formula(y_g ~ x1 + (1 | g)), @formula(sigma ~ 1)), Gaussian(); data = d, weights = d.w, method = :REML)),
@@ -65,14 +65,14 @@ const _FC_CELLS = [
     ("J|gaussian|slopes on two different groups", d -> drm(bf(@formula(y_g ~ x1 + (1 | g) + (0 + x1 | g) + (0 + x2 | g2)), @formula(sigma ~ 1)), Gaussian(); data = d)),
     ("K|gaussian|NA in both + (1|g)", d -> drm(bf(@formula(y_gm ~ x1m + (1 | g)), @formula(sigma ~ 1)), Gaussian(); data = d)),
     ("M|gaussian|mu=x1+(1|g)|entry-points", d -> drm(bf(@formula(y_g ~ x1 + (1 | g)), @formula(sigma ~ 1)), Gaussian(); data = d)),
-    # P17b: a missing response
+    # a missing response
     ("K|gaussian|NA in response", d -> drm(bf(@formula(y_gm ~ x1), @formula(sigma ~ 1)), Gaussian(); data = d)),
     ("K|gaussian|NA in response|REML", d -> drm(bf(@formula(y_gm ~ x1), @formula(sigma ~ 1)), Gaussian(); data = d, method = :REML)),
     ("K|gaussian|NA in response + weights", d -> drm(bf(@formula(y_gm ~ x1), @formula(sigma ~ 1)), Gaussian(); data = d, weights = d.w)),
     ("K|poisson|NA in response", d -> drm(bf(@formula(y_pm ~ x1)), Poisson(); data = d)),
 ]
 
-# Two more cells of the P17a list now fit (a LogNormal `sigma` random effect; a mean and a `sigma` random
+# Two more cells of the fitted-values list now fit (a LogNormal `sigma` random effect; a mean and a `sigma` random
 # effect on two different groups), but those routes keep no random-effect modes, so the conditional default
 # refuses by name and points to `re = :zero`. Their `re = :zero` values are pinned to drmTMB below. When a
 # route starts to keep its modes, move the cell into `_FC_CELLS`.
@@ -117,7 +117,7 @@ _fc_tol(id) = occursin("cumul", id) ? 2e-5 : 1e-6
                 @test maximum(abs.(zero .- r.pop)) < _fc_tol(id)               # population value, as before
             end
             if startswith(id, "K|") && !occursin("NA in both", id)
-                # P17b: the 16 rows with a missing response are not returned
+                # the 16 rows with a missing response are not returned
                 @test nobs(fit) == 144 && length(cond) == 144 && length(zero) == 144
             end
             # residuals are y - fitted on the same rows and at the same random-effect level
@@ -169,7 +169,7 @@ end
         @test length(rv[:mu1]) == length(fv[:mu1])
     end
     @testset "a route that keeps no modes refuses the conditional default and never fakes it" begin
-        # A Poisson relmat (not one of the two phylo groups that keep their modes, P20a) keeps no modes.
+        # A Poisson relmat (not one of the two phylo groups that keep their modes, maintainer decision of 11 Nov) keeps no modes.
         rng = StableRNG(20261110)
         G, m = 15, 4
         n = G * m
@@ -424,7 +424,7 @@ end
     d = _fc_data()
     nr(f) = (err = try fitted(f); nothing catch e; e end; err isa ArgumentError && occursin("re = :zero", sprint(showerror, err)))
     # 1. and 2. (Gaussian relmat / animal / dense phylo, and phylo Laplace for the six count and continuous
-    # families) keep their modes since P20a: see test_fitted_phylo_modes.jl.
+    # families) keep their modes since the maintainer decision of 11 Nov: see test_fitted_phylo_modes.jl.
     # 4. ZeroOneBeta with a random intercept
     zf = drm(bf(@formula(y_zoib ~ x1 + (1 | g)), @formula(sigma ~ 1), @formula(zoi ~ 1), @formula(coi ~ 1)),
              ZeroOneBeta(); data = d)

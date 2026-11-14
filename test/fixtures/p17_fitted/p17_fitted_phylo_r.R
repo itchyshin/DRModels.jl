@@ -1,4 +1,4 @@
-# Third set of R reference values for test/test_fitted_conditional.jl (P20, PR #1324): the two phylo groups.
+# Third set of R reference values for test/test_fitted_conditional.jl (PR #1324): the two phylo groups.
 #
 #   DRMTMB_LIB=~/drm_campaign_20261108/Rlib Rscript p17_fitted_phylo_r.R data.csv tree16.newick p17_fitted_phylo_reference.csv
 #

@@ -25,7 +25,7 @@ using Test, Random
     # fitted() and residuals() return the rows used (as drmTMB does), not one row per input row
     @test length(fitted(fit_missing)) == nobs(fit_missing) == count(keep)
     @test fitted(fit_missing) ≈ fitted(fit_observed)
-    @test length(sigma(fit_missing)) == count(keep)          # sigma() returns the rows used too (P20c)
+    @test length(sigma(fit_missing)) == count(keep)          # sigma() returns the rows used too (maintainer decision of 11 Nov)
     @test sigma(fit_missing) ≈ sigma(fit_observed)
     @test length(residuals(fit_missing)) == count(keep)
     @test residuals(fit_missing) ≈ residuals(fit_observed)

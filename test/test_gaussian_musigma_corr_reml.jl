@@ -1,5 +1,5 @@
 # REML for the Gaussian correlated mean + sigma random-intercept pair
-#   y ~ x... + (1 | p | g),  sigma ~ 1 [+ x1] + (1 | p | g),  method = :REML      (gap-map G6b)
+#   y ~ x... + (1 | p | g),  sigma ~ 1 [+ x1] + (1 | p | g),  method = :REML      (gap-map cell family G, REML)
 # Gap-map cell `gaussian|ordinary|lab0|q1|sd-none|cm1|REML` (R fits it, Julia used to refuse it).
 #
 # Native drmTMB (REML = TRUE) moves beta_mu AND beta_sigma into TMB's random block with flat priors,

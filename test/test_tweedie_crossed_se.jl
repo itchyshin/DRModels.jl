@@ -1,7 +1,7 @@
 using DRModels, Test
 import DelimitedFiles
 
-# G7 (2026-11-10): the Tweedie crossed-intercept route `(1 | g) + (1 | g2)` fitted by sparse
+# Added 2026-11-10: the Tweedie crossed-intercept route `(1 | g) + (1 | g2)` fitted by sparse
 # Laplace returned `stderror(fit) = Inf` for every coefficient on a converged fit. The inner
 # fits run with `se = false` and hold the power fixed, so the assembled vcov was all NaN and
 # `stderror` maps a non-identified variance to Inf. The route now builds one joint
