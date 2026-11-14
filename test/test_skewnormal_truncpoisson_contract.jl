@@ -100,12 +100,12 @@ end
         msg = try; drm(form, SkewNormal(); data = (; y = yInf, x)); ""; catch e; sprint(showerror, e); end
         @test occursin("response `y`", msg)
         @test occursin("Inf is not a missing value", msg)
-        # missing / NaN are already dropped with a counted warning (#1089); the
-        # dropped row stays in the full-length outputs but not in nobs
+        # missing / NaN are already dropped with a counted warning (#1089); fitted()
+        # returns the rows used, so the dropped row is absent from it and from nobs
         ym = copy(yb); ym[1] = missing
         fm = @test_logs (:warn, r"missing/NaN response") drm(form, SkewNormal(); data = (; y = ym, x))
         @test nobs(fm) == n - 1
-        @test length(fitted(fm)) == n
+        @test length(fitted(fm)) == n - 1
         @test isfinite(loglik(fm))
     end
 end

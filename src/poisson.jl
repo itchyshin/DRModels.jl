@@ -17,7 +17,8 @@ act on `log λ`). No residual scale parameter. Mirrors `drmTMB`'s `poisson` fami
 
 ```julia
 fit = drm(bf(@formula(y ~ x)), Poisson(); data = dat)
-fitted(fit)        # fitted counts λ = exp(Xβ̂), on the response scale
+fitted(fit)        # fitted counts on the response scale (adds the random-effect modes, as drmTMB does)
+fitted(fit; re = :zero)   # population-level counts λ = exp(Xβ̂)
 
 # Regress the SD of an ordinary Poisson random intercept on a group-level
 # predictor. Each value of z must be constant within its group g.
@@ -1330,11 +1331,13 @@ function _fit_poisson_ranef(fam::Poisson, y, Xμ, gidx, G, nmμ, grp, g_tol; rem
         # objective (#310), not the ML observed information.
         V = _glsp_reml_vcov(grad_fn, θ̂, pμ)
         means = Dict(:mu => exp.(Xμ * θ̂[1:pμ] .+ off)); obs = Dict(:mu => Vector{Float64}(y))
+        _record_cond_fit_aghq!(scales, nll, θ̂, bcache, gidx, Zre)   # fitted-row modes for `fitted(fit)`
         fit = _withnll(DrmFit(fam, blocks, names, θ̂, V, -ml_nll, n, conv, means, obs, scales), nll)
         return _withreml(fit, -reml_nll, -ml_nll)
     end
     V = _vcov_from_hessian(ForwardDiff.hessian(nll, θ̂))
     means = Dict(:mu => exp.(Xμ * θ̂[1:pμ] .+ off)); obs = Dict(:mu => Vector{Float64}(y))   # population λ (b=0), × exposure
+    _record_cond_fit_aghq!(scales, nll, θ̂, bcache, gidx, Zre)   # fitted-row modes for `fitted(fit)`
     return _withiterations(
         _withnll(DrmFit(fam, blocks, names, θ̂, V, -nll(θ̂), n, conv, means, obs, scales), nll),
         Optim.iterations(res))
@@ -1415,6 +1418,7 @@ function _fit_poisson_corr_ranef(fam::Poisson, y, Xμ, xs, gidx, G, nmμ, grp, g
     names = [:mu => nmμ, :recov => ["$(grp):L11", "$(grp):L22", "$(grp):L21"]]
     means = Dict(:mu => exp.(Xμ * θ̂[1:pμ])); obs = Dict(:mu => Vector{Float64}(y))
     scales = Dict{Symbol,Vector{Float64}}()
+    _record_cond_fit_aghq!(scales, nll, θ̂, bcache, gidx, Zre)   # fitted-row modes for `fitted(fit)`
     return _withiterations(
         _withnll(DrmFit(fam, blocks, names, θ̂, V, -nll(θ̂), n, drm_optim_converged(res), means, obs, scales), nll),
         Optim.iterations(res))
@@ -1800,7 +1804,7 @@ function _fit_poisson_animal_intercept_slope_laplace(fam, y, Xmu, Zgs, gidx, Q,
     scales[Symbol(string(blocks[2]), "_group")] = sd1
     scales[:q2_restarts] = [ri.ran ? 1.0 : 0.0, Float64(ri.winner), Float64(ri.gain), ri.flipped ? 1.0 : 0.0]
     # Conditional modes at theta_hat (fresh inner solve), so `residuals(type = :quantile)`
-    # can condition on them as drmTMB's does. `fitted()` stays population level.
+    # can condition on them as drmTMB's does. `fitted()` reads `scales[:cond_eta_re]` too (conditional default).
     _, bhat, okhat = _poisson_animal_intercept_slope_laplace(
         y, lf, Xmu, Zgs[1], Zgs[2], gidx, Q, logdetQ, theta, x, off;
         b0 = zeros(2 * size(Q, 1)), correlated)

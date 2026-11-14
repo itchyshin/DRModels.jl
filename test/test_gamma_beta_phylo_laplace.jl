@@ -29,7 +29,7 @@ _gb_logistic(x) = 1 / (1 + exp(-x))
     @test 0.05 < exp(coef(fit, :sigma)[1]) < 1.5
     @test re_sd(fit)[:species] > 0.05
     @test isfinite(loglik(fit))
-    @test all(fitted(fit) .> 0)
+    @test all(fitted(fit; re = :zero) .> 0)
 
     # Covariate dispersion now routes to the per-observation log-σ path (#164)
     # instead of erroring (the dedicated recovery/gradient gates on x-dependent
@@ -67,7 +67,7 @@ end
     @test 0.03 < exp(coef(fit, :sigma)[1]) < 1.0
     @test re_sd(fit)[:species] > 0.05
     @test isfinite(loglik(fit))
-    @test all(0 .< fitted(fit) .< 1)
+    @test all(0 .< fitted(fit; re = :zero) .< 1)
 
     # Covariate dispersion now routes to the per-observation log-σ path (#164)
     # instead of erroring (the dedicated recovery/gradient gates on x-dependent

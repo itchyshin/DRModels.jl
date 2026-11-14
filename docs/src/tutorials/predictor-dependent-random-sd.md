@@ -104,7 +104,7 @@ mu_at_zero = predict(fit, dat)
 mu_link_at_zero = predict(fit, dat; type = :link)
 ```
 
-These direct Julia predictions set the latent effects to zero: they return `exp(X*beta)` and `X*beta`, respectively. Direct Julia `fitted(fit)` has the same response-scale convention for this route. Setting random effects to zero does not integrate over their distribution, so this is not a marginal response mean.
+These direct Julia predictions set the latent effects to zero: they return `exp(X*beta)` and `X*beta`, respectively. Direct Julia `fitted(fit; re = :zero)` has the same response-scale convention for this route; the default `fitted(fit)` adds the fitted random-effect modes, as drmTMB's `fitted()` does, where the route keeps them. Setting random effects to zero does not integrate over their distribution, so this is not a marginal response mean.
 
 The R bridge has a different stored-row convention when the Julia fitter has retained a valid structured conditional field. Its stored `fitted()` and `predict()` values include the fitted latent field on the checked structured route. Supplying `newdata` through the bridge still sets random effects to zero. Label these quantities explicitly when comparing R and Julia output. Compare like quantities before interpreting a numerical difference as a fitting difference.
 

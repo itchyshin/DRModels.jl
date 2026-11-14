@@ -535,6 +535,7 @@ function _fit_cumulative_ranef(fam::CumulativeLogit, y::Vector{Int}, Xμ, K, gid
     score = _cumulative_score(η̂, cuts_hat, K)
     means = Dict(:mu => score); obs = Dict(:mu => Float64.(y))
     scales = Dict(:ordinal_eta => η̂, :ordinal_cuts => Float64.(cuts_hat))
+    _record_cond_fit_aghq!(scales, nll, θ̂, bcache, gidx, Zre)   # fitted-row modes for `fitted(fit)`
     return _withiterations(
         _withnll(DrmFit(fam, blocks, names, θ̂, V, -nll(θ̂), n, drm_optim_converged(res), means, obs, scales), nll),
         Optim.iterations(res))
@@ -571,6 +572,7 @@ function _fit_cumulative_slope_ranef(fam::CumulativeLogit, y::Vector{Int}, Xμ, 
     score = _cumulative_score(η̂, cuts_hat, K)
     means = Dict(:mu => score); obs = Dict(:mu => Float64.(y))
     scales = Dict(:ordinal_eta => η̂, :ordinal_cuts => Float64.(cuts_hat))
+    _record_cond_fit_aghq!(scales, nll, θ̂, bcache, gidx, Zre)   # fitted-row modes for `fitted(fit)`
     return _withiterations(
         _withnll(DrmFit(fam, blocks, names, θ̂, V, -nll(θ̂), n, drm_optim_converged(res), means, obs, scales), nll),
         Optim.iterations(res))
@@ -1000,6 +1002,10 @@ function _fit_cumulative_crossed_laplace(fam::CumulativeLogit, y::Vector{Int}, X
     means = Dict(:mu => score)
     obs = Dict(:mu => Float64.(y))
     scales = Dict(:ordinal_eta => η̂, :ordinal_cuts => Float64.(cuts_hat))
+    # fitted-row modes from the inner crossed engine at the final cutpoints (conditional `fitted`)
+    for k in (:cond_fit_eta_re, :cond_fit_failed)
+        haskey(fit.scales, k) && (scales[k] = fit.scales[k])
+    end
 
     return DrmFit(fam, blocks, names, theta, V, fit.loglik, fit.nobs, fit.converged,
                  means, obs, scales)

@@ -85,7 +85,7 @@ end
     @test re_sd(fit)[:id] ≈ σb atol = 0.20           # variance component recovered
     @test exp(-2 * coef(fit, :sigma)[1]) ≈ sizep rtol = 0.6   # dispersion in the right ballpark
     @test isfinite(loglik(fit))
-    @test all(fitted(fit) .> 0)
+    @test all(fitted(fit; re = :zero) .> 0)
 end
 
 # ---- NB2 FD gate ≤ 1e-6 ----------------------------------------------------
@@ -150,7 +150,7 @@ end
     @test re_sd(fit)[:id] ≈ σb atol = 0.20           # variance component recovered
     @test exp(-2 * coef(fit, :sigma)[1]) ≈ shape rtol = 0.6   # shape in the right ballpark
     @test isfinite(loglik(fit))
-    @test all(fitted(fit) .> 0)
+    @test all(fitted(fit; re = :zero) .> 0)
 end
 
 # ---- Gamma FD gate ≤ 1e-6 --------------------------------------------------

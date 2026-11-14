@@ -36,7 +36,7 @@ _bbphy_logistic(x) = 1 / (1 + exp(-x))
     @test 0.03 < exp(coef(fit, :sigma)[1]) < 1.0
     @test re_sd(fit)[:species] > 0.03
     @test isfinite(loglik(fit))
-    @test all(0 .< fitted(fit) .< 1)
+    @test all(0 .< fitted(fit; re = :zero) .< 1)
 
     # Phylo structured effects cannot yet combine with ordinary random effects.
     @test_throws ErrorException drm(

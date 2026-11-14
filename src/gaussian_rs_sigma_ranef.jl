@@ -195,6 +195,7 @@ function _fit_rs_sigma_ranef_gaussian(fam::Gaussian, y, Xμ, Xσ, gidx, G, xs, n
         end
     end
     re = Dict(Symbol(grp) => blup, Symbol("$(grp)_logsigma") => blup_sigma)
+    _record_cond_fit!(scales, blup[gidx, 1] .+ xs .* blup[gidx, 2])   # fitted-row mean modes for `fitted(fit)`
     fit = _withranef(_withnll(DrmFit(fam, blocks, names, θ̂, V, -nllhat, n, converged,
                                      means, obs, scales), nll), re)
     return _withiterations(_withmarginal(fit, :Laplace), Optim.iterations(res))

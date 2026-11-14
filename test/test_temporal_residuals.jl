@@ -69,14 +69,13 @@ using Test, Random, LinearAlgebra, StableRNGs, Logging
         res = residuals(fit; type = :quantile)
         @test res ≈ dense atol = 1e-8
         # the same thing written as drmTMB defines it: y minus every fitted mode
-        re = ranef(fit)
-        cond = fitted(fit) .+ re[:id]
-        ordinary && (cond = cond .+ re[:id_iid][indexin(d.id, unique(d.id))])
+        cond = fitted(fit)
         @test res ≈ (d.y .- cond) ./ σ atol = 1e-12
         # not the marginal standardisation the route used to return
         @test maximum(abs.(res .- r ./ σ)) > 0.1
-        # `type = :response` is unchanged: population-level y − Xβ̂
-        @test residuals(fit) ≈ r
+        # `type = :response` is y - fitted(fit), conditional by default; `re = :zero` gives y - Xβ̂
+        @test residuals(fit) ≈ d.y .- cond
+        @test residuals(fit; re = :zero) ≈ r
         # deterministic: no randomisation for this continuous family
         @test residuals(fit; type = :quantile, rng = StableRNG(1)) == res
     end

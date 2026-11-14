@@ -407,6 +407,43 @@ _withranef(fit::DrmFit, re) = DrmFit(fit.family, fit.blocks, fit.coefnames, fit.
     fit.estim_method, fit.reml_loglik, fit.ml_loglik, fit.marginal, fit.phylo_penalty, fit.penalty, fit.iterations, fit.phylo_scale,
     fit.uncertainty, fit.geometry)
 
+# Fitted-row random-effect record for `fitted(fit)` (the conditional default). A route that
+# keeps the modes of its MEAN random effects stores `scales[:cond_fit_eta_re]`: the per-row
+# contribution `Z b̂` on the link scale of the mean (identity for Gaussian, log for
+# LogNormal and the count families, logit for Binomial / Beta, the linear predictor of
+# the ordinal model), in the fit's own row order. `fitted` adds it to the population
+# linear predictor. The `cond_` prefix keeps it out of the bridge dpars and out of
+# `simulate(newdata)`. A non-finite value is recorded as `:cond_fit_failed`, so the
+# conditional default refuses instead of returning NaN.
+const _COND_FIT_KEYS = (:cond_fit_eta_re, :cond_fit_failed, :cond_fit_stored)
+
+function _record_cond_fit!(scales::AbstractDict, eta::AbstractVector)
+    if all(isfinite, eta)
+        scales[:cond_fit_eta_re] = collect(Float64, eta)
+    else
+        scales[:cond_fit_failed] = [1.0]
+    end
+    return scales
+end
+
+# Same record for the per-group adaptive Gauss-Hermite routes (`_aghq_marginal_loglik`):
+# one Float64 evaluation of the objective at the fitted θ refreshes `bcache` with each group's
+# conditional mode b̂_g (natural scale, tolerance 1e-10), and row i loads `Zre[i, :]`.
+function _record_cond_fit_aghq!(scales::AbstractDict, nll, θ̂, bcache::AbstractMatrix{Float64},
+                                gidx::AbstractVector{<:Integer}, Zre::AbstractMatrix)
+    Threads.atomic_xchg!(_AGHQ_MODE_RESETS, 0)
+    val = nll(θ̂)
+    q = size(bcache, 1)
+    # A group whose mode was not finite was reset to 0 inside the objective, and an infinite
+    # objective means a mode solve failed: either way the modes are not the fitted ones.
+    if _AGHQ_MODE_RESETS[] > 0 || !(val isa Real && isfinite(val))
+        scales[:cond_fit_failed] = [1.0]
+        return scales
+    end
+    return _record_cond_fit!(scales, [sum(Zre[i, d] * bcache[d, gidx[i]] for d in 1:q)
+                                      for i in eachindex(gidx)])
+end
+
 # Conditional structured-field export for the R bridge (b34). A structured
 # `relmat()` / `animal()` / `spatial()` fitter records, at the converged theta,
 #   * `scales[:cond_eta_re]`: the per-row link-scale contribution of the field,
@@ -414,7 +451,7 @@ _withranef(fit::DrmFit, re) = DrmFit(fit.family, fit.blocks, fit.coefnames, fit.
 #   * `scales[:cond_mode_1]`, `[:cond_mode_2]`, ...: the inner Laplace mode of each
 #     field component in first-seen group-index order (the order `_group_index`
 #     returns, which is the row order of the K / A / Q matrix the bridge sends).
-# DRModels.jl's own `fitted()` stays population level; only the bridge payload
+# DRModels.jl's own `fitted()` reads `:cond_fit_eta_re` (below), not these keys; the bridge payload
 # reads these keys (`_bridge_dpars` skips every `cond_*` key).
 # Marks the conditional export as failed. `DrmFit.scales` is a
 # `Dict{Symbol,Vector{Float64}}`, so the flag must be a vector: assigning a scalar
@@ -2327,6 +2364,13 @@ function _with_full_response_rows(fit::DrmFit, f::DrmFormula, data)
     # family-specific fit metadata that is not a distributional parameter
     # (e.g. group-level SDs, group indices, and quadrature settings).
     scales = merge(fit.scales, scales)
+    if fit.ranef isa LocOnlyRanef && !haskey(scales, :cond_fit_eta_re)
+        # sparse / EM `phylo(1 | g)` keep the CONDITIONAL mean in `means[:mu]`, which the
+        # rebuild above replaces with the population prediction on every input row. Keep the
+        # modes as the link-scale gap between the two, on the used rows, for `fitted()`.
+        link = fit.family isa LogNormal ? log : identity
+        _record_cond_fit!(scales, link.(fit.means[:mu]) .- fit.ranef.mu_fixed)
+    end
     obs = _full_response_obs(f, data)
     return DrmFit(
         fit.family, fit.blocks, fit.coefnames, fit.theta, fit.vcov,
@@ -2500,14 +2544,46 @@ Number of observations. Extends `StatsAPI.nobs`.
 nobs(fit::DrmFit) = fit.nobs
 
 """
-    fitted(fit)
+    fitted(fit; re = :conditional)
 
-Fitted value(s) of the response mean `E[Y]`, as drmTMB's `fitted()` defines it: the
-μ vector for univariate models, `Dict(:mu1=>…, :mu2=>…)` for bivariate models. On a
-random-effect fit this is the population-level value with the random effects at
-zero, not the marginal mean averaged over them. For the GLM-type families
-(Gaussian, Poisson, NegBinomial2, Gamma, Beta, Binomial) it is `g⁻¹(Xβ̂)`, the value
-[`predict`](@ref) gives in-sample.
+Fitted value(s) of the response mean `E[Y]` at the fitted rows, as drmTMB's `fitted()`
+defines it: the μ vector for univariate models, `Dict(:mu1=>…, :mu2=>…)` for bivariate
+models.
+
+**Random effects (`re`).** The default `re = :conditional` includes the fitted
+random-effect modes (the BLUPs for the Gaussian routes, the Laplace or adaptive
+quadrature modes for the others), as drmTMB's `fitted()` does. On the Gaussian,
+LogNormal and phylo routes, `fitted(fit)` equals drmTMB's `fitted(fit)` on the same
+model (1e-6 or better on the cells checked). On the routes that integrate the random
+intercept by adaptive quadrature (the default for one `(1 | g)` on Poisson, NegBinomial2,
+Binomial, BetaBinomial, Gamma, Beta, Tweedie and CumulativeLogit), the modes come from the
+more accurate integration (adaptive quadrature here, a Laplace approximation in drmTMB), so
+the fitted values differ by about 1e-4 to 5e-3 on the reference cells checked (Student agreed
+to 1e-9 on its one cell, where the group SD is at the boundary). A fit made with
+`marginal = :Laplace` on Poisson, NegBinomial2, Binomial, Gamma, Beta or Student records no
+random-effect modes, so the default `fitted(fit)` refuses it: call `fitted(fit; re = :zero)` for the population-level value,
+or refit with the default marginal for the conditional value. `re = :zero` returns the
+population-level value, with every random effect at zero: the value `fitted(fit)`
+returned before this default changed (it is the value [`predict`](@ref) gives
+in-sample on the GLM-type routes). Neither is the marginal mean averaged over the random
+effects. A fit without random effects returns the same vector under both settings.
+Where a route does not keep the modes needed for the conditional value, the default
+throws an `ArgumentError` that names the route and points to `re = :zero`; it never
+returns a population-level value under the conditional default. The routes that do
+keep them are listed in the news note of the change; they include the single
+`relmat(1 | g)`, `animal(1 | g)` and dense `phylo(1 | g)` Gaussian fits and the
+`phylo(1 | g)` Laplace fits of Poisson, Binomial, BetaBinomial, NB2, Gamma and Beta,
+where the modes are the BLUPs or the inner Laplace modes at the fitted parameters.
+
+**Rows.** Only the rows used in the fit are returned, as in drmTMB: a row whose
+response is missing (`missing` / `NaN`) is not in the vector, so `length(fitted(fit))
+== nobs(fit)`. Rows dropped for a missing predictor were never in the fit. This is
+drmTMB's default missing-data policy ("drop"); its second policy ("include", full-length
+values with `NA` for the unused rows) is a planned follow-up and is not implemented here.
+`residuals(fit; type = :quantile)` and [`sigma`](@ref) return the same used rows.
+
+For the GLM-type families (Gaussian, Poisson, NegBinomial2, Gamma, Beta, Binomial) the
+population value is `g⁻¹(Xβ̂)`. The conditional value is `g⁻¹(Xβ̂ + Zb̂)`.
 
 The families whose mean is not the location parameter `μ` return the unconditional
 response mean, exactly as drmTMB does (the component `μ` stays available as
@@ -2523,30 +2599,154 @@ response mean, exactly as drmTMB does (the component `μ` stays available as
 | `CumulativeLogit` | expected category score | same formula (not checked against an R fit) |
 
 with `μ` the count or location component, `σ` the log-scale SD for `LogNormal`, and
-`P(0)` the untruncated Poisson or NB2 probability of zero. Before this convention the
-`LogNormal`, zero-inflated, hurdle and truncated fits returned `exp(μ)` or the
-component `μ` and so disagreed with drmTMB on the same model. `predict(fit, data;
-type = :mean)` is the same quantity at new rows, and `residuals(fit)` is
-`y - fitted(fit)`.
+`P(0)` the untruncated Poisson or NB2 probability of zero. `predict(fit, data;
+type = :mean)` is the same population-level quantity at new rows, and
+`residuals(fit)` is `y - fitted(fit)` on the same rows and with the same `re`.
 
-Which mean is stored depends on the route:
+The Gaussian `phylo(1 | g)` sparse L-BFGS (the default) and EM routes keep the
+conditional mean `Xβ̂ + Sû` and the fixed-effect mean `Xβ̂` separately; `re = :zero` returns
+`Xβ̂` there (a LogNormal `phylo` fit returns `exp(Xβ̂ + σ²/2)`).
 
-- **Population mean `Xβ̂`**: fixed-effects fits, ordinary `(1 | g)` and crossed
-  random intercepts, `relmat` / `animal`, and the dense `algorithm = :gls` /
-  `:lbfgs` Gaussian `phylo(1 | g)` fitters.
-- **Conditional mean `Xβ̂ + Sû`** (the BLUPs included, as drmTMB's fitted-row
-  `predict()`): the sparse L-BFGS (the default) and EM Gaussian `phylo(1 | g)`
-  routes, and so `residuals(fit)` on them are conditional residuals.
-  `predict(fit, data)` is the fixed-effect `Xβ̂` on every route.
-
-For `LogNormal` fits on the `phylo` / `relmat` and crossed routes (#1102) the
-log-scale mean above includes the fitted effects wherever it did before, and
-`fitted` adds `σ²/2` on top.
-
-drmTMB's `fitted()` also adds the fitted random-effect modes, so fits with random
-effects are not directly comparable row by row.
+A fit with a random effect on `sigma` whose family mean depends on `sigma` (`LogNormal`,
+zero-truncated and hurdle NB2) has no conditional value here, because the `sigma` modes are
+not kept: the default throws and `re = :zero` gives the population value.
 """
-fitted(fit::DrmFit) = haskey(fit.means, :mu) ? _fitted_mean(fit) : fit.means
+function fitted(fit::DrmFit; re::Symbol = :conditional)
+    _check_fitted_re(re, :fitted)
+    haskey(fit.means, :mu) || return _fitted_nonunivariate(fit, re)
+    mu = fit.means[:mu]
+    mu isa AbstractVector || return mu
+    return _fitted_used_rows(fit, _fitted_mean(fit, _fitted_component_mu(fit, re, :fitted)))
+end
+
+function _check_fitted_re(re::Symbol, who::Symbol)
+    re in (:conditional, :zero) || throw(ArgumentError(
+        "$who: `re` must be :conditional (the default: the fitted random-effect modes are " *
+        "included, as drmTMB does) or :zero (population level, every random effect at zero); got :$re"))
+    return nothing
+end
+
+# Bivariate and other multi-mean fits: `fit.means` is a Dict of per-response
+# vectors that already holds the used rows only. A bivariate fit with a
+# random or structured effect has no per-row modes recorded, so the conditional
+# default refuses instead of returning the population values.
+function _fitted_nonunivariate(fit::DrmFit, re::Symbol)
+    if re === :conditional && _fit_mean_has_random_term(fit)
+        throw(ArgumentError(_fitted_no_modes_message(fit, :fitted)))
+    end
+    return fit.means
+end
+
+# Rows used in the fit. A univariate route keeps one mean per input row and marks a
+# row with a missing response by `NaN` in `fit.obs[:mu]`; drmTMB's `fitted()` returns the
+# used rows only (`nobs`).
+function _fitted_used_rows(fit::DrmFit, v::AbstractVector)
+    haskey(fit.obs, :mu) || return v
+    ob = fit.obs[:mu]
+    length(ob) == length(v) || return v
+    any(isnan, ob) || return v
+    return v[.!isnan.(ob)]
+end
+_fitted_used_rows(fit::DrmFit, v) = v
+
+# Does a right-hand side carry a random, structured or temporal term?
+const _RE_TERM_NAMES = (:phylo, :relmat, :animal, :spatial, :temporal, :phylo_interaction)
+function _rhs_has_random_term(rhs)
+    terms = rhs isa Tuple ? collect(rhs) : Any[rhs]
+    for t in terms
+        t isa FunctionTerm || continue
+        t.f === (|) && return true
+        t.f isa Function && nameof(t.f) in _RE_TERM_NAMES && return true
+    end
+    return false
+end
+
+# Does the fitted MEAN (any `mu`, `mu1`, `mu2`) carry a random or structured effect?
+# Read off the retained formula; without one, off the coefficient blocks.
+function _fit_mean_has_random_term(fit::DrmFit)
+    _wald_withheld(fit) && return false     # temporal homtoep: a residual covariance, no modes
+    f = fit.formula
+    if f isa DrmFormula
+        return any(p -> first(p) === :mu && _rhs_has_random_term(last(p)), f.forms)
+    elseif f isa BivariateDrmFormula
+        return any(p -> first(p) in (:mu1, :mu2) && _rhs_has_random_term(last(p)), f.forms)
+    end
+    return any(p -> first(p) in (:resd, :recov, :sd, :sd_phylo) ||
+                    startswith(String(first(p)), "sdtarget_"), fit.blocks)
+end
+
+# Does the fitted `sigma` carry a random effect?
+function _fit_sigma_has_random_term(fit::DrmFit)
+    f = fit.formula
+    f isa DrmFormula || return false
+    return any(p -> first(p) === :sigma && _rhs_has_random_term(last(p)), f.forms)
+end
+
+# Families whose `E[Y]` depends on `sigma`, so a `sigma` random effect changes `fitted`.
+_mean_depends_on_sigma(fit::DrmFit) =
+    fit.family isa Union{LogNormal,TruncatedNegBinomial2} ||
+    (fit.family isa NegBinomial2 && haskey(fit.scales, :hu))
+
+function _fitted_no_modes_message(fit::DrmFit, who::Symbol)
+    return "$who: the default `re = :conditional` needs the fitted random-effect modes, and this " *
+           "route ($(typeof(fit.family).name.name) fit with a random or structured effect) does not " *
+           "keep them per row, so the conditional values cannot be computed here. Nothing was " *
+           "returned rather than the population-level values under the conditional default. " *
+           "Pass `re = :zero` for the population-level values (random effects at zero)."
+end
+
+# The component mean `μ` (the stored `means[:mu]`) at the requested random-effect
+# level: `:zero` is the stored population value (or `Xβ̂` on a route that stores the
+# conditional mean); `:conditional` adds the recorded modes on the link scale.
+function _fitted_component_mu(fit::DrmFit, re::Symbol, who::Symbol)
+    mu = fit.means[:mu]
+    ra = fit.ranef
+    if ra isa LocOnlyRanef && !haskey(fit.scales, :cond_fit_eta_re)
+        # sparse / EM Gaussian or LogNormal phylo(1 | g): `means[:mu]` already holds the
+        # conditional mean; the fixed-effect linear predictor is kept in `mu_fixed`.
+        re === :conditional && return mu
+        return fit.family isa LogNormal ? exp.(ra.mu_fixed) : copy(ra.mu_fixed)
+    end
+    sc = fit.scales
+    haskey(sc, :cond_fit_failed) && re === :conditional && throw(ArgumentError(
+        "$who: the conditional modes could not be computed at the fitted parameters " *
+        "(the inner mode solve failed or was not finite); pass `re = :zero` for the population-level values."))
+    if haskey(sc, :cond_fit_stored)
+        # joint mean + sigma Laplace route: `means[:mu]` is already conditional
+        re === :conditional && return mu
+        haskey(sc, :cond_fit_eta_re) || throw(ArgumentError(_fitted_no_modes_message(fit, who)))
+        lk0 = _fitted_link(fit.family)
+        lk0 === nothing && throw(ArgumentError(_fitted_no_modes_message(fit, who)))
+        return [lk0[2](lk0[1](mu[i]) - sc[:cond_fit_eta_re][i]) for i in eachindex(mu)]
+    end
+    re === :zero && return mu
+    eta = haskey(sc, :cond_fit_eta_re) ? sc[:cond_fit_eta_re] :
+          haskey(sc, :cond_eta_re) ? sc[:cond_eta_re] : nothing
+    sigma_blocks = _fit_sigma_has_random_term(fit) && _mean_depends_on_sigma(fit)
+    sigma_blocks && throw(ArgumentError(
+        "$who: this fit has a random effect on `sigma` and its mean depends on `sigma`, " *
+        "and the `sigma` modes are not kept per row. Pass `re = :zero` for the population-level values."))
+    if eta === nothing
+        _fit_mean_has_random_term(fit) && throw(ArgumentError(_fitted_no_modes_message(fit, who)))
+        return mu                                   # no random effect on the mean: nothing to add
+    end
+    if length(eta) != length(mu) && haskey(fit.obs, :mu) && length(fit.obs[:mu]) == length(mu) &&
+       count(!isnan, fit.obs[:mu]) == length(eta)
+        # an AGHQ route solves the modes on the rows with an observed response only; the rows with
+        # a missing response are dropped again by `_fitted_used_rows`, so their entry is never read
+        full = zeros(length(mu)); full[.!isnan.(fit.obs[:mu])] .= eta
+        eta = full
+    end
+    length(eta) == length(mu) || throw(ArgumentError(
+        "$who: internal error, the recorded conditional contribution has $(length(eta)) rows but the fit has $(length(mu))."))
+    if fit.family isa CumulativeLogit
+        return _cumulative_score(sc[:ordinal_eta] .+ eta, sc[:ordinal_cuts], length(sc[:ordinal_cuts]) + 1)
+    end
+    lk = _fitted_link(fit.family)
+    lk === nothing && throw(ArgumentError(_fitted_no_modes_message(fit, who)))
+    return [lk[2](lk[1](mu[i]) + eta[i]) for i in eachindex(mu)]
+end
+
 
 # E[Y] from the component parameters. `mu` is the response-scale component mean
 # (`exp(η)` for LogNormal, the count mean for count families); `sigma`, `zi` and
@@ -2574,8 +2774,7 @@ end
 # Stored-value version: the fitters keep the component mean in `means[:mu]`
 # (`simulate`, `marginal_parameters` and the bridge read it), so E[Y] is built
 # from it and the stored `scales`.
-function _fitted_mean(fit::DrmFit)
-    mu = fit.means[:mu]
+function _fitted_mean(fit::DrmFit, mu = fit.means[:mu])
     mu isa AbstractVector || return mu
     sc = fit.scales
     return _mean_from_parameters(fit.family, mu, get(sc, :sigma, nothing),
@@ -2583,12 +2782,19 @@ function _fitted_mean(fit::DrmFit)
 end
 
 """
-    residuals(fit; type = :response, rng = Random.default_rng())
+    residuals(fit; type = :response, rng = Random.default_rng(), re = :conditional)
 
 Model residuals. `type` selects the kind:
 
-- `:response` (default) — raw response residuals (observed − fitted mean),
-  matching [`fitted`](@ref)'s shape. `residuals(fit)` is unchanged.
+- `:response` (default): raw response residuals, `y − fitted(fit; re)` on the used
+  rows, so `residuals(fit)` has the length and the random-effect level of
+  [`fitted`](@ref): with the default `re = :conditional` the fitted random-effect modes
+  are removed (as drmTMB's `residuals()` does), and `re = :zero` gives the population-level
+  residuals `y − Xβ̂` that `residuals(fit)` returned before the default changed. A fit with
+  a missing response has `nobs` residuals, not one per input row, for both types
+  (`type = :quantile` also returns the used rows only). `re` applies to
+  `type = :response` only; `type = :quantile` with any `re` other than the default throws an
+  `ArgumentError`.
 - `:quantile` — standardised residuals. Outside `temporal()` fits these are
   randomized quantile residuals (Dunn & Smyth; DHARMa / glmmTMB style): for
   observation `i` with reference distribution `F_i`, `r_i = Φ⁻¹(u_i)`, where
@@ -2626,8 +2832,8 @@ What a correct model implies depends on the route:
   effects at the fitted parameters, as in drmTMB (whose `fitted_distribution()` uses
   the fitted-row parameters, modes included). The residuals are therefore not
   marginally standard normal: their SD is below 1 (about 0.8-1 on the test
-  fixtures). `fitted(fit)` stays population level on these routes (the joint mean
-  + `sigma` routes store the conditional mean);
+  fixtures). `fitted(fit)` is conditional where the route keeps the modes (see
+  [`fitted`](@ref));
 - **other random-effect shapes** (crossed, correlated slopes, a mean and a
   `sigma` intercept together) and CumulativeLogit fits: judged with the
   random effects set to 0. The group-level variation then stays in the
@@ -2686,24 +2892,35 @@ quantile residuals are the same numbers):
   drmTMB's `type = "quantile"` residuals for this structure are not whitened
   (`(y − Xβ̂)/σ̂`), so compare with its `type = "pearson"`.
 
-`type = :response` stays `y − Xβ̂` (population level, matching
-[`fitted`](@ref)) for these fits; drmTMB's `residuals(fit, type = "response")`
-subtracts its conditional `fitted()` instead.
+`type = :response` is `y − fitted(fit)` (see [`fitted`](@ref)); on these temporal fits
+`fitted(fit)` includes the fitted temporal path, as drmTMB's `fitted()` does, so the
+response residuals are the conditional ones. `re = :zero` gives `y − Xβ̂`.
 """
-function residuals(fit::DrmFit; type::Symbol = :response, rng = Random.default_rng())
+function residuals(fit::DrmFit; type::Symbol = :response, rng = Random.default_rng(),
+                   re::Symbol = :conditional)
     if type === :response
-        haskey(fit.means, :mu) && return fit.obs[:mu] .- _fitted_mean(fit)
-        fv = fitted(fit)
+        _check_fitted_re(re, :residuals)
+        if haskey(fit.means, :mu)
+            fv = fitted(fit; re)
+            fv isa AbstractVector || return fit.obs[:mu] .- fv
+            ob = fit.obs[:mu]
+            length(ob) == length(fv) || (ob = ob[.!isnan.(ob)])
+            return ob .- fv
+        end
+        fv = fitted(fit; re)
         return Dict(k => fit.obs[k] .- fv[k] for k in keys(fit.means))
     elseif type === :quantile
+        re === :conditional || throw(ArgumentError(
+            "residuals: `re = :$re` only applies to `type = :response`; quantile residuals have one " *
+            "definition per route and do not take a random-effect level (leave `re` at its default)."))
         # homtoep: the observations of a series are jointly σ²R, so the
         # standardised residuals are the whitened L⁻¹ r (drmTMB's Pearson
         # residuals), not (y − μ̂)/σ.
-        _wald_withheld(fit) && return _homtoep_whiten(fit)
+        _wald_withheld(fit) && return _on_used_rows(fit, _homtoep_whiten(fit))
         # AR1 / OU (and the paired phylo() + OU fit): drmTMB's residual is
         # conditional on the fitted modes, (y − Xβ̂ − modes)/σ̂.
-        _is_temporal_fit(fit) && return _temporal_conditional_residuals(fit)
-        return _quantile_residuals(fit, rng)
+        _is_temporal_fit(fit) && return _on_used_rows(fit, _temporal_conditional_residuals(fit))
+        return _quantile_residuals(_used_rows_view(fit), rng)
     else
         throw(ArgumentError("residuals: `type` must be :response or :quantile (got :$type)"))
     end
@@ -2733,10 +2950,53 @@ Random effects on sigma: the two engines store different things, and this return
   `ranef(fit)` exposes the modes; `predict_parameters()` reports the population-level sigma predictor and the
   separate `:sd` prediction for its random-effect SD.
 
+A fit with a missing response returns the scale of the rows used only (length `nobs(fit)`),
+as [`fitted`](@ref) does; the R bridge payload keeps one value per input row.
+
 For the population-level scale *coefficients* (on the working/log scale) use
 `coef(fit, :sigma)` instead.
 """
-function sigma(fit::DrmFit)
+sigma(fit::DrmFit) = _on_used_rows(fit, _sigma_all_rows(fit))
+
+# Rows used in the fit. A route that keeps one value per INPUT row marks a row with a missing
+# response by `NaN` in `fit.obs[:mu]`; drmTMB returns the used rows only (`nobs`). `_on_used_rows`
+# drops the other rows from a per-row vector (or from each per-row vector of a Dict), and leaves
+# anything that is not one value per input row untouched. The R bridge payload keeps all input rows
+# and calls `_sigma_all_rows` directly (`src/bridge.jl`).
+function _used_row_mask(fit::DrmFit)
+    haskey(fit.obs, :mu) || return nothing
+    ob = fit.obs[:mu]
+    ob isa AbstractVector || return nothing
+    any(isnan, ob) || return nothing
+    return .!isnan.(ob)
+end
+function _on_used_rows(fit::DrmFit, v::AbstractVector)
+    m = _used_row_mask(fit)
+    (m === nothing || length(v) != length(m)) && return v
+    return v[m]
+end
+function _on_used_rows(fit::DrmFit, d::AbstractDict)
+    _used_row_mask(fit) === nothing && return d
+    return Dict(k => _on_used_rows(fit, v) for (k, v) in d)
+end
+_on_used_rows(fit::DrmFit, x) = x
+
+# The same fit with every per-row vector of `means`, `obs` and `scales` cut to the rows used, so a
+# routine that loops over the rows (the quantile residuals) never meets a row with a missing response.
+# A vector that already has one value per used row (a route that kept the used rows only) is left as it is.
+# `fit` itself is returned when no response is missing.
+function _used_rows_view(fit::DrmFit)
+    m = _used_row_mask(fit)
+    m === nothing && return fit
+    cut(v) = v isa AbstractVector && length(v) == length(m) ? v[m] : v
+    cutd(d) = typeof(d)(k => cut(v) for (k, v) in d)
+    return DrmFit(fit.family, fit.blocks, fit.coefnames, fit.theta, fit.vcov, fit.loglik, fit.nobs,
+                  fit.converged, cutd(fit.means), cutd(fit.obs), cutd(fit.scales), fit.formula, fit.nll,
+                  fit.nllgrad, fit.ranef, fit.estim_method, fit.reml_loglik, fit.ml_loglik, fit.marginal,
+                  fit.phylo_penalty, fit.penalty, fit.iterations, fit.phylo_scale, fit.uncertainty, fit.geometry)
+end
+
+function _sigma_all_rows(fit::DrmFit)
     # A predictor-dependent random-effect SD fit (`sd(g) ~ ...`) also keeps
     # internal/context entries in `fit.scales` (direct random-effect SDs,
     # quadrature settings, Binomial trials). For those fits the public `sigma()`
@@ -2744,10 +3004,14 @@ function sigma(fit::DrmFit)
     # whole scale table, as before (e.g. `:zi`, `:nu`, `:sigma1`/`:sigma2`).
     sd_route = haskey(fit.scales, :sd_group) || haskey(fit.scales, :sd)
     ks = sort!(sd_route ? [k for k in keys(fit.scales) if k in (:sigma, :sigma1, :sigma2)] :
-                          [k for k in keys(fit.scales) if k !== :cond_blup_unavailable])
+                          [k for k in keys(fit.scales) if k !== :cond_blup_unavailable && !(k in _COND_FIT_KEYS)])
     isempty(ks) && return Dict{Symbol,Vector{Float64}}()
     (length(ks) == 1 && ks[1] === :sigma) && return fit.scales[:sigma]
-    return (sd_route || haskey(fit.scales, :cond_blup_unavailable)) ? Dict(k => fit.scales[k] for k in ks) : fit.scales
+    (sd_route || haskey(fit.scales, :cond_blup_unavailable)) && return Dict(k => fit.scales[k] for k in ks)
+    # The `fitted()` record keys are internal: a fit that carries them returns its scale table
+    # without them, so `sigma(fit)` is the table it was before they existed.
+    return any(k -> haskey(fit.scales, k), _COND_FIT_KEYS) ?
+           filter(p -> !(first(p) in _COND_FIT_KEYS), fit.scales) : fit.scales
 end
 
 """
@@ -2794,10 +3058,10 @@ per response for a bivariate fit. A bivariate `LogNormal` fit follows the same
 rule: `type = :response` is the log-scale `μ`, as in drmTMB.
 Grouping columns in `newdata` are not used, so a group level the model never saw
 is predicted exactly like a fitted one. Univariate returns a vector; bivariate
-returns `Dict(:mu1 => …, :mu2 => …)`. In-sample, `predict(fit, data) ≈ fitted(fit)`
+returns `Dict(:mu1 => …, :mu2 => …)`. In-sample, `predict(fit, data) ≈ fitted(fit; re = :zero)`
 on the fixed-effect and ordinary `(1 | g)` routes of the GLM-type families
 (Gaussian, Poisson, NegBinomial2, Gamma, Beta, Binomial); for the other families
-`predict(fit, data; type = :mean) ≈ fitted(fit)` ([`fitted`](@ref) lists the
+`predict(fit, data; type = :mean) ≈ fitted(fit; re = :zero)` ([`fitted`](@ref) lists the
 fits whose stored values differ).
 
 With an identity link (Gaussian) the `b = 0` prediction is also the marginal mean,
@@ -2815,7 +3079,7 @@ GLM-type families above the two packages' predictions compare like with like
 (drmTMB's LogNormal prediction is the log-scale `μ`, which `type = :response` and
 `type = :link` both return). Without `newdata`, drmTMB's `predict()`, and so its `fitted()`, add
 the fitted random-effect modes for the fitted rows; DRModels.jl's `predict` always
-takes `newdata`.
+takes `newdata`, and the in-sample conditional value is `fitted(fit)`.
 
 A factor in `newdata` is coded with the levels and contrasts of the fitted data
 (`drm` records them), so `newdata` may hold any subset of the fitted levels, in

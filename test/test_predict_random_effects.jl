@@ -32,7 +32,7 @@ import Distributions
         @test predict(fit, (; x = xn, g = [1, 2, 3])) == p
         @test predict(fit, (; x = xn, g = [997, 998, 999])) == p
         # This route stores the b = 0 value as `fitted`, so in-sample they agree.
-        @test predict(fit, (; y, x, g)) ≈ fitted(fit) rtol = 1e-10
+        @test predict(fit, (; y, x, g)) ≈ fitted(fit; re = :zero) rtol = 1e-10
 
         # The marginal mean E_b[exp(η + b)], b ~ N(0, σ_b²), is exp(η + σ_b²/2):
         # the docstring's recipe, checked against quadrature, and strictly larger.
@@ -55,7 +55,7 @@ import Distributions
 
         @test p ≈ 1 ./ (1 .+ exp.(-η)) rtol = 1e-12               # logistic(Xβ̂) at b = 0
         @test predict(fit, (; x = xn, g = [998, 999])) == p
-        @test predict(fit, (; y, x, g)) ≈ fitted(fit) rtol = 1e-10
+        @test predict(fit, (; y, x, g)) ≈ fitted(fit; re = :zero) rtol = 1e-10
 
         # The logit marginal mean has no closed form; for η ≠ 0 and σ_b > 0 it
         # lies strictly closer to 1/2 than the b = 0 prediction.

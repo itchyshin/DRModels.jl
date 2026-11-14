@@ -1048,6 +1048,7 @@ function _fit_tweedie_ranef(fam::Tweedie, y, Xμ, Xσ, Xν, gidx, G, nmμ, nmσ,
                   :nu => _logit12.(Xν * θ̂[(i1+1):i2]))
     _warn_at_clamp("Tweedie", ["log sigma" => (Xσ * θ̂[(pμ+1):i1], -15.0, 15.0),   # #959
                                "power (logit scale)" => (Xν * θ̂[(i1+1):i2], -12.0, 12.0)])
+    _record_cond_fit_aghq!(scales, nll, θ̂, bcache, gidx, Zre)   # fitted-row modes for `fitted(fit)`
     return _withiterations(
         _withnll(DrmFit(fam, blocks, names, θ̂, V, -nll(θ̂), n, drm_optim_converged(res), means, obs, scales), nll),
         Optim.iterations(res))
@@ -1094,6 +1095,7 @@ function _fit_tweedie_slope_ranef(fam::Tweedie, y, Xμ, Xσ, Xν, xs, gidx, G, n
                   :nu => _logit12.(Xν * θ̂[(i1+1):i2]))
     _warn_at_clamp("Tweedie", ["log sigma" => (Xσ * θ̂[(pμ+1):i1], -15.0, 15.0),   # #959
                                "power (logit scale)" => (Xν * θ̂[(i1+1):i2], -12.0, 12.0)])
+    _record_cond_fit_aghq!(scales, nll, θ̂, bcache, gidx, Zre)   # fitted-row modes for `fitted(fit)`
     return _withiterations(
         _withnll(DrmFit(fam, blocks, names, θ̂, V, -nll(θ̂), n, drm_optim_converged(res), means, obs, scales), nll),
         Optim.iterations(res))
