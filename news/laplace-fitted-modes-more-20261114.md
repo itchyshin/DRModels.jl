@@ -17,8 +17,17 @@
   where they refused before.
   The value is the conditional value at the Laplace random-effect modes, not a
   marginal mean. `fitted` and `residuals(fit)` (type `:response`) agree with
-  drmTMB 0.8.1 to 1e-6 where both packages use the same Laplace integral. On
-  the default (quadrature) `ZeroOneBeta` route they differ from drmTMB by up to
-  6e-4, and on the Binomial `sd(g) ~ gx` routes by up to 3e-4, which is the gap
-  between quadrature and Laplace. Quantile residuals on these routes are
-  unchanged: they are not conditional on the modes.
+  drmTMB 0.8.1 to 1e-6 where both packages use the same Laplace integral
+  (`marginal = :Laplace`). On the default (quadrature) `ZeroOneBeta` route they
+  differ from drmTMB by up to 6e-4 on the test data, and on the Binomial
+  `sd(g) ~ gx` routes by up to 3e-4 on the test data. That gap is the
+  difference between quadrature and Laplace. It grows when groups are small:
+  with very small or single-member groups the Laplace approximation is
+  poorer, so the two integrals disagree more (about 1.3e-3 for the logit link
+  and 1.6e-3 for the probit link on one such data set).
+  Quantile residuals on these routes are unchanged by this change and still
+  differ from drmTMB's: on the `ZeroOneBeta` `(1 | g)` route they judge each
+  continuous row against the Beta distribution with the random effect
+  integrated out, where drmTMB's are conditional on the modes, and on the
+  Binomial `sd(g) ~ gx` routes they are population-level (the modes are not
+  used), where drmTMB's are conditional.
