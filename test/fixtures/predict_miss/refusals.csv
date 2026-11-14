@@ -1,0 +1,7 @@
+"cell","message"
+"K_gauss_mu","New prediction data contains missing value for required predictor `x1m`. ℹ Supply complete prediction rows before calling `predict()` or emmeans."
+"K_gauss_sigma","NO-ERROR"
+"K_pois","New prediction data contains missing value for required predictor `x1m`. ℹ Supply complete prediction rows before calling `predict()` or emmeans."
+"K_nb2","New prediction data contains missing value for required predictor `x1m`. ℹ Supply complete prediction rows before calling `predict()` or emmeans."
+"K_gauss_both_re","New prediction data contains missing value for required predictor `x1m`. ℹ Supply complete prediction rows before calling `predict()` or emmeans."
+"K_pois_both_re","New prediction data contains missing value for required predictor `x1m`. ℹ Supply complete prediction rows before calling `predict()` or emmeans."
