@@ -16,9 +16,9 @@
 # Not the structured q=2 route: that one shares one design and an intercept-only
 # sigma/rho, and builds a sparse Laplace problem. This route is dense per group.
 #
-# Post-fit conventions. `fit.means` holds X b only (no BLUPs), so `residuals(fit)` are MARGINAL
-# (y - X b), the same convention as the other bivariate routes; drmTMB's `residuals()` are
-# conditional on the fitted group effects. The BLUPs are in `ranef(fit)`. `simulate(fit; data)`
+# Post-fit conventions. `fit.means` holds X b only (no BLUPs). `fitted(fit)` adds the BLUPs in
+# `ranef(fit)` (drmTMB's conditional `fitted()`), so `residuals(fit)` are conditional, as drmTMB's;
+# `re = :zero` gives the marginal values (X b, y - X b). `simulate(fit; data)`
 # and the parametric bootstrap draw fresh group effects from `fit.ranef.Sigma_g`
 # (`_biv_ordinary_re_simulator`).
 #

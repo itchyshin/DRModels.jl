@@ -11,7 +11,7 @@
 # 3. Keywords of other routes (`tree`, `K`, `A`, ...) are refused by name.
 # 4. Naming: the group covariance is `fit.ranef.Sigma_g` and the coefficients are
 #    `Sigma_g:L11/L21/L22` (the structured routes own `Sigma_a`).
-# 5. `residuals` of this fit are marginal (y minus X b), not conditional on BLUPs.
+# 5. `residuals(fit)` is `y - fitted(fit)` (conditional on the BLUPs, as drmTMB's `residuals()`); `re = :zero` gives y minus X b.
 include(joinpath(@__DIR__, "biv_ordinary_re_helpers.jl"))
 using StableRNGs, Statistics
 
@@ -47,10 +47,14 @@ using StableRNGs, Statistics
             @test Dict(fit.coefnames)[DRModels._BIV_RE_GROUP_BLOCK] == ["Sigma_g:L11", "Sigma_g:L21", "Sigma_g:L22"]
         end
 
-        @testset "residuals are marginal (y - X b), not conditional on BLUPs" begin
+        @testset "residuals follow fitted(): conditional by default, marginal (y - X b) with re = :zero" begin
             r = DRModels.residuals(fit)
-            @test r[:mu1] ≈ dbal.y1 .- fit.means[:mu1]
-            @test r[:mu2] ≈ dbal.y2 .- fit.means[:mu2]
+            cf = fitted(fit)
+            @test r[:mu1] ≈ dbal.y1 .- cf[:mu1]
+            @test r[:mu2] ≈ dbal.y2 .- cf[:mu2]
+            r0 = DRModels.residuals(fit; re = :zero)
+            @test r0[:mu1] ≈ dbal.y1 .- fit.means[:mu1]
+            @test r0[:mu2] ≈ dbal.y2 .- fit.means[:mu2]
         end
 
         @testset "keywords of other routes are refused by name" begin
