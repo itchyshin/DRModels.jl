@@ -88,6 +88,7 @@ corpairs(fit)  # log-residual rho12
              q4_iterations::Int = 300,
              q4_n_newton::Int = 40, q4_vcov::Bool = true, method::Symbol = :ML,
              missing = nothing)
+    _require_simple_bar_groups(f)   # nested `g / h` and other compound groupings: a named refusal
     _require_formula_column_lengths(f, data)   # #1022: no ragged columns under @inbounds
     method === :ML ||
         throw(ArgumentError("drm: the bivariate lognormal route implements ML only " *
