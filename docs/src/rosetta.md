@@ -195,7 +195,10 @@ distributional parameters:
   routes (and what `fitted(fit)` returned before the default changed). The
   single `relmat(1 | g)`, `animal(1 | g)` and dense `phylo(1 | g)` Gaussian fits and the
   `phylo(1 | g)` Laplace fits of Poisson, Binomial, BetaBinomial, NB2, Gamma and Beta
-  keep their modes, so `fitted(fit)` is conditional there. A route that does not keep
+  keep their modes, so `fitted(fit)` is conditional there. So does the bivariate Gaussian
+  fit with `(1 | p | g)` in `mu1` and `mu2`: the group effects are the exact BLUPs, and
+  `fitted(fit)` returns the two response means (a `Dict` with keys `:mu1` and `:mu2`;
+  drmTMB returns an n x 2 matrix) with them added. A route that does not keep
   the modes needed for the conditional value (for example a `relmat` or `animal` count
   fit, `ZeroOneBeta` with a random effect, bivariate fits with random effects,
   a random effect on `sigma` when the mean depends on `sigma`, the crossed
