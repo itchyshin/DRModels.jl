@@ -219,9 +219,28 @@ function _ordinary_resd_block(fit::DrmFit)
         # apply to a slope. Those fits keep their stored population mean and sigma.
         axis === :sigma && fit.formula isa DrmFormula &&
             _sigma_blocks_shape(fit.formula, fit.family) !== nothing && return nothing
+        # A lone mean random SLOPE `(0 + x | g)` stores the same single `:resd` block as
+        # `(1 | g)`, but it is not an intercept: its variance on row i is `x_i^2 sd^2`, and
+        # the fit does not keep `x`. Treating it as an intercept gave residuals that were
+        # silently wrong, so it keeps the stored population mean (random effect set to 0).
+        axis === :mu && _mean_re_has_slope(fit) && return nothing
         return (range = r, axis = axis)
     end
     return nothing
+end
+
+# Does the retained mean formula carry a random slope (`(0 + x | g)`, `(1 + x | g)`)?
+# A fit without a parseable formula is treated as an intercept, the old rule.
+function _mean_re_has_slope(fit::DrmFit)
+    f = fit.formula
+    f isa DrmFormula || return false
+    return try
+        re = _split_ranef(Dict(f.forms)[:mu]; allow_phylo_slope = true, allow_temporal = true)[2]
+        any(t -> first(_re_kind(t[1])) !== :intercept, re)
+    catch e
+        e isa InterruptException && rethrow()
+        false
+    end
 end
 
 # Is the lone mean `:resd` block a STRUCTURED random effect (phylo / relmat /

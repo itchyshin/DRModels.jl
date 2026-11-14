@@ -2939,7 +2939,8 @@ What a correct model implies depends on the route:
   marginally standard normal: their SD is below 1 (about 0.8-1 on the test
   fixtures). `fitted(fit)` is conditional where the route keeps the modes (see
   [`fitted`](@ref));
-- **other random-effect shapes** (crossed, correlated slopes, a mean and a
+- **other random-effect shapes** (crossed, correlated slopes, a lone random slope
+  `(0 + x | g)`, a mean and a
   `sigma` intercept together) and CumulativeLogit fits: judged with the
   random effects set to 0. The group-level variation then stays in the
   residuals, so under a correct model they are over-dispersed (SD above 1)
