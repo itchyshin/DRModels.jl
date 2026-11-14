@@ -3694,7 +3694,8 @@ function _ordinary_multi_marginal_simulator(fit::DrmFit, data, re)
         mu_fixed = try
             v = Vector{Float64}(predict(fit, data))
             length(v) == length(fit.means[:mu]) ? v : nothing
-        catch
+        catch e
+            e isa InterruptException && rethrow()
             nothing
         end
         mu_fixed === nothing && return nothing
@@ -3708,7 +3709,8 @@ function _ordinary_multi_marginal_simulator(fit::DrmFit, data, re)
     end
     eta_fixed = try
         Vector{Float64}(predict(fit, data; type = :link))
-    catch
+    catch e
+        e isa InterruptException && rethrow()
         nothing
     end
     (eta_fixed === nothing || length(eta_fixed) != fit.nobs) && return nothing

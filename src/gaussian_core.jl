@@ -3606,7 +3606,8 @@ function _simulate_group_hint(fit::DrmFit)
                 end
             end
         end
-    catch
+    catch e
+        e isa InterruptException && rethrow()
         return ""
     end
     isempty(names) && return ""
