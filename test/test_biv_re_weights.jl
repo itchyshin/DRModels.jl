@@ -296,6 +296,18 @@ end
     @test fu.loglik == fit.loglik && fu.theta == fit.theta
     fn = update(fit, _BRE_F0; data = d2, weights = nothing)
     @test fn.loglik != fit.loglik
+    # With rows dropped for a missing response, `weights(fit)` has one entry per kept row. The message
+    # says so and asks for the full-length vector, and that vector is what `update` accepts.
+    ym = Union{Missing,Float64}[i % 9 == 0 ? missing : d.y1[i] for i in eachindex(d.y1)]
+    dm = (; g = d.g, x1 = d.x1, x2 = d.x2, y1 = ym, y2 = d.y2)
+    fm = drm(_BRE_F0, Gaussian(); data = dm, weights = d.w)
+    @test length(DRModels.weights(fm)) < length(d.w)
+    err = try update(fm, _BRE_F0; data = dm); nothing catch e e end
+    @test err isa ArgumentError
+    @test err isa ArgumentError && occursin("one entry per KEPT row", err.msg) &&
+          occursin("original full-length weight vector", err.msg)
+    fm2 = update(fm, _BRE_F0; data = dm, weights = d.w)
+    @test fm2.loglik == fm.loglik && length(DRModels.weights(fm2)) == length(DRModels.weights(fm))
     # the bootstrap refits keep the weights: the replicate likelihood is the weighted one
     kw = DRModels._bootstrap_bivariate_refit_kwargs((; weights = d.w))
     @test haskey(kw, :weights) && kw.weights == d.w

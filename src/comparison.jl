@@ -479,7 +479,9 @@ function update(fit::DrmFit, formula, args...; data, kwargs...)
         throw(ArgumentError(
             "update: the fit was made with prior `weights`; pass `weights = weights(fit)` (same rows), " *
             "new weights for the new `data`, or `weights = nothing` to refit unweighted on purpose. " *
-            "It is never refitted unweighted silently."))
+            "It is never refitted unweighted silently. If rows with a missing response were dropped from " *
+            "the fit, `weights(fit)` has one entry per KEPT row and is shorter than `data`: pass the " *
+            "original full-length weight vector (one per row of `data`) instead."))
     stored = _update_stored_options(fit)
     # A caller who changes the estimator does not want the old MAP penalty.
     # Passing `penalty` explicitly still overrides that drop.
