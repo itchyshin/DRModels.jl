@@ -4,7 +4,7 @@
 # is the Wald interval. Every quantity that does not use the flagged coordinate must keep
 # its own standard error: `0 * NaN` is NaN, so a product with the full matrix would lose it.
 # Six fits, one per route, each with a real boundary: a random-effect SD at zero in a
-# Gaussian, a Binomial and a Poisson Laplace fit, a Gamma shape running to infinity, a
+# Gaussian, a Binomial, a Poisson and a Gamma Laplace fit, a
 # Tweedie power at its clamp, and a bivariate structured fit with a rank-one among-group
 # covariance.
 
@@ -105,19 +105,22 @@ end
         @test isfinite(bias_correct(fit, th -> th[1] + th[2]).se)
     end
 
-    @testset "Gamma, shape running to infinity" begin
-        rng = StableRNG(13)
-        n = 150
-        x = randn(rng, n)
-        y = exp.(0.8 .+ 0.2 .* x) .* (1 .+ 1e-6 .* randn(rng, n))
+    @testset "Gamma, random-intercept SD at zero" begin
+        # (A Gamma with a CV of 1e-6 is not a boundary: its log CV is identified, so it is
+        # not flagged; see test_vcov_flag_aliased_small_spread.jl.)
+        r = StableRNG(201)
+        G = 10; m = 15; n = G * m
+        g = repeat(1:G, inner = m); x = randn(r, n)
+        y = [rand(r, Distributions.Gamma(10.0, exp(0.5 + 0.3 * x[i]) / 10.0)) for i in 1:n]
         fit = _quiet() do
-            drm(bf(@formula(y ~ x), @formula(sigma ~ 1)), Gamma(); data = (; y, x))
+            drm(bf(@formula(y ~ x + (1 | g)), @formula(sigma ~ 1)), DRModels.Gamma();
+                data = (; y, x, g = string.(g)))
         end
-        _check_flagged(fit, [3])
+        _check_flagged(fit, [4])
         nd = (; x = [0.0, 1.0])
         @test all(isfinite, predict(fit, nd; se = true).se)
         sp = predict_parameters(fit, nd; se = true)
-        @test all(isfinite, sp[:mu].se) && all(isnan, sp[:sigma].se)
+        @test all(isfinite, sp[:mu].se) && all(isfinite, sp[:sigma].se)
     end
 
     xi = [1.43941117899116, 0.778826426368403, 0.192743160380563, -0.3244252191031, 2.09766874641634, 0.369686510094048, 1.79478191004505, 0.606502031264434, 0.0312916522780309, -0.910572582677395, 0.806725615836395, 0.612734177592478, -0.611163641309853, -0.159343666027289, 1.05500813010401, -1.06458870705857, 1.12065628331957, 0.387953130608195, -0.224004141372002, -0.109023652368118]

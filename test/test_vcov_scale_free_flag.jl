@@ -4,9 +4,9 @@
 # covariate or the response is measured in large or small units. The criterion
 # (`_flat_units_free`, src/vcov_guard.jl): a coordinate that carries the units of a
 # covariate or of the response is not flagged for being small next to another
-# coordinate; every other coordinate is flagged when its curvature is at most 3e-8 times
-# the largest curvature among the dimensionless coordinates (the number of observations
-# when there is only one).
+# coordinate (it is flagged only when its curvature is exactly zero, or, for a coefficient
+# in a log or logit block, per unit of its own design column); every other coordinate is
+# flagged when its curvature is at most 3e-8 times the number of observations.
 
 using DRModels
 using Test
@@ -37,7 +37,7 @@ _quiet(f) = Logging.with_logger(f, Logging.NullLogger())
         # a coordinate with exactly zero curvature is flagged whatever its kind
         @test _DVS._flat_units_free(Diagonal([4.0e3, 0.0, 480.0, 96.0]), unit, 240) == [2]
         @test _DVS._flat_units_free(zeros(4, 4), unit, 240) == [1, 2, 3, 4]
-        # only one dimensionless coordinate: the number of observations is the reference
+        # the number of observations is the reference for a dimensionless coordinate
         unit1 = [true, true, true, false]
         @test _DVS._flat_units_free(Diagonal([1e13, 1e-9, 4e3, 480.0]), unit1, 240) == Int[]
         @test _DVS._flat_units_free(Diagonal([1e13, 1e-9, 4e3, 1e-9]), unit1, 240) == [4]
@@ -180,7 +180,8 @@ _quiet(f) = Logging.with_logger(f, Logging.NullLogger())
             @test convergence_status(fit) === :degenerate
         end
 
-        # an aliased column: NaN for the aliased coefficient, not converged
+        # an aliased column: NaN in vcov and Inf standard error for the aliased coefficient,
+        # not converged
         for u in (1e-5, 1.0, 1e5)
             rng = MersenneTwister(3)
             x0 = randn(rng, 100)
@@ -189,7 +190,7 @@ _quiet(f) = Logging.with_logger(f, Logging.NullLogger())
                     data = (; y = 0.2 .+ 0.4 .* x0 .+ 0.3 .* randn(rng, 100), x = u .* x0, z = 2 .* u .* x0 .+ 1))
             end
             @test !is_converged(fit)
-            @test any(isnan, stderror(fit))
+            @test any(isnan, vcov(fit)) && any(isinf, stderror(fit))
         end
 
         # a residual correlation at its boundary (atanh rho about 5.7): the Hessian stays
