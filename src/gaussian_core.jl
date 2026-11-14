@@ -415,7 +415,7 @@ _withranef(fit::DrmFit, re) = DrmFit(fit.family, fit.blocks, fit.coefnames, fit.
 # linear predictor. The `cond_` prefix keeps it out of the bridge dpars and out of
 # `simulate(newdata)`. A non-finite value is recorded as `:cond_fit_failed`, so the
 # conditional default refuses instead of returning NaN.
-const _COND_FIT_KEYS = (:cond_fit_eta_re, :cond_fit_failed, :cond_fit_stored)
+const _COND_FIT_KEYS = (:cond_fit_eta_re, :cond_fit_failed, :cond_fit_stored, :cond_fit_sigma)
 
 function _record_cond_fit!(scales::AbstractDict, eta::AbstractVector)
     if all(isfinite, eta)
@@ -2664,15 +2664,26 @@ conditional mean `Xβ̂ + Sû` and the fixed-effect mean `Xβ̂` separately; `re
 `Xβ̂` there (a LogNormal `phylo` fit returns `exp(Xβ̂ + σ²/2)`).
 
 A fit with a random effect on `sigma` whose family mean depends on `sigma` (`LogNormal`,
-zero-truncated and hurdle NB2) has no conditional value here, because the `sigma` modes are
-not kept: the default throws and `re = :zero` gives the population value.
+zero-truncated and hurdle NB2) has a conditional value only where the `sigma` modes are kept:
+the `LogNormal` `sigma ~ ... + (1 | g)` fit returns `exp(μ + σ̂ᵢ²/2)` with the conditional `σ̂ᵢ`.
+On the other routes the default throws and `re = :zero` gives the population value.
 """
 function fitted(fit::DrmFit; re::Symbol = :conditional)
     _check_fitted_re(re, :fitted)
     haskey(fit.means, :mu) || return _fitted_nonunivariate(fit, re)
     mu = fit.means[:mu]
     mu isa AbstractVector || return mu
-    return _fitted_used_rows(fit, _fitted_mean(fit, _fitted_component_mu(fit, re, :fitted)))
+    cmu = _fitted_component_mu(fit, re, :fitted)
+    # a LogNormal fit with a sigma random effect keeps the conditional sigma: E[Y] = exp(mu + sigma_cond^2 / 2)
+    csig = re === :conditional ? get(fit.scales, :cond_fit_sigma, nothing) : nothing
+    if csig !== nothing && length(csig) != length(cmu) && haskey(fit.obs, :mu) &&
+       length(fit.obs[:mu]) == length(cmu) && count(!isnan, fit.obs[:mu]) == length(csig)
+        # the conditional sigma is solved on the rows with an observed response; the rows with a
+        # missing response are dropped again by `_fitted_used_rows`, so their entry is never read
+        full = ones(length(cmu)); full[.!isnan.(fit.obs[:mu])] .= csig
+        csig = full
+    end
+    return _fitted_used_rows(fit, csig === nothing ? _fitted_mean(fit, cmu) : _fitted_mean(fit, cmu; sigma = csig))
 end
 
 function _check_fitted_re(re::Symbol, who::Symbol)
@@ -2778,7 +2789,8 @@ function _fitted_component_mu(fit::DrmFit, re::Symbol, who::Symbol)
     re === :zero && return mu
     eta = haskey(sc, :cond_fit_eta_re) ? sc[:cond_fit_eta_re] :
           haskey(sc, :cond_eta_re) ? sc[:cond_eta_re] : nothing
-    sigma_blocks = _fit_sigma_has_random_term(fit) && _mean_depends_on_sigma(fit)
+    sigma_blocks = _fit_sigma_has_random_term(fit) && _mean_depends_on_sigma(fit) &&
+                   !haskey(sc, :cond_fit_sigma)
     sigma_blocks && throw(ArgumentError(
         "$who: this fit has a random effect on `sigma` and its mean depends on `sigma`, " *
         "and the `sigma` modes are not kept per row. Pass `re = :zero` for the population-level values."))
@@ -2830,10 +2842,10 @@ end
 # Stored-value version: the fitters keep the component mean in `means[:mu]`
 # (`simulate`, `marginal_parameters` and the bridge read it), so E[Y] is built
 # from it and the stored `scales`.
-function _fitted_mean(fit::DrmFit, mu = fit.means[:mu])
+function _fitted_mean(fit::DrmFit, mu = fit.means[:mu]; sigma = nothing)
     mu isa AbstractVector || return mu
     sc = fit.scales
-    return _mean_from_parameters(fit.family, mu, get(sc, :sigma, nothing),
+    return _mean_from_parameters(fit.family, mu, sigma === nothing ? get(sc, :sigma, nothing) : sigma,
                                  get(sc, :zi, nothing), get(sc, :hu, nothing))
 end
 

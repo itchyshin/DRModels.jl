@@ -198,7 +198,8 @@ distributional parameters:
   keep their modes, so `fitted(fit)` is conditional there. A route that does not keep
   the modes needed for the conditional value (for example a `relmat` or `animal` count
   fit, `ZeroOneBeta` with a random effect, bivariate fits with random effects,
-  a random effect on `sigma` when the mean depends on `sigma`, the crossed
+  a random effect on `sigma` when the mean depends on `sigma` (except the `LogNormal`
+  `sigma ~ ... + (1 | g)` fit, which keeps its `sigma` modes), the crossed
   adaptive-quadrature opt-in routes) refuses the
   default with a message that names `re = :zero`; it never returns population
   values under the conditional default. `residuals(fit)` is `y - fitted(fit)`
