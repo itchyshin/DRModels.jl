@@ -694,12 +694,20 @@ macro drm_entry(fdef)
         # the extra-keyword splat added above is named `_drm_extra_kw`
         :(haskey(_drm_extra_kw, :data) && _record_factor_levels!($fname, _drm_extra_kw[:data]))
     end
+    # Each fit works on its own copy of the formula bundle (`_fit_formula`): the schema cache, the
+    # factor levels and the `poly` bases written at fit time belong to the fit, never to the
+    # user's `bf(...)` object, so a formula reused on other data (a second fit, a cross-validation
+    # loop, two threads) behaves like a fresh one.
     fdef.args[2] = quote
         $extra_check
         $pre
-        $record
-        return _drm_run_controlled($fname, $famname, control, weights) do
-            $body
+        let $fname = _fit_formula($fname)
+            $record
+            return task_local_storage(_FIT_FORMULA_KEY, $fname) do
+                _drm_run_controlled($fname, $famname, control, weights) do
+                    $body
+                end
+            end
         end
     end
     return esc(:(Base.@__doc__ $fdef))

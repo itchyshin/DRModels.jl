@@ -78,6 +78,7 @@ include("control.jl")          # #942 #948 #994 #931: DRMControl, @drm_entry, pr
 include("finite_inputs.jl")    # non-finite input check + converged backstop (#1009 #1012 #1019 #1021)
 include("fixed_priors.jl")
 include("gaussian_core.jl")
+include("poly_term.jl")        # `poly(x, d)` in @formula: R's orthogonal basis as a stateful term (gap map v2)
 include("ci_args.jl")            # shared level / B checks and bootstrap completion status
 include("meta_vcov_bivariate.jl")  # A8: known bivariate sampling covariance (drmTMB meta_vcov_bivariate)
 include("gaussian_bivariate.jl")
@@ -198,7 +199,7 @@ export AugProblem, make_problem,
 
 # Public API — the Gaussian distributional-regression front end.
 export AbstractDrmPrior, drm_priors, drm_prior_normal, drm_prior_ridge, drm_prior_sd_gamma, resolve_priors
-export @formula, bf, drm_formula, drm, Gaussian, Student, SkewNormal, Poisson, NegBinomial2, TruncatedNegBinomial2, TruncatedPoisson, Beta, BetaBinomial, Binomial, Gamma, LogNormal, ZeroOneBeta, Tweedie, CumulativeLogit, cbind, meta_V, relmat, animal, phylo, spatial, temporal, phylo_interaction, offset, sd, sd_phylo, DrmFormula, BivariateDrmFormula, DrmFit,
+export @formula, poly, bf, drm_formula, drm, Gaussian, Student, SkewNormal, Poisson, NegBinomial2, TruncatedNegBinomial2, TruncatedPoisson, Beta, BetaBinomial, Binomial, Gamma, LogNormal, ZeroOneBeta, Tweedie, CumulativeLogit, cbind, meta_V, relmat, animal, phylo, spatial, temporal, phylo_interaction, offset, sd, sd_phylo, DrmFormula, BivariateDrmFormula, DrmFit,
        coef, vcov, loglik, loglikelihood, nobs, dof, aic, bic, fixef, re_sd, vc, ranef, sigma, corpairs, rho12, stderror, confint, coeftable, fitted, residuals, predict, predict_parameters, marginal_parameters, prediction_grid, simulate, bootstrap_ci, bootstrap_summary, bootstrap_result, bootstrap_sigma_a, check_drm, family,
        profile_result, profile_curve, parameter_surface, corpairs_data,
        drm_figure, plot_profile, plot_parameter_surface, plot_corpairs,
