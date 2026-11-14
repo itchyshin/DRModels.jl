@@ -28,10 +28,9 @@ all-`NaN` from `sdreport` in this case.
 
 A coordinate the fit flagged as a variance boundary has `NaN` in `vcov(fit)` (its
 curvature cannot be told from zero), and its `stderror` is `NaN` too: not computed,
-as opposed to `Inf`, unbounded. The Wald interval of that coordinate stays
-`(-Inf, Inf)`. This applies when the rest of the covariance is finite; a covariance
-that is `NaN` throughout (`se = false`, a failed fit, or every coordinate flagged)
-still reports `Inf` for every coordinate.
+as opposed to `Inf`, unbounded. Its Wald interval is `NaN` as well. When every
+coordinate is flagged, every standard error is `NaN`. A covariance that is `NaN` throughout for another reason (`se = false`, a failed
+fit) still reports `Inf` for every coordinate.
 """
 stderror(fit::DrmFit) = _wald_withheld(fit) ? _homtoep_refuse_wald("stderror") : _stderror_flagged(fit)
 
@@ -39,6 +38,9 @@ stderror(fit::DrmFit) = _wald_withheld(fit) ? _homtoep_refuse_wald("stderror") :
 # otherwise computed covariance (a flagged boundary coordinate, #1383).
 function _stderror_flagged(fit::DrmFit)
     se = _stderror(fit)
+    # Every coordinate flagged: the covariance is all NaN, as for a failed fit, so the
+    # fit carries the flag (`uncertainty === :boundary_all`, set by the `drm` entry).
+    fit.uncertainty === :boundary_all && return fill(NaN, length(se))
     d = diag(fit.vcov)
     (fit.uncertainty !== :skipped && any(isfinite, d)) || return se
     for k in eachindex(d)
@@ -534,7 +536,7 @@ end
 function _wald_ci(fit::DrmFit, level::Real, parm)
     level = _validate_ci_level(level; what="confint")
     _ci_validate_parm(fit, parm)
-    se = _wald_withheld(fit) ? _homtoep_refuse_wald("stderror") : _stderror(fit)
+    se = stderror(fit)   # NaN at a flagged coordinate, so its Wald interval is NaN
     z = quantile(Normal(), 1 - (1 - level) / 2)
     rows = _CIRow[]
     for ((p, r), (_, nms)) in zip(fit.blocks, fit.coefnames)

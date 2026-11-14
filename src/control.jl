@@ -452,12 +452,18 @@ function _drm_run_controlled_inner(body::Function, f, fam, control, weights)
 end
 
 function _drm_run_controlled(body::Function, f, fam, control, weights)
-    try
-        return _drm_run_controlled_inner(body, f, fam, control, weights)
-    catch e
-        e isa MethodError && _refuse_kwarg_methoderror(e, f, fam)
-        rethrow()
+    # The Hessian guard records what it flags during this call; `_reconcile_guard_flags`
+    # finishes the judgement once the fit is named (src/vcov_guard.jl).
+    recs = _GuardRecords()
+    fit = task_local_storage(_GUARD_RECORDS_KEY, recs) do
+        try
+            return _drm_run_controlled_inner(body, f, fam, control, weights)
+        catch e
+            e isa MethodError && _refuse_kwarg_methoderror(e, f, fam)
+            rethrow()
+        end
     end
+    return _reconcile_guard_flags(fit, recs)
 end
 
 function _ctl_finish(fit, scope::_ControlScope, fam)

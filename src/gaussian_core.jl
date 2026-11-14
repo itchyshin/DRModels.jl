@@ -272,8 +272,10 @@ struct DrmFit{F}
     # has returned, so the `_with*` rebuilders below need not carry it.
     control_info::Any
     # `:ok` (the default), or `:skipped` when the caller turned standard errors off
-    # (`se = false`, `q4_vcov = false`). `vcov` is all-NaN in both a skipped and a
-    # failed covariance, so this is the only record of which one happened. The
+    # (`se = false`, `q4_vcov = false`), or `:boundary_all` when the Hessian guard
+    # flagged every coordinate (set by the `drm` entry, `_reconcile_guard_flags`).
+    # `vcov` is all-NaN in a skipped, a failed and an all-flagged covariance, so this
+    # is the only record of which one happened. The
     # twin `convergence_status` does not apply its covariance steps to a skipped
     # one, as drmTMB does for `drm_control(se = FALSE)` (FX3b). Set by
     # `_withuncertainty`.
@@ -533,6 +535,14 @@ _withgeometry(fit::DrmFit, g::Symbol) = DrmFit(fit.family, fit.blocks, fit.coefn
     fit.vcov, fit.loglik, fit.nobs, fit.converged, fit.means, fit.obs, fit.scales, fit.formula, fit.nll, fit.nllgrad, fit.ranef,
     fit.estim_method, fit.reml_loglik, fit.ml_loglik, fit.marginal, fit.phylo_penalty, fit.penalty, fit.iterations, fit.phylo_scale,
     fit.uncertainty, g)
+
+# Replace the covariance, and optionally `uncertainty`, of a finished fit (the `drm`
+# entry re-judges the Hessian guard's flag with it, src/vcov_guard.jl).
+_withvcov(fit::DrmFit, V, uncertainty = fit.uncertainty) = DrmFit(fit.family, fit.blocks,
+    fit.coefnames, fit.theta, V, fit.loglik, fit.nobs, fit.converged, fit.means, fit.obs,
+    fit.scales, fit.formula, fit.nll, fit.nllgrad, fit.ranef, fit.estim_method,
+    fit.reml_loglik, fit.ml_loglik, fit.marginal, fit.phylo_penalty, fit.penalty,
+    fit.iterations, fit.phylo_scale, fit.control_info, uncertainty, fit.geometry)
 
 """
     niterations(fit) -> Int

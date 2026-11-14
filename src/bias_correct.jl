@@ -133,15 +133,17 @@ function _bias_correct(g, θ̂::AbstractVector, V::AbstractMatrix; level::Real)
     # A coordinate the fit flagged as a boundary has NaN variance in `V`. `0 * NaN` is
     # NaN, so a quantity that does not depend on that coordinate would lose its
     # standard error too. Drop the flagged coordinates when `g` has zero gradient and
-    # curvature there; if `g` does depend on one, the NaN stays and `se` is `Inf`.
+    # curvature there; if `g` does depend on one, the NaN stays and so does `se`: no
+    # standard error was computed for it (not an unbounded one).
     flagged = findall(i -> isnan(V[i, i]), 1:n)
-    if !isempty(flagged) && all(iszero, grad[flagged]) && all(iszero, H[flagged, :])
+    uses_flagged = !isempty(flagged) && !(all(iszero, grad[flagged]) && all(iszero, H[flagged, :]))
+    if !isempty(flagged) && !uses_flagged
         V = copy(V)
         V[flagged, :] .= 0
         V[:, flagged] .= 0
     end
     var = dot(grad, V * grad)
-    se = (!isfinite(var) || var < 0) ? Inf : sqrt(var)
+    se = uses_flagged ? NaN : (!isfinite(var) || var < 0) ? Inf : sqrt(var)
 
     # Epsilon-method bias correction: ½·tr(H_g · V) = ½·Σ_ij H_ij V_ij.
     bias = 0.0
