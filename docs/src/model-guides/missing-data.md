@@ -38,6 +38,21 @@ coef(fit, :mu)
 For a bivariate model, a row is dropped when either response is missing. That
 discards the observed half of each incomplete pair.
 
+`missing = miss_control(response = "include")` keeps the partly observed rows of a bivariate
+Gaussian fit and uses the likelihood of the response that was observed. That is
+valid when the missing values are missing at random: the chance that a value is
+missing may depend on the observed responses and the predictors in the model,
+but not on the missing value itself. With `method = :REML` on the bivariate
+`(1 | p | g)` route, two further points apply. A REML log-likelihood is only
+comparable between fits that have the same fixed effects and the same rows
+(the same missing pattern); comparing REML values across different fixed-effect
+formulas or different `missing` settings is not meaningful, so use `method = :ML`
+for such comparisons. And REML needs the fixed-effect design of the observed rows of each
+response to have full rank: a covariate that is constant or equal to another
+covariate on those rows, although it varies in the full data, is refused by
+name. drmTMB 0.8.1 does not implement REML together with `response = "include"`
+at all, so this goes beyond drmTMB.
+
 ## Missing predictors
 
 A `missing` predictor value makes `drm` drop that row and warn how many rows it

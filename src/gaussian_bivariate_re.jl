@@ -272,6 +272,20 @@ function _fit_bivariate_ordinary_re(f::BivariateDrmFormula, fam::Gaussian, data,
     end
 
     X1o = X1[obs1, :]; X2o = X2[obs2, :]; y1o = Vector{Float64}(y1[obs1]); y2o = Vector{Float64}(y2[obs2])
+    if method === :REML
+        # The restricted likelihood has logdet(X' V^-1 X); that is -Inf when the design of the OBSERVED rows
+        # loses a column, so name the problem. With `miss_control(response = "include")` the observed rows
+        # of a response can be fewer than the data, so a covariate can be constant or aliased among them only.
+        for (Xo, nms, resp) in ((X1o, nm1, :mu1), (X2o, nm2, :mu2))
+            r = size(Xo, 2) == 0 ? 0 : rank(Xo)
+            r == size(Xo, 2) && continue
+            lost = [nms[j] for j in 1:size(Xo, 2) if rank(Xo[:, 1:j]) == (j == 1 ? 0 : rank(Xo[:, 1:(j-1)]))]
+            throw(ArgumentError("drm: method = :REML needs a full-rank fixed-effect design among the observed rows, " *
+                "but `$resp` has rank $r for $(size(Xo, 2)) columns on its $(size(Xo, 1)) observed rows " *
+                "(constant or aliased there: $(join(lost, ", "))). The restricted likelihood is not defined for " *
+                "it. Remove or recode the term, or use method = :ML."))
+        end
+    end
     β1 = X1o \ y1o; β2 = X2o \ y2o            # seeds from the observed cells
     φ0 = zeros(pφ0 + 3)
     φ0[offs[3]-pβ+1] = _seed_ls(y1o - X1o * β1, y1o)
