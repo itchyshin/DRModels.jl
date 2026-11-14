@@ -165,6 +165,34 @@ function _biv_re_rowprec(::Type{T}, o1::Bool, o2::Bool, ls1, ls2, ηr) where {T}
     return zeros(T, 2, 2), zero(T)
 end
 
+# REML integrates the fixed effects out of the likelihood of the used cells, so it needs X_o, the
+# fixed-effect design on the rows that carry an observed, positively weighted cell of this response,
+# to have full column rank (the restricted likelihood contains logdet(X_o' V^-1 X_o)). X_o can lose rank
+# when a column is constant or aliased on those rows only (a factor level, or a covariate, that is
+# present only in rows whose response is missing but kept by `miss_control(response = "include")`, or
+# only in rows with weight 0). Refuse by name instead of failing in a factorisation. A response with
+# fewer observed cells than columns is refused earlier, for ML as well, in `_biv_residual_designs`.
+function _check_reml_observed_design(X::AbstractMatrix, names, obs, pw, resp::Symbol, yname)
+    used = obs .& (pw .> 0)
+    Xo = X[used, :]
+    p = size(Xo, 2)
+    r = p == 0 ? 0 : rank(Xo)
+    r == p && return nothing
+    lost = [names[j] for j in 1:p if rank(Xo[:, 1:j]) == (j == 1 ? 0 : rank(Xo[:, 1:(j-1)]))]
+    kept = count(!, obs)
+    zero_w = count(obs .& (pw .<= 0))
+    why = (kept > 0 ? " The $kept rows with a missing `$yname` stay in the fit under " *
+                      "`miss_control(response = \"include\")` but add no row to the design of `$resp`, so a column " *
+                      "that varies in the data can still be constant or aliased on the rows that carry a `$yname` value." : "") *
+          (zero_w > 0 ? " $zero_w rows with weight 0 are not used." : "")
+    throw(ArgumentError("drm: method = :REML needs a full-rank fixed-effect design among the observed rows, " *
+        "but `$resp` has rank $r for $p columns on its $(size(Xo, 1)) observed rows " *
+        "(constant or aliased there: $(join(lost, ", "))).$why The restricted likelihood is not defined for it. " *
+        "Remove or recode the term, use method = :ML, or take the rows with a missing response out of `data` " *
+        "before the call (that also removes a factor level seen only in them; " *
+        "`miss_control(response = \"drop\")` keeps the factor levels of the full data and does not)."))
+end
+
 function _fit_bivariate_ordinary_re(f::BivariateDrmFormula, fam::Gaussian, data, fixed, spec;
                                     g_tol::Real, method::Symbol = :ML)
     tag, grp = spec
@@ -276,15 +304,8 @@ function _fit_bivariate_ordinary_re(f::BivariateDrmFormula, fam::Gaussian, data,
         # The restricted likelihood has logdet(X' V^-1 X); that is -Inf when the design of the OBSERVED rows
         # loses a column, so name the problem. With `miss_control(response = "include")` the observed rows
         # of a response can be fewer than the data, so a covariate can be constant or aliased among them only.
-        for (Xo, nms, resp) in ((X1o, nm1, :mu1), (X2o, nm2, :mu2))
-            r = size(Xo, 2) == 0 ? 0 : rank(Xo)
-            r == size(Xo, 2) && continue
-            lost = [nms[j] for j in 1:size(Xo, 2) if rank(Xo[:, 1:j]) == (j == 1 ? 0 : rank(Xo[:, 1:(j-1)]))]
-            throw(ArgumentError("drm: method = :REML needs a full-rank fixed-effect design among the observed rows, " *
-                "but `$resp` has rank $r for $(size(Xo, 2)) columns on its $(size(Xo, 1)) observed rows " *
-                "(constant or aliased there: $(join(lost, ", "))). The restricted likelihood is not defined for " *
-                "it. Remove or recode the term, or use method = :ML."))
-        end
+        _check_reml_observed_design(X1, nm1, obs1, pw, :mu1, f.response1)
+        _check_reml_observed_design(X2, nm2, obs2, pw, :mu2, f.response2)
     end
     β1 = X1o \ y1o; β2 = X2o \ y2o            # seeds from the observed cells
     φ0 = zeros(pφ0 + 3)
