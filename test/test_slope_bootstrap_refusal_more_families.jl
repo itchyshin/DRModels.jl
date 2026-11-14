@@ -29,6 +29,8 @@ const _SBR_FAMILIES = [("Beta", DRModels.Beta(), :ybeta), ("Student", Student(),
         ("(1 | g) + (1 | h)", "crossed or nested random intercepts"),
     ]
     for (fname, fam, resp) in _SBR_FAMILIES, (terms, label) in cases
+        # A LogNormal `(0 + z | g)` has a fresh draw already; it is checked below.
+        fname == "LogNormal" && terms == "(0 + z | g)" && continue
         @testset "$fname $terms" begin
             fo = Core.eval(@__MODULE__, Meta.parse("bf(@formula($resp ~ x + $terms), @formula(sigma ~ 1))"))
             fit = drm(fo, fam; data = d)
@@ -63,4 +65,11 @@ end
             @test size(bootstrap_summary(fit; data = d, B = 2, rng = Random.Xoshiro(1)), 1) == length(coef(fit))
         end
     end
+end
+
+@testset "LogNormal (0 + z | g) keeps its fresh draw" begin
+    d = _sbr_data(7)
+    fit = drm(bf(@formula(ylog ~ x + (0 + z | g)), @formula(sigma ~ 1)), LogNormal(); data = d)
+    @test length(simulate(fit; data = d, rng = Random.Xoshiro(1))) == length(d.x)
+    @test size(bootstrap_summary(fit; data = d, B = 2, rng = Random.Xoshiro(1)), 1) == length(coef(fit))
 end
