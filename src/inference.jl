@@ -2429,8 +2429,8 @@ function _marginal_simulator(fit::DrmFit, data; K=nothing, A=nothing, tree=nothi
             "`meta_V(...)` + random-effect fit (pass the same `data` and `tree` / `K` / `A` " *
             "used to fit it); the conditional fallback would drop the random effect"))
     end
-    # Gamma and Binomial fits with two or more ordinary random-effect terms (and a single Gamma
-    # `(0 + x | g)` / `(1 + x | g)`) have no fresh-draw simulator (independent slope with intercept, crossed or nested intercepts, mixed shapes). Falling
+    # Gamma, Beta, Student, LogNormal and Binomial fits with two or more ordinary random-effect terms (and a single
+    # `(0 + x | g)` / `(1 + x | g)` on every one of them but Binomial) have no fresh-draw simulator (independent slope with intercept, crossed or nested intercepts, mixed shapes). Falling
     # back to the conditional draw (random effects at zero) would collapse the variance-component interval
     # without a message, so refuse, naming the shape the user fitted.
     if sim === nothing && _is_no_fresh_draw_slope_fit(fit)
@@ -2440,19 +2440,19 @@ function _marginal_simulator(fit::DrmFit, data; K=nothing, A=nothing, tree=nothi
 end
 
 function _is_no_fresh_draw_slope_fit(fit::DrmFit)
-    (fit.family isa Gamma || fit.family isa Binomial) && fit.formula isa DrmFormula || return false
+    fit.family isa Union{Gamma,Binomial,Beta,Student,LogNormal} && fit.formula isa DrmFormula || return false
     rhs = Dict(fit.formula.forms)
     haskey(rhs, :mu) || return false
     _, re, metav, structured, _ = _split_ranef(rhs[:mu]; allow_phylo_slope = true)
     metav === nothing && structured === nothing || return false
     length(re) >= 2 && return true
-    # A single Gamma `(0 + x | g)` or `(1 + x | g)` has no fresh draw either; it used to fall back
+    # A single `(0 + x | g)` or `(1 + x | g)` (Gamma, Beta, Student, LogNormal) has no fresh draw either; it used to fall back
     # to random effects at zero without a message (the estimand changes, so it is refused like the rest).
-    return fit.family isa Gamma && length(re) == 1 && _laplace_lhs_kind(re[1][1]) in (:slope, :corr)
+    return !(fit.family isa Binomial) && length(re) == 1 && _laplace_lhs_kind(re[1][1]) in (:slope, :corr)
 end
 
 # The refusal text names the terms the user fitted and the kind of shape, and offers only an escape
-# that works for the family: `simulate(...; re = :zero)` works for Gamma, but a fitted Binomial of
+# that works for the family: `simulate(...; re = :zero)` works for every family but Binomial, where a fitted Binomial of
 # these shapes does not carry trials on this base, so it is not offered there.
 function _no_fresh_draw_message(fit::DrmFit)
     _, re, _, _, _ = _split_ranef(Dict(fit.formula.forms)[:mu]; allow_phylo_slope = true)
@@ -2480,7 +2480,7 @@ function _no_fresh_draw_message(fit::DrmFit)
         "a mix of random-effect terms"
     end
     fam = string(nameof(typeof(fit.family)), "()")
-    escape = fit.family isa Gamma ?
+    escape = !(fit.family isa Binomial) ?
         "To draw responses with the random effects set to zero (a conditional draw, not a fresh draw), " *
         "call `simulate(fit; data = data, re = :zero)`; the bootstrap has no such option." :
         "`simulate(fit; data = data, re = :zero)` does not work for a Binomial fit of this shape on this " *
