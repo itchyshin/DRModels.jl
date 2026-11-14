@@ -54,6 +54,44 @@ import Distributions
         @test lrtest(full_re, corr).dof == dof(corr) - dof(full_re)
     end
 
+    @testset "a pair that adds only a correlation is refused" begin
+        # (1 | g) + (0 + x | g) against (1 + x | g): the only extra parameter is the
+        # correlation, whose null is interior, so the plain chi-square(1) is right.
+        ind = drm(bf(@formula(y ~ x + (1 | g) + (0 + x | g)), @formula(sigma ~ 1)),
+                  Gaussian(); data = d)
+        corr = drm(bf(@formula(y ~ x + (1 + x | g)), @formula(sigma ~ 1)),
+                   Gaussian(); data = d)
+        err = try lrtest(ind, corr; mixture = true); nothing catch e; e end
+        @test err isa ArgumentError
+        @test occursin("mixture = true", err.msg)
+        @test occursin("correlation", err.msg)
+        plain = lrtest(ind, corr)               # the plain test still works and is the right one
+        @test plain.dof == 1
+        # a pair with different fixed effects and one added SD is refused by name too
+        red_fx = drm(bf(@formula(y ~ 1), @formula(sigma ~ 1)), Gaussian(); data = d)
+        err = try lrtest(red_fx, full_re; mixture = true); nothing catch e; e end
+        @test err isa ArgumentError
+        @test occursin("fixed effects", err.msg)
+    end
+
+    @testset "a clearly negative statistic is refused" begin
+        # `reduced` has the true grouping (1 | g); `full` swaps it for two unrelated groupings,
+        # so the pair is not nested and the statistic is far below zero.
+        Random.seed!(7)
+        h = repeat(1:G, outer = m); k = mod.(3 .* h .+ g, 7)
+        yb = 0.3 .+ 1.2 .* randn(G)[g] .+ 0.5 .* randn(nn)
+        db = (; y = yb, h, k, g)
+        red = drm(bf(@formula(y ~ 1 + (1 | g)), @formula(sigma ~ 1)), Gaussian(); data = db)
+        notnested = drm(bf(@formula(y ~ 1 + (1 | h) + (1 | k)), @formula(sigma ~ 1)), Gaussian(); data = db)
+        plain = lrtest(red, notnested)
+        @test plain.statistic < -1.0
+        err = try lrtest(red, notnested; mixture = true); nothing catch e; e end
+        @test err isa ArgumentError
+        @test occursin("not nested or a fit did not converge", err.msg)
+        # the plain call keeps its old behaviour on the same pair: the statistic comes back as it is
+        @test plain.pvalue == 1.0
+    end
+
     @testset "Poisson inside NegBinomial2" begin
         Random.seed!(11)
         xx = randn(120)
