@@ -44,3 +44,37 @@ end
     broad=(prior=["normal(0,2)"],class=["fixef"],coef=[""])
     @test_throws ArgumentError resolve_priors(f,Gaussian();data=d,priors=broad)
 end
+
+@testset "mixed SD and broad fixed table replays resolved coefficients" begin
+    d=(y=[.2,.8,.5,1.4,1.,1.6,2.,1.3,2.2,1.8,2.4,2.1],
+       x=repeat([-1.,0.,1.],4),z=[0.,0.,1.,1.,0.,1.,0.,1.,1.,1.,0.,0.],
+       site=repeat(["a","b","c","d"],inner=3),observer=repeat(["u","v","w"],4))
+    for (f, updated) in [(bf(@formula(y~x+(1|site))), bf(@formula(y~x+z+(1|site)))),
+                         (bf(@formula(y~x+(1|site)+(1|observer))), bf(@formula(y~x+z+(1|site)+(1|observer))))]
+        table=(prior=["normal(0,2)","gamma(1,2)"],class=["fixef","ranef_sd"],coef=["","site"])
+        fit=drm(f,Gaussian();data=d,priors=table)
+        replay=update(fit,updated;data=d)
+        @test [r.coef for r in fit.penalty.rows] == ["x"]
+        @test [r.coef for r in replay.penalty.rows] == ["x"]
+        @test replay.penalty.input_table == table
+        sdrow = haskey(replay.penalty, :sd_rows) ? only(replay.penalty.sd_rows) : replay.penalty.sd_row
+        @test sdrow.group == "site"
+    end
+end
+
+@testset "mixed replay retains interleaved table target order" begin
+    d=(y=[.2,.8,.5,1.4,1.,1.6,2.,1.3,2.2,1.8,2.4,2.1],
+       x=repeat([-1.,0.,1.],4),z=[0.,0.,1.,1.,0.,1.,0.,1.,1.,1.,0.,0.],
+       site=repeat(["a","b","c","d"],inner=3),observer=repeat(["u","v","w"],4))
+    f=bf(@formula(y~x+(1|site)+(1|observer)))
+    f2=bf(@formula(y~x+z+(1|site)+(1|observer)))
+    table=(prior=["gamma(1,2)","normal(0,2)","normal(0,2)","gamma(1,2)"],
+           class=["ranef_sd","fixef","fixef","ranef_sd"],coef=["site","","(Intercept)","observer"])
+    fit=drm(f,Gaussian();data=d,priors=table)
+    replay=update(fit,f2;data=d)
+    labels(specs) = [p isa DRModels.FixedPrior ? p.coef : p.group for p in specs]
+    @test labels(fit.penalty.specs) == ["site","x","(Intercept)","observer"]
+    @test labels(replay.penalty.specs) == labels(fit.penalty.specs)
+    @test [r.coef for r in replay.penalty.rows] == ["x","(Intercept)"]
+    @test replay.penalty.input_table == table
+end

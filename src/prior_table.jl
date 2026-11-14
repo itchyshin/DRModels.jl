@@ -105,5 +105,23 @@ function _table_priors_for_model(f, fam, data, table)
     rows = _parse_prior_table(table)
     resolved = resolve_priors(f, fam; data=data, priors=table)
     groups = String[r.group for r in resolved if hasproperty(r, :group)]
-    _prior_table_specs(rows, groups)
+    specs = _prior_table_specs(rows, groups)
+    fixed_rows = filter(r -> hasproperty(r, :precision), resolved)
+    replay = AbstractDrmPrior[]
+    for spec in specs
+        if spec isa FixedPrior
+            selected = filter(fixed_rows) do row
+                row.dpar == spec.dpar && row.kind == spec.kind &&
+                    row.mean == spec.mean && row.precision == spec.precision &&
+                    row.constant == spec.constant &&
+                    (spec.coef == "all" ? row.reason == :all : row.coef == spec.coef)
+            end
+            isempty(selected) && throw(ArgumentError("prior table fixed target could not be replayed"))
+            append!(replay, [FixedPrior(row.kind, row.dpar, row.coef, nothing,
+                                        row.mean, row.precision, row.constant) for row in selected])
+        else
+            push!(replay, spec)
+        end
+    end
+    all(p -> p isa FixedPrior, replay) ? FixedPrior[p for p in replay] : replay
 end
