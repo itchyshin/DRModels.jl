@@ -71,9 +71,12 @@ boundary likelihood-ratio limits can be nonstandard [Self and Liang
 When the fit flags a coordinate as flat (the warning names it as
 `flat_coordinates`, and `bridge_diagnostics(fit).boundary` lists it), `vcov(fit)`
 holds `NaN` in that coordinate's row and column, and the other coordinates are
-inverted without it. `stderror(fit)` is `NaN` there and the Wald interval is
-unbounded. Predictions and ratios that do not use that coordinate keep their
-standard errors. `issymmetric` and `eigvals` on the full `vcov` then give `false`
+inverted without it. `stderror(fit)` and the Wald interval are `NaN` there (every
+standard error is `NaN` when every coordinate is flagged). Predictions and ratios
+that do not use that coordinate keep their standard errors. The flag does not depend
+on units: a coefficient on a covariate, or a location coefficient measured in units of
+the response, is not flagged because its covariate or response is in large or small
+units. `issymmetric` and `eigvals` on the full `vcov` then give `false`
 or an error, so call them on the unflagged block. Use a profile or bootstrap
 interval for the flagged parameter.
 
