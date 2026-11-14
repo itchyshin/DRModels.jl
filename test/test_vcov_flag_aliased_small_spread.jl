@@ -93,7 +93,9 @@ _bnd(fit) = bridge_diagnostics(fit).boundary
                 keep = setdiff(1:size(V, 1), alias)
                 @test all(isfinite, V[keep, keep])
                 @test issymmetric(V[keep, keep])
-                # the aliased coefficient keeps its Inf standard error (drmTMB and main)
+                # the aliased coefficient keeps the Inf standard error that main gives. drmTMB
+                # 0.8.1 measured on the same data: pdHess FALSE and NA for every coefficient
+                # (whole table), at covariate units 1, 1e5 and 1e-5; it never gives Inf here.
                 @test se[alias] == Inf
                 @test all(isfinite, se[keep])
                 # identified intercepts do not depend on the units of the covariate
@@ -264,5 +266,52 @@ _bnd(fit) = bridge_diagnostics(fit).boundary
         @test all(==(Inf), stderror(sep))
         @test stderror(alias_fit(1.0))[3] == Inf
         @test isnan(stderror(re_zero_fit(1.0, 1.0))[4])
+    end
+
+    @testset "unit: the cut for a dimensionless coordinate is 3e-8 times the number of observations" begin
+        unit = [false, false, false]
+        # Curvature per observation d/n between 1e-7 and 1e-3 is informative, whatever n is.
+        # This rules out a cut that is larger (for example 3e-4 times n), or a reference that
+        # grows faster than n (n squared) or slower than n (a constant or sqrt(n)).
+        for n in (30, 240, 100_000), q in (1e-7, 1e-6, 1e-5, 1e-3)
+            H = Diagonal([n, q * n, 2n])
+            @test _DVF._flat_units_free(H, unit, n) == Int[]
+        end
+        # d/n at or below 1e-8 is flat, again at every n
+        for n in (30, 240, 100_000), q in (1e-8, 1e-10, 0.0)
+            H = Diagonal([n, q * n, 2n])
+            @test _DVF._flat_units_free(H, unit, n) == [2]
+        end
+    end
+
+    @testset "unit: the final flag is the intersection of the units-free flag and the guard's own flag" begin
+        # Gaussian y ~ x with sigma ~ 1: coordinates (Intercept), x, log sigma. Only the log
+        # sigma intercept (3) is dimensionless; the other two carry units.
+        rng = StableRNG(2406)
+        n = 120
+        x = randn(rng, n)
+        y = 1 .+ 0.5 .* x .+ 0.3 .* randn(rng, n)
+        fit = _quiet(() -> drm(bf(@formula(y ~ x), @formula(sigma ~ 1)), Gaussian(); data = (; y, x)))
+        V = copy(fit.vcov)
+        @test _bnd(fit) == Int[]
+        rec(H, flat) = (H = Matrix{Float64}(H), V = copy(V), flat = flat, context = "test", rcond = 1.0, warn = false)
+        # The curvature of coordinate 3 is 1e-9, below 3e-8 times n, so the units-free rule
+        # alone would flag it. The guard flagged nothing, so the flag must stay empty.
+        H = Diagonal([1e3, 1e3, 1e-9])
+        @test _DVF._flat_units_free(H, [true, true, false], n) == [3]
+        recs = _DVF._GuardRecords()
+        push!(recs.items, rec(H, Int[]))
+        out = _DVF._reconcile_guard_flags(fit, recs)
+        @test _bnd(out) == Int[]
+        @test isequal(out.vcov, V)
+        # The guard flagged coordinate 3 and the curvature is large: the flag is removed
+        # and the covariance is the inverse of the whole matrix.
+        H = Diagonal([1e3, 1e3, 1e3])
+        recs = _DVF._GuardRecords()
+        push!(recs.items, rec(H, [3]))
+        out = _DVF._reconcile_guard_flags(fit, recs)
+        @test _bnd(out) == Int[]
+        @test all(isfinite, out.vcov)
+        @test out.vcov ≈ inv(H) rtol = 1e-10
     end
 end
