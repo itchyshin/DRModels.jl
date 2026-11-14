@@ -762,6 +762,7 @@ function _design(response::Symbol, rhs, data; schema_cache = nothing, schema_key
     # observed-row mask: a transform that is non-finite only on a dropped
     # response row is not an error.
     _require_finite_inputs(; predictors=(Xm, names), observed=observed)
+    _note_design_norms!(names, Xm)
     return y_response, Xm, names
 end
 

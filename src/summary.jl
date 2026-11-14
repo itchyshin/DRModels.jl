@@ -249,7 +249,8 @@ function Base.show(io::IO, ::MIME"text/plain", fit::DrmFit)
     if !_wald_withheld(fit)
         why = _wald_unreliable(fit)
         why === nothing || println(io, "  Wald SEs withheld: ", why, ".\n",
-            "  Std.Error, z and p are NaN; `stderror(fit)` keeps the Hessian values.")
+            "  Std.Error, z and p are NaN; `stderror(fit)` still reports the Hessian values " *
+            "(NaN at a flagged coordinate).")
     end
 
     # Residual SD on the RESPONSE scale + residual dof (issue #752). An R user

@@ -15,22 +15,26 @@ import StatsAPI: stderror, confint
 """
     stderror(fit) -> Vector{Float64}
 
-Wald standard errors (√diag of the covariance), in the fit's coefficient order.
+Wald standard errors (square root of the diagonal of the covariance), in the fit's
+coefficient order, on each parameter's working scale.
 
-A coefficient's Wald SE is defined only where its estimated variance is finite
-and positive. At a singular boundary the observed information is not
-positive-definite, so the stored covariance carries a non-positive (or
-non-finite) variance for the unidentified direction. Rather than return a silent
-`NaN` there, that coefficient reports `Inf` — an undefined, infinitely wide
-standard error — which propagates to an unbounded `(-Inf, Inf)` Wald interval.
-[`check_drm`](@ref) flags the same situation via `vcov_posdef`; drmTMB returns
-all-`NaN` from `sdreport` in this case.
+A coordinate whose estimated variance is finite and positive gets its square root.
+Two other cases are kept apart:
 
-A coordinate the fit flagged as a variance boundary has `NaN` in `vcov(fit)` (its
-curvature cannot be told from zero), and its `stderror` is `NaN` too: not computed,
-as opposed to `Inf`, unbounded. Its Wald interval is `NaN` as well. When every
-coordinate is flagged, every standard error is `NaN`. A covariance that is `NaN` throughout for another reason (`se = false`, a failed
-fit) still reports `Inf` for every coordinate.
+- `NaN` for a coordinate the Hessian guard flagged as a boundary: its curvature cannot
+  be told from zero (a random-effect SD at zero, the size of a negative binomial fitted
+  to Poisson data, a coefficient on a column that is zero), so no variance is computed
+  and `vcov(fit)` holds `NaN` in its row and column. Its Wald interval is `NaN` too. When
+  every coordinate is flagged, every standard error is `NaN`.
+- `Inf` where the estimate itself diverges (complete separation in a binomial fit) or the
+  variance is not finite and positive for another reason. The standard error is then
+  unbounded and the Wald interval is `(-Inf, Inf)`. Every coordinate is also `Inf` when
+  the covariance failed or was skipped (`se = false`), and so is the coefficient of an
+  aliased design column.
+
+So `Inf` means unbounded, and `NaN` means that no number was computed at a flagged
+boundary coordinate. [`check_drm`](@ref) flags the same situations via `vcov_posdef`;
+drmTMB returns all-`NaN` from `sdreport` when the Hessian is not positive definite.
 """
 stderror(fit::DrmFit) = _wald_withheld(fit) ? _homtoep_refuse_wald("stderror") : _stderror_flagged(fit)
 
@@ -45,6 +49,10 @@ function _stderror_flagged(fit::DrmFit)
     (fit.uncertainty !== :skipped && any(isfinite, d)) || return se
     for k in eachindex(d)
         isnan(d[k]) && (se[k] = NaN)
+    end
+    # An aliased design column is not a flagged boundary coordinate: it keeps `Inf`.
+    for k in _aliased_coords(fit)
+        se[k] = Inf
     end
     return se
 end
@@ -61,7 +69,12 @@ _display_se(fit::DrmFit) = (_wald_withheld(fit) || _wald_unreliable(fit) !== not
 # `nothing` when the printed SEs stand. `stderror()` / `vcov()` are unchanged.
 function _wald_unreliable(fit::DrmFit)
     if fit.uncertainty !== :skipped && !_twin_vcov_positive_definite(fit.vcov)
-        return "the Hessian is not positive definite"
+        d = diag(fit.vcov)
+        flagged = isempty(_aliased_coords(fit)) &&
+            (fit.uncertainty === :boundary_all || (any(isnan, d) && any(isfinite, d)))
+        return flagged ?
+            "a coordinate is flagged as a boundary (see `bridge_diagnostics(fit).boundary`)" :
+            "the Hessian is not positive definite"
     end
     status = convergence_status(fit)
     status === :converged && return nothing
