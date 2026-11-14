@@ -1,1 +1,1 @@
-| 2026-11-13 | **Two random-intercept SD priors** | Independent dense-Gaussian oracle and focused Julia tests | Focused validation recorded in after-task note; full suite and live bridge validation pending | Noether |
+| 2026-11-13 | **Two random-intercept SD priors** | Independent dense-Gaussian oracle and focused Julia tests | Focused native and live bridge validation recorded in after-task note; full Julia suite and separate bridge-level Hessian comparison pending | Noether |
