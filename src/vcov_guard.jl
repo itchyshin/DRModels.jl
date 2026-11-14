@@ -159,6 +159,24 @@ function _vcov_drop_flagged(Hs::AbstractMatrix, flat::AbstractVector{<:Integer})
     return V
 end
 
+# Coordinates whose variance in `V` is NaN: the ones the guard flagged (#1383).
+_flagged_coords(V::AbstractMatrix) = [i for i in axes(V, 1) if isnan(V[i, i])]
+
+# Row-wise delta-method variances `xᵢ' V xᵢ` for the rows of `X`. A row that puts weight
+# on a flagged coordinate gets NaN; a row that does not keeps its variance, because
+# `0 * NaN` must not remove it. With no flagged coordinate this is the plain product.
+function _delta_variances(X::AbstractMatrix, V::AbstractMatrix)
+    flagged = _flagged_coords(V)
+    isempty(flagged) && return vec(sum((X * V) .* X; dims = 2))
+    keep = setdiff(axes(V, 1), flagged)
+    Xk = X[:, keep]
+    out = vec(sum((Xk * V[keep, keep]) .* Xk; dims = 2))
+    for i in axes(X, 1)
+        any(!iszero, view(X, i, flagged)) && (out[i] = NaN)
+    end
+    return out
+end
+
 """
     _vcov_from_hessian_checked(H, data_finite; context = "") -> (V, hessian_finite)
 

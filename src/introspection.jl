@@ -181,8 +181,8 @@ fabricated zero or `NaN` standing in for it:
 - `penalized_map` — `fit.estim_method === :MAP` (`check_drm`'s
   `penalized_map`).
 - `boundary` — 1-based indices into `fit.theta`/`diag(fit.vcov)` whose stored
-  variance is non-finite or negative — the same condition [`stderror`](@ref)
-  already reports as an infinite standard error. Empty (not `missing`) when
+  variance is non-finite or negative (NaN at a coordinate the Hessian guard flagged) —
+  the coordinates [`stderror`](@ref) reports as `Inf`, or `NaN` at a flagged one. Empty (not `missing`) when
   none are.
 
 # Example

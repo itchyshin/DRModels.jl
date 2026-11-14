@@ -25,8 +25,27 @@ non-finite) variance for the unidentified direction. Rather than return a silent
 standard error — which propagates to an unbounded `(-Inf, Inf)` Wald interval.
 [`check_drm`](@ref) flags the same situation via `vcov_posdef`; drmTMB returns
 all-`NaN` from `sdreport` in this case.
+
+A coordinate the fit flagged as a variance boundary has `NaN` in `vcov(fit)` (its
+curvature cannot be told from zero), and its `stderror` is `NaN` too: not computed,
+as opposed to `Inf`, unbounded. The Wald interval of that coordinate stays
+`(-Inf, Inf)`. This applies when the rest of the covariance is finite; a covariance
+that is `NaN` throughout (`se = false`, a failed fit, or every coordinate flagged)
+still reports `Inf` for every coordinate.
 """
-stderror(fit::DrmFit) = _wald_withheld(fit) ? _homtoep_refuse_wald("stderror") : _stderror(fit)
+stderror(fit::DrmFit) = _wald_withheld(fit) ? _homtoep_refuse_wald("stderror") : _stderror_flagged(fit)
+
+# `_stderror` with NaN (not computed) at a coordinate whose variance is NaN inside an
+# otherwise computed covariance (a flagged boundary coordinate, #1383).
+function _stderror_flagged(fit::DrmFit)
+    se = _stderror(fit)
+    d = diag(fit.vcov)
+    (fit.uncertainty !== :skipped && any(isfinite, d)) || return se
+    for k in eachindex(d)
+        isnan(d[k]) && (se[k] = NaN)
+    end
+    return se
+end
 
 # Internal: the Hessian-based SEs regardless of the public Wald scope (profile
 # step sizes, plots); `_display_se` is what `coeftable` / `show` print.
@@ -515,7 +534,7 @@ end
 function _wald_ci(fit::DrmFit, level::Real, parm)
     level = _validate_ci_level(level; what="confint")
     _ci_validate_parm(fit, parm)
-    se = stderror(fit)
+    se = _wald_withheld(fit) ? _homtoep_refuse_wald("stderror") : _stderror(fit)
     z = quantile(Normal(), 1 - (1 - level) / 2)
     rows = _CIRow[]
     for ((p, r), (_, nms)) in zip(fit.blocks, fit.coefnames)

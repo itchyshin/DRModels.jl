@@ -845,7 +845,7 @@ function predict_parameters(fit::DrmFit{Tweedie}, newdata;
             if se
                 Zrow = Zg[gidx, :]
                 Vsd = view(V, r, r)
-                var_eta = vec(sum((Zrow * Vsd) .* Zrow; dims = 2))
+                var_eta = _delta_variances(Zrow, Vsd)
                 se_value = sqrt.(max.(var_eta, 0.0))
                 type === :response && (se_value .*= value)
                 out[p] = (; value, se = se_value)

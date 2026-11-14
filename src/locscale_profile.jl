@@ -509,7 +509,7 @@ function _ls_profile_ci_result(kind, y, Xμ, Xψ, gidx, G, Q, θ̂; idx::Int, le
     if se === nothing
         V = whitened ? _ls_whitened_vcov(kind, y, Xμ, Xψ, gidx, G, Q, θ̂, Zη, Zψ) :
                        _ls_vcov(kind, y, Xμ, Xψ, gidx, G, Q, θ̂, Zη, Zψ)
-        se = (V === nothing || V[idx, idx] ≤ 0) ? abs(θ̂[idx]) + 1.0 : sqrt(V[idx, idx])
+        se = (V === nothing || !(V[idx, idx] > 0)) ? abs(θ̂[idx]) + 1.0 : sqrt(V[idx, idx])
     end
     step0 = max(z * se, 1e-3)
     p = length(θ̂); free = [k for k in 1:p if k != idx]

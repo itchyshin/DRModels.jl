@@ -3126,7 +3126,9 @@ end
 # by |dμ/dη| at η̂_i. Centralised so the point value and its SE stay consistent.
 function _delta_se(Xp::AbstractMatrix, Vp::AbstractMatrix, η::AbstractVector,
                    type::Symbol, fam, p::Symbol)
-    se_link = [sqrt(max(0.0, dot(view(Xp, i, :), Vp, view(Xp, i, :)))) for i in 1:size(Xp, 1)]
+    se_link = isempty(_flagged_coords(Vp)) ?
+        [sqrt(max(0.0, dot(view(Xp, i, :), Vp, view(Xp, i, :)))) for i in 1:size(Xp, 1)] :
+        sqrt.(max.(0.0, _delta_variances(Xp, Vp)))
     type === :link && return se_link
     return abs.(_link_deriv(fam, p, η)) .* se_link
 end
@@ -3239,7 +3241,7 @@ function predict_parameters(fit::DrmFit, newdata; type::Symbol = :response,
             if se
                 Zrow = Zg[gidx, :]
                 Vsd = view(V, r, r)
-                var_eta = vec(sum((Zrow * Vsd) .* Zrow; dims = 2))
+                var_eta = _delta_variances(Zrow, Vsd)
                 se_value = sqrt.(max.(var_eta, 0.0))
                 if type === :response
                     se_value .*= fit.family isa Binomial && !structured_binomial ?
@@ -3272,7 +3274,7 @@ function predict_parameters(fit::DrmFit, newdata; type::Symbol = :response,
             if se
                 Zrow = Zg[gidx, :]
                 Vsd = view(V, r, r)
-                var_eta = vec(sum((Zrow * Vsd) .* Zrow; dims = 2))
+                var_eta = _delta_variances(Zrow, Vsd)
                 se_value = sqrt.(max.(var_eta, 0.0))
                 if type === :response
                     se_value .*= fit.family isa Binomial ?
