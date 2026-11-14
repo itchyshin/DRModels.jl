@@ -107,6 +107,48 @@ end
     end
 end
 
+# Ported from the earlier Poisson and Gamma guard (maintainer decision, 13 Nov 2026): the two extra cases.
+# (1) All 16 ordered pairs of `spatial`, `animal`, `relmat` and `phylo` (same kind twice included) are
+# refused by name on Poisson and on Gamma, whichever term comes first.
+# (2) One structured spatial term still fits on both routes, so the guard refuses only the second term.
+@testset "Poisson and Gamma: all 16 ordered pairs are refused; one spatial term still fits" begin
+    rng = Random.MersenneTwister(20261113)
+    G = 12; m = 10
+    g = repeat(1:G, inner = m); n = length(g)
+    h = [mod1(i * 5 + (i ÷ 7), G) for i in 1:n]
+    x = randn(rng, n)
+    pos = rand(rng, G, 2) .* 6
+    Dm = [sqrt(sum(abs2, pos[k, :] .- pos[l, :])) for k in 1:G, l in 1:G]
+    C = _sm_corr(exp.(-Dm ./ 2) + 1e-6 * I)
+    tree = random_balanced_tree(G; branch_length = 0.2)
+    mu = exp.(0.3 .+ 0.3 .* x .+ 0.4 .* (cholesky(Symmetric(C)).L * randn(rng, G))[g])
+    kwfor(k) = k === :spatial ? (; coords = pos) : k === :animal ? (; A = C) :
+               k === :relmat ? (; K = C) : (; tree = tree)
+    kinds = (:spatial, :animal, :relmat, :phylo)
+    for (fam, y) in ((Poisson(), Float64.([rand(rng, Dst.Poisson(mi)) for mi in mu])),
+                     (Gamma(), Float64.([rand(rng, Dst.Gamma(4.0, mi / 4.0)) for mi in mu])))
+        dat = (; y, x, g, h)
+        fname = string(nameof(typeof(fam)))
+        npairs = 0
+        for k1 in kinds, k2 in kinds
+            f = eval(Meta.parse("@formula(y ~ x + $k1(1 | g) + $k2(1 | h))"))
+            bff = fam isa Gamma ? bf(f, @formula(sigma ~ 1)) : bf(f)
+            msg = _sm_refusal(() -> drm(bff, fam; data = dat, se = false, merge(kwfor(k1), kwfor(k2))...))
+            @test msg !== nothing
+            if msg !== nothing
+                @test occursin("the $fname route fits one structured term per formula", msg)
+                @test occursin("`$k1(… | g)`", msg) && occursin("`$k2(… | h)`", msg)
+            end
+            npairs += 1
+        end
+        @test npairs == 16
+        f1 = @formula(y ~ x + spatial(1 | g))
+        fit1 = drm(fam isa Gamma ? bf(f1, @formula(sigma ~ 1)) : bf(f1), fam; data = dat, se = false, coords = pos)
+        @test isfinite(loglikelihood(fit1))
+        @test length(re_sd(fit1)) == 1
+    end
+end
+
 @testset "two structured terms still fit where the route supports them" begin
     Random.seed!(20261111)
     G = 15; m = 6; n = G * m
