@@ -8,8 +8,17 @@
 #   fixtures/laplace_more_shapes_parity/ref_binom_{probit,cloglog}_slope.toml  <- parity/gen_laplace_more_shapes_parity.R
 #   fixtures/laplace_sigma_formula_parity/ref_zob_sigma_x1.toml                <- parity/gen_laplace_sigma_formula_parity.R
 # The bound is 1e-6, the one test_fitted_conditional.jl and test_laplace_fitted_modes.jl use.
+#
+# A third group covers the Binomial `(1 | g)` + `sd(g) ~ gx` routes (logit and probit, default integrator).
+# They keep their modes through the same fitter, so `fitted(fit)` is conditional there too; before it threw.
+# That route has no Laplace option here, and the default quadrature differs from drmTMB's Laplace fit by about
+# 3e-4 in `fitted`, so the drmTMB values (fixtures/binomial_sd_fitted_parity/, <- parity/gen_binomial_sd_fitted_parity.R)
+# are used in two steps: the conditional value at drmTMB's own estimates, computed here by Newton's method on
+# the joint density, equals drmTMB's `fitted` at 1e-6; and the package's `fitted` equals the same computation at
+# its own estimates at 1e-8. The package value is also within 1e-3 of drmTMB's.
 using DRModels, Test, TOML, LinearAlgebra, Statistics
 using SpecialFunctions: erfc, loggamma
+import ForwardDiff
 
 const _LM_TOL = 1e-6
 
@@ -118,5 +127,46 @@ end
         eta = fit.scales[:cond_fit_eta_re]
         bm, zo, co = fit.scales[:beta_mu], fit.scales[:zoi], fit.scales[:coi]
         @test cond ≈ (1 .- zo) .* (1 ./ (1 .+ exp.(-(log.(bm ./ (1 .- bm)) .+ eta)))) .+ zo .* co
+    end
+end
+
+# Conditional fitted values by Newton's method on the joint log density of one group's random intercept, with
+# the group SD exp(th[3] + th[4] gx) and the mean eta0 = th[1] + th[2] x1.
+function _lm_sdreg_conditional(th, d, link)
+    pf = link === :probit ? (e -> 0.5 * erfc(-e / sqrt(2))) : (e -> 1 / (1 + exp(-e)))
+    out = zeros(length(d.x1))
+    for g in unique(d.g)
+        idx = findall(==(g), d.g)
+        tau = exp(th[3] + th[4] * d.gx[idx[1]])
+        eta0 = th[1] .+ th[2] .* d.x1[idx]
+        lp(b) = sum(d.s[idx] .* log.(pf.(eta0 .+ b)) .+ d.fl[idx] .* log.(1 .- pf.(eta0 .+ b))) - 0.5 * b^2 / tau^2
+        b = 0.0
+        for _ in 1:100
+            step = ForwardDiff.derivative(lp, b) / ForwardDiff.derivative(x -> ForwardDiff.derivative(lp, x), b)
+            b -= step
+            abs(step) < 1e-14 && break
+        end
+        out[idx] .= pf.(eta0 .+ b)
+    end
+    return out
+end
+
+@testset "fitted(): Binomial (1 | g) with sd(g) ~ gx keeps the modes" begin
+    d = _lm_data("binomial_sd_fitted_parity"; ints = [:s, :fl])
+    for (id, link) in (("binom_logit_sd_gx", :logit), ("binom_probit_sd_gx", :probit))
+        @testset "$id" begin
+            ref = _lm_ref("binomial_sd_fitted_parity", id)
+            fit = drm(bf(@formula(cbind(s, fl) ~ x1 + (1 | g)), @formula(sd(g) ~ gx)),
+                      DRModels.Binomial(link); data = d)
+            cond = fitted(fit)
+            @test length(cond) == nobs(fit) == length(ref["fitted"])
+            @test maximum(abs.(_lm_sdreg_conditional(Float64.(ref["theta"]), d, link) .- Float64.(ref["fitted"]))) < _LM_TOL
+            @test maximum(abs.(cond .- _lm_sdreg_conditional(fit.theta, d, link))) < 1e-8
+            @test maximum(abs.(cond .- Float64.(ref["fitted"]))) < 1e-3
+            zero = fitted(fit; re = :zero)
+            @test zero == fit.means[:mu]
+            @test maximum(abs.(cond .- zero)) > 1e-3
+            @test residuals(fit) ≈ fit.obs[:mu] .- cond
+        end
     end
 end

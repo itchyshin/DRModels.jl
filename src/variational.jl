@@ -65,13 +65,13 @@ function _marginal_method(s::Symbol)
     t === :LAPLACE && throw(ArgumentError(
         "marginal = :$s is not available on this route. `:Laplace` forces the Laplace " *
         "approximation that drmTMB uses and is implemented for an ordinary random intercept " *
-        "`(1 | g)` on Poisson/Binomial/NegBinomial2/Gamma/Beta/Tweedie/Student/LogNormal (routed by `drm` to the " *
+        "`(1 | g)` on Poisson/Binomial/NegBinomial2/Gamma/Beta/Tweedie/Student/LogNormal/ZeroOneBeta (routed by `drm` to the " *
         "family's own Laplace front end) and for a Gaussian random " *
         "intercept on `sigma`, `sigma ~ 1 + (1 | g)`. Here use :LA (the default integrator " *
         "for the route; on a single random intercept `(1 | g)` that is 32-node Gauss–Hermite " *
         "quadrature, not Laplace), :VA (variational, #136), or :AGHQ (1-D Liu–Pierce, " *
         "Poisson (1|g) only, #448)."))
-    throw(ArgumentError("unknown marginal method `:$s`; use :LA (the documented default integrator for this route), :Laplace (TMB-convention Laplace, ordinary `(1 | g)` on Poisson/Binomial/NegBinomial2/Gamma/Beta/Tweedie/Student/LogNormal, or a Gaussian random intercept on `sigma`), :VA (variational, #136), or :AGHQ (1-D Liu–Pierce, Poisson (1|g) only, #448)"))
+    throw(ArgumentError("unknown marginal method `:$s`; use :LA (the documented default integrator for this route), :Laplace (TMB-convention Laplace, ordinary `(1 | g)` on Poisson/Binomial/NegBinomial2/Gamma/Beta/Tweedie/Student/LogNormal/ZeroOneBeta, or a Gaussian random intercept on `sigma`), :VA (variational, #136), or :AGHQ (1-D Liu–Pierce, Poisson (1|g) only, #448)"))
 end
 
 # Route-or-reject for the public `marginal = :AGHQ` front end (#448, #761). The
