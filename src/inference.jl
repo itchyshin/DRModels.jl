@@ -1956,9 +1956,10 @@ rather than refitting with default settings.
     from the CONDITIONAL `simulate(fit)` (random effects held at `b = 0`), which
     collapses variance-component intervals (#459), and it does so **without a
     warning**. Known cases, kept as `@test_broken` in
-    `test/test_marginal_simulator_fallback_997.jl`: crossed ordinary bars
-    `(1 | g1) + (1 | g2)` on the mean, a mean grouping column missing from `data`,
-    and a correlated slope `(1 + x | g)`. Only a `meta_V(...)` + random-effect fit
+    `test/test_marginal_simulator_fallback_997.jl`: a mean grouping column missing
+    from `data`, a correlated slope `(1 + x | g)`, and several ordinary bars that
+    repeat a group or mix intercepts with slopes. (Crossed ordinary intercepts on
+    distinct groups, `(1 | g1) + (1 | g2)`, now get a proper marginal draw.) Only a `meta_V(...)` + random-effect fit
     throws. Pass the same `data` (and `tree` / `K` / `A`) used to fit, and treat
     variance-component intervals from these fits as unreliable.
 """
@@ -3635,6 +3636,95 @@ function _simulate_ainv_to_A(fit::DrmFit, data, A, Ainv)
     return Acov
 end
 
+# Several ORDINARY random intercepts on the mean, `(1 | g) + (1 | g2) [+ ...]`: the
+# fields are independent, so a fresh draw is one `N(0, sd_k^2)` vector per grouping
+# factor, summed on the linear-predictor scale (response scale for Gaussian). `re_sd`
+# is keyed by group, so only intercepts on DISTINCT groups are covered; a slope term, a
+# repeated group, an `sd(g) ~ ...` part or a ZeroOneBeta mean is not, and returns
+# `nothing` (the caller then refuses, as before).
+# Binomial / BetaBinomial draws need the trials per row. A fit from a route that did not
+# store them (`fit.scales[:trials]`, for example a fit saved by an earlier version) gets
+# them from the response columns of `data`
+# (0/1 response: all ones; `cbind(successes, failures)`: their sum). Returns the fit
+# unchanged for other families or when the trials are stored, and `nothing` when the
+# trials cannot be rebuilt from `data` (the caller then refuses, naming `data =`).
+function _fit_with_simulate_trials(fit::DrmFit, data)
+    (fit.family isa Binomial || fit.family isa BetaBinomial) || return fit
+    haskey(fit.scales, :trials) && return fit
+    fit.formula isa DrmFormula || return nothing
+    # The fitter's own parse of the response (`_binomial_response`), so the rebuild accepts
+    # exactly what the fit accepted: non-negative integer successes and failures (rows with
+    # zero trials included) or a 0/1 vector, and refuses everything else.
+    tr = try
+        Vector{Float64}(last(_binomial_response(fit.formula, data)))
+    catch err
+        err isa InterruptException && rethrow(err)
+        return nothing
+    end
+    (length(tr) == fit.nobs && all(isfinite, tr)) || return nothing
+    scales = merge(fit.scales, Dict{Symbol,Vector{Float64}}(:trials => tr))
+    return DrmFit(
+        fit.family, fit.blocks, fit.coefnames, fit.theta, fit.vcov,
+        fit.loglik, fit.nobs, fit.converged, fit.means, fit.obs, scales,
+        fit.formula, fit.nll, fit.nllgrad, fit.ranef,
+        fit.estim_method, fit.reml_loglik, fit.ml_loglik, fit.marginal,
+        fit.phylo_penalty, fit.penalty, fit.iterations, fit.phylo_scale,
+        fit.uncertainty, fit.geometry,
+    )
+end
+
+function _ordinary_multi_marginal_simulator(fit::DrmFit, data, re)
+    isempty(_sd_parts(fit.formula)) && isempty(_sdphylo_parts(fit.formula)) || return nothing
+    fit.family isa ZeroOneBeta && return nothing
+    fit = _fit_with_simulate_trials(fit, data)
+    fit === nothing && return nothing
+    groups = Symbol[g for (_, g) in re]
+    length(unique(groups)) == length(groups) || return nothing
+    all(t -> first(_re_kind(t[1])) === :intercept, re) || return nothing
+    sds = re_sd(fit)
+    sds isa AbstractDict || return nothing
+    comps = Tuple{Vector{Int},Int,Float64}[]
+    for g in groups
+        (hasproperty(data, g) && haskey(sds, g)) || return nothing
+        labels = getproperty(data, g)
+        any(ismissing, labels) && return nothing
+        gidx, G = _group_index(labels; col = g)
+        length(gidx) == fit.nobs || return nothing
+        sd = Float64(sds[g])
+        isfinite(sd) || return nothing
+        push!(comps, (gidx, G, sd))
+    end
+    draw_re(rng) = sum(sd .* randn(rng, G)[gidx] for (gidx, G, sd) in comps)
+    if fit.family isa Gaussian
+        mu_fixed = try
+            v = Vector{Float64}(predict(fit, data))
+            length(v) == length(fit.means[:mu]) ? v : nothing
+        catch e
+            e isa InterruptException && rethrow()
+            nothing
+        end
+        mu_fixed === nothing && return nothing
+        sigma = Vector{Float64}(_scale_vector(fit, :sigma))
+        sig = _sigma_ranef_components(fit, data)
+        n = length(mu_fixed)
+        return function (rng)
+            σ = sig === nothing ? sigma : sigma .* exp.(sig.τ .* randn(rng, sig.G)[sig.gidx])
+            return mu_fixed .+ draw_re(rng) .+ σ .* randn(rng, n)
+        end
+    end
+    eta_fixed = try
+        Vector{Float64}(predict(fit, data; type = :link))
+    catch e
+        e isa InterruptException && rethrow()
+        nothing
+    end
+    (eta_fixed === nothing || length(eta_fixed) != fit.nobs) && return nothing
+    return function (rng)
+        mu_star = _mean_response(fit.family, eta_fixed .+ draw_re(rng))
+        return _simulate_once(fit, rng; mu = mu_star)
+    end
+end
+
 function _marginal_simulator_build(fit::DrmFit, data; K=nothing, A=nothing,
                                    Ainv=nothing, tree=nothing, tree1=nothing,
                                    tree2=nothing, coords=nothing)
@@ -3964,6 +4054,7 @@ function _marginal_simulator_build(fit::DrmFit, data; K=nothing, A=nothing,
     else
         # Ordinary independent scalar effect. A slope uses the supplied numeric
         # covariate as its observation-level loading on the group coefficient.
+        length(re) > 1 && return _ordinary_multi_marginal_simulator(fit, data, re)
         length(re) == 1 || return nothing
         re_kind, re_slope = _re_kind(re[1][1])
         re_kind in (:intercept, :slope) || return nothing

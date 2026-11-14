@@ -3146,6 +3146,16 @@ function _predict_data(nd::NamedTuple, responses::Symbol...)
     return merge(nd, NamedTuple(extras))
 end
 
+# Replace a non-numeric response column of `newdata` by a finite numeric dummy of the same
+# length (the response is not used by `predict`). Numeric and absent columns are untouched.
+function _predict_ignore_label_response(nd::NamedTuple, response::Symbol)
+    haskey(nd, response) || return nd
+    col = getproperty(nd, response)
+    col isa AbstractVector || return nd
+    any(x -> x isa Union{AbstractString,Symbol}, col) || return nd
+    return merge(nd, NamedTuple{(response,)}((zeros(length(col)),)))
+end
+
 function predict(fit::DrmFit, newdata; type::Symbol = :response, se::Bool = false)
     se && _is_fixed_prior_fit(fit) && fit.estim_method === :MAP && throw(ArgumentError("predict: standard errors are not qualified for $(_prior_kind_label(fit)) fits"))
     f = fit.formula
@@ -3209,6 +3219,10 @@ function predict(fit::DrmFit, newdata; type::Symbol = :response, se::Bool = fals
         # #1006: an `offset(...)` the fitter applied (coefficient fixed at 1) is
         # stripped from the design and added to η, exactly as at fit time.
         fixed_mu, off = _predict_offset(fit, fixed_mu, nd, :mu)
+        # A label response (strings/symbols) in `newdata` is never read by `predict`; the
+        # CumulativeLogit fit accepted labels, so a table that still carries the label column
+        # (as drmTMB's ordered factor does) must not reach the numeric response reader.
+        fit.family isa CumulativeLogit && (nd = _predict_ignore_label_response(nd, f.response))
         ndr = _predict_data(nd, f.response)
         Xnew, η = _predict_design(fit, f.response, fixed_mu, ndr, :mu, f.schema_cache, off;
                                   drop_intercept = fit.family isa CumulativeLogit)
@@ -3496,6 +3510,9 @@ function predict_parameters(fit::DrmFit, newdata; type::Symbol = :response,
     type in (:response, :link) || error("predict_parameters: `type` must be :response or :link")
     forms = Dict(f.forms)
     nd = NamedTuple(pairs(newdata))
+    # Same label-response handling as `predict` (CumulativeLogit univariate fits only).
+    fit.family isa CumulativeLogit && f isa DrmFormula &&
+        (nd = _predict_ignore_label_response(nd, f.response))
     nrows = length(first(values(nd)))
     V = se ? vcov(fit) : nothing
     # A real LHS to dummy into `_design` for each parameter's RHS. The univariate
@@ -3778,7 +3795,9 @@ Random effects (`re`, #1092):
   `coords` for a structured term, as in [`bootstrap_ci`](@ref)), because the
   fit does not keep the grouping columns. Without `data`, or for a
   random-effect structure the marginal simulator does not cover, `simulate`
-  throws an `ArgumentError` rather than fall back to `b = 0`.
+  throws an `ArgumentError` rather than fall back to `b = 0`. `data` must hold
+  the same rows in the same order as the data used for the fit. This is not
+  checked: rows in a different order give wrong draws without an error.
 - `re = :zero` draws with every random effect set to zero (population level),
   which was the only behaviour before #1092. It needs no `data`. drmTMB has no
   such mode; its `re.form = NULL` (conditional on the fitted modes) has no
@@ -3869,16 +3888,39 @@ function _simulate_needs_marginal(fit::DrmFit)
     return false
 end
 
+# Names of the `(… | g)` grouping columns, for the `simulate(fit)` refusal text.
+# Best effort: returns "" when none can be read off the formula.
+function _simulate_group_hint(fit::DrmFit)
+    f = fit.formula
+    (f isa DrmFormula || f isa BivariateDrmFormula) || return ""
+    names = String[]
+    try
+        for (_, rhs) in f.forms
+            for t in (rhs isa Tuple ? rhs : (rhs,))
+                if t isa FunctionTerm && t.f === (|) && length(t.args) == 2
+                    g = string(t.args[2])
+                    g in names || push!(names, g)
+                end
+            end
+        end
+    catch e
+        e isa InterruptException && rethrow()
+        return ""
+    end
+    isempty(names) && return ""
+    return " (" * join(names, ", ") * ")"
+end
+
 # The default random-effect draw: the bootstrap's marginal simulator (#459,
 # #462). Refuse rather than draw at b = 0 when it cannot be built (#1092).
 function _simulate_marginal_draw(fit::DrmFit, data; K = nothing, A = nothing,
                                  tree = nothing, coords = nothing)
     data === nothing && throw(ArgumentError(
-        "simulate: this fit has random effects, and the default `re = :marginal` " *
-        "draws fresh ones for every replicate, which needs the data the model was " *
-        "fitted to: pass `data = ...` (and `tree` / `K` / `A` / `coords` for a " *
-        "structured term), or pass `re = :zero` to draw with the random effects " *
-        "set to zero"))
+        "simulate: this fit has random effects, and the fit does not keep the " *
+        "grouping columns$(_simulate_group_hint(fit)). Use " *
+        "`simulate(fit; data = <the data frame you fitted with>)` " *
+        "(add `tree` / `K` / `A` / `coords` for a structured term), or " *
+        "`simulate(fit; re = :zero)` to draw with the random effects set to zero"))
     sim = _marginal_simulator(fit, data; K, A, tree, coords)
     sim === nothing && throw(ArgumentError(
         "simulate: no marginal (fresh random effect) simulator is available for this " *

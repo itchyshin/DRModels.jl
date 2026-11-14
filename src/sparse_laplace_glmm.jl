@@ -3872,7 +3872,8 @@ end
 
 function _fit_crossed_mean_laplace(fam, kind, aux, n::Int, Xμ, gidx, G, hidx, Hh,
                                    nmμ, labels, g_tol; θβ0 = nothing,
-                                   se::Bool = false, polish_iterations::Int = 0)
+                                   se::Bool = false, polish_iterations::Int = 0,
+                                   extra_scales = Dict{Symbol,Vector{Float64}}())
     pμ = size(Xμ, 2)
     last_b = zeros(G + Hh)
 
@@ -4012,7 +4013,7 @@ function _fit_crossed_mean_laplace(fam, kind, aux, n::Int, Xμ, gidx, G, hidx, H
     names = [:mu => nmμ, :resd => labels]
     means = Dict(:mu => [_laplace_mean(kind, dot(@view(Xμ[i, :]), θ̂[1:pμ])) for i in 1:n])
     obs = Dict(:mu => [_laplace_obs(kind, aux, i) for i in 1:n])
-    scales = Dict{Symbol,Vector{Float64}}()
+    scales = Dict{Symbol,Vector{Float64}}(extra_scales)  # e.g. Binomial `:trials`, read by `simulate`
     # fitted-row modes for `fitted(fit)` (conditional default): fresh mode solve at θ̂ (step tolerance 1e-8)
     let (bm, _, _, okm) = _crossed_mean_mode(kind, aux, Xμ * θ̂[1:pμ], gidx, G, hidx, Hh,
                                              clamp.(θ̂[pμ+1:pμ+2], -8.0, 3.0);
@@ -4279,7 +4280,8 @@ function _fit_binomial_crossed_laplace(fam, s, ntr, Xμ, comps, nmμ, g_tol; se:
     return _fit_crossed_mean_laplace(
         fam, Val(:binomial), aux, length(s), Xμ, comps[1][2], comps[1][3],
         comps[2][2], comps[2][3], nmμ, [comps[1][4], comps[2][4]], g_tol;
-        θβ0 = θβ0, se = se, polish_iterations = polish_iterations
+        θβ0 = θβ0, se = se, polish_iterations = polish_iterations,
+        extra_scales = Dict(:trials => Float64.(nint))   # `simulate` needs the trials
     )
 end
 
@@ -4331,7 +4333,8 @@ rule (`K_h` nodes per axis, default `_crossed_aghq_default_kh(H)`, at most
 """
 function _fit_crossed_mean_aghq(fam, ll, n::Int, Xμ, comps, nmμ, g_tol; θ0,
                                 meanfun, obsvec, K_g::Int = _CROSSED_AGHQ_KG,
-                                K_h::Union{Nothing,Int} = nothing, se::Bool = true)
+                                K_h::Union{Nothing,Int} = nothing, se::Bool = true,
+                                extra_scales = Dict{Symbol,Vector{Float64}}())
     length(comps) == 2 && all(==(1.0), comps[1][1]) && all(==(1.0), comps[2][1]) ||
         throw(ArgumentError("marginal = :AGHQ on crossed random effects supports exactly two " *
                             "random intercepts `(1 | g) + (1 | h)`"))
@@ -4373,7 +4376,7 @@ function _fit_crossed_mean_aghq(fam, ll, n::Int, Xμ, comps, nmμ, g_tol; θ0,
     names = [:mu => nmμ, :resd => labels]
     means = Dict(:mu => [meanfun(dot(@view(Xμ[i, :]), θ̂[1:pμ])) for i in 1:n])
     obs = Dict(:mu => Vector{Float64}(obsvec))
-    scales = Dict{Symbol,Vector{Float64}}()
+    scales = Dict{Symbol,Vector{Float64}}(extra_scales)
     fit = DrmFit(fam, blocks, names, θ̂, Matrix(V), -nllhat, n, converged, means, obs, scales)
     _warn_laplace_clamp(fit)   # #959: say when a clamp is active
     return _withiterations(_withmarginal(_withnll(fit, nll, grad!), :AGHQ), Optim.iterations(res))
@@ -4489,7 +4492,8 @@ function _fit_binomial_crossed_aghq(fam, s, ntr, Xμ, comps, nmμ, g_tol; se::Bo
                                   θ0 = _crossed_aghq_start(lap, size(Xμ, 2)),
                                   meanfun = η -> _laplace_mean(Val(:binomial), η),
                                   obsvec = [_laplace_obs(Val(:binomial), aux, i) for i in eachindex(sint)],
-                                  K_g = K_g, K_h = K_h, se = se)
+                                  K_g = K_g, K_h = K_h, se = se,
+                                  extra_scales = Dict(:trials => Float64.(nint)))
 end
 
 """

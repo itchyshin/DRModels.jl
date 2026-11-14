@@ -212,7 +212,14 @@ function _ordinary_resd_block(fit::DrmFit)
     for (p, r) in fit.blocks
         (p === :resd && length(r) == 1) || continue
         nm = last(first(cn for cn in fit.coefnames if first(cn) === :resd))[1]
-        return (range = r, axis = _is_logsigma_re(fit, nm) ? :sigma : :mu)
+        axis = _is_logsigma_re(fit, nm) ? :sigma : :mu
+        # A sigma-axis block of the constant-SD sigma routes (a slope `(0 + x | g)`, a correlated
+        # `(1 + x | g)`, two groups, mean + sigma on different groups; `_sigma_blocks_shape`)
+        # is not an ordinary random intercept: the intercept-only quadrature below does not
+        # apply to a slope. Those fits keep their stored population mean and sigma.
+        axis === :sigma && fit.formula isa DrmFormula &&
+            _sigma_blocks_shape(fit.formula, fit.family) !== nothing && return nothing
+        return (range = r, axis = axis)
     end
     return nothing
 end
@@ -277,10 +284,10 @@ end
 
 # Precomputed marginalisation context for `_cdf_value`, or `nothing` when the
 # fit has no single ordinary random intercept, or the family has no verified
-# mapping for its axis: the links above for the mean, Gaussian only for log σ
-# (`drm()` fits `sigma ~ 1 + (1 | g)` for Gaussian only and refuses every
-# non-Gaussian sigma random effect; `_fit_sigma_axis_re` has no caller, so the
-# non-Gaussian σ-axis case below is a defensive guard, not a reachable shape).
+# mapping for its axis: the links above for the mean, Gaussian only for log σ.
+# A random effect on sigma of any other family (LogNormal, Gamma, NB2 and
+# BetaBinomial `sigma ~ ... + (1 | g)`) and the sigma slopes get no mixture:
+# their residuals use the stored population mean and sigma.
 function _ranef_marginal_mix(fit::DrmFit, fam, μ)
     blk = _ordinary_resd_block(fit)
     blk === nothing && return nothing
