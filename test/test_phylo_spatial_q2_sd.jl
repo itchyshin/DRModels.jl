@@ -153,7 +153,7 @@ end
         bad = replace(nwk, "t01:1.5" => "t01:2.5")
         @test_throws r"ultrametric" drm(f, Gaussian(); data = fx.data, tree = bad)
         @test_throws r"ultrametric" drm(f, Poisson(); data = merge(fx.data, (; y = round.(abs.(fx.data.y)))), tree = bad)
-        # Wrong provider keywords (the entry guard refuses an unused `K`).
+        # Wrong provider keywords: an unused `K` next to a tree, and both `K` and `coords` on a spatial term.
         @test_throws r"`K = …` was supplied" drm(f, Gaussian(); data = fx.data, tree = nwk, K = Cphy)
         fs = _psq2_formula(:spatial, Gaussian())
         @test_throws r"both `K = …` and `coords = …`" drm(fs, Gaussian(); data = fx.data, coords, K = Csp)
