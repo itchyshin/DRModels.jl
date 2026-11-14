@@ -187,9 +187,12 @@ distributional parameters:
   accurate integration (adaptive quadrature), while drmTMB maximises a Laplace
   approximation, so the two packages stop at slightly different parameters. The
   drmTMB `fitted()` is the Laplace value, not an error on either side. A fit made with
-  `marginal = :Laplace` on one of those families keeps no random-effect modes, so the
-  default `fitted(fit)` refuses it: call `fitted(fit; re = :zero)`, or refit with the
-  default marginal. Pass
+  `marginal = :Laplace` on one ordinary `(1 | g)` of Poisson, NegBinomial2, Binomial, Gamma
+  or Beta keeps the inner-mode solve at the fitted parameters, so `fitted(fit)` is conditional
+  there and agrees with drmTMB's to 1e-6 on the cells checked (the Laplace fit is the same
+  objective as drmTMB's). The same holds for a Binomial `(1 + x | g)` block with a
+  `:probit` or `:cloglog` link and for a `ZeroOneBeta` `(1 | g)` (here the modes move
+  only the Beta component of the mixture mean). Pass
   `fitted(fit; re = :zero)` for the population-level value with every random
   effect at zero, which is what `predict(fit, newdata)` returns on the GLM-type
   routes (and what `fitted(fit)` returned before the default changed). The
@@ -197,7 +200,7 @@ distributional parameters:
   `phylo(1 | g)` Laplace fits of Poisson, Binomial, BetaBinomial, NB2, Gamma and Beta
   keep their modes, so `fitted(fit)` is conditional there. A route that does not keep
   the modes needed for the conditional value (for example a `relmat` or `animal` count
-  fit, `ZeroOneBeta` with a random effect, bivariate fits with random effects,
+  fit, `ZeroOneBeta` with a structured random effect, bivariate fits with random effects,
   a random effect on `sigma` when the mean depends on `sigma` (except the `LogNormal`
   `sigma ~ ... + (1 | g)` fit, which keeps its `sigma` modes), the crossed
   adaptive-quadrature opt-in routes) refuses the

@@ -2810,6 +2810,11 @@ function _fitted_component_mu(fit::DrmFit, re::Symbol, who::Symbol)
     if fit.family isa CumulativeLogit
         return _cumulative_score(sc[:ordinal_eta] .+ eta, sc[:ordinal_cuts], length(sc[:ordinal_cuts]) + 1)
     end
+    if fit.family isa ZeroOneBeta && all(k -> haskey(sc, k), (:beta_mu, :zoi, :coi))
+        # the stored `mu` is the mixture mean; the modes act on the logit of the Beta component
+        bm, zo, co = sc[:beta_mu], sc[:zoi], sc[:coi]
+        return [(1 - zo[i]) * _logistic(log(bm[i] / (1 - bm[i])) + eta[i]) + zo[i] * co[i] for i in eachindex(mu)]
+    end
     lk = _fitted_link(fit.family)
     lk === nothing && throw(ArgumentError(_fitted_no_modes_message(fit, who)))
     return [lk[2](lk[1](mu[i]) + eta[i]) for i in eachindex(mu)]

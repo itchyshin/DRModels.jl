@@ -2468,12 +2468,13 @@ function _fit_binomial_sd_regression(fam::Binomial, s, ntr, Xmu, Zgs, nmsds,
     ncor = correlated ? q * (q - 1) ÷ 2 : 0
     corr_range = offset + 1:offset + ncor
     offset += ncor
-    function nll(theta)
+    # `nll_modes(theta, bcache)` is the objective with the per-group modes written into `bcache`
+    # (cold start: the caller passes zeros). `nll` is the same objective with a fresh cache.
+    function nll_modes(theta, bcache)
         betamu = @view theta[1:pmu]
         eta0 = Xmu * betamu
         sdgroup = hcat((_binomial_sd_scale(Zgs[j] * @view(theta[sd_ranges[j]])) for j in 1:q)...)
         ll = (i, eta) -> _binomial_link_ll(fam, nint[i], sint[i], eta, lc[i])
-        bcache = zeros(eltype(theta), q, G)
         total = zero(eltype(theta))
         correlation_eta = correlated ? @view(theta[corr_range]) : eltype(theta)[]
         Lcorr = correlated ? _binomial_partial_correlation_cholesky(correlation_eta, q) : nothing
@@ -2485,11 +2486,13 @@ function _fit_binomial_sd_regression(fam::Binomial, s, ntr, Xmu, Zgs, nmsds,
             end
             value, bhat = _aghq_group_logint(ll, members[gi], eta0, Zre, Lg,
                                                rule, @view(bcache[:, gi]))
+            all(isfinite, bhat) || Threads.atomic_add!(_AGHQ_MODE_RESETS, 1)   # `fitted()` must not read a reset mode
             bcache[:, gi] .= ifelse.(isfinite.(bhat), bhat, zero(eltype(theta)))
             total += value
         end
         return -total
     end
+    nll(theta) = nll_modes(theta, zeros(eltype(theta), q, G))
     theta0 = zeros(offset)
     pbar = clamp(sum(s) / max(sum(ntr), 1), 1e-3, 1 - 1e-3)
     theta0[1] = _binomial_start(fam, pbar)
@@ -2577,6 +2580,8 @@ function _fit_binomial_sd_regression(fam::Binomial, s, ntr, Xmu, Zgs, nmsds,
     for j in 1:q
         is_constant[j] || (scales[target_blocks[j]] = sdobs[j])
     end
+    bcache_fit = zeros(q, G)
+    _record_cond_fit_aghq!(scales, th -> nll_modes(th, bcache_fit), thetahat, bcache_fit, gidx, Zre)   # fitted-row modes for `fitted(fit)`
     fit = DrmFit(fam, blocks, names, thetahat, V, -nll(thetahat), n,
         drm_optim_converged(res), means, obs, scales)
     return _withiterations(_withnll(fit, nll), Optim.iterations(res))
