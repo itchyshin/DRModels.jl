@@ -267,7 +267,7 @@ end
 # fit's boundary variance components correctly (#639) — the per-parameter naming
 # gap only affected `_fixed_effect_structure` (:mu1/:mu2/… vs the univariate :mu).
 const _VARIANCE_COMPONENT_BLOCKS =
-    (:resd, :resid, :recov, :phylocov, :resd_mu, :resd_sigma, :sd, :sd_phylo)
+    (:resd, :resid, :recov, :phylocov, _BIV_RE_GROUP_BLOCK, :resd_mu, :resd_sigma, :sd, :sd_phylo)
 
 # Variance-component block symbols present in `fit` (with a non-empty range).
 function _variance_component_blocks(fit::DrmFit)
@@ -551,7 +551,8 @@ likelihood. `nobs(fit)` still counts rows, zero-weight rows included.
 
 Prior weights are implemented on the fixed-effect ML routes of the univariate
 families, on Gaussian and Poisson with one `(1 | g)`, on Gaussian `meta_V(v)`,
-and on the residual bivariate Gaussian (see `test/test_weights_re_parity.jl`).
+on the residual bivariate Gaussian (see `test/test_weights_re_parity.jl`), and on the bivariate
+Gaussian with a `(1 | p | g)` random-intercept pair (ML and REML; see `test/test_biv_re_weights.jl`).
 Any other route refuses `weights =` with an `ArgumentError` (#931).
 
 Before #931 step (b), this accessor returned `ones(nobs(fit))` for every fit,

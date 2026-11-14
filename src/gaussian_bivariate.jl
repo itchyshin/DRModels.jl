@@ -120,6 +120,49 @@ With no structured-effect marker, this is the residual-correlation model:
 `mu1`, `mu2`, `sigma1`, `sigma2`, and residual `rho12` each have their own fixed
 effect formula.
 
+With an ordinary `(1 | p | g)` written in BOTH `mu1` and `mu2` (same label and
+group), this fits a 2x2 group-level covariance (two SDs and a group correlation),
+kept separate from the residual `rho12`; `method = :ML` or `:REML`. It is a
+dense per-group likelihood (own route, file `gaussian_bivariate_re.jl`): `mu1`
+and `mu2` may have different fixed-effect designs, and `sigma1`, `sigma2`, `rho12`
+may have covariates. The group covariance is `fit.ranef.Sigma_g` and its
+log-Cholesky coefficients are the `Sigma_g:L11/L21/L22` entries of the
+`:phylocov` block. `tree`, `K`, `A`, `coords`, and `spatial_range` are refused on
+this route. `fit.means` holds `X b` only; `fitted(fit)` and `residuals(fit)` are
+conditional on the group effects, as in drmTMB (`fitted(fit; re = :zero)` gives `X b`),
+also with `weights` and with partly observed rows. The group effects themselves are in `ranef(fit)`.
+The fit keeps the best of three starts for the group covariance (the default,
+and group SD 0.2 with correlation +0.99 or -0.99); the default result is kept
+unless another start converged with a log-likelihood higher by more than 1e-6.
+This is not a global search. `bootstrap_*` refits use the same three starts.
+`simulate(fit; data)` and `bootstrap_*` draw fresh group effects from
+`Sigma_g` and need the complete fitting `data` (no rows dropped). `weights` (one per
+row of `data`) multiply each row's whole log density, ML and REML, as in drmTMB; rows
+with a missing response drop with their weights, so the vector must have one entry per
+row of `data`, missing rows included (a vector already cut to the kept rows is refused).
+`confint(fit; method = :profile)` is refused on a REML fit of this route, because the
+stored objective is the ML likelihood; use `method = :wald`, the bootstrap, or an ML fit.
+With `miss_control(response = "include")`, rows with one response missing stay in the fit
+with their weights (the observed cell only). A random effect on the means AND one on
+`sigma1`/`sigma2` in the same model, and `V`, are refused.
+
+With an ordinary `(1 | p | g)` written in BOTH `sigma1` and `sigma2` (same label and
+group, for example `sigma1 = @formula(sigma1 ~ 1 + (1 | p | g))`) and no random effect
+on the means, this fits a 2x2 group covariance of the two log-sigma intercepts,
+estimated by the Laplace approximation as in drmTMB (own route, file
+`gaussian_bivariate_sigma_re.jl`); `method = :ML` only. The group covariance, its
+coefficient block and the `ranef` modes follow the mean route above. `fit.scales`
+holds `exp(Xs c)` without the group effects: the conditional scale of row `i` is
+`fit.scales[:sigma1][i] * exp(u[1, g_i])` with `u = fit.ranef.effects[group]`.
+`simulate(fit; data)` and `bootstrap_*` redraw the group effects and need the
+complete fitting `data`.
+The fit is the best of three starts for the group covariance (independent, and correlated
++0.99 and -0.99); a start that stops with a numerical error is skipped with a warning, and the
+fit fails only if all three fail. The best of three starts is not a global search: on some small
+data sets a better mode exists that none of the three reaches (drmTMB can miss it too). Example: on
+one small data set with 6 unbalanced groups, all three starts and drmTMB end at a group covariance of
+zero, while a better optimum with a log-likelihood 1.70 higher exists.
+
 `q4_f_reltol` (default `1e-7`) is the relative objective change at which the q=4 ML
 optimiser stops (it ignores `q4_g_tol` near a flat ridge). The default can stop up to
 about `1e-3` in log-likelihood short of the optimum on flat q=4 ridges; use
@@ -183,10 +226,39 @@ fit = drm(
     method in (:ML, :REML) ||
         throw(ArgumentError("drm: `method` must be :ML (default) or :REML (got :$method)"))
     rhs = Dict(f.forms)
+    rhs, ordinary_re = _extract_ordinary_biv_re(rhs)   # `(1 | p | g)` on mu1 and mu2
+    rhs, sigma_re = _extract_ordinary_biv_re(rhs, (:sigma1, :sigma2))   # `(1 | p | g)` on sigma1 and sigma2
+    ordinary_re !== nothing && sigma_re !== nothing && throw(ArgumentError(
+        "drm: a `(1 | p | g)` random effect on the means AND one on `sigma1`/`sigma2` in the same " *
+        "bivariate model is not supported in DRModels.jl yet; use one of the two."))
     fixed, structured_marker = _bivariate_q4_marker(rhs)
     (structured_marker !== nothing && structured_marker[1] in (:structured_q2, :structured_q4) &&
      structured_marker[2] === :spatial && K !== nothing && coords !== nothing) &&
         _refuse_spatial_k_and_coords(true)
+    if ordinary_re !== nothing || sigma_re !== nothing
+        structured_marker === nothing || throw(ArgumentError(
+            "drm: an ordinary `(1 | p | g)` random effect cannot be combined with structured " *
+            "phylo/relmat/animal/spatial markers in the same bivariate model."))
+        V === nothing || throw(ArgumentError(
+            "drm: known sampling covariance `V` is not supported with the bivariate ordinary random-effect route."))
+        for (kw, val) in (:tree => tree, :K => K, :A => A, :coords => coords, :spatial_range => spatial_range)
+            val === nothing || throw(ArgumentError(
+                "drm: `$kw` belongs to the structured (phylo / relmat / animal / spatial) routes and is not " *
+                "used by the bivariate ordinary `(1 | p | g)` random-effect route; remove it " *
+                "(it would be silently ignored here)."))
+        end
+        for (kw, val, dflt) in ((:q4_g_tol, q4_g_tol, 1e-3), (:q4_f_reltol, q4_f_reltol, 1e-7),
+                                (:q4_iterations, q4_iterations, 300), (:q4_n_newton, q4_n_newton, 40),
+                                (:q4_vcov, q4_vcov, true))
+            val == dflt || throw(ArgumentError(
+                "drm: `$kw` tunes the structured q=4 routes and is not used by the bivariate ordinary " *
+                "`(1 | p | g)` random-effect route; remove it (it would be silently ignored here)."))
+        end
+        sigma_re !== nothing && return _fit_bivariate_sigma_re(f, fam, data, fixed, sigma_re;
+                                                               g_tol = Float64(g_tol), method = method)
+        return _fit_bivariate_ordinary_re(f, fam, data, fixed, ordinary_re;
+                                          g_tol = Float64(g_tol), method = method)
+    end
     # A8: known bivariate sampling covariance (drmTMB's meta_vcov_bivariate) is
     # consumed by the residual route only in this slice.
     V !== nothing && structured_marker !== nothing &&
@@ -725,9 +797,12 @@ function _split_bivariate_q4_rhs(rhs, param::Symbol)
     structured = nothing
     for t in terms
         if t isa FunctionTerm && t.f === (|)
-            throw(ArgumentError("bivariate q=4 structured fits support only `phylo`/`relmat`/`animal`/`spatial(1 | group)` markers, not ordinary random effects " *
-                "(`(1 | g)` or `(1 | p | g)` on `$param`). A bivariate Gaussian with ordinary correlated random effects is not supported in DRModels.jl; " *
-                "drmTMB fits it (`drmTMB(bf(mu1 = y1 ~ x + (1|p|g), mu2 = y2 ~ x + (1|p|g), ...), family = biv_gaussian())`)."))
+            throw(ArgumentError("bivariate q=4 structured fits support only `phylo`/`relmat`/`animal`/`spatial(1 | group)` markers on `$param`; " *
+                "an ordinary random effect (`(1 | g)`, `(1 | p | g)` or a slope such as `(1 + x | p | g)`) cannot be added to that route. " *
+                "DRModels.jl fits an ordinary correlated random effect on a bivariate model in one shape: the Gaussian family with an intercept pair " *
+                "`(1 | p | g)` that has the same label and grouping factor on mu1 and mu2 (ML or REML), or on sigma1 and sigma2 (ML), " *
+                "and no structured marker in the formula. Anything else (slope terms, one-sided or unlabelled `(1 | g)` terms, the Student-t family, " *
+                "a pair on the means and on the scales together) is not supported here. Check drmTMB's documentation for what drmTMB itself supports."))
         elseif t isa FunctionTerm && t.f === meta_V
             error("bivariate q=4 structured fits do not support `meta_V` markers")
         elseif t isa FunctionTerm && (t.f === relmat || t.f === animal || t.f === phylo || t.f === spatial)

@@ -2727,9 +2727,17 @@ end
 
 # Bivariate and other multi-mean fits: `fit.means` is a Dict of per-response
 # vectors that already holds the used rows only. A bivariate fit with a
-# random or structured effect has no per-row modes recorded, so the conditional
+# random or structured effect (other than the ordinary `(1 | p | g)` route, handled first) has no
+# per-row modes recorded, so the conditional
 # default refuses instead of returning the population values.
 function _fitted_nonunivariate(fit::DrmFit, re::Symbol)
+    # Bivariate Gaussian with an ordinary `(1 | p | g)` in mu1 and mu2: the group effects at the
+    # fitted parameters are the exact BLUPs, kept in `ranef(fit)`; the conditional mean adds them.
+    if re === :conditional && _is_biv_ordinary_re_fit(fit)
+        U = fit.ranef.effects[Symbol(fit.ranef.group)]
+        gi = fit.ranef.group_index
+        return Dict(:mu1 => fit.means[:mu1] .+ U[1, gi], :mu2 => fit.means[:mu2] .+ U[2, gi])
+    end
     if re === :conditional && _fit_mean_has_random_term(fit)
         throw(ArgumentError(_fitted_no_modes_message(fit, :fitted)))
     end

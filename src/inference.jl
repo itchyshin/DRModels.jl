@@ -348,6 +348,7 @@ function profile_result(fit::DrmFit; level::Real=0.95, threads::Bool=false, parm
     _is_fixed_prior_fit(fit) && fit.estim_method === :MAP && throw(ArgumentError("profile_result: likelihood profiles are not qualified for $(_prior_kind_label(fit)) fits"))
     level = _validate_ci_level(level; what="profile_result")
     _refuse_selected_optimizer_refit(fit, "profile_result")
+    _refuse_reml_profile_biv_re(fit, "profile_result")
     threads && _binomial_sd_threaded_profile_unsupported(fit) &&
         throw(ArgumentError("profile_result: threaded profiling is not supported for structured Binomial random-effect SD fits; " *
                             "use `threads = false`."))
@@ -3836,6 +3837,9 @@ function _marginal_simulator_build(fit::DrmFit, data; K=nothing, A=nothing,
     let sim = _sigma_blocks_marginal_simulator(fit, data)
         sim === nothing || return sim
     end
+    # Bivariate Gaussian with an ordinary `(1 | p | g)`: fresh 2-vector group effect per group.
+    _is_biv_ordinary_re_fit(fit) && return _biv_ordinary_re_simulator(fit, data)
+    _is_biv_sigma_re_fit(fit) && return _biv_sigma_re_simulator(fit, data)
     fit.nll isa LocScaleObjective &&
         return _ls_marginal_simulator(fit, data; K, A, tree, coords)
     # NB2/Gamma structured sigma fields (src/sigma_structured_laplace.jl)
