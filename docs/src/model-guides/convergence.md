@@ -150,6 +150,20 @@ inference routes. Wald intervals remain available when standard errors were
 computed. Solver agreement alone does not establish
 parameter identification.
 
+SkewNormal fixed-effect fits restart on their own. The slant can have two or three
+local optima, so after the default start the fit also runs from four fixed starts.
+A start replaces the fit so far only if Optim reports convergence, its
+log-likelihood is higher by more than 1e-5, and the estimate is an interior optimum
+(positive definite Hessian, finite standard errors, none inflated). A restart
+therefore never gives a lower log-likelihood, an unconverged fit or a degenerate
+one, and a fit whose default start is already best is unchanged. The restarts use no
+random numbers and are skipped when `control` sets `start`, `multi_start`, `maxit`
+or `optimizer`. They multiply the run time of the fit by about 8 at n = 100 and
+n = 1000 and by 6 to 10 at n = 10000. This is a multi-start, not a global search.
+A large slant estimate (above about 20) with a standard error of similar size means
+the likelihood is flat in the slant; it occurs with or without the restarts.
+`fit.scales[:q2_restarts]` records what happened.
+
 `se = false` works on every route:
 
 ```julia
