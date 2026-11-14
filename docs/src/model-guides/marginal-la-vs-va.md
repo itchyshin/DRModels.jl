@@ -67,6 +67,9 @@ drmTMB's integration rule.
 `Binomial(link = :probit)` and `Binomial(link = :cloglog)` accept `marginal = :Laplace` for one `(1 | g)` or one
 correlated block `(1 + x | g)`; the default `:LA` log-likelihood sits 0.008 to 0.03 above drmTMB's there.
 
+`:Laplace` also accepts one `(1 | g)` on the mean of Gamma, Beta, NegBinomial2 and ZeroOneBeta when `sigma` has fixed-effect
+covariates (`sigma ~ x1`); there the default `:LA` log-likelihood sits 0.01 to 0.06 above drmTMB's on the test data.
+
 The gap used to be larger. Before version 0.7.2, `:LA` integrated an ordinary
 `(1 | g)` on a fixed 32-node grid on the prior scale. On ten test datasets with a
 moderate family `sigma` (0.3 to 0.5) and a random-intercept SD of 0.6, that

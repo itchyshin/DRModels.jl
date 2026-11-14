@@ -31,8 +31,9 @@
 #   * exactly one ordinary `(1 | g)` on `mu` (Poisson may add one `offset(...)`,
 #     #941); no `(1 + x | g)`, `(0 + x | g)`,
 #     crossed/multiple terms, structured markers, `meta_V`, `zi`/`hu`;
-#   * NegBinomial2 / Gamma / Beta with `sigma ~ 1` (no random effect on sigma,
-#     no coupled location–scale `(1 | p | g)`);
+#   * NegBinomial2 / Gamma / Beta with `sigma ~ 1` or fixed-effect `sigma` covariates (no
+#     random effect on sigma, no coupled location–scale `(1 | p | g)`); covariates on
+#     `sigma` use the adaptive quadrature at one node, which is the Laplace approximation;
 #   * maximum likelihood only (`method = :REML` is refused).
 #
 # The family `drm` methods delegate here with one line placed before any of
@@ -97,8 +98,8 @@ function _ordinary_laplace_reject(fam, what)
     throw(ArgumentError(
         "marginal = :Laplace is not available for $(nameof(typeof(fam)))() with $what. " *
         "This route covers exactly one ordinary random intercept `(1 | g)` on the mean for " *
-        "Poisson, Binomial, NegBinomial2, Gamma and Beta (`sigma ~ 1` for the three scale " *
-        "families), fitted by maximum likelihood. Omit `marginal` (the default `:LA`) for " *
+        "Poisson, Binomial, NegBinomial2, Gamma and Beta (fixed-effect `sigma` formulas " *
+        "for the three scale families), fitted by maximum likelihood. Omit `marginal` (the default `:LA`) for " *
         "other models."))
 end
 
@@ -198,10 +199,17 @@ function _drm_ordinary_laplace(f::DrmFormula, fam; data, tree = nothing,
                                                 se = se, offset = off)
         else
             _, Xσ, nmσ = _design(f.response, get(rhs, :sigma, ConstantTerm(1)), data)
-            (size(Xσ, 2) == 1 && all(==(1.0), @view Xσ[:, 1])) ||
-                _ordinary_laplace_reject(fam, "a non-constant `sigma` formula")
-            fit = _fit_scale_ordinary_laplace(fam, y, Xμ, gidx, G, nmμ, nmσ, grp, g_tol; se = se,
-                                              offset = _offset_for_fit(fam, offset_term, data, length(y)))
+            if size(Xσ, 2) == 1 && all(==(1.0), @view Xσ[:, 1])
+                fit = _fit_scale_ordinary_laplace(fam, y, Xμ, gidx, G, nmμ, nmσ, grp, g_tol; se = se,
+                                                  offset = _offset_for_fit(fam, offset_term, data, length(y)))
+            else
+                # Fixed-effect covariates on `sigma`: the sparse kernel holds one dispersion, so the group
+                # integral is the existing adaptive quadrature at one node, which is the Laplace approximation.
+                offset_term === nothing || _refuse_offset_route(fam, "`marginal = :Laplace` with a `sigma` formula")
+                fit = fam isa NegBinomial2 ? _fit_negbin2_ranef(fam, y, Xμ, Xσ, gidx, G, nmμ, nmσ, grp, g_tol; K = 1) :
+                      fam isa Gamma ? _fit_gamma_ranef(fam, y, Xμ, Xσ, gidx, G, nmμ, nmσ, grp, g_tol; K = 1) :
+                      _fit_beta_ranef(fam, y, Xμ, Xσ, gidx, G, nmμ, nmσ, grp, g_tol; K = 1)
+            end
         end
     end
     return _withformula(_withmarginal(fit, :Laplace), f)
