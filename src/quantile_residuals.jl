@@ -581,6 +581,14 @@ function _quantile_residuals(fit::DrmFit, rng)
         end
     else
         @inbounds for i in 1:n
+            if isnan(y[i])
+                # A row dropped for a missing response: NaN, as the other
+                # discrete families give. The draw is still taken so the
+                # stream matches the Poisson and NegBinomial2 routes.
+                rand(rng)
+                u[i] = NaN
+                continue
+            end
             yi = _pit_obs(fam, i; obs = fit.obs, scales = fit.scales)
             a = _cdf_value(fam, i, yi - 1; μ = μ, scales = fit.scales, obs = fit.obs, gsis = gsis, mix = mix)
             b = _cdf_value(fam, i, yi; μ = μ, scales = fit.scales, obs = fit.obs, gsis = gsis, mix = mix)

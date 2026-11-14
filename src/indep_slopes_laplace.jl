@@ -361,6 +361,7 @@ function _fit_indep_re_laplace(fam, kind::Val, y, Xμ, Xσ, Xν, comps, nmμ, nm
     scales = has_sigma ? Dict(:sigma => exp.(Xσ * θ̂[(pμ+1):(pμ+pσ)])) : Dict{Symbol,Vector{Float64}}()
     has_nu && (scales[nublock] = _indep_nu_scale(kind, Xν * θ̂[(pμ+pσ+1):k0]))
     means, scales = _indep_post(kind, yv, means, scales, ημ̂, θ̂, pμ, pσ)
+    kind isa Val{:binomial} && (scales[:trials] = Float64[t for (_, t) in yv])   # per-row trials, as every other Binomial route
     if _indep_records_modes(kind)
         # Conditional modes at θ̂ (a fresh inner solve from zero, the same solver as the objective),
         # kept as the per-row contribution Z b̂ for `fitted(fit)` (conditional default).
