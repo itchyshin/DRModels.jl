@@ -125,9 +125,9 @@ and `mu2` may have different fixed-effect designs, and `sigma1`, `sigma2`, `rho1
 may have covariates. The group covariance is `fit.ranef.Sigma_g` and its
 log-Cholesky coefficients are the `Sigma_g:L11/L21/L22` entries of the
 `:phylocov` block. `tree`, `K`, `A`, `coords`, and `spatial_range` are refused on
-this route. `fit.means` holds `X b` only, so `residuals(fit)` are MARGINAL
-(`y - X b`), unlike drmTMB's `residuals()`, which are conditional on the fitted
-group effects; the group effects themselves are in `ranef(fit)`.
+this route. `fit.means` holds `X b` only; `fitted(fit)` and `residuals(fit)` are
+conditional on the group effects, as in drmTMB (`fitted(fit; re = :zero)` gives `X b`),
+also with `weights` and with partly observed rows. The group effects themselves are in `ranef(fit)`.
 The fit keeps the best of three starts for the group covariance (the default,
 and group SD 0.2 with correlation +0.99 or -0.99); the default result is kept
 unless another start converged with a log-likelihood higher by more than 1e-6.
@@ -139,8 +139,9 @@ with a missing response drop with their weights, so the vector must have one ent
 row of `data`, missing rows included (a vector already cut to the kept rows is refused).
 `confint(fit; method = :profile)` is refused on a REML fit of this route, because the
 stored objective is the ML likelihood; use `method = :wald`, the bootstrap, or an ML fit.
-A random effect on the means AND one on `sigma1`/`sigma2` in the same model, `V`, and
-incomplete response rows (`miss_control(response = "include")`) are refused.
+With `miss_control(response = "include")`, rows with one response missing stay in the fit
+with their weights (the observed cell only). A random effect on the means AND one on
+`sigma1`/`sigma2` in the same model, and `V`, are refused.
 
 With an ordinary `(1 | p | g)` written in BOTH `sigma1` and `sigma2` (same label and
 group, for example `sigma1 = @formula(sigma1 ~ 1 + (1 | p | g))`) and no random effect
