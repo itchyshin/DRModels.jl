@@ -248,10 +248,27 @@ function _drm_negbinomial2_fit(f::DrmFormula, fam::NegBinomial2; data, tree = no
         # `sigma ~ 1` keeps the scalar-dispersion spine; a covariate `sigma`
         # formula routes to the per-observation log-dispersion path (#164).
         kind, grp = st
+        # `_split_ranef` reports only the FIRST structured marker. Without this check a second one
+        # (`spatial(1 | g) + animal(1 | h)`, `phylo(1 | g) + relmat(1 | h)`, ...) is dropped and the
+        # one-term fit is returned as if both had been fitted. Refuse it by name instead.
+        structured_all = _collect_structured(rhs[:mu])
+        length(structured_all) == 1 || throw(ArgumentError(
+            "NegBinomial2() fits one structured random effect (`phylo`, `relmat`, `animal` or `spatial`) " *
+            "on the mean, but the formula has $(length(structured_all)): " *
+            join(("$k(1 | $gname)" for (k, gname) in structured_all), ", ") *
+            ". A second structured term is not implemented here (it would be dropped, not fitted), " *
+            "so it is refused. Keep one structured term, or use `Gaussian()`, which fits two."))
         labels = getproperty(data, grp)
         if kind === :phylo
             tree === nothing && error("phylo(1 | $grp) needs `tree = …`")
             return _withformula(_fit_nb2_phylo_laplace(fam, y, Xμ, Xσ, labels, tree, nmμ, nmσ, grp, g_tol; se = se), f)
+        elseif kind === :spatial && K === nothing && coords !== nothing
+            # Coordinate spatial intercept: drmTMB's fixed-range kernel, exp(-d / r) + 1e-6 I with
+            # r the median positive pairwise distance, exactly as the Poisson and Gamma routes.
+            _, Gsp = _group_index(labels)
+            Csp = _spatial_covariance_from_coords(grp, Gsp, coords, nothing)
+            return _withformula(_fit_nb2_relmat_laplace(fam, y, Xμ, Xσ, Csp, labels, nmμ, nmσ, grp, g_tol;
+                                                          se = se, normalize = true), f)
         elseif kind === :relmat || kind === :animal || kind === :spatial
             # General user-supplied PD covariance C on the mean intercept
             # (relatedness / animal model / precomputed spatial), with the NB2
@@ -356,6 +373,14 @@ function _drm_negbin2_sd_regression(f::DrmFormula, fam::NegBinomial2; data,
         data, tree, K, A, Ainv, coords, g_tol, se, nAGQ)
     isempty(_sdphylo_parts(f)) || return _drm_negbin2_phylo_sd_regression(
         f, fam; data, tree, K, A, Ainv, coords, g_tol, se, nAGQ)
+    # Same check as the no-`sd()` route: a second structured term would be dropped, so refuse it.
+    structured_all = _collect_structured(Dict(f.forms)[:mu])
+    length(structured_all) <= 1 || throw(ArgumentError(
+        "NegBinomial2() fits one structured random effect (`phylo`, `relmat`, `animal` or `spatial`) " *
+        "on the mean, but the formula has $(length(structured_all)): " *
+        join(("$k(1 | $gname)" for (k, gname) in structured_all), ", ") *
+        ". A second structured term is not implemented here (it would be dropped, not fitted), " *
+        "so it is refused. Keep one structured term, or use `Gaussian()`, which fits two."))
     spatial_sd_target = any(t.target.level === :spatial for t in _sd_target_parts(f))
     (tree === nothing && (coords === nothing || spatial_sd_target)) ||
         throw(ArgumentError("NegBinomial2 `sd(group) ~ …` supports ordinary effects, " *
