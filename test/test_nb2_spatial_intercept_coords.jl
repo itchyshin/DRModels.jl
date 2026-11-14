@@ -62,8 +62,8 @@ end
             e
         end
         @test err isa ArgumentError
-        @test err isa ArgumentError && occursin("one structured random effect", err.msg)
-        @test err isa ArgumentError && occursin("$k1(1 | g)", err.msg) && occursin("$k2(1 | h)", err.msg)
+        @test err isa ArgumentError && occursin("one structured term per formula", err.msg)
+        @test err isa ArgumentError && occursin("$k1(… | g)", err.msg) && occursin("$k2(… | h)", err.msg)
         npairs += 1
     end
     @test npairs == 16
@@ -100,8 +100,8 @@ end
             e
         end
         @test err isa ArgumentError
-        @test err isa ArgumentError && occursin("one structured random effect", err.msg)
-        @test err isa ArgumentError && occursin(second_term, err.msg)
+        @test err isa ArgumentError && occursin("one structured term per formula", err.msg)
+        @test err isa ArgumentError && occursin(replace(second_term, r"\(.* \|" => "(… |"), err.msg)
     end
     # the one-term fits on this route still work
     for rhs in ("spatial(1 | g)", "spatial(0 + x | g)")
