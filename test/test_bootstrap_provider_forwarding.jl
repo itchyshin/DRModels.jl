@@ -1,5 +1,5 @@
 using DRModels
-using Test, Random, LinearAlgebra
+using Test, Random, LinearAlgebra, Statistics
 
 @testset "coordinate provider survives every bootstrap surface" begin
     rng = MersenneTwister(20260831)
@@ -18,9 +18,9 @@ using Test, Random, LinearAlgebra
     @test fit.converged
 
     # Independent small-model oracle: the marginal bootstrap draw must use the
-    # fitted coordinate-spatial range, not an identity matrix or a fixed K.
-    ρfit = exp(only(coef(fit, :range)))
-    Cfit = exp.(-D ./ ρfit) + 1e-8I
+    # coordinate-spatial kernel (drmTMB's fixed median-distance range), not an identity matrix.
+    Dpos = [D[i, j] for i in 1:G for j in (i + 1):G if D[i, j] > 0]
+    Cfit = exp.(-D ./ median(Dpos)) + 1e-6I
     seed = 699
     oracle_rng = MersenneTwister(seed)
     ustar = only(values(re_sd(fit))) .* (cholesky(Symmetric(Cfit)).L * randn(oracle_rng, G))
@@ -53,9 +53,11 @@ using Test, Random, LinearAlgebra
         g_tol=1e-6)
     @test [(r.param, r.coef, r.lower, r.upper) for r in rows_summary] ==
           [(r.param, r.coef, r.lower, r.upper) for r in fit_result.summary]
-    @test rows_ci == [(param=r.param, coef=r.coef, estimate=r.estimate,
-                      lower=r.lower, upper=r.upper)
-                     for r in fit_result.summary]
+    @test [(param=r.param, coef=r.coef, estimate=r.estimate, lower=r.lower, upper=r.upper)
+           for r in rows_ci] ==
+          [(param=r.param, coef=r.coef, estimate=r.estimate, lower=r.lower, upper=r.upper)
+           for r in fit_result.summary]
+    @test all(r -> r.scale in (:link, :log_sd), rows_ci)    # the `scale` field of every interval row
 
     bridge = drm_bridge_inference(
         formula=Dict("mu" => "y ~ x + spatial(1 | site)",

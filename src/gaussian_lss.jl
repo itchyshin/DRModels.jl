@@ -320,6 +320,7 @@ function _fit_ranef_gaussian_lss(fam::Gaussian, y, Xμ, Xσ, Zg, gidx, G, nmμ, 
         [C[k] / (1 / exp(2 * ησb[k]) + S[k]) for k in 1:G]
     end
     re = Dict(Symbol(grp) => blup)
+    _record_cond_fit!(scales, (w === nothing ? ones(n) : w) .* blup[gidx])   # fitted-row modes for `fitted(fit)`
     fit = _withranef(_withnll(DrmFit(fam, blocks, names, θ̂, V, -nll(θ̂), n,
                                      converged, means, obs, scales), nll_ml), re)
     if reml
@@ -625,6 +626,7 @@ function _fit_structured_gaussian_lss(fam::Gaussian, y, Xμ, Xσ, Zg, gidx, G, K
     # conditional mean u = D b, so the row contribution is w_i * u[g(i)] and the
     # exported mode is b = u ./ sd_group, the same latent scale as every other
     # family's mode (b ~ N(0, C), effect = sd * b).
+    _record_cond_fit!(scales, w .* blup[gidx])   # fitted-row modes for `fitted(fit)`
     report_sd && !reml && _attach_conditional_structured!(
         scales, w .* blup[gidx], blup ./ exp.(Zg * θ̂[(pμ+pσ+1):end]))
     fit = _withranef(_withnll(DrmFit(fam, blocks, names, θ̂, V, -nll(θ̂), n,
@@ -639,8 +641,8 @@ end
 # Matches native drmTMB (`drm_spatial_coords_precision`): exponential
 # correlation exp(-d / range) with range = the median positive pairwise
 # distance (maximum if the median is not positive), plus 1e-6 on the diagonal.
-# The range is FIXED, unlike the intercept-only `_fit_spatial_gaussian`, which
-# estimates it. Rows of `coords` follow the first-seen levels of the group.
+# The range is FIXED, on the intercept-only route too (it is never estimated).
+# Rows of `coords` follow the first-seen levels of the group.
 function _gaussian_spatial_sd_kernel(coords, G::Int, grp::Symbol)
     # A 1-D transect may be a plain vector: read it as the G-by-1 column it means.
     cmat = coords isa AbstractVector{<:Real} ? reshape(Float64.(coords), :, 1) :
@@ -655,6 +657,9 @@ function _gaussian_spatial_sd_kernel(coords, G::Int, grp::Symbol)
         "at least two sites must have distinct coordinates."))
     rng = median(pos)
     (isfinite(rng) && rng > 0) || (rng = maximum(pos))
+    # Remember the fixed range for the fit being built: `_drm_run_controlled` stores it in
+    # `fit.scales[:spatial_range]` so `summary` can print it and `coef(fit, :range)` can return it.
+    task_local_storage(_SPATIAL_RANGE_KEY, Float64(rng))
     return exp.(-Dd ./ rng) + 1e-6 * I
 end
 

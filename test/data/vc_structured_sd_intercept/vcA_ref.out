@@ -1,0 +1,7 @@
+drmTMB 0.8.1 R 4.6.1 
+logLik -281.1827097
+$mu
+animal(1 | g) 
+    0.1649602 
+
+sd_animal 0.1649602

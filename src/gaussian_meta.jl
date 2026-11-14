@@ -20,11 +20,12 @@ Random intercepts on the mean combine with `meta_V`, e.g.
 `bf(y ~ x + meta_V(v) + phylo(1 | species) + (1 | study), sigma ~ 1)` (with
 `tree = …`); `relmat` / `animal` take `K = …` / `A = …`. The marginal is
 `N(Xβ, diag(v + σ²) + Σₖ sₖ² Zₖ Cₖ Zₖᵀ)`, drmTMB's model. Each random component
-needs its own grouping column; slopes, `spatial`, and REML are not implemented.
+needs its own grouping column; slopes and `spatial` are not implemented. `method = :REML` is available for `meta_V` alone
+or with ordinary `(1 | g)` intercepts and a constant `σ`.
 """
 meta_V(v) = v     # identity stub; the marker is intercepted during formula parsing
 
-function _fit_meta_gaussian(fam::Gaussian, y, Xμ, Xσ, vv, nmμ, nmσ, g_tol)
+function _fit_meta_gaussian(fam::Gaussian, y, Xμ, Xσ, vv, nmμ, nmσ, g_tol; reml::Bool = false, prior_w = nothing)
     n = length(y)
     # #1014: same rule as the random-effect route below. A negative variance
     # used to be absorbed by σ² and the fit reported as converged.
@@ -33,6 +34,10 @@ function _fit_meta_gaussian(fam::Gaussian, y, Xμ, Xσ, vv, nmμ, nmσ, g_tol)
             "($(length(vv)) given for $n rows)"))
     _require_meta_V_variances(vv, "…")
     pμ, pσ = size(Xμ, 2), size(Xσ, 2)
+    # drmTMB `weights`: row i's log-density (including the known variance) is multiplied by
+    # prior_w[i]. `nothing` leaves the unweighted arithmetic untouched.
+    pw = prior_w === nothing ? nothing : Vector{Float64}(prior_w)
+    sw = pw === nothing ? n : sum(pw)
     function nll(θ)
         βμ = θ[1:pμ]; βσ = θ[pμ+1:pμ+pσ]
         ημ = Xμ * βμ; ησ = Xσ * βσ                 # ησ = log σ_i
@@ -40,23 +45,36 @@ function _fit_meta_gaussian(fam::Gaussian, y, Xμ, Xσ, vv, nmμ, nmσ, g_tol)
         @inbounds for i in 1:n
             var = vv[i] + exp(2 * ησ[i])           # known sampling var + heterogeneity σ²
             r = y[i] - ημ[i]
-            s += log(var) + r * r / var
+            s += (pw === nothing ? 1.0 : pw[i]) * (log(var) + r * r / var)
         end
-        return 0.5 * s + 0.5 * n * log(2π)
+        return 0.5 * s + 0.5 * sw * log(2π)
     end
     βμ0 = Xμ \ y
+    # REML (opt-in): drmTMB puts β_μ in TMB's random block with a flat prior, so the
+    # Laplace step is exact for this Gaussian-linear mean and
+    #   nll_REML = nll_ML + ½ logdet(Xμ′Ω⁻¹Xμ) − ½ pμ log(2π),   Ω = diag(vᵢ + σᵢ²),
+    # constants included, so the reported logLik is drmTMB's REML logLik.
+    function nll_reml(θ)
+        T = eltype(θ)
+        ησ = Xσ * θ[pμ+1:pμ+pσ]
+        w = [1 / (vv[i] + exp(2 * ησ[i])) for i in 1:n]
+        XtWX = Symmetric(Matrix{T}(Xμ' * (w .* Xμ)))
+        return _reml_add_restriction(nll(θ), XtWX, pμ)
+    end
+    nll_opt = reml ? nll_reml : nll
     θ0 = zeros(pμ + pσ)
     θ0[1:pμ] .= βμ0
     θ0[pμ+1] = log(std(y - Xμ * βμ0) / 2 + eps())   # σ below the total residual sd
-    res = Optim.optimize(nll, θ0, Optim.LBFGS(), Optim.Options(g_tol = g_tol); autodiff = :forward)
+    res = Optim.optimize(nll_opt, θ0, Optim.LBFGS(), Optim.Options(g_tol = g_tol); autodiff = :forward)
     θ̂ = Optim.minimizer(res)
-    V = _vcov_from_hessian(ForwardDiff.hessian(nll, θ̂))
+    V = _vcov_from_hessian(ForwardDiff.hessian(nll_opt, θ̂))
     blocks = [:mu => 1:pμ, :sigma => (pμ+1):(pμ+pσ)]
     names = [:mu => nmμ, :sigma => nmσ]
     means = Dict(:mu => Xμ * θ̂[1:pμ])
     obs = Dict(:mu => Vector{Float64}(y))
     scales = Dict(:sigma => sqrt.(vv .+ exp.(2 .* (Xσ * θ̂[(pμ+1):(pμ+pσ)]))))  # √(v + σ²)
-    return _withnll(DrmFit(fam, blocks, names, θ̂, V, -nll(θ̂), n, drm_optim_converged(res), means, obs, scales), nll)
+    fit = _withnll(DrmFit(fam, blocks, names, θ̂, V, -nll(θ̂), n, drm_optim_converged(res), means, obs, scales), nll)
+    return reml ? _withreml(fit, -nll_reml(θ̂), -nll(θ̂)) : fit
 end
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -92,7 +110,7 @@ end
 # grouping name reported in the `:resd` block (the same block layout as the
 # single-intercept and structured routes, so the bridge labels it identically).
 # ─────────────────────────────────────────────────────────────────────────────
-function _fit_meta_gaussian_re(fam::Gaussian, y, Xμ, Xσ, vv, comps, nmμ, nmσ, g_tol)
+function _fit_meta_gaussian_re(fam::Gaussian, y, Xμ, Xσ, vv, comps, nmμ, nmσ, g_tol; reml::Bool = false)
     n = length(y)
     pμ, pσ = size(Xμ, 2), size(Xσ, 2)
     K = length(comps)
@@ -163,6 +181,29 @@ function _fit_meta_gaussian_re(fam::Gaussian, y, Xμ, Xσ, vv, comps, nmμ, nmσ
         return 0.5 * (logdetD + logdet(Mfac) + q1 - dot(c̃, Mfac \ c̃)) + const_2pi
     end
 
+    # REML (opt-in): nll_ML + ½ logdet(Xμ′Ω⁻¹Xμ) − ½ pμ log(2π) (see `_fit_meta_gaussian`),
+    # with Xμ′Ω⁻¹Xμ = Xμ′D⁻¹Xμ − B′W M⁻¹ W′B by Woodbury, B = ZᵀD⁻¹Xμ (q × pμ).
+    function nll_reml(θ)
+        T = eltype(θ)
+        M, _, _, _, W = _pieces(θ)
+        ησ = Xσ * θ[pμ+1:pμ+pσ]
+        invD = [1 / (vv[i] + exp(2 * ησ[i])) for i in 1:n]
+        XtDX = Matrix{T}(Xμ' * (invD .* Xμ))
+        B = zeros(T, q, pμ)
+        @inbounds for i in 1:n, a in 1:K
+            ca = cols[a][i]
+            for j in 1:pμ
+                B[ca, j] += invD[i] * Xμ[i, j]
+            end
+        end
+        val = nll(θ)
+        Mfac = cholesky(M; check = false)
+        issuccess(Mfac) || return convert(T, 1e18)
+        Ct = Mfac.L \ (W' * B)
+        return _reml_add_restriction(val, Symmetric(XtDX - Ct' * Ct), pμ)
+    end
+    nll_opt = reml ? nll_reml : nll
+
     βμ0 = Xμ \ y
     res0 = y - Xμ * βμ0
     s0 = std(res0) / sqrt(K + 1)                 # balanced split: heterogeneity + K fields
@@ -170,9 +211,9 @@ function _fit_meta_gaussian_re(fam::Gaussian, y, Xμ, Xσ, vv, comps, nmμ, nmσ
     θ0[1:pμ] .= βμ0
     θ0[pμ+1] = log(s0 + eps())
     θ0[(pμ+pσ+1):end] .= log(s0 + eps())
-    res = Optim.optimize(nll, θ0, Optim.LBFGS(), Optim.Options(g_tol = g_tol); autodiff = :forward)
+    res = Optim.optimize(nll_opt, θ0, Optim.LBFGS(), Optim.Options(g_tol = g_tol); autodiff = :forward)
     θ̂ = Optim.minimizer(res)
-    V = _vcov_from_hessian(ForwardDiff.hessian(nll, θ̂))
+    V = _vcov_from_hessian(ForwardDiff.hessian(nll_opt, θ̂))
 
     blocks = [:mu => 1:pμ, :sigma => (pμ+1):(pμ+pσ), :resd => (pμ+pσ+1):(pμ+pσ+K)]
     names = [:mu => nmμ, :sigma => nmσ, :resd => [String(c[4]) for c in comps]]
@@ -186,11 +227,14 @@ function _fit_meta_gaussian_re(fam::Gaussian, y, Xμ, Xσ, vv, comps, nmμ, nmσ
     blup = let
         M, c̃, _, _, W = _pieces(θ̂)
         u = W * (cholesky(M) \ c̃)
+        # fitted-row modes for `fitted(fit)` (conditional default): row i loads one column per component
+        _record_cond_fit!(scales, sum(u[cols[k]] for k in 1:K))
         Dict(Symbol(comps[k][4]) => u[(offs[k]+1):offs[k+1]] for k in 1:K)
     end
     # `converged` is the GRADIENT criterion (the #609 lesson: Optim's OR of the
     # x/f/g criteria can report a flat-but-unfinished run as converged).
     converged = drm_optim_converged(res)
-    return _withranef(_withnll(DrmFit(fam, blocks, names, θ̂, V, -nll(θ̂), n, converged,
+    fit = _withranef(_withnll(DrmFit(fam, blocks, names, θ̂, V, -nll(θ̂), n, converged,
         means, obs, scales), nll), blup)
+    return reml ? _withreml(fit, -nll_reml(θ̂), -nll(θ̂)) : fit
 end

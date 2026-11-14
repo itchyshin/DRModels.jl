@@ -66,7 +66,7 @@ const _STS_COORDS = joinpath(@__DIR__, "fixtures", "struct_sd_counts", "coords.c
             f = bf(@eval(@formula(y ~ x1 + $lhs + $second)), @formula(sigma ~ 1))
             err = try drm(f, Student(); data = dh, coords = coords); nothing catch e; e end
             @test err !== nothing
-            @test occursin("structured markers", sprint(showerror, err))
+            @test occursin("one structured term per formula", sprint(showerror, err))
         end
     end
 

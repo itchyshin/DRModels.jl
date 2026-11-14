@@ -51,9 +51,15 @@ end
 # non-PD boundary direction from poisoning the whole SE vector with NaN.
 _boundary_se(v::Real) = (isfinite(v) && v > 0) ? sqrt(v) : Inf
 
+# `scale` names the scale of `estimate`, `lower` and `upper`: `:log_sd` for a random-effect SD
+# row on the log SD scale, `:sd` for one on the SD scale, `:link` for every other row (a
+# coefficient on its own link scale).
 const _CIRow = NamedTuple{
-    (:param, :coef, :estimate, :lower, :upper),Tuple{Symbol,String,Float64,Float64,Float64}
+    (:param, :coef, :estimate, :lower, :upper, :scale),
+    Tuple{Symbol,String,Float64,Float64,Float64,Symbol},
 }
+
+_ci_row_scale(param::Symbol) = _is_log_sd_profile_param(param) ? :log_sd : :link
 
 const _BootstrapSummaryRow = NamedTuple{
     (:param, :coef, :estimate, :std_error, :lower, :upper),
@@ -175,7 +181,7 @@ end
     confint(fit; level = 0.95, method = :wald, threads = false, parm = nothing)
 
 Confidence intervals for every coefficient, as a vector of
-`(param, coef, estimate, lower, upper)` rows on each parameter's working scale
+`(param, coef, estimate, lower, upper, scale)` rows on each parameter's working scale
 (μ on the response scale; σ on `log σ`; ρ12 on `atanh ρ12`; random-effect SDs on
 `log σ_b`).
 
@@ -217,6 +223,16 @@ Confidence intervals for every coefficient, as a vector of
   A random-effect SD (`:resd`) whose lower arm reaches the numerical floor
   without an LR crossing is reported on the SD scale as `[0, u]` (drmTMB
   `profile.boundary`), not as a thrown error and not as `(-Inf, Inf)`.
+  The upper limit `u` is where the profile deviance reaches the `χ²₁` quantile at
+  `level` (3.84 at 0.95). When the SD estimate is at or near zero (about 1e-4 or
+  less) the upper-limit search starts one log unit above the estimate, because the
+  Wald standard error there is not a usable scale; interior SDs are unchanged.
+
+Every row also carries a `scale` field that names the scale of `estimate`, `lower`
+and `upper`: `:log_sd` for a random-effect SD row on the log SD scale (the scale of
+`coef(fit, :resd)` and of the Wald row), `:sd` for a row on the SD scale (the `[0, u]`
+boundary row above), and `:link` for every other row. The numbers of a row do not
+depend on this field.
 
 Mirrors drmTMB's `confint(fit, method = "wald" | "profile")`.
 """
@@ -294,7 +310,7 @@ function _glsp_stored_profile_rows(fit::DrmFit)
         lo, hi = fit.scales[sdkey]
         est = exp(coef(fit, param)[1])                 # SD-scale point estimate
         push!(rows, (param=param, coef=namemap[param][1], estimate=Float64(est),
-                     lower=Float64(lo), upper=Float64(hi)))
+                     lower=Float64(lo), upper=Float64(hi), scale=:sd))
     end
     return rows
 end
@@ -526,7 +542,8 @@ function _wald_ci(fit::DrmFit, level::Real, parm)
             s = se[idx]
             push!(
                 rows,
-                (param=p, coef=nms[j], estimate=est, lower=est - z * s, upper=est + z * s),
+                (param=p, coef=nms[j], estimate=est, lower=est - z * s, upper=est + z * s,
+                 scale=_ci_row_scale(p)),
             )
         end
     end
@@ -593,6 +610,7 @@ function _ls_profile_result(fit::DrmFit; level::Real=0.95, threads::Bool=false, 
                 estimate=fit.theta[job.k],
                 lower=ci.lower,
                 upper=ci.upper,
+                scale=_ci_row_scale(job.param),
             )
             lower_status = ci.lower_status
             upper_status = ci.upper_status
@@ -743,7 +761,8 @@ function _loconly_profile_row_result(
     end
     rewritten = _rewrite_log_sd_boundary_ci(job, est, lo, hi, lstats, rstats)
     rewritten === nothing || return rewritten
-    row = (param=job.param, coef=job.coef, estimate=est, lower=lo, upper=hi)
+    row = (param=job.param, coef=job.coef, estimate=est, lower=lo, upper=hi,
+           scale=_ci_row_scale(job.param))
     stats = (
         param=job.param,
         coef=job.coef,
@@ -954,6 +973,10 @@ const _PROFILE_MIN_STEP = 1e-6
 
 _is_log_sd_profile_param(param::Symbol) =
     param === :resd || param === :resd_mu || param === :resd_sigma
+
+# A log SD at or below this value is an SD of about 1e-4 or less: effectively zero, where
+# the pseudo-inverse Wald SE is not a scale for the search (it can be 1e7 on the log scale).
+const _PROFILE_SD_ZERO_LOG = log(1e-4)
 
 function _profile_usable_step(se_k::Real, est::Real)
     (isfinite(se_k) && se_k > _PROFILE_MIN_STEP) && return Float64(se_k)
@@ -1488,6 +1511,12 @@ function _profile_row_result(
     est = θ̂[k]
     allow_lower = _is_log_sd_profile_param(job.param)
     s = _profile_usable_step(se[k], est)
+    # Zero-anchored SD: a variance at (or numerically at) zero has no usable Wald scale. A
+    # starting step of 1e7 on the log scale never brackets the crossing within the
+    # root-finder's iteration budget, so the upper arm was reported as failed. Start from one
+    # log unit instead; the bracket then grows by 1.6 per step up to the crossing. Interior
+    # SDs (above 1e-4) keep the Wald step unchanged.
+    allow_lower && est <= _PROFILE_SD_ZERO_LOG && (s = 1.0)
     u0 = θ̂[[i for i in 1:length(θ̂) if i != k]]
     if endpoint_threads && Threads.nthreads() > 1
         left = Threads.@spawn _profile_endpoint_result(
@@ -1510,7 +1539,8 @@ function _profile_row_result(
     end
     rewritten = _rewrite_log_sd_boundary_ci(job, est, lo, hi, lstats, rstats)
     rewritten === nothing || return rewritten
-    row = (param=job.param, coef=job.coef, estimate=est, lower=lo, upper=hi)
+    row = (param=job.param, coef=job.coef, estimate=est, lower=lo, upper=hi,
+           scale=_ci_row_scale(job.param))
     stats = (
         param=job.param,
         coef=job.coef,
@@ -1543,7 +1573,7 @@ function _rewrite_log_sd_boundary_ci(job, log_est, lo, hi, lstats, rstats)
     sd_est = log_est <= _PROFILE_SD_LOG_FLOOR ? 0.0 : exp(log_est)
     upper_ok = isfinite(hi) && !rstats.endpoint_failed && !rstats.unbounded
     sd_hi = upper_ok ? exp(hi) : Inf
-    row = (param=job.param, coef=job.coef, estimate=sd_est, lower=0.0, upper=sd_hi)
+    row = (param=job.param, coef=job.coef, estimate=sd_est, lower=0.0, upper=sd_hi, scale=:sd)
     stats = (
         param=job.param,
         coef=job.coef,
@@ -2302,10 +2332,15 @@ _bootstrap_estimator(fit::DrmFit) = (estimation_method(fit), fit.marginal)
 _bootstrap_estimator(fit) = (:unknown, :unknown)
 
 # Keywords the bivariate Gaussian bootstrap refit may pass to `drm`.
-# `method` is included only when the seed kwargs contain it. `marginal` is
+# `method` and `weights` are included only when the seed kwargs contain them. `marginal` is
 # left off, because that method does not accept it.
 function _bootstrap_bivariate_refit_kwargs(refit_options)
-    haskey(refit_options, :method) ? (; method = refit_options.method) : NamedTuple()
+    kw = Pair{Symbol,Any}[]
+    haskey(refit_options, :method) && push!(kw, :method => refit_options.method)
+    # Prior weights are part of the likelihood: every replicate refit uses them, as the
+    # univariate path does (`_bootstrap_refit_kwargs`).
+    haskey(refit_options, :weights) && push!(kw, :weights => refit_options.weights)
+    return NamedTuple(kw)
 end
 
 _is_gaussian_lss(fit::DrmFit) = fit.family isa Gaussian &&
@@ -2421,6 +2456,7 @@ function _marginal_simulator(fit::DrmFit, data; K=nothing, A=nothing, tree=nothi
                              tree1=nothing, tree2=nothing,
                              Ainv=nothing, coords=nothing)
     sim = _marginal_simulator_build(fit, data; K, A, Ainv, tree, tree1, tree2, coords)
+    sim === nothing && _refuse_multi_re_laplace(fit, "a simulation or bootstrap with fresh random effects")
     # `nothing` sends `bootstrap` to the CONDITIONAL `simulate`. On the Gaussian
     # `meta_V(...)` + random-effect route (`_fit_meta_gaussian_re`) that fallback
     # is a different model: `means[:mu]` is Xβ and `scales[:sigma]` is √(v + σ²),
@@ -2430,7 +2466,82 @@ function _marginal_simulator(fit::DrmFit, data; K=nothing, A=nothing, tree=nothi
             "`meta_V(...)` + random-effect fit (pass the same `data` and `tree` / `K` / `A` " *
             "used to fit it); the conditional fallback would drop the random effect"))
     end
+    # Gamma, Beta, Student, LogNormal and Binomial fits whose random effects have no fresh-draw simulator
+    # (every Binomial shape except one `(1 | g)`; two or more ordinary terms, or one `(0 + x | g)` /
+    # `(1 + x | g)`, on the other four) would fall back to the conditional draw (random effects at zero).
+    # That collapses the variance-component interval without a message, so refuse, naming the fitted terms.
+    # The check does not depend on whether the fit stores its trial counts.
+    if sim === nothing && _is_no_fresh_draw_slope_fit(fit)
+        throw(ArgumentError(_no_fresh_draw_message(fit)))
+    end
     return sim
+end
+
+# The ordinary random-effect bars of a fit that has no fresh-draw simulator, or `nothing` when the fit has
+# none, has a structured or `meta_V` term (other routes own those), or keeps its fresh draw.
+# Binomial: every shape except a single `(1 | g)` and several intercept-only terms. Gamma, Beta, Student, LogNormal: two or more ordinary
+# terms, or a single `(0 + x | g)` / `(1 + x | g)`.
+function _no_fresh_draw_bars(fit::DrmFit)
+    fit.family isa Union{Gamma,Binomial,Beta,Student,LogNormal} && fit.formula isa DrmFormula || return nothing
+    rhs = Dict(fit.formula.forms)
+    haskey(rhs, :mu) || return nothing
+    _, re, metav, structured, _ = _split_ranef(rhs[:mu]; allow_phylo_slope = true)
+    metav === nothing && structured === nothing && !isempty(re) || return nothing
+    if length(re) >= 2
+        # several intercept-only Binomial terms have a fresh draw (the simulator for several random intercepts)
+        fit.family isa Binomial &&
+            all(r -> first(try _re_kind(r[1]) catch; (:other, nothing) end) === :intercept, re) && return nothing
+        return re
+    end
+    if fit.family isa Binomial
+        k, _ = try _re_kind(re[1][1]) catch; (:other, nothing) end
+        return k === :intercept ? nothing : re
+    end
+    return _laplace_lhs_kind(re[1][1]) in (:slope, :corr) ? re : nothing
+end
+
+_is_no_fresh_draw_slope_fit(fit::DrmFit) = _no_fresh_draw_bars(fit) !== nothing
+
+# The refusal text names the terms the user fitted and the kind of shape. For Binomial the several-term
+# shapes are reported as "several random-effect terms"; the other families name the shape.
+function _no_fresh_draw_message(fit::DrmFit)
+    re = _no_fresh_draw_bars(fit)
+    rk = [try _re_kind(lhs) catch; (:other, nothing) end for (lhs, _) in re]
+    kinds = first.(rk)
+    bar(k, v, lhs, grp) = k === :intercept ? "(1 | $grp)" : k === :slope ? "(0 + $v | $grp)" :
+                          k === :corr ? "(1 + $v | $grp)" : "($lhs | $grp)"
+    terms = join((bar(k, v, lhs, grp) for ((k, v), (lhs, grp)) in zip(rk, re)), " + ")
+    groups = [grp for (_, grp) in re]
+    shape = if length(re) == 1 && kinds[1] === :slope
+        "a random slope without an intercept"
+    elseif length(re) == 1 && kinds[1] === :corr
+        "a correlated random intercept and slope"
+    elseif length(re) == 1
+        "a random-slope term"
+    elseif fit.family isa Binomial
+        "several random-effect terms"
+    elseif all(==(:intercept), kinds)
+        "crossed or nested random intercepts"
+    elseif length(unique(groups)) == 1 && all(in((:intercept, :slope)), kinds) && :intercept in kinds
+        "an independent random slope with an intercept"
+    elseif length(unique(groups)) == 1 && all(==(:slope), kinds)
+        "independent random slopes without an intercept"
+    elseif all(==(:slope), kinds)
+        "random slopes on different groups"
+    elseif all(in((:intercept, :slope)), kinds)
+        "a mix of random intercepts and slopes"
+    else
+        "a mix of random-effect terms"
+    end
+    fam = string(nameof(typeof(fit.family)), "()")
+    keep = fit.family isa Binomial ? " A single `(1 | g)` keeps its fresh draw." : ""
+    return "no fresh random-effect draw is implemented for $fam with $shape ($terms), so " *
+        "`bootstrap_summary` / `bootstrap_result` / `bootstrap_ci` and the default " *
+        "`simulate(fit; data = data)` are refused: the fallback would draw responses with the random " *
+        "effects set to zero, which collapses the variance-component interval without a message. " *
+        "To draw responses with the random effects set to zero (a conditional draw, not a fresh draw), " *
+        "call `simulate(fit; data = data, re = :zero)` where the fitted object supports it; " *
+        "the bootstrap has no such option." * keep
 end
 
 function _is_meta_gaussian_re(fit::DrmFit)
@@ -2649,7 +2760,7 @@ function _binomial_sd_marginal_simulator(fit::DrmFit, data, re;
             "bootstrap: data are missing structured grouping column `$group`"))
         gidx, G = _group_index(getproperty(data, group))
         provider === :spatial && (matrix = _spatial_covariance_from_coords(
-            group, G, coords, nothing; legacy_mean_range = true))   # mirrors the binomial fit
+            group, G, coords, nothing))   # mirrors the binomial fit: drmTMB's fixed median-distance kernel
         matrix === nothing && throw(ArgumentError(
             "bootstrap: supply the same structured covariance `$matrix_name` used to fit the Binomial $provider SD model"))
         C = Matrix{Float64}(matrix)
@@ -4414,7 +4525,8 @@ end
 
 function _bootstrap_ci_rows(rows)
     return _CIRow[
-        (param=r.param, coef=r.coef, estimate=r.estimate, lower=r.lower, upper=r.upper) for
+        (param=r.param, coef=r.coef, estimate=r.estimate, lower=r.lower, upper=r.upper,
+         scale=_ci_row_scale(r.param)) for
         r in rows
     ]
 end

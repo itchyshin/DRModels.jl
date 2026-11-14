@@ -151,7 +151,7 @@ end
         fit = drm(_gq2_formula(kind), Gaussian(); data, kw...)
         n = length(data.x)
         beta = coef(fit, :mu)
-        @test predict(fit, data) ≈ fitted(fit) atol = 1e-10
+        @test predict(fit, data) ≈ fitted(fit; re = :zero) atol = 1e-10
         @test predict(fit, data; type = :link) ≈ hcat(ones(n), data.x) * beta atol = 1e-10
         nd = (; x = [-0.7, 0.0, 0.5, 1.1], g = fill("never_seen", 4),
               z0 = zeros(4), z1 = zeros(4))

@@ -168,7 +168,7 @@ predict_parameters(fit_sd, dat)[:sd]  # one fitted random-effect SD per row
 fit_relmat_sd = drm(bf(@formula(y ~ x + relmat(1 | id)),
                        @formula(sd(id, relmat) ~ z)),
                     Binomial(); data = dat, K = K)
-fitted(fit)        # fitted success probabilities on the response scale
+fitted(fit)        # fitted success probabilities on the response scale (adds the random-effect modes)
 
 # Experimental: Binomial random-intercept variational (ELBO) marginal.
 fit_va = drm(bf(@formula(y ~ x + (1 | g))), Binomial(); data = dat, marginal = :VA)
@@ -316,8 +316,6 @@ function _drm_binomial_fit(f::DrmFormula, fam::Binomial; data, tree = nothing,
         "Binomial `tree1` and `tree2` are used only by `phylo_interaction()` SD models."))
     Ainv === nothing || throw(ArgumentError(
         "Binomial `Ainv` is currently supported for animal random-effect SD regression only."))
-    fam.link !== :logit && _scalar_laplace_requested(marginal) &&
-        throw(ArgumentError("Binomial links other than :logit are not available with `marginal = :Laplace`."))
     _scalar_laplace_requested(marginal) &&     # Arc 2: TMB-convention Laplace, ordinary (1 | g)
         return _drm_ordinary_laplace(f, fam; data = data, tree = tree, K = K, A = A,
                                      coords = coords, g_tol = g_tol, se = se, method = method)
@@ -388,6 +386,15 @@ function _drm_binomial_fit(f::DrmFormula, fam::Binomial; data, tree = nothing,
                 grp = r[2]; gidx, G = _group_index(getproperty(data, grp); col = grp)
                 (ones(length(s)), gidx, G, String(grp))
             end
+            # Three or more crossed intercepts: the dense Laplace spine of the independent-term route
+            # (the two-component sparse route above is kept for exactly two, unchanged).
+            length(comps) > 2 && isaghq &&
+                _aghq_reject(fam, "three or more crossed random intercepts (AGHQ covers exactly two)")
+            length(comps) > 2 && _dense_laplace_guard(fam, sum(c[3] for c in comps))
+            length(comps) > 2 &&
+                return _withformula(_fit_indep_re_laplace(fam, Val(:binomial), collect(zip(s, ntr)),
+                                                          Xμ, nothing, nothing, comps,
+                                                          nmμ, String[], String[], g_tol), f)
             isaghq && return _withformula(_fit_binomial_crossed_aghq(fam, s, ntr, Xμ, comps, nmμ, g_tol; se = se), f)   # #761
             return _withformula(_fit_binomial_crossed_laplace(fam, s, ntr, Xμ, comps, nmμ, g_tol), f)
         end
@@ -528,6 +535,7 @@ function _fit_binomial_ranef(fam::Binomial, s, ntr, Xμ, gidx, G, nmμ, grp, g_t
     names = [:mu => nmμ, :resd => [String(grp)]]
     means = Dict(:mu => _binomial_mean.(Ref(fam), Xμ * θ̂[1:pμ])); obs = Dict(:mu => s ./ ntr)
     scales = Dict(:trials => Float64.(nint))
+    _record_cond_fit_aghq!(scales, nll, θ̂, bcache, gidx, Zre)   # fitted-row modes for `fitted(fit)`
     return _withiterations(
         _withnll(DrmFit(fam, blocks, names, θ̂, V, -nll(θ̂), n, drm_optim_converged(res), means, obs, scales), nll),
         Optim.iterations(res))
@@ -589,6 +597,7 @@ function _fit_binomial_corr_ranef(fam::Binomial, s, ntr, Xμ, xs, gidx, G, nmμ,
     names = [:mu => nmμ, :recov => ["$(grp):L11", "$(grp):L22", "$(grp):L21"]]
     means = Dict(:mu => _binomial_mean.(Ref(fam), Xμ * θ̂[1:pμ])); obs = Dict(:mu => s ./ ntr)
     scales = Dict(:trials => Float64.(nint))
+    _record_cond_fit_aghq!(scales, nll, θ̂, bcache, gidx, Zre)   # fitted-row modes for `fitted(fit)`
     return _withiterations(
         _withnll(DrmFit(fam, blocks, names, θ̂, V, -nll(θ̂), n, drm_optim_converged(res), means, obs, scales), nll),
         Optim.iterations(res))

@@ -111,10 +111,10 @@ also has `(1 | id)`, the stable intercept SD (`re_sd(fit)[:id_iid]`).
 
 Post-fit conventions (some differ from drmTMB):
 
-- `fitted(fit)` and `predict(fit, newdata)` are POPULATION-level, `Xβ̂` (as on
-  most structured routes; see [`fitted`](@ref)); drmTMB's `fitted()` adds the
-  conditional temporal effects. Those are in `ranef(fit)[:id]`, data-row order
-  (and `ranef(fit)[:id_iid]` per series for the ordinary intercept).
+- `predict(fit, newdata)` is POPULATION-level, `Xβ̂`. `fitted(fit)` is conditional, as
+  drmTMB's `fitted()` is: it adds the fitted temporal effects, which are in
+  `ranef(fit)[:id]`, data-row order (and `ranef(fit)[:id_iid]` per series for the
+  ordinary intercept). `fitted(fit; re = :zero)` is `Xβ̂`; see [`fitted`](@ref).
 - `simulate(fit)` draws from the fitted marginal model: a fresh stationary
   chain per series (and a fresh `(1 | id)` intercept) plus residual noise, as
   drmTMB's default `simulate()`. `bootstrap_ci` uses the same draws; drmTMB
@@ -926,6 +926,15 @@ function _fit_temporal_gaussian(fam::Gaussian, y, Xμ, Xσ, nmμ, nmσ, tt, lay,
     info = (label = _temporal_label(tt), structure = structure, group = tt.group,
             time = tt.time, nseries = S, rows = grows, gaps = ggap,
             has_ordinary = has_ordinary, phylo = phylo, levels = lay.levels, occasions = nothing)
+    # Fitted-row modes for `fitted(fit)` (conditional default): the temporal path plus, when
+    # present, the per-series stable (iid or phylo) mode, as `_temporal_conditional_residuals` removes.
+    eta_rows = copy(teff)
+    if has_stable
+        for s in 1:S
+            eta_rows[grows[s]] .+= bmodes[s]
+        end
+    end
+    _record_cond_fit!(scales, eta_rows)
     fit = DrmFit(fam, blocks, names, θ̂, V, -nll(θ̂), n, drm_optim_converged(best), means, obs, scales)
     return _withranef(_withnll(fit, nll), (effects = effects, temporal = info))
 end

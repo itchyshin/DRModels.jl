@@ -74,8 +74,9 @@ matrix together with `ids = [site label of each row]`, or as a `Dict` keyed by s
 label. Coordinates for sites not in the data are dropped; a level of `site` with no
 coordinates is an `ArgumentError`. A plain matrix without `ids` is taken to be in order
 of first appearance of `site` in the data, and warns on every call. The spatial correlation `K(ρ) = exp(-d / ρ)` is built
-from pairwise distances and the range `ρ` is estimated jointly. Closed-form
-Gaussian marginal (K is rebuilt each evaluation since it depends on `ρ`).
+from pairwise distances with the range `ρ` FIXED at the median positive pairwise
+distance (plus a 1e-6 diagonal ridge), as drmTMB does; the range is not estimated.
+Closed-form Gaussian marginal, ML or REML.
 """
 spatial(x) = x
 
@@ -214,9 +215,29 @@ function _fit_structured_gaussian(fam::Gaussian, y, Xμ, Xσ, gidx, G, K, nmμ, 
     means = Dict(:mu => Xμ * θ̂[1:pμ])
     obs = Dict(:mu => Vector{Float64}(y))
     scales = Dict(:sigma => exp.(Xσ * θ̂[(pμ+1):(pμ+pσ)]))
+    _record_cond_fit!(scales, _structured_gaussian_modes(y, Xμ, Xσ, gidx, G, Kinv, θ̂, pμ, pσ)[gidx])   # for `fitted(fit)`
     fit = _withnll(DrmFit(fam, blocks, names, θ̂, V, -nll(θ̂), n, drm_optim_converged(res), means, obs, scales), nll)
     reml && return _withreml(fit, -nll_reml(θ̂), -nll(θ̂))
     return fit
+end
+
+# Conditional modes of the structured intercept at the fitted parameters of the dense
+# single-marker Gaussian route: the BLUP û = (σ_s⁻² K⁻¹ + ZᵀD⁻¹Z)⁻¹ ZᵀD⁻¹ (y - Xβ̂), with
+# D = diag(σ_e²) from the fitted sigma. This is the posterior mean (and mode) of the group
+# effects given β̂, σ_e and σ_s, the same quantity drmTMB reports as the random-effect modes.
+# NaN (so the conditional default refuses) when the system is not positive definite.
+function _structured_gaussian_modes(y, Xμ, Xσ, gidx, G, Kinv, θ̂, pμ, pσ)
+    ησ = Xσ * θ̂[(pμ+1):(pμ+pσ)]
+    σs² = exp(2 * θ̂[pμ+pσ+1])
+    r = y .- Xμ * θ̂[1:pμ]
+    S = zeros(G); C = zeros(G)
+    @inbounds for i in eachindex(y)
+        invD = exp(-2 * ησ[i]); k = gidx[i]
+        S[k] += invD; C[k] += r[i] * invD
+    end
+    Mfac = cholesky(Symmetric(Kinv ./ σs² + Diagonal(S)); check = false)
+    issuccess(Mfac) || return fill(NaN, G)
+    return Mfac \ C
 end
 
 # Row → level index for one structured marker on the dense Gaussian routes (the
@@ -236,7 +257,7 @@ end
 
 # Resolve one structured marker to its fixed G×G correlation/relatedness matrix
 # from the keyword args. Used by the two-component path (relmat/animal/phylo;
-# spatial estimates a range jointly and is not yet supported alongside a second
+# spatial (fixed median-distance range) is not yet supported alongside a second
 # component — tracked as a follow-up).
 function _resolve_structured_matrix(kind::Symbol, grp::Symbol, G::Int; K, A, tree, coords)
     Cmat = if kind === :relmat
@@ -250,7 +271,7 @@ function _resolve_structured_matrix(kind::Symbol, grp::Symbol, G::Int; K, A, tre
         _phylo_correlation(tree)
     else  # :spatial
         error("spatial(1 | $grp) is not yet supported as one of two structured components " *
-              "(it estimates a range jointly); use it as the only structured marker")
+              "(not yet wired for the fixed median-distance kernel); use it as the only structured marker")
     end
     size(Cmat) == (G, G) ||
         error("structured matrix for `$grp` must be $(G)×$(G) (the number of `$grp` levels)")
@@ -336,6 +357,8 @@ function _fit_two_structured_gaussian(fam::Gaussian, y, Xμ, gidx1, G1, C1, gidx
         Dict(Symbol(grp1) => a1, Symbol(grp2) => a2)
     end
     _flag_blup_unavailable!(scales, blup)
+    haskey(scales, :cond_blup_unavailable) ||
+        _record_cond_fit!(scales, Z1 * blup[Symbol(grp1)] .+ Z2 * blup[Symbol(grp2)])   # fitted-row modes for `fitted(fit)`
     return _withranef(_withnll(DrmFit(fam, blocks, names, θ̂, V, -nll(θ̂), n,
         drm_optim_converged(res), means, obs, scales), nll), blup)
 end
@@ -431,6 +454,8 @@ function _fit_phylo_slope_gaussian(fam::Gaussian, y, Xμ, Xσ, gidx, G, C, xs, n
         Dict(Symbol(grp) => a, Symbol("$(grp):$(var)") => b)
     end
     _flag_blup_unavailable!(scales, blup)
+    haskey(scales, :cond_blup_unavailable) ||
+        _record_cond_fit!(scales, Z * blup[Symbol(grp)] .+ Zx * blup[Symbol("$(grp):$(var)")])   # fitted-row modes for `fitted(fit)`
     fit = DrmFit(fam, blocks, names, θ̂, Vθ, -nll(θ̂), n, drm_optim_converged(res), means, obs, scales)
     fit = _withranef(_withnll(fit, nll), blup)
     reml && return _withreml(fit, -nll_reml(θ̂), -nll(θ̂))
@@ -511,6 +536,7 @@ function _fit_structured_ranef_gaussian(fam::Gaussian, y, Xμ, Xσ, comps, nmμ,
     obs = Dict(:mu => Vector{Float64}(y))
     scales = Dict(:sigma => exp.(Xσ * θ̂[(pμ+1):(pμ+pσ)]))
     # Conditional estimates (BLUPs) at θ̂: û_k = σ_k² K_k Z_kᵀ V⁻¹ r.
+    eta_rows = zeros(n)
     blup = let
         βμ = θ̂[1:pμ]; βσ = θ̂[(pμ+1):(pμ+pσ)]
         Vh = zeros(n, n)
@@ -527,11 +553,14 @@ function _fit_structured_ranef_gaussian(fam::Gaussian, y, Xμ, Xσ, comps, nmμ,
             σk² = exp(2 * θ̂[pμ+pσ+k])
             ZtVr = Zs[k]' * Vinvr
             K = comps[k][4]
-            out[Symbol(labels[k])] = K === nothing ? σk² .* ZtVr : σk² .* (K * ZtVr)
+            uk = K === nothing ? σk² .* ZtVr : σk² .* (K * ZtVr)
+            out[Symbol(labels[k])] = uk
+            eta_rows .+= Zs[k] * uk            # fitted-row modes (labels can repeat, so summed here)
         end
         out
     end
     _flag_blup_unavailable!(scales, blup)
+    haskey(scales, :cond_blup_unavailable) || _record_cond_fit!(scales, eta_rows)   # for `fitted(fit)`
     fit = DrmFit(fam, blocks, names, θ̂, Vθ, -nll(θ̂), n, drm_optim_converged(res), means, obs, scales)
     return _withranef(_withnll(fit, nll), blup)
 end
@@ -561,7 +590,7 @@ function _drm_gaussian_structured_plus_ranef(fam::Gaussian, structured, re, meta
             "`$(marker)` combined with an ordinary random effect; this route is the dense " *
             "closed-form marginal only (use `algorithm = :auto`)."))
     kind === :spatial &&
-        throw(ArgumentError("drm: `spatial(1 | $(sgrp))` (range estimated from `coords`) cannot " *
+        throw(ArgumentError("drm: `spatial(1 | $(sgrp))` (fixed median-distance range from `coords`) cannot " *
             "be combined with an ordinary random effect yet. Pass the fixed spatial covariance as " *
             "`relmat(1 | $(sgrp))` with `K = …` — the form drmTMB's bridge sends for native " *
             "`spatial(1 | site, coords = …)` — which this route fits together with `(1 | g)`."))
@@ -597,7 +626,8 @@ function _drm_gaussian_structured_plus_ranef(fam::Gaussian, structured, re, meta
 end
 
 # Coordinate-spatial structured intercept: K(ρ) = exp(-d/ρ) from site distances,
-# with the range ρ estimated jointly (θ gains log σ_s and log ρ). K depends on θ
+# with the range ρ estimated jointly (θ gains log σ_s and log ρ). NOT USED by `drm`
+# since the fixed median-distance range was adopted (drmTMB's kernel); kept for reference. K depends on θ
 # so it is rebuilt each evaluation; otherwise the closed-form marginal is as in
 # `_fit_structured_gaussian`.
 function _fit_spatial_gaussian(fam::Gaussian, y, Xμ, Xσ, gidx, G, coords, nmμ, nmσ, grp, g_tol)

@@ -19,7 +19,7 @@ import StatsAPI: weights
 import StatsModels: lrtest
 
 """
-    lrtest(reduced::DrmFit, full::DrmFit) -> NamedTuple
+    lrtest(reduced::DrmFit, full::DrmFit; mixture::Bool = false) -> NamedTuple
 
 Likelihood-ratio test for two **nested**, **ML**-fitted models, mirroring
 drmTMB's `anova(reduced, full)`. `reduced` must be a special case of `full`
@@ -62,6 +62,58 @@ p-value clamps the statistic at zero (so `pvalue` stays in `[0, 1]`); inspect
     p-value (#304). drmTMB's `anova()` does swap in the mixture for the same
     pairs; call `lrt_boundary` here to match that p-value.
 
+## Opt-in mixture reference: `mixture = true`
+`lrtest(reduced, full; mixture = true)` reports the boundary-correct p-value when
+`full` differs from `reduced` by **exactly one** variance component (for example
+`(1 | g)` left out of `reduced`, or `(1 | g) + (0 + x | g)` against `(1 | g)`) or by
+the one `sigma` of `Poisson() ⊂ NegBinomial2()`. The reference is then the equal
+mixture of `χ²(0)` and `χ²(1)`, so `pvalue = 0.5 * P(χ²₁ > statistic)` (Self &
+Liang 1987; Stram & Lee 1994). The result gains two fields: `pvalue_naive` (the
+plain `χ²(dof)` p-value) and `reference = :chibar_0_1`; the boundary warning is
+not emitted, because the caveat is handled. The default stays `mixture = false`
+(plain `χ²`, with the warning), so existing calls do not change.
+
+The equal mixture of `χ²(0)` and `χ²(1)` is the correct null for this test. The tested
+variance sits at the edge of its range, so the statistic is exactly zero in about half of
+the data sets, and only the other half follows `χ²(1)`. The plain `χ²(1)` is therefore
+conservative: whenever the statistic is positive its p-value is about twice the mixture
+p-value, and the plain test rejects less often than its nominal level. The mixture stays
+opt-in here, and the plain test is still the default. A test of a correlation alone is
+refused under `mixture = true` (see below), because the mixture does not apply to it.
+
+`mixture = true` is refused with an `ArgumentError`, by name, unless `full` adds
+exactly one variance (SD) parameter, no correlation parameter, and the fixed
+effects of the two fits are identical (or the pair is Poisson ⊂ NegBinomial2 with
+the same fixed effects). It is refused for a difference in fixed effects or in a
+family other than Poisson ⊂ NegBinomial2 (the plain `χ²` is the right test there),
+for more than one added variance parameter, and for a pair that adds a correlation:
+a random slope together with its correlation, for example `(1 + x | g)` against
+`(1 | g)`, adds a variance and a correlation (its reference is a different
+mixture), and `(1 | g) + (0 + x | g)` against `(1 + x | g)` adds only the
+correlation, whose null value is interior, so the plain `χ²(1)` is the right
+test. Use a parametric bootstrap for the first of these.
+`mixture = true` also refuses a clearly negative statistic, one below
+`-1e-6 * max(1, |loglik(full)|, |loglik(reduced)|)`, as "not nested or a fit did
+not converge", instead of returning `pvalue = 0.5`. A statistic within that margin
+of zero is a boundary result and is accepted. The plain test (`mixture = false`)
+still returns a negative statistic as it is, with the statistic clamped at zero in the p-value.
+With few groups the mixture is conservative: in null data sets (Gaussian
+`(1 | g)`, no group variance, 10 rows per group) the mixture p-value rejected at
+the 0.05 level in 2.9% of 3000 data sets with 20 groups and in 4.1% of 5000 with
+100 groups, against 1.6% for the plain `χ²(1)` in both. About 55% to 60% of the
+statistics sit on the `χ²(0)` atom, the share of data sets where the estimated
+group variance is zero. lme4 (`lmer(REML = FALSE)` against `lm`) behaves the same
+on the same kind of data (2.2% and 4.5% in 1000 data sets each), and the
+statistics agree with lme4 to 1e-8.
+`lrt_boundary` is the separate function that applies the 50:50 or the two-
+independent-components mixture to a pair you name yourself.
+
+References: Self, S. G. and Liang, K.-Y. (1987), Asymptotic properties of maximum
+likelihood estimators and likelihood ratio tests under nonstandard conditions,
+*Journal of the American Statistical Association* 82, 605-610. Stram, D. O. and Lee,
+J. W. (1994), Variance components testing in the longitudinal mixed effects model,
+*Biometrics* 50, 1171-1177.
+
 # Example
 ```julia
 x = randn(400)
@@ -77,7 +129,7 @@ t.dof          # 2 extra parameters (x in μ and in log σ)
 t.pvalue       # < 0.05 when x is truly predictive
 ```
 """
-function lrtest(reduced::DrmFit, full::DrmFit)
+function lrtest(reduced::DrmFit, full::DrmFit; mixture::Bool = false)
     _reml_compare_guard(reduced, full, "lrtest")
     _sentinel_compare_guard(reduced, full, "lrtest")
     _marginal_compare_guard(reduced, full, "lrtest")
@@ -88,10 +140,98 @@ function lrtest(reduced::DrmFit, full::DrmFit)
         "lrtest: `full` must have more parameters than `reduced` " *
         "(dof(full) = $(dof(full)), dof(reduced) = $(dof(reduced)); " *
         "did you pass the arguments as (reduced, full)?)"))
-    _boundary_vc_warn(reduced, full, "lrtest")
     statistic = 2 * (loglik(full) - loglik(reduced))
+    if mixture
+        _single_variance_boundary_guard(reduced, full, Δdof)
+        # A clearly negative statistic means `reduced` fits better: the pair is not
+        # nested or a fit did not converge. The mixture would report p = 0.5 for it.
+        scale = max(1.0, abs(loglik(full)), abs(loglik(reduced)))
+        statistic < -1e-6 * scale && throw(ArgumentError(
+            "lrtest: `mixture = true` got a negative statistic ($statistic): `reduced` " *
+            "fits clearly better than `full`, so the pair is not nested or a fit did " *
+            "not converge. Check both fits (`reduced` must be `full` with one " *
+            "variance component removed) and refit before testing."))
+        pvalue_naive = ccdf(Chisq(Δdof), max(statistic, 0))
+        return (; statistic, dof = Δdof, pvalue = chibar_pvalue(statistic, 1),
+                  pvalue_naive, reference = :chibar_0_1)
+    end
+    _boundary_vc_warn(reduced, full, "lrtest")
     pvalue = ccdf(Chisq(Δdof), max(statistic, 0))
     return (; statistic, dof = Δdof, pvalue)
+end
+
+# `lrtest(...; mixture = true)` applies the 0.5 χ²(0) + 0.5 χ²(1) reference, which is
+# right only when `full` adds exactly ONE variance (SD) parameter, no correlation
+# parameter, and nothing else. Accept: every non-variance block has the same
+# coefficient names in both fits, `full` has one more SD parameter and the same
+# number of correlation parameters, and Δdof is 1; or the Poisson ⊂ NegBinomial2
+# nest with the same fixed effects. Refuse everything else by name. A correlation
+# is not a boundary parameter (its null 0 is interior), so a pair such as
+# `(1 | g) + (0 + x | g)` against `(1 + x | g)` is refused: the plain χ²(1) is right.
+function _single_variance_boundary_guard(reduced::DrmFit, full::DrmFit, Δdof::Integer)
+    nonvc(f) = Dict(p => (length(r), String.(something(_block_coefnames(f, p), String[])))
+                    for (p, r) in f.blocks
+                    if !(p in _VARIANCE_COMPONENT_BLOCKS) && length(r) > 0)
+    same_fixed = nonvc(full) == nonvc(reduced)
+    if _family_boundary_nest(reduced, full) !== nothing && Δdof == 1
+        fr, ff = nonvc(reduced), nonvc(full)
+        all(haskey(ff, p) && ff[p] == v for (p, v) in fr) && return nothing
+    end
+    sd_params, corr_params = _sd_and_correlation_counts(full)
+    sd_red, corr_red = _sd_and_correlation_counts(reduced)
+    Δsd, Δcorr = sd_params - sd_red, corr_params - corr_red
+    if Δsd == 1 && Δcorr == 0 && Δdof == 1 && same_fixed
+        return nothing
+    end
+    reason = if Δsd <= 0 && Δcorr <= 0 && same_fixed
+        "`full` adds no variance component to `reduced` (the difference is in the " *
+        "family or in a block that is not a variance), so the plain χ² reference " *
+        "is the right test"
+    elseif !same_fixed
+        "`full` and `reduced` differ in their fixed effects or in a non-variance " *
+        "block, so the plain χ² reference is the right test"
+    elseif Δcorr != 0 && Δsd <= 0
+        "`full` adds only $(Δcorr) correlation parameter(s) (for example `(1 | g) + " *
+        "(0 + x | g)` against `(1 + x | g)`); a correlation is tested at an " *
+        "interior null, so the plain χ² reference is the right test"
+    elseif Δcorr != 0
+        "`full` adds $Δsd variance parameter(s) and $Δcorr correlation parameter(s) " *
+        "(for example a random slope with its correlation); the reference for that " *
+        "is a different mixture, which is not implemented"
+    elseif Δdof > 1 || Δsd > 1
+        "`full` adds $Δsd variance parameters and $Δdof parameters in all; the " *
+        "reference for that is a different mixture, which is not implemented"
+    else
+        "`full` and `reduced` differ in more than the one variance component"
+    end
+    throw(ArgumentError(
+        "lrtest: `mixture = true` is only for a pair that differs by exactly one " *
+        "variance component (reference 0.5 χ²(0) + 0.5 χ²(1)); $reason. " *
+        "Call `lrtest(reduced, full)` for the plain test, or use a parametric bootstrap."))
+end
+
+# Number of SD parameters and of correlation parameters in the variance-component
+# blocks of `fit`. `:recov` and `:phylocov` hold the Cholesky entries of a q x q
+# covariance, q (q + 1) / 2 of them: q SDs and q (q - 1) / 2 correlations. Every
+# other variance-component block counts one SD per coefficient. A width that is
+# not triangular cannot be split, so it counts as all SD (the old behaviour).
+function _sd_and_correlation_counts(fit::DrmFit)
+    nsd = 0
+    ncorr = 0
+    for (p, r) in fit.blocks
+        p in _VARIANCE_COMPONENT_BLOCKS || continue
+        w = length(r)
+        if p === :recov || p === :phylocov
+            q = (isqrt(8w + 1) - 1) ÷ 2
+            if q * (q + 1) ÷ 2 == w
+                nsd += q
+                ncorr += w - q
+                continue
+            end
+        end
+        nsd += w
+    end
+    return nsd, ncorr
 end
 
 # A fit stranded on the failed-objective sentinel plateau (loglik <= -1e15, see
@@ -410,8 +550,9 @@ The weights multiply each row's log-likelihood (drmTMB semantics), so
 likelihood. `nobs(fit)` still counts rows, zero-weight rows included.
 
 Prior weights are implemented on the fixed-effect ML routes of the univariate
-families. Any other route refuses `weights =` with an `ArgumentError`
-(#931; the family-by-family rollout to random-effect routes is tracked there).
+families, on Gaussian and Poisson with one `(1 | g)`, on Gaussian `meta_V(v)`,
+and on the residual bivariate Gaussian (see `test/test_weights_re_parity.jl`).
+Any other route refuses `weights =` with an `ArgumentError` (#931).
 
 Before #931 step (b), this accessor returned `ones(nobs(fit))` for every fit,
 which looked like weights had been used.
@@ -445,6 +586,12 @@ refit keyword: the fitted family is kept, and passing one is an error. An
 unnamed extra positional argument is an error: a keyword-only refit would
 otherwise drop it and silently ignore the value.
 
+Prior `weights`: if the seed fit has weights, `update` requires an explicit `weights =`
+keyword and passes it to `drm`. Use `weights = weights(fit)` with the same `data`; use
+`weights = nothing` to refit unweighted on purpose. If rows with a missing response were
+dropped from the seed fit, `weights(fit)` has one entry per kept row and is shorter than
+`data`, so pass the original full-length weight vector (one per row of `data`) instead.
+
 `data` must be supplied. A `DrmFit` does not retain its observations, nor the
 options that were only arguments to the original `drm` call: `K`, `A`, `tree`,
 `coords`, `algorithm`, `g_tol`, `profile_ci`, `phylo_coupled`, `sparse`,
@@ -470,6 +617,16 @@ function update(fit::DrmFit, formula, args...; data, kwargs...)
             "call `drm(formula, family; data = ...)` to fit a different family " *
             "(got family = $(repr(kwargs[:family])))."))
     end
+    # A fit made with prior `weights` must not be refitted unweighted by accident. The fit
+    # stores its weights but `update` takes new `data`, whose rows may differ, so the caller
+    # says which weights to use: `weights = weights(fit)` for the same rows, new weights for
+    # new rows, or `weights = nothing` to drop them on purpose.
+    haskey(kwargs, :weights) || weights(fit) === nothing || throw(ArgumentError(
+        "update: the fit was made with prior `weights`; pass `weights = weights(fit)` (same rows), " *
+        "new weights for the new `data`, or `weights = nothing` to refit unweighted on purpose. " *
+        "It is never refitted unweighted silently. If rows with a missing response were dropped from " *
+        "the fit, `weights(fit)` has one entry per KEPT row and is shorter than `data`: pass the " *
+        "original full-length weight vector (one per row of `data`) instead."))
     stored = _update_stored_options(fit)
     # A caller who changes the estimator does not want the old MAP penalty.
     # Passing `penalty` explicitly still overrides that drop.

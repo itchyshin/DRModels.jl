@@ -315,6 +315,10 @@ Sum over groups of `_aghq_group_logint`. `bcache` (`q × G`, Float64) holds each
 group's last mode and is updated in place as a warm start; it affects only the
 iteration count, not the converged value (mode tolerance 1e-10).
 """
+# Number of group modes reset to 0 because they were not finite. `_record_cond_fit_aghq!` reads
+# it around one objective evaluation: a reset group would silently get its population value.
+const _AGHQ_MODE_RESETS = Threads.Atomic{Int}(0)
+
 function _aghq_marginal_loglik(ll, members, η0, Zre, L, rule::_AGHQRule, bcache::AbstractMatrix{Float64})
     tot = nothing
     for (gi, idx) in enumerate(members)
@@ -324,6 +328,7 @@ function _aghq_marginal_loglik(ll, members, η0, Zre, L, rule::_AGHQRule, bcache
             bcache[:, gi] .= bhat
         else
             bcache[:, gi] .= 0.0
+            Threads.atomic_add!(_AGHQ_MODE_RESETS, 1)   # `fitted()` must not read this group's mode as a fit
         end
         tot = tot === nothing ? v : tot + v
     end
@@ -334,6 +339,30 @@ end
 # convention L = [exp(a) 0; cc exp(b)].
 _corr_ranef_L(a, b, cc) = (l11 = exp(a); l22 = exp(b); z = zero(promote_type(typeof(l11), typeof(cc)));
                            [l11 z; cc l22])
+
+# L-BFGS for the `(1 + x | g)` routes. The first attempt is the plain default call, so every fit
+# that worked before is bit-for-bit unchanged. Only a fit that threw an AssertionError (the default
+# HagerZhang line search met a non-finite objective) is retried from the start with a finite
+# sentinel and BackTracking, then polished from that point with the default line search; the polish
+# is kept only if it ran and did not end higher. `converged` stays honest (see `drm_optim_converged`).
+# `bcache` holds the per-group modes; it is reset so modes cached at the extreme probe are dropped.
+function _optimize_corr_ranef(nll, θ0, g_tol, bcache)
+    try
+        return Optim.optimize(nll, θ0, Optim.LBFGS(), Optim.Options(g_tol = g_tol); autodiff = :forward)
+    catch e
+        e isa AssertionError || rethrow()
+        bcache .= 0.0
+        r1 = Optim.optimize(_safe_objective(nll), θ0,
+            Optim.LBFGS(linesearch = Optim.LineSearches.BackTracking()),
+            Optim.Options(g_tol = g_tol); autodiff = :forward)
+        r2 = drm_optim_converged(r1) ? nothing : try
+            Optim.optimize(nll, Optim.minimizer(r1), Optim.LBFGS(), Optim.Options(g_tol = g_tol); autodiff = :forward)
+        catch e2
+            e2 isa AssertionError ? nothing : rethrow()
+        end
+        return r2 !== nothing && Optim.minimum(r2) <= Optim.minimum(r1) ? r2 : r1
+    end
+end
 
 # ---------------------------------------------------------------------------
 # Crossed random intercepts (1 | g) + (1 | h) with FEW h-levels (#761).

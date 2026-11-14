@@ -53,18 +53,16 @@ end
     # a block beside a random slope term
     m3 = msg(bf(DRModels.@formula(y ~ x1 + (1 + x1 | g) + (0 + x2 | g2)), s1))
     @test occursin("method = :REML is not implemented", m3) && occursin("INTERCEPTS", m3)
-    # the bare spatial intercept: explains the kernel difference and names the working spelling
+    # the bare spatial intercept: drmTMB's fixed median-distance kernel, so REML is admitted and is the
+    # same model as the `sd(g, spatial) ~ 1` spelling
     sp, spdata = reml2_fit("spatial_sd1", 21)
     coords = let m = readdlm(joinpath(dirname(@__FILE__), "fixtures", "gaussian_reml_routes2", "coords.csv"), ',', Any; skipstart = 1)
         Dict(String(m[i, 1]) => [Float64(m[i, 2]), Float64(m[i, 3])] for i in 1:size(m, 1))
     end
-    m4 = try
-        drm(bf(DRModels.@formula(y ~ x1 + x2 + x3 + spatial(1 | g)), s1), Gaussian(); data = spdata, coords = coords,
-            method = :REML); ""
-    catch e
-        sprint(showerror, e)
-    end
-    @test occursin("estimates the exponential range", m4) && occursin("sd(g, spatial) ~ 1", m4)
+    bare = drm(bf(DRModels.@formula(y ~ x1 + x2 + x3 + spatial(1 | g)), s1), Gaussian(); data = spdata, coords = coords,
+               method = :REML)
+    @test bare.converged
+    @test bare.loglik ≈ sp.loglik atol = 1e-6
     # a labelled structured q2 block: refused by the structured-term check, which runs before the
     # method is read, so this is the same refusal under ML and does not exercise a REML gate
     m5 = try

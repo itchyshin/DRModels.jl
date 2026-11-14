@@ -1,0 +1,10 @@
+route = "zinb_r3"
+drmTMB_version = "0.8.1"
+R_version = "4.6.1"
+note = "zero-inflated NB2, mean (1 | g), sigma ~ 1, zi ~ 1 (start on the zero-inflation boundary)"
+tmb_names = ["beta_mu", "beta_mu", "beta_sigma", "beta_zi", "log_sd_mu"]
+names = ["mu_(Intercept)", "mu_x", "sigma_(Intercept)", "zi_(Intercept)", "resd_g"]
+loglik = -526.18312544374055
+max_grad = 1.310393e-13
+theta = [0.75828978459514007, 0.31547027000355637, -0.63797455316032414, -0.89076301704827288, -0.35576591321389295]
+se = [0.16750182437503577, 0.075681560114768925, 0.19045612924190838, 0.20900058465963961, 0.19263332842474146]

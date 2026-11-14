@@ -113,6 +113,22 @@ _indep_mean(::Val{:tweedie}, η) = exp(η)
 _indep_nu_scale(::Val{:student}, ην) = 2 .+ exp.(ην)
 _indep_nu_scale(::Val{:tweedie}, ην) = _logit12.(ην)
 _indep_obsval(::Val, yv) = yv
+_indep_nu_block(::Val) = :nu
+_indep_sigma_block(::Val) = :sigma
+# Per-observation auxiliary linear predictors (ησ, ην) from θ. The default is the plain
+# design-times-coefficient pair every kind used so far; the ordinal kind overrides it.
+function _indep_aux_eta(kind::Val, yv, Xσ, Xν, θ, pμ, pσ, k0, ::Type{T}) where {T}
+    n = length(yv)
+    ησ = Xσ === nothing ? zeros(T, n) : Xσ * θ[pμ+1:pμ+pσ]
+    ην = Xν === nothing ? zeros(T, n) : Xν * θ[pμ+pσ+1:k0]
+    return ησ, ην
+end
+# Post-fit overrides of the stored means / scales (identity by default).
+_indep_post(kind::Val, yv, means, scales, ημ̂, θ̂, pμ, pσ) = (means, scales)
+# Kinds whose fit keeps the conditional modes for `fitted()`: the zero-inflated and zero-truncated
+# count routes and the ordinal route (the other kinds keep their own, older behaviour).
+_indep_records_modes(::Val) = false
+_indep_records_modes(::Union{Val{:zip},Val{:zinb},Val{:tnb},Val{:cumlogit}}) = true
 _indep_obsval(::Val{:binomial}, yv) = [s / n for (s, n) in yv]
 _indep_famname(::Val{:gamma}) = "Gamma"
 _indep_famname(::Val{:student}) = "Student"
@@ -148,6 +164,13 @@ end
 _indep_primal(x::ForwardDiff.Dual) = _indep_primal(ForwardDiff.value(x))
 _indep_primal(x::Real) = Float64(x)
 
+# The objective returns its failure value when a random-effect log SD (or the log sigma) leaves
+# [-30, 30]. The value is kept at 30. A fit that ends within `_INDEP_WALL_TOL` of the LOWER end has an
+# SD that is zero for every practical purpose: it is reported as a boundary fit (see
+# `convergence_status`), not as an interior optimum.
+const _INDEP_LOGSD_GUARD = 30.0
+const _INDEP_WALL_TOL = 1.0
+
 """
     _fit_indep_re_laplace(fam, kind, y, Xμ, Xσ, Xν, comps, nmμ, nmσ, nmν, g_tol) -> DrmFit
 
@@ -157,7 +180,8 @@ mean. `comps` is a vector of `(w, gidx, G, label)` (the Gaussian multi-RE
 convention; `w` is the slope covariate or ones). θ = [β_μ; β_σ; (β_ν;) log σ_k].
 Blocks `:mu`, `:sigma`, (`:nu`,) `:resd`. Tagged `marginal = :Laplace`.
 """
-function _fit_indep_re_laplace(fam, kind::Val, y, Xμ, Xσ, Xν, comps, nmμ, nmσ, nmν, g_tol)
+function _fit_indep_re_laplace(fam, kind::Val, y, Xμ, Xσ, Xν, comps, nmμ, nmσ, nmν, g_tol;
+                               start = nothing)
     n = length(y); yv = _indep_response(kind, y)
     has_nu = Xν !== nothing
     has_sigma = Xσ !== nothing                         # Poisson and Binomial have no dispersion
@@ -249,10 +273,10 @@ function _fit_indep_re_laplace(fam, kind::Val, y, Xμ, Xσ, Xν, comps, nmμ, nm
         T = eltype(θ)
         βμ = θ[1:pμ]; βσ = θ[pμ+1:pμ+pσ]
         lsg = vcat([Zs[k] * θ[sdoffs[k]+1:sdoffs[k+1]] for k in 1:K]...)   # log SD of every effect
-        any(l -> abs(_indep_primal(l)) > 30, lsg) && return T(1e18)
-        η0 = Xμ * βμ; ησ = has_sigma ? Xσ * βσ : zeros(T, n)
-        ην = has_nu ? Xν * θ[pμ+pσ+1:k0] : zeros(T, n)
-        any(l -> abs(_indep_primal(l)) > 30, ησ) && return T(1e18)
+        any(l -> abs(_indep_primal(l)) > _INDEP_LOGSD_GUARD, lsg) && return T(1e18)
+        η0 = Xμ * βμ
+        ησ, ην = _indep_aux_eta(kind, yv, has_sigma ? Xσ : nothing, has_nu ? Xν : nothing, θ, pμ, pσ, k0, T)
+        any(l -> abs(_indep_primal(l)) > _INDEP_LOGSD_GUARD, ησ) && return T(1e18)
         invs = exp.(-2 .* lsg)
         f0 = (_indep_primal.(η0), _indep_primal.(ησ), _indep_primal.(ην), _indep_primal.(invs))
         b̂, ok = inner_mode(f0..., last_b)
@@ -292,6 +316,10 @@ function _fit_indep_re_laplace(fam, kind::Val, y, Xμ, Xσ, Xν, comps, nmμ, nm
         sw = all(==(1.0), W[k]) ? 1.0 : max(std(W[k]), 1e-8)
         θ0[sdoffs[k]+1] = base - log(sw)
     end
+    if start !== nothing                               # caller-supplied start (the zero-mass multi-start)
+        length(start) == length(θ0) || throw(ArgumentError("start has length $(length(start)), expected $(length(θ0))"))
+        θ0 .= Float64.(start)
+    end
     # BFGS first: on the near-flat slope-variance ridge L-BFGS stalled at a 1e18 line-search
     # probe (simulated growth data) while BFGS reaches drmTMB's optimum in 5–25 iterations.
     opts = Optim.Options(g_tol = g_tol, iterations = 1000, f_reltol = NaN, x_abstol = NaN, x_reltol = NaN)
@@ -314,8 +342,10 @@ function _fit_indep_re_laplace(fam, kind::Val, y, Xμ, Xσ, Xν, comps, nmμ, nm
     labels = [c[4] for c in comps]
     blocks = Pair{Symbol,UnitRange{Int}}[:mu => 1:pμ]
     names = Pair{Symbol,Vector{String}}[:mu => nmμ]
-    has_sigma && (push!(blocks, :sigma => (pμ+1):(pμ+pσ)); push!(names, :sigma => nmσ))
-    has_nu && (push!(blocks, :nu => (pμ+pσ+1):k0); push!(names, :nu => nmν))
+    sigblock = _indep_sigma_block(kind)                # `:sigma`, or `:cutpoints` for the ordinal kind
+    has_sigma && (push!(blocks, sigblock => (pμ+1):(pμ+pσ)); push!(names, sigblock => nmσ))
+    nublock = _indep_nu_block(kind)                    # `:nu`, or `:zi` / `:hu` for the zero-mass kinds
+    has_nu && (push!(blocks, nublock => (pμ+pσ+1):k0); push!(names, nublock => nmν))
     if has_sdreg                                       # one `:sd` block of all α_k, as the Gaussian multi route
         sdnames = String[]
         for k in 1:K
@@ -329,7 +359,30 @@ function _fit_indep_re_laplace(fam, kind::Val, y, Xμ, Xσ, Xν, comps, nmμ, nm
     ημ̂ = Xμ * θ̂[1:pμ]
     means = Dict(:mu => _indep_mean.(Ref(kind), ημ̂)); obs = Dict(:mu => _indep_obsval(kind, yv))   # population mean (b = 0)
     scales = has_sigma ? Dict(:sigma => exp.(Xσ * θ̂[(pμ+1):(pμ+pσ)])) : Dict{Symbol,Vector{Float64}}()
-    has_nu && (scales[:nu] = _indep_nu_scale(kind, Xν * θ̂[(pμ+pσ+1):k0]))
+    has_nu && (scales[nublock] = _indep_nu_scale(kind, Xν * θ̂[(pμ+pσ+1):k0]))
+    means, scales = _indep_post(kind, yv, means, scales, ημ̂, θ̂, pμ, pσ)
+    kind isa Val{:binomial} && (scales[:trials] = Float64[t for (_, t) in yv])   # per-row trials, as every other Binomial route
+    if _indep_records_modes(kind)
+        # Conditional modes at θ̂ (a fresh inner solve from zero, the same solver as the objective),
+        # kept as the per-row contribution Z b̂ for `fitted(fit)` (conditional default).
+        ησ̂, ην̂ = _indep_aux_eta(kind, yv, has_sigma ? Xσ : nothing, has_nu ? Xν : nothing, θ̂, pμ, pσ, k0, Float64)
+        lsĝ = vcat([Zs[k] * θ̂[sdoffs[k]+1:sdoffs[k+1]] for k in 1:K]...)
+        b̂m, okm = inner_mode(Xμ * θ̂[1:pμ], ησ̂, ην̂, exp.(-2 .* lsĝ), zeros(q))
+        if okm && all(isfinite, b̂m)
+            _record_cond_fit!(scales, [sum(W[k][i] * b̂m[cols[k][i]] for k in 1:K) for i in 1:n])
+        else
+            scales[:cond_fit_failed] = [1.0]
+        end
+    end
+    lsg_hat = vcat([Zs[k] * θ̂[sdoffs[k]+1:sdoffs[k+1]] for k in 1:K]...)
+    if nllhat < 1e17 && minimum(lsg_hat) <= -(_INDEP_LOGSD_GUARD - _INDEP_WALL_TOL)
+        scales[:cond_logsd_wall] = [minimum(lsg_hat)]
+        @warn "A random-effect log SD reached the lower search bound ($(-_INDEP_LOGSD_GUARD)): the fitted SD is " *
+              "effectively zero, so this is a boundary fit (`convergence_status(fit)` is `:boundary`) and " *
+              "Wald standard errors are not reliable. To test that variance against zero use " *
+              "`lrt_boundary(fit, reduced)` with a reduced fit that drops the term (50:50 chi-bar " *
+              "mixture). Profile intervals may not converge at the wall."
+    end
     fit = DrmFit(fam, blocks, names, θ̂, V, -nllhat, n, converged, means, obs, scales)
     return _withiterations(_withmarginal(_withnll(fit, nll), :Laplace), Optim.iterations(res))
 end
