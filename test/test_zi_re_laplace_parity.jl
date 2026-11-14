@@ -112,16 +112,17 @@ end
     # same fit through the explicit Laplace request; update repeats it
     @test loglik(drm(zf, Poisson(); data = d, marginal = :Laplace)) ≈ loglik(fit)
     @test loglik(update(fit, fit.formula; data = d)) ≈ loglik(fit)
-    # fitted() is conditional by default and this route keeps no random-effect modes, so the default
-    # refuses by name and points to `re = :zero`. With `re = :zero` fitted() is the expected response,
-    # (1 - pi) * exp(mu) with the random effect at zero, pinned row by row to drmTMB 0.8.1; predict()
-    # is the count-component mean (as for fixed-effects ZIP).
-    ferr = try; fitted(fit); nothing; catch e; e; end
-    @test ferr isa ArgumentError
-    @test occursin("re = :zero", sprint(showerror, ferr))
-    fz = fitted(fit; re = :zero)
+    # fitted() is conditional by default (the stored random-effect modes are included) and equals drmTMB
+    # 0.8.1's value row by row. With `re = :zero` it is the expected response, (1 - pi) * exp(mu) with the
+    # random effect at zero, also pinned row by row; predict() is the count-component mean (as for
+    # fixed-effects ZIP).
     fref = readlines(joinpath(_ZR_DIR, "zip_g", "fitted_r.csv"))[2:end]
+    fcond = [parse(Float64, split(l, ',')[2]) for l in fref]
     fpop = [parse(Float64, split(l, ',')[3]) for l in fref]
+    fc = fitted(fit)
+    @test length(fc) == length(fcond) == length(d.y)
+    @test maximum(abs.(fc .- fcond)) <= _ZR_FITTED_TOL
+    fz = fitted(fit; re = :zero)
     @test length(fz) == length(fpop) == length(d.y)
     @test maximum(abs.(fz .- fpop)) <= _ZR_FITTED_TOL
     @test mean(fz) < mean(predict(fit, d))

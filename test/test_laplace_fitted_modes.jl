@@ -136,8 +136,13 @@ end
         @test fit.nll(fit.theta) ≈ -loglikelihood(fit) rtol = 1e-12
         @test fit.means[:mu] == fitted(fit; re = :zero)
     end
-    @testset "a Poisson (1 | g) fit with prior weights still refuses :Laplace" begin
-        @test_throws ArgumentError drm(bf(@formula(y_pois ~ x1 + (1 | g))), Poisson();
-                                       data = d, weights = d.w, marginal = :Laplace)
+    @testset "a Poisson (1 | g) fit with prior weights fits under :Laplace (weights with one (1 | g), pinned to drmTMB in test_weights_re_parity.jl)" begin
+        form = bf(@formula(y_pois ~ x1 + (1 | g)))
+        fw = drm(form, Poisson(); data = d, weights = d.w, marginal = :Laplace)
+        @test fw.marginal === :Laplace && is_converged(fw) && weights(fw) == d.w
+        f1 = drm(form, Poisson(); data = d, weights = ones(length(d.w)), marginal = :Laplace)
+        f0 = drm(form, Poisson(); data = d, marginal = :Laplace)
+        @test loglikelihood(f1) ≈ loglikelihood(f0) atol = 1e-8        # unit weights change nothing
+        @test abs(loglikelihood(fw) - loglikelihood(f0)) > 1e-3        # the weights are used
     end
 end

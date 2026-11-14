@@ -60,7 +60,12 @@ const _CLL_FORM = bf(@formula(y ~ x + (1 | g)))
             P = cdf[:, 2:end] .- cdf[:, 1:end-1]
             Pref = permutedims(reshape(Float64.(ref["prob"]), K, n))
             @test maximum(abs.(P .- Pref)) <= 1e-6
-            @test maximum(abs.(fitted(fit) .- Pref * collect(1.0:K))) <= 1e-6
+            @test maximum(abs.(fitted(fit; re = :zero) .- Pref * collect(1.0:K))) <= 1e-6   # population value
+            # fitted() is conditional (random-effect modes included), as drmTMB's fitted()
+            rf = [split(l, ',') for l in readlines(joinpath(_CLL_DIR, route, "fitted_r.csv"))[2:end]]
+            @test length(rf) == n
+            @test maximum(abs.(fitted(fit) .- parse.(Float64, getindex.(rf, 2)))) <= 1e-8
+            @test maximum(abs.(fitted(fit; re = :zero) .- parse.(Float64, getindex.(rf, 3)))) <= 1e-6
             # the default integrator is unchanged and is a different number
             fla = drm(_CLL_FORM, CumulativeLogit(); data = d)
             @test fla.marginal === :LA

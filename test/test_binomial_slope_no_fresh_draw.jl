@@ -15,15 +15,13 @@ function _bsl_data(seed)
     return (; x, z, g = string.("g", gi), s, f = 10.0 .- s)
 end
 
-# Shapes without a fresh draw: one slope term, a slope plus an intercept bar, and crossed bars (Laplace
-# and AGHQ). Each must refuse by name through every bootstrap entry point and the default `simulate`,
+# Shapes without a fresh draw: one slope term and a slope plus an intercept bar (crossed intercepts have
+# a fresh draw, see the last test set). Each must refuse by name through every bootstrap entry point and the default `simulate`,
 # whether or not the fitted object stores its trial counts.
 _bsl_cases = [
     ("(0 + z | g)", "a random slope without an intercept", "(0 + z | g)", identity),
     ("(1 + z | g)", "a correlated random intercept and slope", "(1 + z | g)", identity),
     ("(1 | g) + (0 + z | g)", "several random-effect terms", "(1 | g) + (0 + z | g)", identity),
-    ("(1 | g) + (1 | h)", "several random-effect terms", "(1 | g) + (1 | h)", identity),
-    ("(1 | g) + (1 | h) AGHQ", "several random-effect terms", "(1 | g) + (1 | h)", identity),
 ]
 
 @testset "Binomial random effects without a fresh draw: bootstrap and default simulate refuse by name" begin
@@ -70,4 +68,18 @@ end
     # `re = :zero` is not touched by the refusal: it still works for the correlated shape
     f2 = drm(bf(@formula(cbind(s, f) ~ x + (1 + z | g))), Binomial(); data = d)
     @test length(simulate(f2; data = d, re = :zero, rng = Random.Xoshiro(1))) == length(d.x)
+end
+
+@testset "Binomial crossed intercepts have a fresh draw: the bootstrap runs and the draws carry the group effects" begin
+    d0 = _bsl_data(5)
+    d = merge(d0, (; h = string.("h", rand(Random.Xoshiro(9), 1:6, length(d0.x)))))
+    gm(y) = [sum(y[d.g .== k]) / count(==(k), d.g) for k in unique(d.g)]
+    gv(y) = (m = gm(y); sum(abs2, m .- sum(m) / length(m)) / (length(m) - 1))
+    for kw in ((;), (; marginal = :AGHQ))
+        fit = drm(bf(@formula(cbind(s, f) ~ x + (1 | g) + (1 | h))), Binomial(); data = d, kw...)
+        @test size(bootstrap_summary(fit; data = d, B = 2, rng = Random.Xoshiro(1)), 1) == length(coef(fit))
+        fresh = sum(gv(simulate(fit; data = d, rng = Random.Xoshiro(s))) for s in 1:40) / 40
+        # between-group variance of the simulated group means against the data's (own bound, no R value)
+        @test 0.5 < fresh / gv(d.s) < 2
+    end
 end

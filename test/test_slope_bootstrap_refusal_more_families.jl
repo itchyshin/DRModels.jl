@@ -26,7 +26,6 @@ const _SBR_FAMILIES = [("Beta", DRModels.Beta(), :ybeta), ("Student", Student(),
         ("(0 + z | g)", "a random slope without an intercept"),
         ("(1 + z | g)", "a correlated random intercept and slope"),
         ("(1 | g) + (0 + z | g)", "an independent random slope with an intercept"),
-        ("(1 | g) + (1 | h)", "crossed or nested random intercepts"),
     ]
     for (fname, fam, resp) in _SBR_FAMILIES, (terms, label) in cases
         # A LogNormal `(0 + z | g)` has a fresh draw already; it is checked below.
@@ -51,6 +50,20 @@ const _SBR_FAMILIES = [("Beta", DRModels.Beta(), :ybeta), ("Student", Student(),
             # the escape named in the message works: a conditional draw with the random effects at zero
             @test length(simulate(fit; data = d, re = :zero, rng = Random.Xoshiro(1))) == length(d.x)
         end
+    end
+end
+
+@testset "Beta, Student, LogNormal crossed intercepts have a fresh draw (simulator for several random intercepts)" begin
+    d = _sbr_data(7)
+    gv(y) = (m = [sum(y[d.g .== k]) / count(==(k), d.g) for k in unique(d.g)];
+             sum(abs2, m .- sum(m) / length(m)) / (length(m) - 1))
+    for (fname, fam, resp) in _SBR_FAMILIES
+        fo = Core.eval(@__MODULE__, Meta.parse("bf(@formula($resp ~ x + (1 | g) + (1 | h)), @formula(sigma ~ 1))"))
+        fit = drm(fo, fam; data = d)
+        @test size(bootstrap_summary(fit; data = d, B = 2, rng = Random.Xoshiro(1)), 1) == length(coef(fit))
+        fresh = sum(gv(simulate(fit; data = d, rng = Random.Xoshiro(s))) for s in 1:40) / 40
+        # between-group variance of the simulated group means against the data's (own bound, no R value)
+        @test 0.4 < fresh / gv(getproperty(d, resp)) < 2.5
     end
 end
 

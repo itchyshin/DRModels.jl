@@ -117,9 +117,13 @@ end
     fit = drm(form, fam; data = d, marginal = :Laplace)
     @test fit.marginal === :Laplace && is_converged(fit)
     @test isfinite(loglik(fit)) && length(residuals(fit; type = :quantile)) == n
-    # bootstrap refits keep the option
-    br = bootstrap_result(fit; data = d, B = 2, rng = Random.Xoshiro(1))
-    @test br.used == 2 && br.marginal === :Laplace && br.refit_marginal === :Laplace
+    # a correlated block has no fresh random-effect draw: the bootstrap is refused by name (bootstrap
+    # refits keeping the option are pinned on the `(1 | g)` cells above)
+    for call in (() -> bootstrap_result(fit; data = d, B = 2, rng = Random.Xoshiro(1)),
+                 () -> bootstrap_summary(fit; data = d, B = 2, rng = Random.Xoshiro(1)))
+        err = try; call(); nothing; catch e; e; end
+        @test err isa ArgumentError && occursin("no fresh random-effect draw", sprint(showerror, err))
+    end
     # not available on this shape, refused by name rather than computed another way
     @test_throws ArgumentError ranef(fit)
     @test_throws ArgumentError simulate(fit; data = d, rng = Random.Xoshiro(1))

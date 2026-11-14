@@ -85,9 +85,9 @@ end
     @test maximum(abs.(r .- rr)) < 1e-6
 end
 
-# One entry per row of `data`; rows dropped for a missing response are NaN, as for `:response` and
-# `:quantile`. drmTMB returns the kept rows only, so the R values are compared on the kept rows.
-@testset "Pearson residuals: rows dropped for a missing response are NaN" begin
+# One entry per used row; rows dropped for a missing response are not returned, as for `:response` and
+# `:quantile`, and as in drmTMB, so the R values are compared row by row on the kept rows.
+@testset "Pearson residuals: rows dropped for a missing response are not returned" begin
     m, _ = readdlm(joinpath(_PEARSON_DIR, "pearson_poisson_miss.csv"), ','; header = true)
     ymiss = Union{Missing,Float64}[v isa Number ? Float64(v) : missing for v in m[:, 1]]
     rr = Float64[v isa Number ? Float64(v) : NaN for v in m[:, 3]]
@@ -95,13 +95,12 @@ end
     fit = drm(bf(@formula(y ~ x)), DRModels.Poisson(); data)
     r = residuals(fit; type = :pearson)
     dropped = ismissing.(ymiss)
-    @test length(r) == length(ymiss)
-    @test all(isnan, r[dropped])
-    @test !any(isnan, r[.!dropped])
-    @test maximum(abs.(r[.!dropped] .- rr[.!dropped])) < 1e-6
+    @test length(r) == count(!, dropped)
+    @test !any(isnan, r)
+    @test maximum(abs.(r .- rr[.!dropped])) < 1e-6
     # the other residual types follow the same convention
-    @test length(residuals(fit)) == length(ymiss) && all(isnan, residuals(fit)[dropped])
-    @test length(residuals(fit; type = :quantile, rng = Random.Xoshiro(1))) == length(ymiss)
+    @test length(residuals(fit)) == count(!, dropped) && !any(isnan, residuals(fit))
+    @test length(residuals(fit; type = :quantile, rng = Random.Xoshiro(1))) == count(!, dropped)
 end
 
 # Each clause of the fixed-effect guard is pinned by its own fit.

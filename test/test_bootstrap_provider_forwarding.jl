@@ -53,9 +53,11 @@ using Test, Random, LinearAlgebra, Statistics
         g_tol=1e-6)
     @test [(r.param, r.coef, r.lower, r.upper) for r in rows_summary] ==
           [(r.param, r.coef, r.lower, r.upper) for r in fit_result.summary]
-    @test rows_ci == [(param=r.param, coef=r.coef, estimate=r.estimate,
-                      lower=r.lower, upper=r.upper)
-                     for r in fit_result.summary]
+    @test [(param=r.param, coef=r.coef, estimate=r.estimate, lower=r.lower, upper=r.upper)
+           for r in rows_ci] ==
+          [(param=r.param, coef=r.coef, estimate=r.estimate, lower=r.lower, upper=r.upper)
+           for r in fit_result.summary]
+    @test all(r -> r.scale in (:link, :log_sd), rows_ci)    # the `scale` field of every interval row
 
     bridge = drm_bridge_inference(
         formula=Dict("mu" => "y ~ x + spatial(1 | site)",

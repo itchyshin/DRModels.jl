@@ -45,8 +45,6 @@ end
     d = _no_fresh_draw_data(11)
     shapes = [
         ("(1 | g) + (0 + z | g)", "an independent random slope with an intercept"),
-        ("(1 | g) + (1 | h)", "crossed or nested random intercepts"),
-        ("(1 | g) + (1 | gh)", "crossed or nested random intercepts"),
         ("(1 | g) + (0 + z | g) + (1 | h)", "a mix of random intercepts and slopes"),
         ("(0 + x | g) + (0 + z | g)", "independent random slopes without an intercept"),
         ("(0 + x | g) + (0 + z | h)", "random slopes on different groups"),
@@ -77,6 +75,20 @@ end
         # the escape named in the message works for this fit
         @test occursin("call `simulate(fit; data = data, re = :zero)`", msg)
         @test length(simulate(fit; data = d, re = :zero, rng = Random.Xoshiro(1))) == length(d.x)
+    end
+end
+
+@testset "no fresh draw: crossed and nested Gamma intercepts have a fresh draw (simulator for several random intercepts)" begin
+    d = _no_fresh_draw_data(11)
+    gv(y, grp) = (ks = unique(grp); m = [sum(y[grp .== k]) / count(==(k), grp) for k in ks];
+                  sum(abs2, m .- sum(m) / length(m)) / (length(m) - 1))
+    for terms in ("(1 | g) + (1 | h)", "(1 | g) + (1 | gh)")
+        fo = Core.eval(@__MODULE__, Meta.parse("bf(@formula(y ~ x + $terms))"))
+        fit = drm(fo, DRModels.Gamma(); data = d)
+        @test size(bootstrap_summary(fit; data = d, B = 2, rng = Random.Xoshiro(1)), 1) == length(coef(fit))
+        fresh = sum(gv(simulate(fit; data = d, rng = Random.Xoshiro(s)), d.g) for s in 1:40) / 40
+        # between-group variance of the simulated group means against the data's (own bound, no R value)
+        @test 0.5 < fresh / gv(d.y, d.g) < 2
     end
 end
 
