@@ -134,3 +134,32 @@ end
     @test abs(ll_reml - loglikelihood(fit)) < 1e-8
     @test maximum(abs.(vcat(coef(fit, :mu1), coef(fit, :mu2)) .- beta)) < 1e-6   # fixed effects are the GLS values
 end
+
+# REML needs a full-rank fixed-effect design among the OBSERVED rows. With `miss_control(response =
+# "include")` a covariate can be constant, or equal to another covariate, on the rows where one response is
+# observed although it varies in the full data. The restricted likelihood has logdet(X' V^-1 X) = -Inf there;
+# before, the fit stopped with a raw `SingularException: ... Zero pivot found at index 3`. It now refuses by
+# name. ML is not affected (it keeps its own singular-Hessian warning).
+@testset "bivariate (1 | p | g): REML refuses a rank-deficient design of the observed rows" begin
+    d0 = _bi_data()
+    miss1 = ismissing.(d0.y1m)
+    @test any(miss1) && !all(miss1)
+    zero_on_obs = Float64.(miss1)                                       # 0 on every row where y1m is observed
+    alias_on_obs = ifelse.(miss1, reverse(d0.x1), d0.x1)                # equals x1 on every row where y1m is observed
+    @test length(unique(zero_on_obs)) == 2 && length(unique(alias_on_obs)) > 1   # varies in the full data
+    inc = miss_control(response = "include")
+    mu1_zobs = @formula(y1m ~ x1 + zobs + (1 | p | g))
+    mu1_aobs = @formula(y1m ~ x1 + aobs + (1 | p | g))
+    for (nm, col, mu1) in ((:zobs, zero_on_obs, mu1_zobs), (:aobs, alias_on_obs, mu1_aobs))
+        d = merge(d0, NamedTuple{(nm,)}((col,)))
+        f = bf(mu1 = mu1, mu2 = @formula(y2m ~ x2 + (1 | p | g)),
+               sigma1 = @formula(sigma1 ~ 1), sigma2 = @formula(sigma2 ~ 1), rho12 = @formula(rho12 ~ 1))
+        err = try drm(f, Gaussian(); data = d, missing = inc, method = :REML); nothing catch e e end
+        @test err isa ArgumentError
+        msg = err isa ArgumentError ? err.msg : sprint(showerror, err)
+        @test occursin("full-rank fixed-effect design among the observed rows", msg)
+        @test occursin("`mu1` has rank 2 for 3 columns", msg)
+        @test occursin(String(nm), msg)
+        @test occursin("method = :ML", msg)
+    end
+end
