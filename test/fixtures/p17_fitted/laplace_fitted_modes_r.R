@@ -2,7 +2,7 @@
 # `fitted()` check (Poisson on an unbalanced group, Binomial on a numeric group code, Poisson with a
 # missing response and a missing predictor).
 #
-#   DRMTMB_LIB=~/drm_campaign_20261108/Rlib Rscript p22b_laplace_fitted_r.R data.csv p22b_laplace_fitted_reference.csv
+#   DRMTMB_LIB=~/drm_campaign_20261108/Rlib Rscript laplace_fitted_modes_r.R data.csv laplace_fitted_modes_reference.csv
 #
 # Same layout as p17_fitted_review_r.R: per used row, the drmTMB 0.8.1 `fitted()` value (`cond`, random-effect
 # modes included) and `pop`, the population value (every random effect at zero; NA when a row has a missing

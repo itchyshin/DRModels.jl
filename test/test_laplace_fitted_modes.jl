@@ -5,9 +5,9 @@
 # `fitted(fit)` is conditional (`re = :conditional`), the same definition as on the default route
 # (test_fitted_conditional.jl). Before, `fitted(fit)` threw because no modes were kept.
 #
-# Reference values (drmTMB 0.8.1, R 4.6.1, Totoro), all from the data in
+# Reference values (drmTMB 0.8.1, R 4.6.1), all from the data in
 # test/fixtures/p17_fitted/data.csv:
-#   p22b_laplace_fitted_reference.csv    <- p22b_laplace_fitted_r.R      (3 cells, added here)
+#   laplace_fitted_modes_reference.csv    <- laplace_fitted_modes_r.R      (3 cells, added here)
 #   p17_fitted_review_reference.csv      <- p17_fitted_review_r.R         (Poisson and NB2 with an offset)
 #   p17_fitted_binomial_reference.csv    <- p17_fitted_binomial_r.R       (Binomial)
 # The bound is the one test_fitted_conditional.jl uses for the cells where both engines fit the same
@@ -51,7 +51,7 @@ function _lf_reference(file)
     return ref
 end
 
-const _LF_REFS = ("p22b_laplace_fitted_reference.csv", "p17_fitted_review_reference.csv",
+const _LF_REFS = ("laplace_fitted_modes_reference.csv", "p17_fitted_review_reference.csv",
                   "p17_fitted_binomial_reference.csv")
 
 # (reference id, group column, fit). The ids are the drmTMB cells above.
