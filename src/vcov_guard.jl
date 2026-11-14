@@ -64,13 +64,15 @@ Symmetrises `H`, then inverts it, unless it is numerically singular or not
 positive definite. A clearly negative eigenvalue means the point is not a
 minimum: the function warns and returns a `NaN` covariance rather than
 `inv(H)` or a pseudo-inverse. A numerically zero eigenvalue (a variance
-boundary) still falls back to the Moore–Penrose pseudo-inverse and warns,
-naming the flat coordinates. The decision is made from the eigenvalues rather
+boundary) warns, naming the flat coordinates; those flagged coordinates are
+dropped from the Hessian before the rest is inverted, and their rows and columns of
+the result are `NaN`. If no single coordinate is flagged (the singular direction is
+a combination of several), the Moore–Penrose pseudo-inverse is used as before. The decision is made from the eigenvalues rather
 than from whether `inv` happens to throw, so the result does not depend on the
 LAPACK build or CPU.
 
-The pseudo-inverse keeps a fit usable, but standard errors for the flagged
-coordinates are not trustworthy: at a variance boundary the sampling
+Standard errors for flagged
+coordinates are withheld (`NaN`) because at a variance boundary the sampling
 distribution is not the usual normal approximation. Use `method = :profile` or
 the bootstrap entry points for those targets (see `src/inference.jl`), or the
 χ̄² boundary machinery in `src/chibar.jl`.
@@ -125,12 +127,36 @@ function _vcov_from_hessian(H::AbstractMatrix; context::AbstractString = "")
               flagged coordinates are NOT trustworthy. Prefer `confint(fit, method = :profile)`
               or the bootstrap entry points for those targets.
               """ context flat_coordinates = flat rcond = scale == 0 ? 0.0 : minimum(abs, ev) / scale
-        V0 = pinv(Hs)
+        if isempty(flat)
+            V0 = pinv(Hs)
+        else
+            # Drop the flagged coordinates BEFORE inverting, so finite-difference
+            # noise on a flat coordinate (1e-8 of either sign) cannot contaminate the
+            # covariances of the others, and report the flagged rows and columns as
+            # NaN: a variance for a coordinate whose curvature cannot be told from zero
+            # is not a number the data support (DRModels.jl#1383).
+            V0 = _vcov_drop_flagged(Hs, flat)
+        end
     else
         V0 = inv(Hs)
     end
 
     return Matrix(Symmetric((V0 + V0') / 2))
+end
+
+# Covariance of the unflagged block of `Hs`; flagged rows and columns are NaN.
+# The block is inverted directly when it is well conditioned and by pseudo-inverse
+# otherwise (the behaviour the whole matrix had before), without a second warning.
+function _vcov_drop_flagged(Hs::AbstractMatrix, flat::AbstractVector{<:Integer})
+    n = size(Hs, 1)
+    V = fill(NaN, n, n)
+    keep = setdiff(1:n, flat)
+    isempty(keep) && return V
+    Hk = Hs[keep, keep]
+    ev = eigvals(Symmetric(Hk))
+    scale = maximum(abs, ev)
+    V[keep, keep] = (scale != 0 && minimum(abs, ev) > _VCOV_RTOL * scale) ? inv(Hk) : pinv(Hk)
+    return V
 end
 
 """
