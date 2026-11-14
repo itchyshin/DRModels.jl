@@ -196,6 +196,8 @@ end
         end
         @test !occursin("already rank deficient", msg)           # the cause is the kept rows, not the full data
         @test !occursin("keeps the factor levels of the full data and does not", msg)
+        @test occursin("a factor level seen only in rows with a missing response", msg)
+        @test !occursin("does not help", msg)                   # removing the rows is the right advice for a factor level
         # taking those rows out of `data` removes the level, and the fit works
         keep = findall(!, miss1)
         dsub = NamedTuple{keys(d)}(map(c -> c[keep], values(d)))
@@ -212,7 +214,10 @@ end
         errr = refused(freuse, d)
         @test errr isa ArgumentError
         msgr = errr isa ArgumentError ? errr.msg : sprint(showerror, errr)
-        @test occursin("fz: c", msgr) && occursin("build it afresh", msgr)
+        @test occursin("fz: c", msgr) && occursin("Build the formula afresh", msgr)
+        # the cause is an empty level, so the text must not blame a duplicate or aliased column
+        @test occursin("is zero on every row", msgr) && occursin("a level with no rows", msgr)
+        @test !occursin("duplicate", msgr) && !occursin("aliased column", msgr) && !occursin("equals a combination", msgr)
         # ML is not refused by this check
         errml = try drm(f, Gaussian(); data = d, method = :ML, missing = inc); nothing catch e e end
         @test errml === nothing || !occursin("full-rank", sprint(showerror, errml))
@@ -254,7 +259,8 @@ end
         err = refused(mk(@formula(y1m ~ x1 + x1dup + (1 | p | g))), merge(d0, (; x1dup)); missing = inc)
         @test err isa ArgumentError
         msg = err isa ArgumentError ? err.msg : sprint(showerror, err)
-        @test occursin("already rank deficient on all", msg) && occursin("duplicate, constant or aliased column in `data`", msg)
+        @test occursin("already rank deficient on all", msg) && occursin("`x1dup` equals a combination of other columns on every row", msg)
+        @test occursin("cannot help", msg) && !occursin("ormula afresh", msg)
         @test occursin("x1dup", msg) && !occursin("stay in the fit", msg)
         @test !occursin("out of `data`", msg)                # taking rows out does not help here
         # rank lost only among the observed rows (constant 0 on every row where y1m is observed)
@@ -262,6 +268,29 @@ end
         err2 = refused(mk(@formula(y1m ~ x1 + zobs + (1 | p | g))), merge(d0, (; zobs)); missing = inc)
         msg2 = err2 isa ArgumentError ? err2.msg : sprint(showerror, err2)
         @test err2 isa ArgumentError && occursin("stay in the fit", msg2) && !occursin("already rank deficient", msg2)
+        # a covariate (not a factor level): taking the rows out does not help, and the message says so
+        @test occursin("`zobs` (constant or aliased on the rows that carry a `y1m` value), taking the rows with a missing response out of `data` does not help", msg2)
+        @test !occursin("fresh formula object", msg2) && occursin("method = :ML", msg2)
+        # following the advice: the rows removed, the covariate is constant on every remaining row, refused again
+        keep = findall(!, miss1)
+        dz = merge(d0, (; zobs))
+        dzsub = NamedTuple{keys(dz)}(map(c -> c[keep], values(dz)))
+        err2b = refused(mk(@formula(y1m ~ x1 + zobs + (1 | p | g))), dzsub; missing = inc)
+        @test err2b isa ArgumentError && occursin("already rank deficient", err2b.msg)
+        # the options that are offered do work: ML, and dropping the term
+        @test isfinite(loglikelihood(drm(mk(@formula(y1m ~ x1 + zobs + (1 | p | g))), Gaussian(); data = dz, missing = inc, method = :ML)))
+        @test isfinite(loglikelihood(drm(mk(@formula(y1m ~ x1 + (1 | p | g))), Gaussian(); data = dz, missing = inc, method = :REML)))
+        # a covariate constant (non-zero) on the observed rows only, varying on the kept rows
+        zc3 = ifelse.(miss1, 5.0 .+ cos.(1:n), 3.0)
+        err2c = refused(mk(@formula(y1m ~ x1 + zc3 + (1 | p | g))), merge(d0, (; zc3)); missing = inc)
+        @test err2c isa ArgumentError && occursin("`zc3` (constant or aliased", err2c.msg) && occursin("does not help", err2c.msg)
+        # a constant column in the full data repeats the intercept: named as such, no advice to remove rows
+        cst = fill(3.0, n)
+        err5 = refused(mk(@formula(y1m ~ x1 + cst + (1 | p | g))), merge(d0, (; cst)); missing = inc)
+        msg5 = err5 isa ArgumentError ? err5.msg : sprint(showerror, err5)
+        @test err5 isa ArgumentError && occursin("`cst` is constant on every row, so it repeats the intercept", msg5)
+        @test !occursin("equals a combination", msg5) && !occursin("ormula afresh", msg5)
+        @test isfinite(loglikelihood(drm(mk(@formula(y1m ~ x1 + cst + (1 | p | g))), Gaussian(); data = merge(d0, (; cst)), missing = inc, method = :ML)))
         # an exact alias at a very different scale is still an alias
         err3 = refused(mk(@formula(y1m ~ x1 + xbig + (1 | p | g))), merge(d0, (; xbig = d0.x1 .* 1e9)); missing = inc)
         @test err3 isa ArgumentError && occursin("xbig", err3.msg) && occursin("already rank deficient", err3.msg)
