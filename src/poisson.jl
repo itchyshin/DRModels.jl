@@ -144,30 +144,31 @@ with random effects: `Poisson()` with one ordinary `(1 | g)` (`marginal = :LA`,
 `(1 | g)` (`:LA` or `:Laplace`); `Gamma()` and `Beta()` with one `(1 | g)` under
 `marginal = :Laplace`. Every other route raises an `ArgumentError` that names
 it. An offset in any formula other than the mean (`sigma`, `nu`, `zi`, ...) is
-refused, as drmTMB refuses it. At most one `offset(...)` term is allowed.
+refused, as drmTMB refuses it. Several `offset(...)` terms are added, as drmTMB
+does with `offset(a) + offset(b)`.
 `predict(fit, newdata)` needs the offset column in `newdata`. Outside a formula,
 `offset(x)` returns `x` unchanged.
 """
 offset(x) = x
 
 # Split an `offset(...)` marker off a (already `_split_ranef`-stripped) rhs,
-# returning `(rhs_without_offset, offset_term_or_nothing)`. At most one
-# `offset(...)` term is admitted, matching drmTMB (`y ~ x + offset(log_exposure)`).
+# returning `(rhs_without_offset, offset_term_or_nothing)`. Several `offset(...)`
+# terms are summed, as drmTMB does (`model.offset`): the second value is then a
+# `Tuple` of the terms, which `_offset_vector` adds up.
 function _extract_offset(rhs)
     terms = rhs isa Tuple ? collect(rhs) : Any[rhs]
     fixed = Any[]
-    offset_term = nothing
+    offs = Any[]
     for t in terms
         if t isa FunctionTerm && t.f === offset
-            offset_term === nothing ||
-                error("drm: only one `offset(...)` term is supported")
             length(t.args) == 1 ||
                 error("drm: `offset(...)` takes exactly one term, e.g. `offset(log_exposure)`")
-            offset_term = t.args[1]
+            push!(offs, t.args[1])
         else
             push!(fixed, t)
         end
     end
+    offset_term = isempty(offs) ? nothing : length(offs) == 1 ? offs[1] : Tuple(offs)
     fixed_rhs = isempty(fixed) ? ConstantTerm(1) :
                 length(fixed) == 1 ? fixed[1] : Tuple(fixed)
     return fixed_rhs, offset_term
@@ -177,6 +178,13 @@ end
 # numeric transform, e.g. `offset(log(exposure))`) to a `Float64` vector, reusing
 # the same schema/modelcols machinery `_design` uses for ordinary terms — but with
 # NO `StatisticalModel` context, so no implicit intercept column is inserted.
+function _offset_vector(offset_term::Tuple, data)
+    off = _offset_vector(offset_term[1], data)
+    for t in offset_term[2:end]
+        off = off .+ _offset_vector(t, data)
+    end
+    return off
+end
 function _offset_vector(offset_term, data)
     sch = schema(offset_term, data)
     t = apply_schema(offset_term, sch)
@@ -302,11 +310,11 @@ function _drm_poisson_fit(f::DrmFormula, fam::Poisson; data, tree = nothing, K =
     if offset_term !== nothing
         offset_re_ok = st === nothing && length(re) == 1 &&
                        _re_kind(re[1][1])[1] === :intercept && !isva
-        if st !== nothing || haskey(rhs, :zi) || haskey(rhs, :hu) || (!isempty(re) && !offset_re_ok)
+        if st !== nothing || (haskey(rhs, :zi) && !isempty(re)) || haskey(rhs, :hu) || (!isempty(re) && !offset_re_ok)
             error("Poisson(): `offset(...)` is currently supported on the fixed-effects-only " *
-                  "mean and with a single ordinary random intercept `(1 | g)` " *
+                  "mean (with `zi`) and with a single ordinary random intercept `(1 | g)` " *
                   "(`marginal = :LA`, `:AGHQ` or `:Laplace`); not with a structured marker, " *
-                  "a random slope, crossed/multiple random effects, `zi`, `hu`, or `marginal = :VA`")
+                  "a random slope, crossed/multiple random effects, `zi` with a random effect, `hu`, or `marginal = :VA`")
         end
     end
     if st !== nothing
@@ -447,7 +455,7 @@ function _drm_poisson_fit(f::DrmFormula, fam::Poisson; data, tree = nothing, K =
         error("`zi` and `hu` cannot both be specified (zero-inflation vs hurdle)")
     if haskey(rhs, :zi)                                   # zero-inflated Poisson
         _, Xzi, nmzi = _design(f.response, rhs[:zi], data)
-        return _withformula(_fit_poisson_zi(fam, y, Xμ, Xzi, nmμ, nmzi, g_tol), f)
+        return _withformula(_fit_poisson_zi(fam, y, Xμ, Xzi, nmμ, nmzi, g_tol; offset = offset_term === nothing ? nothing : off), f)
     end
     if haskey(rhs, :hu)                                   # hurdle Poisson
         _, Xhu, nmhu = _design(f.response, rhs[:hu], data)
@@ -1445,14 +1453,14 @@ _log1mexp(x) = x < -log(2) ? log1p(-exp(x)) : log(-expm1(x))
 
 # Zero-inflated Poisson: P(0) = π + (1-π)e^{-λ}, P(k>0) = (1-π)·Poisson(k; λ),
 # with π = logistic(Xziᵀβ) (logit link) and λ = exp(Xμᵀβ).
-function _fit_poisson_zi(fam::Poisson, y, Xμ, Xzi, nmμ, nmzi, g_tol)
+function _fit_poisson_zi(fam::Poisson, y, Xμ, Xzi, nmμ, nmzi, g_tol; offset = nothing)
     n = length(y); pμ, pz = size(Xμ, 2), size(Xzi, 2)
     lf = [_logfactorial(round(Int, yi)) for yi in y]
     iszero_y = y .== 0
     w = _ctl_weights(n)                  # prior weights: row log-lik multipliers (#931)
     function nll(θ)
         βμ = θ[1:pμ]; βz = θ[pμ+1:pμ+pz]
-        ημ = clamp.(Xμ * βμ, -30.0, 30.0); ηz = clamp.(Xzi * βz, -30.0, 30.0)
+        ημ = clamp.(_eta_with_offset(Xμ, βμ, offset), -30.0, 30.0); ηz = clamp.(Xzi * βz, -30.0, 30.0)
         s = zero(eltype(θ))
         @inbounds for i in 1:n
             λ = exp(ημ[i]); lπ = _log_logistic(ηz[i]); l1mπ = _log1m_logistic(ηz[i])
@@ -1467,12 +1475,13 @@ function _fit_poisson_zi(fam::Poisson, y, Xμ, Xzi, nmμ, nmzi, g_tol)
     pos = y[y.>0]
     θ0 = zeros(pμ + pz)
     θ0[1] = log((isempty(pos) ? sum(y) / n : sum(pos) / length(pos)) + eps())   # λ from non-zeros
+    θ0[1:pμ] .= _offset_start(θ0[1:pμ], Xμ, offset)   # #938
     res = _ctl_optimize((x0, opts, method) -> Optim.optimize(nll, x0, method, opts; autodiff = :forward),
                        θ0; g_tol = g_tol)   # control: maxit / start / multi_start (#948 #994)
     θ̂ = Optim.minimizer(res); V = _ctl_se(() -> _vcov_from_hessian(ForwardDiff.hessian(nll, θ̂)), θ̂)
     blocks = [:mu => 1:pμ, :zi => (pμ+1):(pμ+pz)]
     names = [:mu => nmμ, :zi => nmzi]
-    means = Dict(:mu => exp.(Xμ * θ̂[1:pμ])); obs = Dict(:mu => Vector{Float64}(y))
+    means = Dict(:mu => exp.(_eta_with_offset(Xμ, θ̂[1:pμ], offset))); obs = Dict(:mu => Vector{Float64}(y))
     scales = Dict(:zi => _logistic.(Xzi * θ̂[(pμ+1):(pμ+pz)]))
     return _withiterations(
         _withnll(DrmFit(fam, blocks, names, θ̂, V, -nll(θ̂), n, drm_optim_converged(res), means, obs, scales), nll),
