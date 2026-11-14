@@ -27,12 +27,17 @@ _threw(f) = try; f(); false catch e; e isa ArgumentError; end
         @test_broken _threw(() -> ms(f, (; y, x)))
     end
 
-    @testset "crossed ordinary bars: silent nothing" begin
+    @testset "crossed ordinary bars: a simulator is now built" begin
+        # Was a silent `nothing` (conditional fallback). Several ordinary intercepts on
+        # distinct groups now get a fresh-draw simulator (`_ordinary_multi_marginal_simulator`).
         f = drm(bf(@formula(y ~ x + (1 | g1) + (1 | g2)), @formula(sigma ~ 1)),
                 Gaussian(); data)
-        @test sd(f, data) === nothing
-        @test ms(f, data) === nothing
-        @test_broken _threw(() -> ms(f, data))
+        @test sd(f, data) isa Function
+        @test ms(f, data) isa Function
+        # A repeated group is still not covered, so it stays a silent `nothing`.
+        f2 = drm(bf(@formula(y ~ x + (1 | g1) + (0 + x | g1) + (1 | g2)), @formula(sigma ~ 1)),
+                 Gaussian(); data)
+        @test sd(f2, data) === nothing
     end
 
     @testset "correlated slope (1 + x | g): silent nothing" begin
