@@ -2520,19 +2520,36 @@ function _fit_fixed_gaussian_reml(fam::Gaussian, y, Xμ, Xσ, nmμ, nmσ, g_tol)
     βμ̂, r̂, ησ̂, _ = profile_bmu(βσ̂)
     θ̂ = vcat(βμ̂, βσ̂)
 
-    # vcov: for the mean block, the REML/WLS covariance (Xμ' W Xμ)^{-1}; for the
-    # scale block, the inverse Fisher information of the restricted objective.
-    # We assemble a block-diagonal vcov (mean ⟂ scale at the optimum for Gaussian
-    # location–scale), reusing the WLS information for β_μ and the FD Hessian of
-    # the restricted objective for β_σ.
+    # vcov: the covariance of (β̂_μ, β̂_σ) as drmTMB reports it under REML. The scale block
+    # is the inverse Hessian of the restricted objective, Vσ. β̂_μ is the GLS estimate at
+    # the fitted β_σ, so its covariance is the plug-in GLS part plus the part that comes
+    # from the uncertainty in β̂_σ:
+    #     Var(β̂_μ) = (Xμ' W Xμ)⁻¹ + J Vσ J',   Cov(β̂_μ, β̂_σ) = J Vσ,
+    # with J = ∂β̂_μ/∂β_σ = -2 (Xμ' W Xμ)⁻¹ Xμ' diag(w .* Xσ[:, k] .* r) summed per column k.
+    # With a constant sigma (`sigma ~ 1`) J is zero and this is the plug-in covariance.
     w = exp.(-2 .* ησ̂)
     # #956: guarded inverses (the ML route already uses `_vcov_from_hessian`);
     # a rank-deficient design now warns and pseudo-inverts instead of throwing.
     Vμ = _vcov_from_gram(Xμ' * (w .* Xμ); context = "Gaussian REML (mean WLS)")
+    # J is formed before the Hessian call: the closures above share the name `w`, and the
+    # Hessian leaves dual numbers in it.
+    # A constant sigma (one constant column) has J exactly zero: at the GLS optimum Xμ' (w .* r) = 0,
+    # so skip the product and keep the plug-in covariance bit for bit (rounding would otherwise
+    # leave entries near 1e-15 in the cross block).
+    const_sigma = pσ == 1 && all(==(Xσ[1, 1]), @view Xσ[:, 1])
+    J = zeros(Float64, pμ, pσ)
+    if !const_sigma
+        for k in 1:pσ
+            J[:, k] = -2 .* (Vμ * (Xμ' * (w .* Xσ[:, k] .* r̂)))
+        end
+    end
     Hσ = ForwardDiff.hessian(nll_reml, βσ̂)
     Vσ = _vcov_from_hessian(Hσ; context = "Gaussian REML (scale)")
     V = zeros(pμ + pσ, pμ + pσ)
-    V[1:pμ, 1:pμ] .= Vμ
+    JV = J * Vσ
+    V[1:pμ, 1:pμ] .= Vμ .+ JV * J'
+    V[1:pμ, (pμ+1):(pμ+pσ)] .= JV
+    V[(pμ+1):(pμ+pσ), 1:pμ] .= JV'
     V[(pμ+1):(pμ+pσ), (pμ+1):(pμ+pσ)] .= Vσ
 
     # Both log-likelihoods at the REML estimate.
