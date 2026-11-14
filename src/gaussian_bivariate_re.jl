@@ -128,13 +128,29 @@ function _biv_re_best_start(run, obj, x0::AbstractVector)
     return res0
 end
 
+# Row precision S_i^-1 (2x2) and log|S_i| of the OBSERVED coordinates of row i. A row with one response
+# observed contributes that coordinate's scalar precision and nothing else (the marginal of the observed
+# one, as drmTMB's `miss_control(response = "include")`); a row with neither contributes zero.
+function _biv_re_rowprec(::Type{T}, o1::Bool, o2::Bool, ls1, ls2, ηr) where {T}
+    if o1 && o2
+        ρ = RHO_GUARD * tanh(ηr); om = 1 - ρ * ρ
+        e1 = exp(-ls1); e2 = exp(-ls2)
+        return [e1*e1 -ρ*e1*e2; -ρ*e1*e2 e2*e2] ./ om, 2 * ls1 + 2 * ls2 + log(om)
+    elseif o1
+        e1 = exp(-ls1)
+        return [e1*e1 zero(T); zero(T) zero(T)], 2 * ls1
+    elseif o2
+        e2 = exp(-ls2)
+        return [zero(T) zero(T); zero(T) e2*e2], 2 * ls2
+    end
+    return zeros(T, 2, 2), zero(T)
+end
+
 function _fit_bivariate_ordinary_re(f::BivariateDrmFormula, fam::Gaussian, data, fixed, spec;
                                     g_tol::Real, method::Symbol = :ML)
     tag, grp = spec
     d = _biv_residual_designs(f, fixed, data)
-    all(d.obs1) && all(d.obs2) || throw(ArgumentError(
-        "drm: the bivariate ordinary random-effect route needs both responses observed on every row; " *
-        "drop incomplete rows (the default `missing` policy does) or use the residual route."))
+    obs1, obs2, n_like = d.obs1, d.obs2, d.n_like
     y1, X1, nm1, y2, X2, nm2 = d.y1, d.X1, d.nm1, d.y2, d.X2, d.nm2
     Xs1, nms1, Xs2, nms2, Xr, nmr = d.Xs1, d.nms1, d.Xs2, d.nms2, d.Xr, d.nmr
     n, offs = d.n, d.offs
@@ -145,14 +161,16 @@ function _fit_bivariate_ordinary_re(f::BivariateDrmFormula, fam::Gaussian, data,
     gidx, G = _group_index(getproperty(data, grp); col = grp)
     G >= 2 || throw(ArgumentError("drm: grouping factor `$grp` needs at least 2 levels"))
     rows_of = [findall(==(k), gidx) for k in 1:G]
-    Y = hcat(Vector{Float64}(y1), Vector{Float64}(y2))
+    # An unobserved cell (`miss_control(response = "include")`) never enters arithmetic: its row of S^-1
+    # is zero (see `_biv_re_rowprec`), so 0 stands in for the value.
+    Y = hcat([obs1[i] ? Float64(y1[i]) : 0.0 for i in 1:n], [obs2[i] ? Float64(y2[i]) : 0.0 for i in 1:n])
     Xi = [begin
               M = zeros(2, pβ)
               M[1, 1:p1] .= X1[i, :]
               M[2, (p1+1):pβ] .= X2[i, :]
               M
           end for i in 1:n]
-    const_2pi = n * log(2π)
+    const_2pi = 0.5 * (count(obs1) + count(obs2)) * log(2π)      # observed response cells, not rows
 
     # Group-summed GLS pieces at variance parameters `φ` = (sigma1, sigma2, rho12 coefs, lc[3]).
     function pieces(φ)
@@ -166,10 +184,8 @@ function _fit_bivariate_ordinary_re(f::BivariateDrmFormula, fam::Gaussian, data,
         for rows in rows_of
             A = zeros(T, 2, 2); sy = zeros(T, 2); B = zeros(T, 2, pβ)
             for i in rows
-                ρ = RHO_GUARD * tanh(ηr[i]); om = 1 - ρ * ρ
-                e1 = exp(-ls1[i]); e2 = exp(-ls2[i])
-                Si = [e1*e1 -ρ*e1*e2; -ρ*e1*e2 e2*e2] ./ om      # S_i^-1
-                logdetS += 2 * ls1[i] + 2 * ls2[i] + log(om)
+                Si, ldi = _biv_re_rowprec(T, obs1[i], obs2[i], ls1[i], ls2[i], ηr[i])   # S_i^-1, log|S_i|
+                logdetS += ldi
                 yi = @view Y[i, :]
                 Sy = Si * yi
                 yVy += dot(yi, Sy)
@@ -221,10 +237,11 @@ function _fit_bivariate_ordinary_re(f::BivariateDrmFormula, fam::Gaussian, data,
         return isfinite(v) ? v : oftype(v, 1e18)     # non-finite trial: reject, do not throw
     end
 
-    β1 = X1 \ Vector{Float64}(y1); β2 = X2 \ Vector{Float64}(y2)
+    X1o = X1[obs1, :]; X2o = X2[obs2, :]; y1o = Vector{Float64}(y1[obs1]); y2o = Vector{Float64}(y2[obs2])
+    β1 = X1o \ y1o; β2 = X2o \ y2o            # seeds from the observed cells
     φ0 = zeros(pφ0 + 3)
-    φ0[offs[3]-pβ+1] = _seed_ls(y1 - X1 * β1, y1)
-    φ0[offs[4]-pβ+1] = _seed_ls(y2 - X2 * β2, y2)
+    φ0[offs[3]-pβ+1] = _seed_ls(y1o - X1o * β1, y1o)
+    φ0[offs[4]-pβ+1] = _seed_ls(y2o - X2o * β2, y2o)
     φ0[(pφ0+1):(pφ0+3)] .= cov_to_lc(Matrix(Symmetric([0.25 0.02; 0.02 0.25])))
     function nll_reml(φ)
         # (local names differ from the enclosing scope's: a shared name would be captured, not local)
@@ -271,13 +288,13 @@ function _fit_bivariate_ordinary_re(f::BivariateDrmFormula, fam::Gaussian, data,
     logdetS, yVy, c, H, L = pieces(φ̂)
     # BLUPs u_g = L W L' sum_i S_i^-1 (y_i - X_i b), 2 x G.
     ls1 = Xs1 * φ̂[1:size(Xs1, 2)]; ls2 = Xs2 * φ̂[(size(Xs1, 2)+1):(size(Xs1, 2)+size(Xs2, 2))]
-    ρv = RHO_GUARD .* tanh.(Xr * φ̂[(size(Xs1, 2)+size(Xs2, 2)+1):pφ0])
+    ηr_hat = Xr * φ̂[(size(Xs1, 2)+size(Xs2, 2)+1):pφ0]
+    ρv = RHO_GUARD .* tanh.(ηr_hat)
     U = zeros(2, G)
     for (k, rows) in enumerate(rows_of)
         A = zeros(2, 2); sy = zeros(2)
         for i in rows
-            e1 = exp(-ls1[i]); e2 = exp(-ls2[i]); om = 1 - ρv[i]^2
-            Si = [e1*e1 -ρv[i]*e1*e2; -ρv[i]*e1*e2 e2*e2] ./ om
+            Si, _ = _biv_re_rowprec(Float64, obs1[i], obs2[i], ls1[i], ls2[i], ηr_hat[i])
             A += Si; sy += Si * (Y[i, :] - Xi[i] * θb)
         end
         U[:, k] = L * (inv(Symmetric(I + L' * A * L)) * (L' * sy))
@@ -291,7 +308,7 @@ function _fit_bivariate_ordinary_re(f::BivariateDrmFormula, fam::Gaussian, data,
     obs = Dict(:mu1 => Vector{Float64}(y1), :mu2 => Vector{Float64}(y2))
     scales = Dict(:sigma1 => exp.(ls1), :sigma2 => exp.(ls2), :rho12 => ρv)
     # Reorder to the public layout [b_mu1, b_mu2, sigma1, sigma2, rho12, lc] (already so).
-    fit = DrmFit(fam, blocks, names, θ̂, V, ll, n, Optim.converged(res), means, obs, scales)
+    fit = DrmFit(fam, blocks, names, θ̂, V, ll, n_like, Optim.converged(res), means, obs, scales)
     fit = method === :REML ? _withreml(fit, ll, ml_ll) : fit
     re = (; effects = Dict(Symbol(grp) => U), Sigma_g = L * L', axes = (:mu1, :mu2),
           kind = :ordinary, tag = tag, group = grp, group_index = gidx)

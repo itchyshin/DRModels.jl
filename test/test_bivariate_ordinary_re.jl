@@ -108,9 +108,7 @@ end
         @test_throws ArgumentError drm(mk(@formula(y1 ~ x1 + (1 | g)), @formula(y2 ~ x2 + (1 | g))), Gaussian(); data = _D)
         # different labels or groups on the two axes
         @test_throws ArgumentError drm(mk(@formula(y1 ~ x1 + (1 | p | g)), @formula(y2 ~ x2 + (1 | q | g))), Gaussian(); data = _D)
-        # partly observed rows (missing = include) are not supported on this route
-        @test_throws ArgumentError drm(mk(@formula(y1m ~ x1 + (1 | p | g)), @formula(y2m ~ x2 + (1 | p | g))),
-                                       Gaussian(); data = _D, missing = miss_control(response = "include"))
+        # partly observed rows (missing = include) are supported since the include route (test_biv_re_include.jl)
         # row weights (grouped likelihoods do not take them yet)
         @test_throws ArgumentError drm(_F1, Gaussian(); data = _D, weights = fill(1.0, length(_D.y1)))
     end
