@@ -1,6 +1,6 @@
 # Regenerates include_reference.csv for test/test_biv_re_include.jl.
 #
-# Run on a machine with drmTMB 0.8.1 installed (the reference was made on Totoro, R 4.6.1):
+# Run on a machine with drmTMB 0.8.1 installed (the reference was made with R 4.6.1):
 #
 #   DRMTMB_LIB=<library with drmTMB 0.8.1> Rscript include_r.R \
 #       ../fitted_modes_bivariate/data.csv include_reference.csv

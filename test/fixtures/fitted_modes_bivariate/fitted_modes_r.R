@@ -1,6 +1,6 @@
 # Regenerates data.csv and fitted_modes_reference.csv for test/test_fitted_modes_bivariate.jl.
 #
-# Run on a machine with drmTMB 0.8.1 installed (the reference was made on Totoro, R 4.6.1):
+# Run on a machine with drmTMB 0.8.1 installed (the reference was made with R 4.6.1):
 #
 #   DRMTMB_LIB=<library with drmTMB 0.8.1> Rscript fitted_modes_r.R <data_v2.csv> .
 #

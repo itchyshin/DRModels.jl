@@ -6,7 +6,7 @@
 # Before, this route refused: "needs both responses observed on every row".
 #
 # Reference: test/fixtures/biv_re_include/include_reference.csv, written by include_r.R in the same
-# folder (drmTMB 0.8.1, R 4.6.1, Totoro) from test/fixtures/fitted_modes_bivariate/data.csv.
+# folder (drmTMB 0.8.1, R 4.6.1) from test/fixtures/fitted_modes_bivariate/data.csv.
 # Bounds: 1e-4 on logLik, 1e-6 on fitted values (those of test_fitted_modes_bivariate.jl); not loosened.
 using DRModels
 using Test
@@ -89,4 +89,48 @@ end
                   Gaussian(); data = d)
         @test fc.theta == fc2.theta && fc.loglik == fc2.loglik     # complete data: include = drop, bit for bit
     end
+end
+
+# `method = :REML` together with `miss_control(response = "include")` is accepted on this route.
+# drmTMB 0.8.1 refuses that combination ("REML is not implemented with explicit missing-data
+# engines yet"). Whether this package should refuse it too is a maintainer decision. This test
+# only pins what the route returns today: the REML log-likelihood of the observed cells, written
+# here as a dense computation from the model (ML log-likelihood at the generalised least squares
+# coefficients, minus 0.5 logdet(X' V^-1 X), plus 0.5 p log(2 pi)).
+@testset "bivariate (1 | p | g): REML with include equals a dense REML likelihood of the observed cells" begin
+    d = _bi_data()
+    f = bf(mu1 = @formula(y1m ~ x1 + (1 | p | g)), mu2 = @formula(y2m ~ x2 + (1 | p | g)),
+           sigma1 = @formula(sigma1 ~ 1), sigma2 = @formula(sigma2 ~ 1), rho12 = @formula(rho12 ~ 1))
+    fit = drm(f, Gaussian(); data = d, missing = miss_control(response = "include"), method = :REML)
+    @test fit.converged
+    s1 = exp(only(coef(fit, :sigma1))); s2 = exp(only(coef(fit, :sigma2)))
+    rho = DRModels.RHO_GUARD * tanh(only(coef(fit, :rho12)))
+    Lam = Matrix(fit.ranef.Sigma_g)
+    p = 4
+    XtViX = zeros(p, p); XtViy = zeros(p); yViy = 0.0; logdetV = 0.0; N = 0
+    for g in unique(d.g)
+        rows = findall(==(g), d.g)
+        idx = Tuple{Int,Int}[]                                    # (row, response) of every observed cell
+        for i in rows
+            ismissing(d.y1m[i]) || push!(idx, (i, 1))
+            ismissing(d.y2m[i]) || push!(idx, (i, 2))
+        end
+        isempty(idx) && continue
+        y = [k == 1 ? d.y1m[i] : d.y2m[i] for (i, k) in idx]
+        X = [k == 1 ? (c == 1 ? 1.0 : c == 2 ? d.x1[i] : 0.0) : (c == 3 ? 1.0 : c == 4 ? d.x2[i] : 0.0)
+             for (i, k) in idx, c in 1:p]
+        V = zeros(length(idx), length(idx))
+        for (a, (i, k)) in enumerate(idx), (c, (j, l)) in enumerate(idx)
+            V[a, c] = Lam[k, l] + (i == j ? (k == l ? (k == 1 ? s1^2 : s2^2) : rho * s1 * s2) : 0.0)
+        end
+        Vs = Symmetric(V)
+        XtViX .+= X' * (Vs \ X); XtViy .+= X' * (Vs \ y); yViy += dot(y, Vs \ y)
+        logdetV += logdet(Vs); N += length(y)
+    end
+    beta = XtViX \ XtViy
+    quad = yViy - dot(XtViy, beta)
+    ll_ml = -0.5 * (N * log(2π) + logdetV + quad)
+    ll_reml = ll_ml - 0.5 * logdet(Symmetric(XtViX)) + 0.5 * p * log(2π)
+    @test abs(ll_reml - loglikelihood(fit)) < 1e-8
+    @test maximum(abs.(vcat(coef(fit, :mu1), coef(fit, :mu2)) .- beta)) < 1e-6   # fixed effects are the GLS values
 end

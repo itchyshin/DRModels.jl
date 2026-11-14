@@ -8,7 +8,7 @@
 # For a Gaussian model the modes are the exact BLUPs, in closed form at the fitted parameters.
 #
 # References: test/fixtures/fitted_modes_bivariate/fitted_modes_reference.csv and ranef_reference.csv,
-# written by fitted_modes_r.R in the same folder (drmTMB 0.8.1, R 4.6.1, Totoro) from data.csv.
+# written by fitted_modes_r.R in the same folder (drmTMB 0.8.1, R 4.6.1) from data.csv.
 # Bounds follow test_fitted_conditional.jl and are not loosened: 1e-6 on fitted values and modes,
 # 1e-4 on logLik. The modes are also checked against the joint density maximised here by Newton
 # steps, independently of the package.
