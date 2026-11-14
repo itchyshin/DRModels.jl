@@ -1,7 +1,7 @@
 # test_cumlogit_ordinary_laplace_parity.jl -- CumulativeLogit with one ordinary `(1 | g)` and
 # `marginal = :Laplace` vs drmTMB 0.8.1. References: `test/fixtures/cumlogit_laplace_parity/`
 # written by `test/parity/gen_cumlogit_laplace_parity.R` (drmTMB 0.8.1; max|grad| < 1e-6, all SEs
-# finite; numbers and simulated data only). Bounds are the lane's and are never loosened:
+# finite; numbers and simulated data only). Bounds are fixed in advance and are never loosened:
 #   logLik 1e-4 (absolute) | fixed effects and thresholds 1e-3 R SE | log SD 5e-3 |
 #   SEs 1e-3 relative | category probabilities 1e-6.
 using DRModels, Test, TOML, Random, LinearAlgebra, Statistics
