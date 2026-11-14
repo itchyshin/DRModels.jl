@@ -88,17 +88,17 @@ const _DVG = DRModels
         out = sprint(show, MIME"text/plain"(), fit)
         @test occursin("NaN", out)
         @test occursin("Wald SEs withheld", out)
-        # Wald interval: location finite, flagged coordinate unbounded
+        # Wald interval: location finite, flagged coordinate NaN (no standard error was computed)
         ci = confint(fit; method = :wald)
         @test all(isfinite, (ci[1].lower, ci[1].upper, ci[2].lower, ci[2].upper))
-        @test ci[3].lower == -Inf && ci[3].upper == Inf
+        @test isnan(ci[3].lower) && isnan(ci[3].upper)
         # profile interval does not read vcov for its end points
         cip = confint(fit; method = :profile)
         @test cip[3].lower == 0.0 && isfinite(cip[3].upper)
         # delta method: a quantity of the flagged coordinate gets no number,
         # one that does not involve it keeps its standard error
         bc_flag = bias_correct(fit, θ -> exp(θ[3]))
-        @test isnan(bc_flag.corrected) && !isfinite(bc_flag.se)
+        @test isnan(bc_flag.corrected) && isnan(bc_flag.se)
         bc_loc = bias_correct(fit, θ -> θ[1] + θ[2])
         @test isfinite(bc_loc.se) && isfinite(bc_loc.corrected)
         @test bc_loc.se ≈ sqrt(sum(V[1:2, 1:2])) rtol = 1e-10

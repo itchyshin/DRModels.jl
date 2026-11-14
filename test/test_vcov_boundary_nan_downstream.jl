@@ -1,11 +1,12 @@
 # Accessors on fits with a flagged boundary coordinate (DRModels.jl#1383).
 #
-# `vcov` is NaN at a flagged coordinate and `stderror` is NaN there (not computed). Every
-# quantity that does not use the flagged coordinate must keep its own standard error:
-# `0 * NaN` is NaN, so a product with the full matrix would lose it. Six fits, one per
-# route: a tiny covariate (an unidentified slope) in a Gaussian and a Gamma fit, a random
-# intercept variance at zero in a Binomial and a Poisson Laplace fit, a Tweedie power at
-# its clamp, and a bivariate structured fit with a rank-one among-group covariance.
+# `vcov` is NaN at a flagged coordinate and `stderror` is NaN there (not computed), and so
+# is the Wald interval. Every quantity that does not use the flagged coordinate must keep
+# its own standard error: `0 * NaN` is NaN, so a product with the full matrix would lose it.
+# Six fits, one per route, each with a real boundary: a random-effect SD at zero in a
+# Gaussian, a Binomial and a Poisson Laplace fit, a Gamma shape running to infinity, a
+# Tweedie power at its clamp, and a bivariate structured fit with a rank-one among-group
+# covariance.
 
 using DRModels
 using Test
@@ -17,86 +18,106 @@ import Distributions
 
 _quiet(f) = Logging.with_logger(f, Logging.NullLogger())
 
-# Shared checks: the coordinate is flagged (public accessor `bridge_diagnostics(fit).boundary`),
-# `vcov` is NaN exactly there, `stderror` is NaN there and finite elsewhere, the Wald interval
-# is unbounded there, and the unflagged block is finite and symmetric.
-function _check_flagged(fit, k)
+# Shared checks: the coordinates are flagged (public accessor `bridge_diagnostics(fit).boundary`),
+# `vcov` is NaN exactly there, `stderror` and the Wald interval are NaN there and finite
+# elsewhere, and the unflagged block is finite and symmetric.
+function _check_flagged(fit, ks)
+    ks = collect(Int, ks)
     p = length(fit.theta)
-    keep = setdiff(1:p, k)
-    @test bridge_diagnostics(fit).boundary == [k]
+    keep = setdiff(1:p, ks)
+    @test bridge_diagnostics(fit).boundary == ks
     V = vcov(fit)
-    @test all(isnan, V[k, :]) && all(isnan, V[:, k])
+    @test all(isnan, V[ks, :]) && all(isnan, V[:, ks])
     @test all(isfinite, V[keep, keep]) && issymmetric(V[keep, keep])
     se = stderror(fit)
-    @test isnan(se[k])
+    @test all(isnan, se[ks])
     @test all(isfinite, se[keep])
     ci = confint(fit; method = :wald)
-    @test ci[k].lower == -Inf && ci[k].upper == Inf
+    @test all(r -> isnan(r.lower) && isnan(r.upper), ci[ks])
     @test all(r -> isfinite(r.lower) && isfinite(r.upper), ci[keep])
     out = sprint(show, MIME"text/plain"(), fit)
     @test occursin("Wald SEs withheld", out)
+    cd = check_drm(fit)                           # reports the trouble, does not throw
+    @test !cd.vcov_complete && !cd.ok
     ct = coeftable(fit)
     @test length(ct.rownms) == p
+    @test all(isnan, ct.cols[2]) && all(isnan, ct.cols[4])      # SE and p-value: withheld, not 0
 end
 
 @testset "boundary coordinate: all accessors, six fits" begin
-    @testset "Gaussian, tiny covariate in the mean" begin
+    @testset "Gaussian, random-effect SD regression at zero" begin
         rng = Random.MersenneTwister(20260715)
         n_id, n_each = 80, 6
         sex = repeat([0.0, 1.0], inner = n_id ÷ 2)
-        b = randn(rng, n_id) .* [0.65, 0.40][Int.(sex) .+ 1]
         id = repeat(1:n_id, inner = n_each); sexl = sex[id]
-        y = [0.35, 0.70][Int.(sexl) .+ 1] .+ b[id] .+ randn(rng, n_id * n_each) .* [0.35, 0.60][Int.(sexl) .+ 1]
-        z = 1e-5 .* randn(rng, n_id * n_each)
-        dat = (; y, sex = sexl, id, z)
+        e = randn(rng, n_id * n_each) .* [0.35, 0.60][Int.(sexl) .+ 1]
+        for i in 1:n_id                               # group means of the residual exactly 0
+            r = id .== i
+            e[r] .-= sum(e[r]) / n_each
+        end
+        y = [0.35, 0.70][Int.(sexl) .+ 1] .+ e
+        dat = (; y, sex = sexl, id)
         fit = _quiet() do
-            drm(bf(@formula(y ~ sex + z + (1 | id)), @formula(sigma ~ sex), @formula(sd(id) ~ sex)),
+            drm(bf(@formula(y ~ sex + (1 | id)), @formula(sigma ~ sex), @formula(sd(id) ~ sex)),
                 Gaussian(); data = dat)
         end
-        _check_flagged(fit, 3)
-        # predict with se: rows with z = 0 do not use the flagged slope
-        nd = (; sex = [0.0, 1.0, 0.0], z = [0.0, 0.0, 1.0], id = [1, 2, 3])
+        _check_flagged(fit, [5, 6])
+        # predict with se: the mean and the scale rows do not use the flagged coordinates
+        nd = (; sex = [0.0, 1.0], id = [1, 2])
         se = predict(fit, nd; se = true).se
-        @test isfinite(se[1]) && isfinite(se[2]) && isnan(se[3])
+        @test all(isfinite, se)
         @test se[1] ≈ sqrt(vcov(fit)[1, 1]) rtol = 1e-12
         sp = predict_parameters(fit, nd; se = true)
-        @test isfinite(sp[:mu].se[1]) && isnan(sp[:mu].se[3])
-        # the delta-method ratio keeps its standard error for rows free of the coordinate
-        r = repeatability(fit, (; sex = [0.0, 1.0, 0.5]))
-        @test all(isfinite, r.se_logit) && r.status === :ok
-        # a quantity that does not involve it keeps its standard error
+        @test all(isfinite, sp[:mu].se) && all(isfinite, sp[:sigma].se)
+        @test all(isnan, sp[:sd].se)                  # the SD rows use the flagged coordinates
+        # the delta-method ratio uses them in every row: NaN interval, status says why, no error
+        r = @test_logs (:warn, r"not finite") repeatability(fit, (; sex = [0.0, 1.0]))
+        @test all(isnan, r.se_logit) && all(isnan, r.lower) && all(isnan, r.upper)
+        @test r.status === :vcov_unavailable
+        # a quantity that does not involve them keeps its standard error
         @test isfinite(bias_correct(fit, th -> th[1] + th[2]).se)
+        bc = bias_correct(fit, th -> th[5])           # a quantity that uses a flagged coordinate
+        @test isnan(bc.se) && isnan(bc.corrected) && isnan(bc.ci.lower) && isnan(bc.ci.upper)
     end
 
-    @testset "Gaussian random intercept, tiny covariate: scalar icc and repeatability" begin
+    @testset "Gaussian random intercept at zero: scalar icc and repeatability" begin
         rng = Random.MersenneTwister(20260715)
         n_id, n_each = 80, 6
         sex = repeat([0.0, 1.0], inner = n_id ÷ 2)
         id = repeat(1:n_id, inner = n_each)
-        y = 0.35 .+ 0.3 .* sex[id] .+ (0.6 .* randn(rng, n_id))[id] .+ 0.5 .* randn(rng, n_id * n_each)
-        dat = (; y, sex = sex[id], id, z = 1e-5 .* randn(rng, n_id * n_each))
+        e = 0.5 .* randn(rng, n_id * n_each)
+        for i in 1:n_id
+            r = id .== i
+            e[r] .-= sum(e[r]) / n_each
+        end
+        dat = (; y = 0.35 .+ 0.3 .* sex[id] .+ e, sex = sex[id], id)
         fit = _quiet() do
-            drm(bf(@formula(y ~ sex + z + (1 | id)), @formula(sigma ~ 1)), Gaussian(); data = dat)
+            drm(bf(@formula(y ~ sex + (1 | id)), @formula(sigma ~ 1)), Gaussian(); data = dat)
         end
-        _check_flagged(fit, 3)
-        for r in (icc(fit), repeatability(fit))
-            @test isfinite(r.se) && r.se > 0
-            @test all(isfinite, (r.ci.lower, r.ci.upper))
+        _check_flagged(fit, [4])
+        for r in (@test_logs((:warn, r"not finite"), icc(fit)),
+                  @test_logs((:warn, r"not finite"), repeatability(fit)))
+            @test isnan(r.se) && isnan(r.ci.lower) && isnan(r.ci.upper)
+            @test r.status === :vcov_unavailable
         end
+        bc = bias_correct(fit, th -> th[4])
+        @test isnan(bc.se) && isnan(bc.corrected)
+        @test isfinite(bias_correct(fit, th -> th[1] + th[2]).se)
     end
 
-    @testset "Gamma, tiny covariate in the mean" begin
+    @testset "Gamma, shape running to infinity" begin
         rng = StableRNG(13)
         n = 150
-        x = randn(rng, n); z = 1e-5 .* randn(rng, n)
-        y = [rand(rng, Distributions.Gamma(4.0, exp(0.8 + 0.2 * x[i]) / 4.0)) for i in 1:n]
-        dat = (; y, x, z)
+        x = randn(rng, n)
+        y = exp.(0.8 .+ 0.2 .* x) .* (1 .+ 1e-6 .* randn(rng, n))
         fit = _quiet() do
-            drm(bf(@formula(y ~ x + z), @formula(sigma ~ 1)), Gamma(); data = dat)
+            drm(bf(@formula(y ~ x), @formula(sigma ~ 1)), Gamma(); data = (; y, x))
         end
-        _check_flagged(fit, 3)
-        se = predict(fit, (; x = [0.0, 1.0, 0.0], z = [0.0, 0.0, 1.0]); se = true).se
-        @test isfinite(se[1]) && isfinite(se[2]) && isnan(se[3])
+        _check_flagged(fit, [3])
+        nd = (; x = [0.0, 1.0])
+        @test all(isfinite, predict(fit, nd; se = true).se)
+        sp = predict_parameters(fit, nd; se = true)
+        @test all(isfinite, sp[:mu].se) && all(isnan, sp[:sigma].se)
     end
 
     xi = [1.43941117899116, 0.778826426368403, 0.192743160380563, -0.3244252191031, 2.09766874641634, 0.369686510094048, 1.79478191004505, 0.606502031264434, 0.0312916522780309, -0.910572582677395, 0.806725615836395, 0.612734177592478, -0.611163641309853, -0.159343666027289, 1.05500813010401, -1.06458870705857, 1.12065628331957, 0.387953130608195, -0.224004141372002, -0.109023652368118]
@@ -109,7 +130,7 @@ end
         fit = _quiet() do
             drm(bf(@formula(cbind(s, fl) ~ x + (1 | g))), Binomial(); data = d, marginal = :Laplace)
         end
-        _check_flagged(fit, 3)
+        _check_flagged(fit, [3])
         pe = predict(fit, (; x = [0.0, 1.0], g = ["g01", "g02"], n = [8, 8]); se = true)
         @test all(isfinite, pe.se)
     end
@@ -119,7 +140,7 @@ end
         fit = _quiet() do
             drm(bf(@formula(y ~ x + (1 | g))), Poisson(); data = d, marginal = :Laplace)
         end
-        _check_flagged(fit, 3)
+        _check_flagged(fit, [3])
         pe = predict(fit, (; x = [0.0, 1.0], g = ["g01", "g02"]); se = true)
         @test all(isfinite, pe.se)
     end
@@ -131,7 +152,7 @@ end
         fit = _quiet() do
             drm(bf(@formula(y ~ x), @formula(sigma ~ 1), @formula(nu ~ 1)), Tweedie(); data = d)
         end
-        _check_flagged(fit, 4)
+        _check_flagged(fit, [4])
         pe = predict(fit, (; x = [0.0, 1.0]); se = true)
         @test all(isfinite, pe.se)
     end
@@ -154,7 +175,7 @@ end
         fit = _quiet() do
             drm(form, Gaussian(); data = dat, K = K, g_tol = 1e-6, method = :ML)
         end
-        _check_flagged(fit, 10)
+        _check_flagged(fit, [10])
         # the location block is unaffected by the flagged coordinate
         @test all(isfinite, stderror(fit)[1:9])
         @test isfinite(bias_correct(fit, th -> th[1] - th[2]).se)
