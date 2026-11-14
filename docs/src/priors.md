@@ -123,3 +123,38 @@ Confidence intervals, likelihood comparisons, AIC,
 BIC and uncertainty-dependent prediction or simulation are refused for active
 priors. An unpenalized comparison requires unpenalized refits. Choosing the
 prior depends on the response units: changing units requires changing its rate.
+
+## Specifying priors in a table
+
+A Tables.jl-compatible column table can use the `prior`, `class` and `coef`
+columns. This interface follows a documented subset of glmmTMB's prior-table
+style; it does not accept every glmmTMB prior class or distribution. For the
+crossed model above, the following table regularizes the fixed slope and the
+`site` random-intercept SD:
+
+```julia
+prior_table = (prior = ["normal(0,2)", "gamma(0.6666666666666666,2)"],
+               class = ["fixef", "ranef_sd"],
+               coef = ["x", "site"])
+resolve_priors(cross_form, Gaussian(); data = crossed, priors = prior_table)
+table_fit = drm(cross_form, Gaussian(); data = crossed, priors = prior_table)
+```
+
+For `fixef`, `normal(mean, sd)` is a normalized normal density and
+`ridge(lambda)` is an unnormalized quadratic penalty. A blank `coef` selects
+all non-intercept coefficients; use `(Intercept)` to select the intercept.
+A coefficient literally named `all` cannot be selected by a prior table,
+including through a blank selector, because that name is reserved for a
+constructor wildcard. Optional `dpar` selects `mu` or the supported Gaussian `sigma` predictor and
+defaults to `mu`.
+
+For `ranef_sd`, `gamma(mean, shape)` targets an SD on its natural scale.
+This table convention uses **mean and shape**, whereas
+`drm_prior_sd_gamma()` uses **shape and rate**: `rate = shape / mean`. The
+shape must exceed one. With no `group` column, `coef = "site"` selects the
+`site` intercept; a blank `coef` selects every supported random-intercept SD.
+Alternatively, specify `group = "site"` and `coef = "(Intercept)"`.
+Overlapping, unknown and unsupported selections are rejected. Random slopes,
+correlation priors, structured effects and other families remain outside this
+slice. The original table is stored in `table_fit.penalty.input_table`; `update()`
+replays the resolved targets rather than expanding a blank selector again.

@@ -150,25 +150,38 @@ function _reject_sd_missing_predictors(f, data, priors)
     return nothing
 end
 
+include("prior_table.jl")
+
 """
     resolve_priors(formula, family; data, priors)
 
 Preview the exact fitted columns and prior precision without optimizing. The
 route covers complete-response Gaussian models with fixed effects and up to two
 distinct mean random intercepts, and fixed-effect binomial logit models. Priors refer to
-predictor coefficients and depend on units and coding.
+predictor coefficients and depend on units and coding. `priors` may also be a
+Tables.jl-compatible prior table with `prior`, `class`, and `coef` columns;
+see the prior guide for supported distributions, selectors, and scale conventions.
 """
 function resolve_priors(f, fam; data, priors)
+    table_rows = Tables.istable(priors) ? _parse_prior_table(priors) : nothing
+    sd_intent = table_rows !== nothing && any(r -> r.class == "ranef_sd", table_rows)
     f isa DrmFormula && (fam isa Gaussian || (fam isa Binomial && fam.link === :logit)) ||
         throw(ArgumentError("resolve_priors supports Gaussian and fixed-effect binomial logit models"))
     _has_joint_mi(f) && throw(ArgumentError("resolve_priors does not support missing-predictor models"))
     isempty(_sd_parts(f)) && isempty(_sdphylo_parts(f)) || throw(ArgumentError("resolve_priors does not support SD formulas"))
     for response in _formula_responses(f)
         response === nothing && continue
-        any(p -> p isa SDGammaPrior, priors) && any(ismissing, _table_column(data, response)) && throw(ArgumentError("SD priors require complete responses"))
+        (sd_intent || (table_rows === nothing && any(p -> p isa SDGammaPrior, priors))) && any(ismissing, _table_column(data, response)) && throw(ArgumentError("SD priors require complete responses"))
         all(_observed_response_mask(_table_column(data, response))) || throw(ArgumentError("resolve_priors requires complete responses"))
     end
-    _reject_sd_missing_predictors(f, data, priors)
+    if sd_intent
+        cols = Tables.columntable(data)
+        for c in _predictor_columns(f)
+            haskey(cols, c) && any(ismissing, cols[c]) && throw(ArgumentError("SD priors require complete predictors (missing in $c)"))
+        end
+    elseif table_rows === nothing
+        _reject_sd_missing_predictors(f, data, priors)
+    end
     dat = fam isa Gaussian ? _drop_missing_predictor_rows(f, data) : data
     length(_table_column(dat, f.response)) == length(_table_column(data, f.response)) ||
         throw(ArgumentError("resolve_priors requires complete predictors"))
@@ -195,9 +208,12 @@ function resolve_priors(f, fam; data, priors)
         push!(names, d => nms)
         intercepts[d] = _fixed_intercept_index(f, d, rhs, nms; cache=cache)
     end
+    table_rows === nothing || (priors = _prior_table_specs(table_rows, String.(sd_groups)))
     priors isa AbstractVector && all(p -> p isa Union{FixedPrior,SDGammaPrior}, priors) || throw(ArgumentError("priors must be created by drm_priors"))
     fixed = FixedPrior[p for p in priors if p isa FixedPrior]
     rows = _resolve_fixed_priors(fixed, names, intercepts)
+    table_rows !== nothing && any(r -> r.coef == "all", rows) &&
+        throw(ArgumentError("prior tables cannot select a coefficient literally named all"))
     sds = _resolve_sd_priors(priors, sd_groups, sum(length(last(n)) for n in names) + 1)
     vcat(rows, sds)
 end
