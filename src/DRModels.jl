@@ -81,6 +81,7 @@ include("gaussian_core.jl")
 include("ci_args.jl")            # shared level / B checks and bootstrap completion status
 include("meta_vcov_bivariate.jl")  # A8: known bivariate sampling covariance (drmTMB meta_vcov_bivariate)
 include("gaussian_bivariate.jl")
+include("gaussian_bivariate_re.jl")  # ordinary (1 | p | g) on mu1 and mu2, dense per group
 include("gaussian_multi_re_sparse.jl")  # #977: sparse QR + selected inverse for (1|g)+(1|h)+…
 include("gaussian_ranef.jl")
 include("gaussian_rs_sigma_ranef.jl")  # #960: (1 + x | g) mean + sigma (1 | g), per-group 3-D Laplace
