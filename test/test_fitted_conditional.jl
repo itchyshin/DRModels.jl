@@ -62,23 +62,18 @@ const _FC_CELLS = [
     ("J|gaussian|slopes on two different groups", d -> drm(bf(@formula(y_g ~ x1 + (1 | g) + (0 + x1 | g) + (0 + x2 | g2)), @formula(sigma ~ 1)), Gaussian(); data = d)),
     ("K|gaussian|NA in both + (1|g)", d -> drm(bf(@formula(y_gm ~ x1m + (1 | g)), @formula(sigma ~ 1)), Gaussian(); data = d)),
     ("M|gaussian|mu=x1+(1|g)|entry-points", d -> drm(bf(@formula(y_g ~ x1 + (1 | g)), @formula(sigma ~ 1)), Gaussian(); data = d)),
-    # P17b: a missing response
-    ("K|gaussian|NA in response", d -> drm(bf(@formula(y_gm ~ x1), @formula(sigma ~ 1)), Gaussian(); data = d)),
-    ("K|gaussian|NA in response|REML", d -> drm(bf(@formula(y_gm ~ x1), @formula(sigma ~ 1)), Gaussian(); data = d, method = :REML)),
-    ("K|gaussian|NA in response + weights", d -> drm(bf(@formula(y_gm ~ x1), @formula(sigma ~ 1)), Gaussian(); data = d, weights = d.w)),
-    ("K|poisson|NA in response", d -> drm(bf(@formula(y_pm ~ x1)), Poisson(); data = d)),
-]
-
-# Cells of the P17a list that this tree cannot fit yet: they need routes that are not on main (weights on
-# a random-effect fit, REML with meta_V and a random effect, a LogNormal `sigma` random effect, a mean
-# and a `sigma` random effect on two different groups). Their R reference values are in the fixture.
-# They must keep refusing here; when a route lands, move the cell into `_FC_CELLS`.
-const _FC_NOT_YET_FITTABLE = [
+    # cells that need a route with fitted modes: weights on a (1 | g) fit (ML and REML), REML meta_V + (1 | g),
+    # a LogNormal `sigma` random effect, a mean and a `sigma` random effect on two different groups
     ("C|gaussian|(1|g)+weights", d -> drm(bf(@formula(y_g ~ x1 + (1 | g)), @formula(sigma ~ 1)), Gaussian(); data = d, weights = d.w)),
     ("C|gaussian|(1|g)+weights+REML", d -> drm(bf(@formula(y_g ~ x1 + (1 | g)), @formula(sigma ~ 1)), Gaussian(); data = d, weights = d.w, method = :REML)),
     ("H|meta|(1|g)|REML", d -> drm(bf(@formula(yi ~ x1 + (1 | g) + meta_V(vi)), @formula(sigma ~ 1)), Gaussian(); data = d, method = :REML)),
     ("J|lognormal|sigma=x1+(1|g)", d -> drm(bf(@formula(y_ln ~ x1), @formula(sigma ~ x1 + (1 | g))), LogNormal(); data = d)),
     ("J|gaussian|mu=(1|g)|sigma=(1|g2)", d -> drm(bf(@formula(y_g ~ x1 + (1 | g)), @formula(sigma ~ x1 + (1 | g2))), Gaussian(); data = d)),
+    # P17b: a missing response
+    ("K|gaussian|NA in response", d -> drm(bf(@formula(y_gm ~ x1), @formula(sigma ~ 1)), Gaussian(); data = d)),
+    ("K|gaussian|NA in response|REML", d -> drm(bf(@formula(y_gm ~ x1), @formula(sigma ~ 1)), Gaussian(); data = d, method = :REML)),
+    ("K|gaussian|NA in response + weights", d -> drm(bf(@formula(y_gm ~ x1), @formula(sigma ~ 1)), Gaussian(); data = d, weights = d.w)),
+    ("K|poisson|NA in response", d -> drm(bf(@formula(y_pm ~ x1)), Poisson(); data = d)),
 ]
 
 # Julia against R. The Laplace and exact Gaussian routes agree to well below 1e-6; the ordinal crossed
@@ -89,12 +84,6 @@ _fc_tol(id) = occursin("cumul", id) ? 2e-5 : 1e-6
 @testset "fitted(): conditional default, used rows (P17a, P17b)" begin
     d = _fc_data()
     ref = _fc_reference()
-    @testset "the five P17a cells that need routes not on main still refuse" begin
-        for (id, fit_it) in _FC_NOT_YET_FITTABLE
-            @test haskey(ref, id)               # the R reference is committed for when the route lands
-            @test_throws Exception fit_it(d)
-        end
-    end
     for (id, fit_it) in _FC_CELLS
         @testset "$id" begin
             fit = fit_it(d)
