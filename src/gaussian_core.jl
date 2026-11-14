@@ -2641,6 +2641,13 @@ function fitted(fit::DrmFit; re::Symbol = :conditional)
     cmu = _fitted_component_mu(fit, re, :fitted)
     # a LogNormal fit with a sigma random effect keeps the conditional sigma: E[Y] = exp(mu + sigma_cond^2 / 2)
     csig = re === :conditional ? get(fit.scales, :cond_fit_sigma, nothing) : nothing
+    if csig !== nothing && length(csig) != length(cmu) && haskey(fit.obs, :mu) &&
+       length(fit.obs[:mu]) == length(cmu) && count(!isnan, fit.obs[:mu]) == length(csig)
+        # the conditional sigma is solved on the rows with an observed response; the rows with a
+        # missing response are dropped again by `_fitted_used_rows`, so their entry is never read
+        full = ones(length(cmu)); full[.!isnan.(fit.obs[:mu])] .= csig
+        csig = full
+    end
     return _fitted_used_rows(fit, csig === nothing ? _fitted_mean(fit, cmu) : _fitted_mean(fit, cmu; sigma = csig))
 end
 
