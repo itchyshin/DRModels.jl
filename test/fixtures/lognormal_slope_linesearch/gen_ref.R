@@ -3,7 +3,7 @@
 #   s2, s10 are LogNormal draws of the parity grid with a random slope (Julia 1.10.12 threw a HagerZhang
 #   AssertionError on both; s10 also on 1.12.7); b1, b10 are draws with NO random slope (slope SD = 0,
 #   rho on the boundary): b1 threw on Julia 1.13.3, b10 on 1.10.12.
-# drmTMB 0.8.1, engine = "tmb", library ~/drm_campaign_20261108/Rlib on Totoro.
+# drmTMB 0.8.1, engine = "tmb", library ~/drm_campaign_20261108/Rlib on a Linux server.
 # Usage: Rscript gen_ref.R r_reference.csv
 .libPaths(c("~/drm_campaign_20261108/Rlib", .libPaths()))
 suppressPackageStartupMessages(library(drmTMB))

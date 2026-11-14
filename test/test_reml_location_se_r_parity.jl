@@ -63,7 +63,7 @@ const _REMLSE_FORMS = Dict(
             @test isapprox(coef(fit)[1:k], [r["coef"][n] for n in nms]; rtol = 1e-5, atol = 1e-6)
             R = [r["vcov"][(a, b)] for a in nms, b in nms]
             sdR = sqrt.(diag(R))
-            # every entry within 1e-4 of the geometric mean SE (lane rule is 1e-3)
+            # every entry within 1e-4 of the geometric mean SE (the parity bound is 1e-3)
             @test maximum(abs.(V .- R) ./ (sdR * sdR')) < 1e-4
             # standard errors, relative 1e-4
             @test maximum(abs.(sqrt.(diag(V)) ./ sdR .- 1)) < 1e-4

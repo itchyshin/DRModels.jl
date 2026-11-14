@@ -8,7 +8,7 @@
 # last-bit rounding, so it differs between Julia versions and CPUs.
 #
 # Data (fixtures/lognormal_slope_linesearch/data.csv, 120 rows each, 12 groups of 10), the throwing
-# versions on Totoro (AMD znver5) before the fix:
+# versions on a Linux server (AMD znver5) before the fix:
 #   s2   1.10.12  `isfinite(phi_c) && isfinite(dphi_c)`; fits on 1.12.7 and 1.13.3
 #   s10  1.10.12 and 1.12.7  `B > A`; fits on 1.13.3
 #   b1   1.13.3  `B > A` (generated with no random slope)
@@ -16,7 +16,7 @@
 # No single dataset throws on every version, so the test uses all four: on each of 1.10.12 and 1.13.3
 # at least one of them failed before the fix. Julia 1.12.7: s10 fails, the others fit.
 #
-# Agreement with drmTMB 0.8.1 (reference r_reference.csv, made by gen_ref.R) under the lane rule:
+# Agreement with drmTMB 0.8.1 (reference r_reference.csv, made by gen_ref.R) under the parity rule:
 # logLik 1e-4, fixed effects 1e-3 R standard errors, log SDs 5e-3. R's correlation sits at +-1 on all
 # four datasets, so the correlation is not compared.
 using DRModels, Test, DelimitedFiles, Logging
