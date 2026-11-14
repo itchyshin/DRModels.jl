@@ -172,25 +172,56 @@ end
 # present only in rows whose response is missing but kept by `miss_control(response = "include")`, or
 # only in rows with weight 0). Refuse by name instead of failing in a factorisation. A response with
 # fewer observed cells than columns is refused earlier, for ML as well, in `_biv_residual_designs`.
+# The rank is judged after scaling every column to unit norm, so columns on very different scales
+# (1e9 next to 1e-9) are not mistaken for aliased ones; a zero column stays zero and is refused.
+function _unit_columns(M::AbstractMatrix)
+    S = Matrix{Float64}(M)
+    for j in axes(S, 2)
+        nj = norm(@view S[:, j])
+        nj > 0 && (S[:, j] ./= nj)
+    end
+    return S
+end
+_scaled_rank(M::AbstractMatrix) = size(M, 2) == 0 ? 0 : rank(_unit_columns(M))
+
+function _lost_columns(M::AbstractMatrix, names)
+    S = _unit_columns(M)
+    return [names[j] for j in 1:size(S, 2) if rank(S[:, 1:j]) == (j == 1 ? 0 : rank(S[:, 1:(j-1)]))]
+end
+
 function _check_reml_observed_design(X::AbstractMatrix, names, obs, pw, resp::Symbol, yname)
     used = obs .& (pw .> 0)
     Xo = X[used, :]
     p = size(Xo, 2)
-    r = p == 0 ? 0 : rank(Xo)
+    r = _scaled_rank(Xo)
     r == p && return nothing
-    lost = [names[j] for j in 1:p if rank(Xo[:, 1:j]) == (j == 1 ? 0 : rank(Xo[:, 1:(j-1)]))]
     kept = count(!, obs)
     zero_w = count(obs .& (pw .<= 0))
-    why = (kept > 0 ? " The $kept rows with a missing `$yname` stay in the fit under " *
-                      "`miss_control(response = \"include\")` but add no row to the design of `$resp`, so a column " *
-                      "that varies in the data can still be constant or aliased on the rows that carry a `$yname` value." : "") *
-          (zero_w > 0 ? " $zero_w rows with weight 0 are not used." : "")
+    full_deficient = _scaled_rank(X) < p            # rank already lost on every row used in the fit
+    obs_deficient = _scaled_rank(X[obs, :]) < p      # rank lost among the observed rows, whatever their weight
+    lost = _lost_columns(full_deficient ? X : Xo, names)
+    why, advice = if full_deficient
+        (" The design of `$resp` is already rank deficient on all $(size(X, 1)) rows used in the fit, " *
+         "so the cause is a duplicate, constant or aliased column in `data`, not the rows with a missing response.",
+         "Remove or recode the term, or use method = :ML. If the formula object was used before on other data " *
+         "(for example in an earlier fit on the full data), build it afresh: it keeps the factor levels of that data, " *
+         "and a level without rows is an all-zero column.")
+    elseif obs_deficient && kept > 0
+        (" The $kept rows with a missing `$yname` stay in the fit under " *
+         "`miss_control(response = \"include\")` but add no row to the design of `$resp`, so a column " *
+         "that varies in the data can still be constant or aliased on the rows that carry a `$yname` value." *
+         (zero_w > 0 ? " $zero_w rows with weight 0 are not used." : ""),
+         "Remove or recode the term, use method = :ML, or take the rows with a missing response out of `data` " *
+         "and fit with a fresh formula object (a formula object reused after a fit on the full data keeps that " *
+         "data's factor levels, so a level seen only in the removed rows stays a column; with a fresh formula " *
+         "the default `miss_control(response = \"drop\")` removes such a level).")
+    else
+        (" $zero_w rows with weight 0 are not used, and the design is full rank only with them.",
+         "Remove or recode the term, give the rows of the aliased levels a positive weight, or use method = :ML.")
+    end
     throw(ArgumentError("drm: method = :REML needs a full-rank fixed-effect design among the observed rows, " *
         "but `$resp` has rank $r for $p columns on its $(size(Xo, 1)) observed rows " *
-        "(constant or aliased there: $(join(lost, ", "))).$why The restricted likelihood is not defined for it. " *
-        "Remove or recode the term, use method = :ML, or take the rows with a missing response out of `data` " *
-        "before the call (that also removes a factor level seen only in them; " *
-        "`miss_control(response = \"drop\")` keeps the factor levels of the full data and does not)."))
+        "(constant or aliased there: $(join(lost, ", "))).$why The restricted likelihood is not defined for it. $advice"))
 end
 
 function _fit_bivariate_ordinary_re(f::BivariateDrmFormula, fam::Gaussian, data, fixed, spec;
