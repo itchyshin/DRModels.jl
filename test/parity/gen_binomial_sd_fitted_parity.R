@@ -1,8 +1,9 @@
 # gen_binomial_sd_fitted_parity.R -- native drmTMB 0.8.1 reference `fitted()` values for two Binomial
 # random-intercept models with a random-effect SD regression, `sd(g) ~ gx`, one with a logit and one with a
-# probit link. DRModels.jl fits them with its default integrator; drmTMB uses the Laplace approximation, so
-# the log-likelihoods differ a little and only `fitted(fit)` (conditional on the modes) is pinned, at 1e-6 of
-# a Laplace fit in the Julia test, which refits with `marginal = :Laplace`.
+# probit link. DRModels.jl fits them with its default integrator (quadrature); drmTMB uses the Laplace
+# approximation, so the two differ by about 3e-4 in `fitted`. The Julia test therefore uses drmTMB's
+# estimates (`theta`) and `fitted` values as a reference for the conditional-mode computation, not for
+# the package's own estimates.
 #
 #   Rscript test/parity/gen_binomial_sd_fitted_parity.R <output dir>
 #
