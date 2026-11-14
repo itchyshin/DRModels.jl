@@ -370,7 +370,31 @@ function _fit_lognormal_corr_ranef(fam::LogNormal, y, Xμ, Xσ, xs, gidx, G, nm�
     θ0[1:pμ] .= βμ0
     θ0[pμ+1] = log(std(ly - Xμ * βμ0) + eps())
     θ0[pμ+pσ+1] = log(0.4); θ0[pμ+pσ+2] = log(0.4); θ0[pμ+pσ+3] = 0.0
-    res = Optim.optimize(nll, θ0, Optim.LBFGS(), Optim.Options(g_tol = g_tol); autodiff = :forward)
+    # The slope SD can run to zero (log l22 → -∞). Past log l22 ≈ -20 the per-group Hessian
+    # (Σ⁻¹ entries ~ 1e18) loses positive definiteness, the objective turns spuriously low and
+    # then +Inf, and HagerZhang's secant2! asserts on the non-finite value. Where the path first
+    # reaches that region depends on last-bit rounding, so it differs between Julia versions and
+    # CPUs. The first attempt is the unchanged default call, so every fit that succeeded before is
+    # bit-for-bit the same; only a fit that threw is retried, from the start, with a finite
+    # sentinel and BackTracking (the `_optimize_with_fallback` pattern, tried second here).
+    res = try
+        Optim.optimize(nll, θ0, Optim.LBFGS(), Optim.Options(g_tol = g_tol); autodiff = :forward)
+    catch e
+        e isa AssertionError || rethrow()
+        bcache .= 0.0                                   # drop modes cached at the extreme probe
+        r1 = Optim.optimize(_safe_objective(nll), θ0,
+            Optim.LBFGS(linesearch = Optim.LineSearches.BackTracking()),
+            Optim.Options(g_tol = g_tol); autodiff = :forward)
+        # BackTracking alone stops short of the gradient tolerance on this flat ridge. Polish from
+        # its point with the default line search; keep the polish only if it ran and did not
+        # end higher.
+        r2 = drm_optim_converged(r1) ? nothing : try
+            Optim.optimize(nll, Optim.minimizer(r1), Optim.LBFGS(), Optim.Options(g_tol = g_tol); autodiff = :forward)
+        catch e2
+            e2 isa AssertionError ? nothing : rethrow()
+        end
+        r2 !== nothing && Optim.minimum(r2) <= Optim.minimum(r1) ? r2 : r1
+    end
     θ̂ = Optim.minimizer(res); V = _vcov_from_hessian(ForwardDiff.hessian(nll, θ̂))
     blocks = [:mu => 1:pμ, :sigma => (pμ+1):(pμ+pσ), :recov => (pμ+pσ+1):(pμ+pσ+3)]
     names = [:mu => nmμ, :sigma => nmσ, :recov => ["$(grp):L11", "$(grp):L22", "$(grp):L21"]]
