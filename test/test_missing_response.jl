@@ -22,10 +22,13 @@ using Test, Random
     @test nobs(fit_missing) == count(keep)
     @test coef(fit_missing) ≈ coef(fit_observed)
     @test loglik(fit_missing) ≈ loglik(fit_observed)
-    @test length(fitted(fit_missing)) == n
-    @test fitted(fit_missing)[keep] ≈ fitted(fit_observed)
-    @test sigma(fit_missing)[keep] ≈ sigma(fit_observed)
-    @test all(isnan, residuals(fit_missing)[miss])
+    # fitted() and residuals() return the rows used (as drmTMB does), not one row per input row
+    @test length(fitted(fit_missing)) == nobs(fit_missing) == count(keep)
+    @test fitted(fit_missing) ≈ fitted(fit_observed)
+    @test length(sigma(fit_missing)) == count(keep)          # sigma() returns the rows used too (maintainer decision of 11 Nov)
+    @test sigma(fit_missing) ≈ sigma(fit_observed)
+    @test length(residuals(fit_missing)) == count(keep)
+    @test residuals(fit_missing) ≈ residuals(fit_observed)
 
     bridged_missing = drm_bridge(;
         formula = Dict(:mu => "y ~ x", :sigma => "sigma ~ x"),

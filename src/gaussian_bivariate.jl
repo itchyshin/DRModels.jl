@@ -28,6 +28,9 @@ end
 BivariateDrmFormula(response1::Symbol, response2::Symbol, forms::Vector{Pair{Symbol,Any}}) =
     BivariateDrmFormula(response1, response2, forms, Ref(Dict{Symbol,Any}()))
 
+_fresh_formula_cache(f::BivariateDrmFormula) =
+    BivariateDrmFormula(f.response1, f.response2, f.forms, Ref(Dict{Symbol,Any}()))
+
 _rhs_or_intercept(f) = f === nothing ? ConstantTerm(1) : f.rhs
 
 # Validate a bivariate placeholder formula's LHS. The σ1/σ2/ρ12 formulas carry a
@@ -312,6 +315,14 @@ function _fit_bivariate_residual(f::BivariateDrmFormula, fam::Gaussian, data, rh
     # with a positive-definiteness sentinel where the guarded rho cannot save us
     # (V's own correlation plus the heterogeneity correlation can exceed 1).
     meta_v = _resolve_biv_meta_v(V, n)
+    # drmTMB `weights`: row i's whole log-density contribution is multiplied by pw[i]
+    # (a row with one observed response is weighted the same). `nothing` = unit weights, and
+    # the unweighted arithmetic below is then untouched. R refuses weights with a known
+    # sampling covariance (`check_weights_known_covariance`); so does this route.
+    pw = _ctl_weights_or_nothing(n)
+    pw === nothing || meta_v === nothing || throw(ArgumentError(
+        "drm: `weights` cannot be combined with a known sampling covariance `V` on the bivariate " *
+        "Gaussian route (drmTMB refuses this too); drop one of them."))
 
     function nll(θ)
         b1 = θ[rng(1)]; b2 = θ[rng(2)]; bs1 = θ[rng(3)]; bs2 = θ[rng(4)]; br = θ[rng(5)]
@@ -326,14 +337,17 @@ function _fit_bivariate_residual(f::BivariateDrmFormula, fam::Gaussian, data, rh
                     z1 = (y1[i] - η1[i]) * exp(-ls1[i])     # standardised residuals
                     z2 = (y2[i] - η2[i]) * exp(-ls2[i])
                     # −log φ₂ = log(2π) + (½ log|Σ|) + (½ rᵀΣ⁻¹r)
-                    s += log(2π) + ls1[i] + ls2[i] + 0.5 * log(om) +
-                         0.5 * (z1 * z1 - 2ρ * z1 * z2 + z2 * z2) / om
+                    c = log(2π) + ls1[i] + ls2[i] + 0.5 * log(om) +
+                        0.5 * (z1 * z1 - 2ρ * z1 * z2 + z2 * z2) / om
+                    s += pw === nothing ? c : pw[i] * c
                 elseif obs1[i]
                     z1 = (y1[i] - η1[i]) * exp(-ls1[i])
-                    s += 0.5 * log(2π) + ls1[i] + 0.5 * z1 * z1
+                    c = 0.5 * log(2π) + ls1[i] + 0.5 * z1 * z1
+                    s += pw === nothing ? c : pw[i] * c
                 elseif obs2[i]
                     z2 = (y2[i] - η2[i]) * exp(-ls2[i])
-                    s += 0.5 * log(2π) + ls2[i] + 0.5 * z2 * z2
+                    c = 0.5 * log(2π) + ls2[i] + 0.5 * z2 * z2
+                    s += pw === nothing ? c : pw[i] * c
                 end
             end
         else
@@ -458,6 +472,8 @@ end
 # mu1/mu2 designs stays correct rather than silently under-reporting.
 function _fit_bivariate_residual_reml(f::BivariateDrmFormula, fam::Gaussian, data, rhs, g_tol::Real)
     d = _biv_residual_designs(f, rhs, data)
+    # The restricted likelihood of a weighted model is not implemented here: refuse by name.
+    _ctl_weights(d.n; supported = false, route = "the bivariate Gaussian REML route (`method = :REML`)")
     y1, X1, nm1 = d.y1, d.X1, d.nm1
     y2, X2, nm2 = d.y2, d.X2, d.nm2
     Xs1, nms1 = d.Xs1, d.nms1

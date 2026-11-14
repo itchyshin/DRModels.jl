@@ -2302,10 +2302,15 @@ _bootstrap_estimator(fit::DrmFit) = (estimation_method(fit), fit.marginal)
 _bootstrap_estimator(fit) = (:unknown, :unknown)
 
 # Keywords the bivariate Gaussian bootstrap refit may pass to `drm`.
-# `method` is included only when the seed kwargs contain it. `marginal` is
+# `method` and `weights` are included only when the seed kwargs contain them. `marginal` is
 # left off, because that method does not accept it.
 function _bootstrap_bivariate_refit_kwargs(refit_options)
-    haskey(refit_options, :method) ? (; method = refit_options.method) : NamedTuple()
+    kw = Pair{Symbol,Any}[]
+    haskey(refit_options, :method) && push!(kw, :method => refit_options.method)
+    # Prior weights are part of the likelihood: every replicate refit uses them, as the
+    # univariate path does (`_bootstrap_refit_kwargs`).
+    haskey(refit_options, :weights) && push!(kw, :weights => refit_options.weights)
+    return NamedTuple(kw)
 end
 
 _is_gaussian_lss(fit::DrmFit) = fit.family isa Gaussian &&
@@ -2421,6 +2426,7 @@ function _marginal_simulator(fit::DrmFit, data; K=nothing, A=nothing, tree=nothi
                              tree1=nothing, tree2=nothing,
                              Ainv=nothing, coords=nothing)
     sim = _marginal_simulator_build(fit, data; K, A, Ainv, tree, tree1, tree2, coords)
+    sim === nothing && _refuse_multi_re_laplace(fit, "a simulation or bootstrap with fresh random effects")
     # `nothing` sends `bootstrap` to the CONDITIONAL `simulate`. On the Gaussian
     # `meta_V(...)` + random-effect route (`_fit_meta_gaussian_re`) that fallback
     # is a different model: `means[:mu]` is Xβ and `scales[:sigma]` is √(v + σ²),

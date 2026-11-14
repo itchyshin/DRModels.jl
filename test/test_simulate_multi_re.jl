@@ -55,7 +55,7 @@ end
             @test isapprox(B, r_between; rtol = 0.08)
             # the default without `data` is still a clear refusal, never a b = 0 draw
             @test_throws ArgumentError simulate(fit)
-            # the refusal prints the exact call to use, and names the grouping columns (P12a)
+            # the refusal prints the exact call to use, and names the grouping columns (maintainer decision of 10 Nov)
             msg = try; simulate(fit); "" ; catch e; sprint(showerror, e); end
             @test occursin("simulate(fit; data = <the data frame you fitted with>)", msg)
             @test occursin("simulate(fit; re = :zero)", msg)

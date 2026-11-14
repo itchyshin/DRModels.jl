@@ -48,7 +48,7 @@ end
         # the offset is a fixed coefficient of 1, never an estimated column
         @test length(coef(fg, :mu)) == 2
         # fitted counts carry the exposure: λ = exposure * exp(Xβ) (b = 0)
-        @test fitted(fg) ≈ exp.(rate.logexp) .* exp.(coef(fg, :mu)[1] .+ coef(fg, :mu)[2] .* rate.x)
+        @test fitted(fg; re = :zero) ≈ exp.(rate.logexp) .* exp.(coef(fg, :mu)[1] .+ coef(fg, :mu)[2] .* rate.x)
         # the offset is not a no-op: dropping it changes the fit
         fn = drm(bf(@formula(y ~ 1 + x + (1 | g))), Poisson(); data = rate, marginal = :Laplace)
         @test abs(loglik(fn) - loglik(fl)) > 1.0

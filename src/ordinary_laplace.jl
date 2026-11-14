@@ -129,6 +129,11 @@ function _drm_ordinary_laplace(f::DrmFormula, fam; data, tree = nothing,
 
     _lss_only_gaussian_guard(f, fam)
     rhs = Dict(f.forms)
+    # Poisson / NB2 `zi` or `hu` with a random intercept: same Laplace objective, own front end.
+    if fam isa Union{Poisson,NegBinomial2} && (haskey(rhs, :zi) || haskey(rhs, :hu)) &&
+       !isempty(_split_ranef(rhs[:mu])[2])
+        return _drm_zi_re_laplace(f, fam; data = data, g_tol = g_tol)
+    end
     has_sigma = _ordinary_laplace_has_sigma(fam)
     for (pname, r) in f.forms
         pname === :mu && continue
@@ -153,6 +158,14 @@ function _drm_ordinary_laplace(f::DrmFormula, fam; data, tree = nothing,
     st === nothing || _ordinary_laplace_reject(fam, "a phylogenetic/structured random effect")
     # Independent intercept-plus-slope terms already take the dense TMB-convention Laplace by default.
     if length(re) > 1 && _has_indep_slopes(re) && !(fam isa Binomial && fam.link !== :logit)
+        return drm(f, fam; data = data, tree = tree, K = K, A = A, coords = coords,
+                   g_tol = g_tol, se = se, method = method)
+    end
+    # Three or more crossed intercepts `(1 | g) + (1 | h) + (1 | k)` for Binomial: the default route is the dense
+    # TMB-convention Laplace spine and tags its fit `:Laplace`, so `update()` (which repeats the stored tag) and an
+    # explicit `marginal = :Laplace` call must reach that same fit. Exactly two crossed intercepts keep the
+    # explicit refusal below (their default fit is tagged `:LA`).
+    if length(re) > 2 && fam isa Binomial && all(r -> _laplace_lhs_kind(r[1]) === :intercept, re)
         return drm(f, fam; data = data, tree = tree, K = K, A = A, coords = coords,
                    g_tol = g_tol, se = se, method = method)
     end
@@ -191,7 +204,8 @@ function _drm_ordinary_laplace(f::DrmFormula, fam; data, tree = nothing,
             length(off) == length(y) ||
                 error("Poisson(): `offset(...)` must have one value per observation")
             fit = _fit_poisson_ordinary_laplace(fam, y, Xμ, gidx, G, nmμ, grp, g_tol;
-                                                se = se, offset = off)
+                                                se = se, offset = off,
+                                                prior_w = _ctl_weights_or_nothing(length(y)))
         else
             _, Xσ, nmσ = _design(f.response, get(rhs, :sigma, ConstantTerm(1)), data)
             (size(Xσ, 2) == 1 && all(==(1.0), @view Xσ[:, 1])) ||
@@ -345,7 +359,8 @@ const _ORDINARY_LAPLACE_NEWTON_TOL = 1e-13
 
 function _fit_poisson_ordinary_laplace(fam::Poisson, y, Xμ, gidx, G, nmμ, grp, g_tol;
                                        se::Bool = true,
-                                       offset::AbstractVector{<:Real} = zeros(length(y)))
+                                       offset::AbstractVector{<:Real} = zeros(length(y)),
+                                       prior_w = nothing)
     n = length(y); pμ = size(Xμ, 2)
     Q = _ordinary_laplace_Q(G)
     lf = [_logfactorial(round(Int, yi)) for yi in y]
@@ -354,7 +369,8 @@ function _fit_poisson_ordinary_laplace(fam::Poisson, y, Xμ, gidx, G, nmμ, grp,
     fg = (θ, b0, grad) -> _poisson_phylo_laplace_fg(y, Xμ, gidx, Q, 0.0, lf, θ;
                                                     grad = grad, b0 = b0, raw_scales = true,
                                                     newton_tol = _ORDINARY_LAPLACE_NEWTON_TOL,
-                                                    offset = has_off ? off : nothing)
+                                                    offset = has_off ? off : nothing,
+                                                    weights = prior_w)
     β0 = _poisson_fixed_start(y, Xμ)
     has_off && (β0[1] -= sum(off) / n)
     θ0 = vcat(β0, log(0.4))

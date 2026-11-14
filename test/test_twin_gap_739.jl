@@ -64,7 +64,7 @@ _tg739_logistic(x) = 1 / (1 + exp(-x))
         @test 0.03 < exp(coef(fit, :sigma)[1]) < 1.0
         @test re_sd(fit)[:species] > 0.03
         @test isfinite(loglik(fit))
-        @test all(0 .<= fitted(fit) .<= 1)
+        @test all(0 .<= fitted(fit; re = :zero) .<= 1)
         zoihat = _tg739_logistic(coef(fit, :zoi)[1])
         coihat = _tg739_logistic(coef(fit, :coi)[1])
         @test isapprox(zoihat, zoi_true; atol = 0.06)
@@ -162,6 +162,6 @@ _tg739_logistic(x) = 1 / (1 + exp(-x))
                   ZeroOneBeta(); data = (; y, x, id = ids), K = R, se = false)
         @test fit.converged
         @test isfinite(loglik(fit))
-        @test all(0 .<= fitted(fit) .<= 1)
+        @test all(0 .<= fitted(fit; re = :zero) .<= 1)
     end
 end

@@ -238,9 +238,9 @@ using Distributions: MvNormal, logpdf
         @test tp.structure === :ou && tp.phi === nothing && tp.sd_iid === nothing
         @test tp.sd_phylo ≈ re_sd(fit)[:species_phylo] && tp.sd ≈ re_sd(fit)[:species]
         @test tp.decay ≈ exp(only(coef(fit, :temporal_decay)))
-        @test predict(fit, d) ≈ fitted(fit) ≈ X * coef(fit, :mu)
+        @test predict(fit, d) ≈ fitted(fit; re = :zero) ≈ X * coef(fit, :mu)
         pp = predict_parameters(fit, d)
-        @test pp[:mu] ≈ fitted(fit) && all(≈(tp.sigma), pp[:sigma])
+        @test pp[:mu] ≈ fitted(fit; re = :zero) && all(≈(tp.sigma), pp[:sigma])
         @test Set(structured_effects(fit)) ==
               Set([(dpar = :mu, kind = :phylo, grouping = :species),
                    (dpar = :mu, kind = :temporal, grouping = :species)])
@@ -266,7 +266,7 @@ using Distributions: MvNormal, logpdf
         d, nwk, Cc, lev = sim_data(StableRNG(315); m = 40, kmin = 3, kmax = 5)
         fit = drm(fP, Gaussian(); data = d, tree = nwk)
         tp = temporal_parameters(fit)
-        E = simulate(fit; nsim = 3000, rng = StableRNG(316)) .- fitted(fit)
+        E = simulate(fit; nsim = 3000, rng = StableRNG(316)) .- fitted(fit; re = :zero)
         n = length(d.y)
         k = Dict(l => i for (i, l) in enumerate(lev))
         Vm = [tp.sd_phylo^2 * Cc[k[d.species[i]], k[d.species[j]]] +

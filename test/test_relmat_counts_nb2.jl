@@ -85,7 +85,7 @@ end
     @test re_sd(fit)[:id] ≈ σb atol = 0.20           # variance component recovered
     @test exp(-2 * coef(fit, :sigma)[1]) ≈ sizep rtol = 0.6   # dispersion in the right ballpark
     @test isfinite(loglik(fit))
-    @test all(fitted(fit) .> 0)
+    @test all(fitted(fit; re = :zero) .> 0)
 end
 
 # ---- NB2 FD gate ≤ 1e-6 ----------------------------------------------------
@@ -150,7 +150,7 @@ end
     @test re_sd(fit)[:id] ≈ σb atol = 0.20           # variance component recovered
     @test exp(-2 * coef(fit, :sigma)[1]) ≈ shape rtol = 0.6   # shape in the right ballpark
     @test isfinite(loglik(fit))
-    @test all(fitted(fit) .> 0)
+    @test all(fitted(fit; re = :zero) .> 0)
 end
 
 # ---- Gamma FD gate ≤ 1e-6 --------------------------------------------------
@@ -222,9 +222,12 @@ end
                                     NegBinomial2(); data = (; y = yc, x, id), se = false)
     @test_throws ErrorException drm(bf(@formula(y ~ x + animal(1 | id)), @formula(sigma ~ 1)),
                                     Gamma(); data = (; y = yg, x, id), se = false)
-    # coords-only spatial → error (coordinate-based range is Gaussian-only for now)
-    @test_throws ErrorException drm(bf(@formula(y ~ x + spatial(1 | id)), @formula(sigma ~ 1)),
-                                    NegBinomial2(); data = (; y = yc, x, id), coords = rand(G, 2), se = false)
+    # coords-only spatial now fits on drmTMB's fixed-range kernel (it was refused before;
+    # test_nb2_spatial_intercept_coords.jl pins the fit to drmTMB)
+    fit_c = drm(bf(@formula(y ~ x + spatial(1 | id)), @formula(sigma ~ 1)),
+                NegBinomial2(); data = (; y = yc, x, id), coords = rand(G, 2), se = false)
+    @test isfinite(loglikelihood(fit_c))
+    @test haskey(re_sd(fit_c), :id)
     # non-constant sigma with a structured RE → clear error (constant-sigma only)
     @test_throws ErrorException drm(bf(@formula(y ~ x + relmat(1 | id)), @formula(sigma ~ 0 + x)),
                                     NegBinomial2(); data = (; y = yc, x, id), K = Cm, se = false)
