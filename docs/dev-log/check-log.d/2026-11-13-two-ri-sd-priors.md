@@ -1,0 +1,1 @@
+| 2026-11-13 | **Two random-intercept SD priors** | Independent dense-Gaussian oracle and focused Julia tests | Focused native, live bridge and one fitted-point inverse curvature comparison recorded in after-task note; full Julia suite and arbitrary-point bridge Hessian validation remain open | Noether |

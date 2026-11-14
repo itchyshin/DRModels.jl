@@ -75,6 +75,7 @@ function drm_bridge(; formula, family::AbstractString, data, tree = nothing,
     opts = _bridge_prior_safe_options(options)
     version = _bridge_prior_contract(opts)
     v2_records = version === :v2 ? _bridge_enable_priors_v2!(opts, bundle, fam, dat, labels) : nothing
+    v3_records = version === :v3 ? _bridge_enable_priors_v3!(opts, bundle, fam, dat, labels) : nothing
     if version === :v1 && haskey(opts, :priors)
         haskey(opts, :prior_expected) || throw(ArgumentError("drm_bridge: priors require prior_expected"))
         opts[:priors] = _bridge_prepare_fixed_priors(bundle, fam, labels, opts[:priors], opts[:prior_expected])
@@ -87,6 +88,7 @@ function drm_bridge(; formula, family::AbstractString, data, tree = nothing,
     out = _bridge_flatten(fit; family = String(family), newdata = newdata,
                           labels = labels, coef_labels = coef_labels)
     v2_records === nothing || _bridge_attach_priors_v2!(out, fit, v2_records, labels)
+    v3_records === nothing || _bridge_attach_priors_v3!(out, fit, v3_records, labels)
     return out
 end
 
@@ -788,7 +790,7 @@ end
 
 function _bridge_prior_safe_options(input)
     opts = _bridge_options(input)
-    if any(k -> haskey(opts, k), (:prior_contract, :priors_v2, :prior_expected_v2))
+    if any(k -> haskey(opts, k), (:prior_contract, :priors_v2, :prior_expected_v2, :priors_v3, :prior_expected_v3))
         return _bridge_v2_checked_options(input)
     end
     return opts
@@ -797,17 +799,75 @@ end
 # Separate the v1 and v2 wire protocols before any fit is attempted.
 function _bridge_prior_contract(opts)
     v1 = any(k -> haskey(opts, k), (:priors, :prior_expected))
-    v2keys = (:prior_contract, :priors_v2, :prior_expected_v2)
-    v2 = any(k -> haskey(opts, k), v2keys)
-    v1 && v2 && throw(ArgumentError("drm_bridge: v1 and v2 prior keys cannot be combined"))
-    v2 || return v1 ? :v1 : :none
-    all(k -> haskey(opts, k), v2keys) || throw(ArgumentError("drm_bridge: incomplete v2 prior request"))
-    opts[:prior_contract] isa AbstractString && opts[:prior_contract] == "parameter_priors_v2" || throw(ArgumentError("drm_bridge: unknown prior contract"))
-    for k in (:priors_v2, :prior_expected_v2)
+    has2 = any(k -> haskey(opts,k), (:priors_v2, :prior_expected_v2))
+    has3 = any(k -> haskey(opts,k), (:priors_v3, :prior_expected_v3))
+    v1 && (has2 || has3 || haskey(opts,:prior_contract)) && throw(ArgumentError("drm_bridge: prior protocol keys cannot be combined"))
+    has2 && has3 && throw(ArgumentError("drm_bridge: prior protocol keys cannot be combined"))
+    v1 && return :v1
+    !(has2 || has3 || haskey(opts,:prior_contract)) && return :none
+    contract = get(opts,:prior_contract,nothing)
+    version = contract == "parameter_priors_v2" ? :v2 : contract == "parameter_priors_v3" ? :v3 : throw(ArgumentError("drm_bridge: unknown prior contract"))
+    ks = version === :v2 ? (:priors_v2,:prior_expected_v2) : (:priors_v3,:prior_expected_v3)
+    all(k -> haskey(opts,k),ks) && ((version === :v2 && !has3) || (version === :v3 && !has2)) || throw(ArgumentError("drm_bridge: incomplete or mixed prior request"))
+    for k in ks
         value = opts[k]
         value isa AbstractVector && !isempty(value) || throw(ArgumentError("drm_bridge: $k must be a nonempty vector"))
     end
-    return :v2
+    return version
+end
+
+function _bridge_enable_priors_v3!(opts, form, fam, data, labels)
+    uppercase(String(get(opts, :method, "ML"))) == "ML" || throw(ArgumentError("drm_bridge: v3 requires ML"))
+    _bridge_reject_duplicate_intercept_source(labels.formula_parts)
+    records = opts[:prior_expected_v3]
+    priors = _bridge_prepare_priors_v2(form, fam, data, labels, opts[:priors_v3], records; version=:v3)
+    for k in (:prior_contract, :priors_v3, :prior_expected_v3)
+        delete!(opts, k)
+    end
+    opts[:priors] = priors
+    records
+end
+
+function _bridge_attach_priors_v3!(out, fit, records, labels)
+    fit.penalty.kind === :sd_priors && fit.estim_method === :MAP || throw(ArgumentError("drm_bridge: v3 backend did not fit SD priors"))
+    names, values, _, _ = _bridge_coef_vector(fit; labels=labels)
+    blocks = Dict(fit.blocks); coefs = Dict(fit.coefnames)
+    haskey(blocks,:resd) && haskey(coefs,:resd) && length(blocks[:resd]) == 2 && length(coefs[:resd]) == 2 || throw(ArgumentError("drm_bridge: v3 expected two SD working coordinates"))
+    for (i, group) in zip(blocks[:resd],coefs[:resd])
+        names[i] = "eta_sd[mu|$(group)|(Intercept)]"
+    end
+    length(unique(names)) == length(names) || throw(ArgumentError("drm_bridge: duplicate v3 working coordinate"))
+    rows = fit.penalty.sd_rows
+    expected = [_bridge_v2_checked_options(r) for r in records if get(_bridge_v2_checked_options(r), :class, nothing) == "ranef_sd"]
+    length(rows) == length(expected) || throw(ArgumentError("drm_bridge: fitted SD targets differ from v3 records"))
+    for (row, rec) in zip(rows,expected)
+        name = "eta_sd[mu|$(row.group)|$(row.coef)]"
+        row.class === :random_effect_sd && row.dpar === :mu && row.block === :iid_intercept && row.scale === :sd &&
+            row.index in blocks[:resd] && names[row.index] == name &&
+            get(rec,:dpar,nothing) == String(row.dpar) && get(rec,:group,nothing) == row.group &&
+            get(rec,:coef,nothing) == row.coef && get(rec,:block_kind,nothing) == "iid_random_intercept" &&
+            get(rec,:measure,nothing) == "natural_sd" && get(rec,:shape,nothing) == row.shape && get(rec,:rate,nothing) == row.rate ||
+            throw(ArgumentError("drm_bridge: fitted SD target does not match v3 record or working coordinate"))
+    end
+    data_nll = fit.penalty.data_nll
+    fixed_nll = t -> _fixed_prior_value(fit.penalty.rows,t)
+    sd_nll = t -> sum((_sd_prior_value(row,t) for row in rows); init=zero(eltype(t)))
+    theta=fit.theta
+    out["prior_contract"] = "parameter_priors_v3"
+    out["resolved_priors_v3"] = records
+    out["working_coordinates"] = names; out["working_values"] = values
+    out["data_nll"] = data_nll(theta); out["data_logLik"] = -out["data_nll"]
+    out["fixed_prior_penalty"] = fixed_nll(theta); out["sd_prior_penalty"] = sd_nll(theta)
+    # JuliaCall maps Vector{Any} of dictionaries to an R list; a concretely
+    # typed Vector{Dict} remains an opaque JuliaObject in JuliaCall 1.10.
+    out["sd_prior_contributions"] = Any[Dict("dpar"=>String(row.dpar),"group"=>row.group,"coef"=>row.coef,"penalty"=>_sd_prior_value(row,theta)) for row in rows]
+    out["penalized_objective"] = fit.nll(theta)
+    out["data_gradient"] = ForwardDiff.gradient(data_nll,theta)
+    out["fixed_prior_gradient"] = ForwardDiff.gradient(fixed_nll,theta)
+    out["sd_prior_gradient"] = ForwardDiff.gradient(sd_nll,theta)
+    out["penalized_gradient"] = ForwardDiff.gradient(fit.nll,theta)
+    out["estim_method"] = "MAP"; out["infocrit_basis"] = "unavailable"
+    out
 end
 
 function _bridge_enable_priors_v2!(opts, form, fam, data, labels)
@@ -851,7 +911,7 @@ function _bridge_attach_priors_v2!(out, fit, records, labels)
     return out
 end
 
-function _bridge_prepare_priors_v2(form, fam, data, labels, prior_input, expected_input)
+function _bridge_prepare_priors_v2(form, fam, data, labels, prior_input, expected_input; version=:v2)
     fam isa Gaussian || throw(ArgumentError("drm_bridge: v2 requires Gaussian"))
     prior_input isa AbstractVector && !isempty(prior_input) && expected_input isa AbstractVector && !isempty(expected_input) ||
         throw(ArgumentError("drm_bridge: v2 records must be nonempty vectors"))
@@ -928,9 +988,11 @@ function _bridge_prepare_priors_v2(form, fam, data, labels, prior_input, expecte
             throw(ArgumentError("drm_bridge: unknown v2 prior kind"))
         end
     end
-    n_sd == 1 || throw(ArgumentError("drm_bridge: v2 requires exactly one SD prior"))
+    (version === :v2 ? n_sd == 1 : 1 <= n_sd <= 2) || throw(ArgumentError("drm_bridge: invalid number of SD priors"))
     combined = drm_priors(priors...)
     resolve_priors(form, fam; data=data, priors=combined)
+    _, re, _, _ = _split_ranef(Dict(form.forms)[:mu])
+    length(re) == (version === :v2 ? 1 : 2) || throw(ArgumentError("drm_bridge: prior protocol does not match random-intercept count"))
     return combined
 end
 

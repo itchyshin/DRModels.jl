@@ -82,7 +82,7 @@ end
         e
     end
     @test err isa ArgumentError
-    @test occursin("fixed-effect priors currently do not support random or structured effects", sprint(showerror, err))
+    @test occursin("fixed-effect priors currently support at most two distinct iid mean random intercepts and no other random or structured effects", sprint(showerror, err))
 
     # Additional unsupported-route diagnostics retain fixed-only compatibility.
     x = repeat([-1.0, 0.0, 1.0], 4)
