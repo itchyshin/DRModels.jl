@@ -173,7 +173,7 @@ end
 # Correlation near the boundary. On these two datasets drmTMB 0.8.1 converges (REML log-likelihood -235.221 and
 # -443.4403, eta_cor -10 and 10.91) while this route does not reach a usable optimum: the correlation runs to
 # the edge and the objective is almost flat there. The ML route on the same data fails too (it is the shared
-# engine, not this slice). The contract tested here is honesty, not agreement: the fit is not reported as
+# engine, not this change). The contract tested here is honesty, not agreement: the fit is not reported as
 # converged, no failure sentinel is shown as a log-likelihood, and the displayed standard errors are withheld
 # (NaN) rather than made up. The outcome differs by Julia version (1.13.3: a finite log-likelihood on b4;
 # 1.10.12: the failure value on both), so each branch states only what must hold in every case. If the

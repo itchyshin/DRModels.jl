@@ -2,7 +2,7 @@
 # random intercept `(1 | g)` or one correlated block `(1 + x1 | g)`, and `marginal = :Laplace`, against
 # drmTMB 0.8.1. References: `test/fixtures/laplace_more_shapes_parity/` written by
 # `test/parity/gen_laplace_more_shapes_parity.R` (max|grad| < 1e-6, all SEs finite; numbers and
-# simulated data only). Bounds are the lane's and are never loosened:
+# simulated data only). Bounds are fixed in advance and are never loosened:
 #   logLik 1e-4 (absolute) | fixed effects 1e-3 R SE | log SD 5e-3.
 # `fitted(fit)` (conditional: the stored random-effect modes are included) is compared with drmTMB's
 # `fitted()` at 1e-6; `fitted(fit; re = :zero)` is the population value, pinned against the inverse
