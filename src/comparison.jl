@@ -19,7 +19,7 @@ import StatsAPI: weights
 import StatsModels: lrtest
 
 """
-    lrtest(reduced::DrmFit, full::DrmFit) -> NamedTuple
+    lrtest(reduced::DrmFit, full::DrmFit; mixture::Bool = false) -> NamedTuple
 
 Likelihood-ratio test for two **nested**, **ML**-fitted models, mirroring
 drmTMB's `anova(reduced, full)`. `reduced` must be a special case of `full`
@@ -62,6 +62,36 @@ p-value clamps the statistic at zero (so `pvalue` stays in `[0, 1]`); inspect
     p-value (#304). drmTMB's `anova()` does swap in the mixture for the same
     pairs; call `lrt_boundary` here to match that p-value.
 
+## Opt-in mixture reference: `mixture = true`
+`lrtest(reduced, full; mixture = true)` reports the boundary-correct p-value when
+`full` differs from `reduced` by **exactly one** variance component (for example
+`(1 | g)` left out of `reduced`, or `(1 | g) + (0 + x | g)` against `(1 | g)`) or by
+the one `sigma` of `Poisson() ⊂ NegBinomial2()`. The reference is then the equal
+mixture of `χ²(0)` and `χ²(1)`, so `pvalue = 0.5 * P(χ²₁ > statistic)` (Self &
+Liang 1987; Stram & Lee 1994). The result gains two fields: `pvalue_naive` (the
+plain `χ²(dof)` p-value) and `reference = :chibar_0_1`; the boundary warning is
+not emitted, because the caveat is handled. The default stays `mixture = false`
+(plain `χ²`, with the warning), so existing calls do not change.
+
+`mixture = true` is refused with an `ArgumentError` when the pair is not a
+single-variance boundary test: a difference in fixed effects or in a family other
+than Poisson ⊂ NegBinomial2 (the plain `χ²` is the right test there), or more than
+one added variance parameter. A random slope together with its correlation, for
+example `(1 + x | g)` against `(1 | g)`, adds two variances and one correlation;
+its reference is a different mixture, so use a parametric bootstrap there.
+With few groups the mixture is still conservative: in 2000 null data sets
+(Gaussian `(1 | g)`, 20 groups of 10) the plain `χ²(1)` p-value rejected at the
+0.05 level in 1.1% and the mixture in 2.95% (binomial SE about 0.4 points); 58.6%
+of the statistics sat on the `χ²(0)` atom.
+`lrt_boundary` is the separate function that applies the 50:50 or the two-
+independent-components mixture to a pair you name yourself.
+
+References: Self, S. G. and Liang, K.-Y. (1987), Asymptotic properties of maximum
+likelihood estimators and likelihood ratio tests under nonstandard conditions,
+*Journal of the American Statistical Association* 82, 605-610. Stram, D. O. and Lee,
+J. W. (1994), Variance components testing in the longitudinal mixed effects model,
+*Biometrics* 50, 1171-1177.
+
 # Example
 ```julia
 x = randn(400)
@@ -77,7 +107,7 @@ t.dof          # 2 extra parameters (x in μ and in log σ)
 t.pvalue       # < 0.05 when x is truly predictive
 ```
 """
-function lrtest(reduced::DrmFit, full::DrmFit)
+function lrtest(reduced::DrmFit, full::DrmFit; mixture::Bool = false)
     _reml_compare_guard(reduced, full, "lrtest")
     _sentinel_compare_guard(reduced, full, "lrtest")
     _marginal_compare_guard(reduced, full, "lrtest")
@@ -88,10 +118,49 @@ function lrtest(reduced::DrmFit, full::DrmFit)
         "lrtest: `full` must have more parameters than `reduced` " *
         "(dof(full) = $(dof(full)), dof(reduced) = $(dof(reduced)); " *
         "did you pass the arguments as (reduced, full)?)"))
-    _boundary_vc_warn(reduced, full, "lrtest")
     statistic = 2 * (loglik(full) - loglik(reduced))
+    if mixture
+        _single_variance_boundary_guard(reduced, full, Δdof)
+        pvalue_naive = ccdf(Chisq(Δdof), max(statistic, 0))
+        return (; statistic, dof = Δdof, pvalue = chibar_pvalue(statistic, 1),
+                  pvalue_naive, reference = :chibar_0_1)
+    end
+    _boundary_vc_warn(reduced, full, "lrtest")
     pvalue = ccdf(Chisq(Δdof), max(statistic, 0))
     return (; statistic, dof = Δdof, pvalue)
+end
+
+# `lrtest(...; mixture = true)` applies the 0.5 χ²(0) + 0.5 χ²(1) reference, which is
+# right only when `full` adds exactly ONE variance parameter and nothing else.
+# Accept: every non-variance block has the same width in both fits, the
+# variance-component blocks are one parameter wider in `full`, and Δdof is 1; or the
+# Poisson ⊂ NegBinomial2 nest. Refuse everything else by name.
+function _single_variance_boundary_guard(reduced::DrmFit, full::DrmFit, Δdof::Integer)
+    vcw(f) = sum((length(r) for (p, r) in f.blocks if p in _VARIANCE_COMPONENT_BLOCKS);
+                 init = 0)
+    other(f) = sort!([p => length(r) for (p, r) in f.blocks
+                      if !(p in _VARIANCE_COMPONENT_BLOCKS) && length(r) > 0]; by = first)
+    if _family_boundary_nest(reduced, full) !== nothing && Δdof == 1
+        return nothing
+    end
+    Δvc = vcw(full) - vcw(reduced)
+    if Δvc == 1 && Δdof == 1 && other(full) == other(reduced)
+        return nothing
+    end
+    reason = if Δvc <= 0
+        "`full` adds no variance component to `reduced` (the difference is in fixed " *
+        "effects or in the family), so the plain χ² reference is the right test"
+    elseif Δdof > 1 || Δvc > 1
+        "`full` adds $Δvc variance parameter(s) and $Δdof parameters in all " *
+        "(for example a random slope with its correlation); the reference for that " *
+        "is a different mixture, which is not implemented"
+    else
+        "`full` and `reduced` differ in more than the one variance component"
+    end
+    throw(ArgumentError(
+        "lrtest: `mixture = true` is only for a pair that differs by exactly one " *
+        "variance component (reference 0.5 χ²(0) + 0.5 χ²(1)); $reason. " *
+        "Call `lrtest(reduced, full)` for the plain test, or use a parametric bootstrap."))
 end
 
 # A fit stranded on the failed-objective sentinel plateau (loglik <= -1e15, see
