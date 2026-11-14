@@ -1,6 +1,6 @@
 # NB2 `spatial(1 | g)` with site `coords` (no SD formula): the coordinate route uses drmTMB's
 # fixed-range kernel, exp(-d / r) + 1e-6 I with r the median positive pairwise distance, like the
-# Poisson and Gamma routes. Before this slice Julia refused the cell (gap map cell
+# Poisson and Gamma routes. Before this change Julia refused the cell (gap map cell
 # `nb2|spatial|lab0|q1|sd-none|cm0|ML`, R-only).
 # Reference: drmTMB 0.8.1, ML (test/fixtures/nb2_spatial_intercept/reference_drmtmb.csv; script
 # ref_nb2_spatial_intercept.R, same folder). Rule fixed before the Julia run:
