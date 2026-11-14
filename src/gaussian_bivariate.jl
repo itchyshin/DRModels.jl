@@ -133,8 +133,13 @@ and group SD 0.2 with correlation +0.99 or -0.99); the default result is kept
 unless another start converged with a log-likelihood higher by more than 1e-6.
 This is not a global search. `bootstrap_*` refits use the same three starts.
 `simulate(fit; data)` and `bootstrap_*` draw fresh group effects from
-`Sigma_g` and need the complete fitting `data` (no rows dropped). A random effect on
-the means AND one on `sigma1`/`sigma2` in the same model, `weights`, `V`, and
+`Sigma_g` and need the complete fitting `data` (no rows dropped). `weights` (one per
+row of `data`) multiply each row's whole log density, ML and REML, as in drmTMB; rows
+with a missing response drop with their weights, so the vector must have one entry per
+row of `data`, missing rows included (a vector already cut to the kept rows is refused).
+`confint(fit; method = :profile)` is refused on a REML fit of this route, because the
+stored objective is the ML likelihood; use `method = :wald`, the bootstrap, or an ML fit.
+A random effect on the means AND one on `sigma1`/`sigma2` in the same model, `V`, and
 incomplete response rows (`miss_control(response = "include")`) are refused.
 
 With an ordinary `(1 | p | g)` written in BOTH `sigma1` and `sigma2` (same label and

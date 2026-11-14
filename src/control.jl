@@ -210,7 +210,14 @@ mutable struct _ControlScope
     kept::Int
     optimizer_runs::Vector{NamedTuple}
     selected_optimizer_stage::Symbol
+    weights_rows::Int            # rows of `data` when a vector of another length was left uncut (0: none)
 end
+
+# The ten-field form (the field above is set later, by `_drop_scope_weight_rows!`).
+_ControlScope(control, weights, formula, used_optim, used_se, used_weights, start_nll, kept,
+              optimizer_runs, selected_optimizer_stage) =
+    _ControlScope(control, weights, formula, used_optim, used_se, used_weights, start_nll, kept,
+                  optimizer_runs, selected_optimizer_stage, 0)
 
 const _CTL_KEY = :DRModels_drm_control_scope
 
@@ -273,6 +280,7 @@ function _ctl_preflight(scope::_ControlScope, f, fam)
     wants_w = scope.weights !== nothing
     (wants_optim || wants_w) || return nothing
     _ctl_has_latent_terms(f) || return nothing
+    wants_w && !wants_optim && _ctl_weights_biv_re_ok(f, fam) && return nothing
     if c.optimizer !== :default && !wants_w && c.maxit === nothing &&
        c.start === nothing && c.multi_start == 1 && c.seed == 1 && c.jitter == 0.5 &&
        _ctl_simple_gaussian_re(f, fam)

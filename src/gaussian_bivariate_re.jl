@@ -70,6 +70,24 @@ function _extract_ordinary_biv_re(rhs, axes::Tuple{Symbol,Symbol} = (:mu1, :mu2)
     return rhs2, spec[axes[1]]
 end
 
+# Does `f` have exactly the shape whose fitter reads prior `weights`: a bivariate Gaussian with ONE
+# labelled ordinary `(1 | p | g)` pair on mu1 and mu2 and no other latent term anywhere? Used by
+# `_ctl_preflight`; `_ctl_finish` still refuses a fit that did not read the weights.
+function _ctl_weights_biv_re_ok(f, fam)
+    f isa BivariateDrmFormula && fam isa Gaussian || return false
+    try
+        rhs, spec = _extract_ordinary_biv_re(Dict{Symbol,Any}(f.forms))
+        spec === nothing && return false
+        for (_, r) in rhs
+            _, re, mv, st = _split_ranef(r; allow_phylo_slope = true, allow_temporal = true)
+            (isempty(re) && mv === nothing && st === nothing) || return false
+        end
+        return true
+    catch
+        return false
+    end
+end
+
 # Starting points for the group covariance. The default start (group SD 0.5, covariance 0.02) can slide to
 # Sigma_g = 0, a local optimum where the gradient in the log SD vanishes, while drmTMB finds a higher mode
 # with the group SDs away from 0 (about 3 percent of small data sets; reviewed on 240 + 100 data sets). Two
@@ -171,7 +189,21 @@ function _fit_bivariate_ordinary_re(f::BivariateDrmFormula, fam::Gaussian, data,
               M[2, (p1+1):pβ] .= X2[i, :]
               M
           end for i in 1:n]
-    const_2pi = 0.5 * (count(obs1) + count(obs2)) * log(2π)      # observed response cells, not rows
+    # drmTMB `weights`: row i's whole log-density is multiplied by pw[i] (the same as repeating the
+    # row pw[i] times, and an exact zero drops it). So S_i^-1, log det S_i and the 2 pi constant are
+    # all scaled by pw[i]; the Woodbury sums below then equal the replicated-row likelihood.
+    # Unit weights (the default) multiply by 1.0 and leave every number unchanged.
+    let sc = _active_control_scope()
+        # Rows with a missing predictor or response were dropped before this point. Weights must be one
+        # per row of `data`, as in R, so a vector already cut to the kept rows is refused here: it is
+        # not aligned with the rows that were kept unless the caller cut it with exactly the same rule.
+        (sc !== nothing && sc.weights !== nothing && sc.weights_rows > 0) &&
+            throw(DimensionMismatch("drm: `weights` has $(length(sc.weights)) entries but `data` has " *
+                "$(sc.weights_rows) rows. Give one weight per row of `data`, including any rows with a " *
+                "missing predictor or response value (they are dropped together with their weights)."))
+    end
+    pw = _ctl_weights(n)
+    const_2pi = 0.5 * sum(pw[i] * (obs1[i] + obs2[i]) for i in 1:n) * log(2π)   # observed response cells, weighted
 
     # Group-summed GLS pieces at variance parameters `φ` = (sigma1, sigma2, rho12 coefs, lc[3]).
     function pieces(φ)
@@ -186,7 +218,8 @@ function _fit_bivariate_ordinary_re(f::BivariateDrmFormula, fam::Gaussian, data,
             A = zeros(T, 2, 2); sy = zeros(T, 2); B = zeros(T, 2, pβ)
             for i in rows
                 Si, ldi = _biv_re_rowprec(T, obs1[i], obs2[i], ls1[i], ls2[i], ηr[i])   # S_i^-1, log|S_i|
-                logdetS += ldi
+                Si = pw[i] .* Si                                              # pw_i * S_i^-1
+                logdetS += pw[i] * ldi
                 yi = @view Y[i, :]
                 Sy = Si * yi
                 yVy += dot(yi, Sy)
@@ -296,6 +329,7 @@ function _fit_bivariate_ordinary_re(f::BivariateDrmFormula, fam::Gaussian, data,
         A = zeros(2, 2); sy = zeros(2)
         for i in rows
             Si, _ = _biv_re_rowprec(Float64, obs1[i], obs2[i], ls1[i], ls2[i], ηr_hat[i])
+            Si = pw[i] .* Si
             A += Si; sy += Si * (Y[i, :] - Xi[i] * θb)
         end
         U[:, k] = L * (inv(Symmetric(I + L' * A * L)) * (L' * sy))
@@ -324,6 +358,17 @@ end
 _is_biv_ordinary_re_fit(fit) =
     fit.formula isa BivariateDrmFormula && fit.ranef isa NamedTuple &&
     get(fit.ranef, :kind, nothing) === :ordinary && haskey(fit.ranef, :Sigma_g)
+
+# Profile likelihood on a REML fit would need the restricted objective, but `fit.nll` is the ML
+# likelihood: the profile would be an ML profile centred on the REML estimate. Refuse by name.
+function _refuse_reml_profile_biv_re(fit::DrmFit, entrypoint::AbstractString)
+    _is_biv_ordinary_re_fit(fit) && estimation_method(fit) === :REML && throw(ArgumentError(
+        "$entrypoint: likelihood profiles are not available for a REML fit of the bivariate " *
+        "`(1 | p | g)` route. The stored objective is the ML likelihood, so the profile would be an ML " *
+        "profile centred on the REML estimate. Use `method = :wald`, `bootstrap_ci` / " *
+        "`bootstrap_result`, or refit with `method = :ML` and profile that."))
+    return nothing
+end
 
 function _biv_ordinary_re_simulator(fit::DrmFit, data)
     re = fit.ranef

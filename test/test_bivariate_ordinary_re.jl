@@ -110,7 +110,7 @@ end
         # different labels or groups on the two axes
         @test_throws ArgumentError drm(mk(@formula(y1 ~ x1 + (1 | p | g)), @formula(y2 ~ x2 + (1 | q | g))), Gaussian(); data = _D)
         # partly observed rows (missing = include) are supported since the include route (test_biv_re_include.jl)
-        # row weights (grouped likelihoods do not take them yet)
-        @test_throws ArgumentError drm(_F1, Gaussian(); data = _D, weights = fill(1.0, length(_D.y1)))
+        # row weights are supported (test_biv_re_weights.jl); invalid ones are still refused
+        @test_throws ArgumentError drm(_F1, Gaussian(); data = _D, weights = fill(-1.0, length(_D.y1)))
     end
 end
