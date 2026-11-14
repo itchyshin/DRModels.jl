@@ -68,6 +68,23 @@ end
         @test isfinite(bias_correct(fit, th -> th[1] + th[2]).se)
     end
 
+    @testset "Gaussian random intercept, tiny covariate: scalar icc and repeatability" begin
+        rng = Random.MersenneTwister(20260715)
+        n_id, n_each = 80, 6
+        sex = repeat([0.0, 1.0], inner = n_id ÷ 2)
+        id = repeat(1:n_id, inner = n_each)
+        y = 0.35 .+ 0.3 .* sex[id] .+ (0.6 .* randn(rng, n_id))[id] .+ 0.5 .* randn(rng, n_id * n_each)
+        dat = (; y, sex = sex[id], id, z = 1e-5 .* randn(rng, n_id * n_each))
+        fit = _quiet() do
+            drm(bf(@formula(y ~ sex + z + (1 | id)), @formula(sigma ~ 1)), Gaussian(); data = dat)
+        end
+        _check_flagged(fit, 3)
+        for r in (icc(fit), repeatability(fit))
+            @test isfinite(r.se) && r.se > 0
+            @test all(isfinite, (r.ci.lower, r.ci.upper))
+        end
+    end
+
     @testset "Gamma, tiny covariate in the mean" begin
         rng = StableRNG(13)
         n = 150

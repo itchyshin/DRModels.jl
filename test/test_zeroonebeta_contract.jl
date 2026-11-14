@@ -124,8 +124,9 @@ const _ZOB_F = bf(@formula(y ~ x), @formula(sigma ~ 1), @formula(zoi ~ 1), @form
             _ZOB_F, ZeroOneBeta(); data = d2)
         @test fit2.converged                              # reported converged despite the degenerate coi
         @test coef(fit2, :coi)[1] < -29                   # coi runs off to the logit clamp (-30)
-        @test vcov(fit2)[end, end] == 0.0                 # SE of coi is exactly zero, not NaN or large
-        @test all(isfinite, vcov(fit2))
+        @test bridge_diagnostics(fit2).boundary == [size(vcov(fit2), 1)]
+        @test isnan(vcov(fit2)[end, end])                 # flagged: no variance for coi, not zero or large
+        @test all(isfinite, vcov(fit2)[1:end-1, 1:end-1])
         @test predict_parameters(fit2, d2)[:coi][1] < 1e-10
     end
 
