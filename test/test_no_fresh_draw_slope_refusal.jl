@@ -97,7 +97,6 @@ end
         @test size(bootstrap_summary(fit; data = d, B = 2, rng = Random.Xoshiro(1)), 1) == length(coef(fit))
     end
     # single-term Gamma slope shapes are covered by test_gamma_slope_no_fresh_draw.jl
-    # other families with crossed or independent-slope bars are untouched by the Gamma/Binomial guard
-    fn = drm(bf(@formula(y ~ x + (1 | g) + (1 | h))), LogNormal(); data = d)
-    @test size(bootstrap_summary(fn; data = d, B = 2, rng = Random.Xoshiro(1)), 1) == length(coef(fn))
+    # Beta, Student and LogNormal with crossed or slope bars refuse too now (a maintainer decision);
+    # see test_slope_bootstrap_refusal_more_families.jl
 end
