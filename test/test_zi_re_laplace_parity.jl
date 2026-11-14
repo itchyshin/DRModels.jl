@@ -105,7 +105,7 @@ end
 end
 
 @testset "post-fit paths and refusals of the new random-effect routes" begin
-    using Random, Statistics
+    using Random, Statistics, StableRNGs
     d = _zr_data("zip_g")
     zf = bf(@formula(y ~ x + (1 | g)), @formula(zi ~ 1))
     fit = drm(zf, Poisson(); data = d)
@@ -170,17 +170,32 @@ end
     db = _zr_data("binom3")
     bf3 = drm(bf(@formula(y ~ x + (1 | g) + (1 | g2) + (1 | h))), Binomial(); data = db)
     # The refusal is gone: a fresh-random-effect simulator for several ordinary random intercepts is
-    # on this tree. Its draws carry the random effects: the variance of the group means is the data's,
-    # not the binomial noise alone (about a third of it).
-    @test size(bootstrap_summary(bf3; data = db, B = 2, rng = Random.Xoshiro(1)), 1) == 5
+    # on this tree. No R reference exists for this cell (drmTMB has no bootstrap here), so these are
+    # checks of the draws, not parity numbers. Fixed StableRNG streams: the same draws on every Julia.
+    #
+    # Main check 1: the variance of the group means over simulated data sets. With the fitted random
+    # effects drawn it is about 3.3 times the binomial-noise-only variance; with the random effects
+    # at zero it is 1.0 times (20000 simulated data sets in R from the fitted parameters, no model fitted). The
+    # threshold 2 sits between the two; the mean of 100 draws moves by about 2.5% of itself.
     gl = unique(db.g)
     gmv(y) = var([mean(y[db.g .== k]) for k in gl])
     vdata = gmv(db.y)
-    vdraw = mean(gmv(simulate(bf3; data = db, rng = Random.Xoshiro(k))) for k in 1:100)
+    vdraw = mean(gmv(simulate(bf3; data = db, rng = StableRNG(k))) for k in 1:100)
     pbar = mean(db.y)
     vnoise = mean(pbar * (1 - pbar) / count(==(k), db.g) for k in gl)
     @test vdraw > 2 * vnoise
+    # Smoke check only, not a calibrated test: the data set's own variance is one draw from the same
+    # law (relative sd about 0.24), so 0.75 to 1.33 holds for about 77% of simulated data sets; draws at zero give 0.32.
     @test 0.75 < vdraw / vdata < 1.33
+    # Main check 2, on the draws `bootstrap_summary` itself makes (it refits on them): the bootstrap
+    # standard error of the intercept is the model-based one up to Monte Carlo error. In 1000 refits
+    # in R from the fitted parameters the ratio is 1.02; the sd of B = 40 draws lies within 0.73 to
+    # 1.28 of the truth (99%), so 1.5 either way is a safe margin; random effects at zero give 0.27.
+    bs = bootstrap_summary(bf3; data = db, B = 40, rng = StableRNG(20261114))
+    @test size(bs, 1) == 5
+    se_boot = only(r.std_error for r in bs if r.param === :mu && r.coef == "(Intercept)")
+    se_model = sqrt(vcov(bf3)[1, 1])
+    @test 1 / 1.5 < se_boot / se_model < 1.5
     @test_throws ArgumentError residuals(bf3; type = :quantile)
 end
 
