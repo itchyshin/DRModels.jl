@@ -16,7 +16,15 @@
 # are used in two steps: the conditional value at drmTMB's own estimates, computed here by Newton's method on
 # the joint density, equals drmTMB's `fitted` at 1e-6; and the package's `fitted` equals the same computation at
 # its own estimates at 1e-8. The package value is also within 1e-3 of drmTMB's.
-using DRModels, Test, TOML, LinearAlgebra, Statistics
+#
+# `residuals()` on these routes is pinned the same way, against drmTMB 0.8.1 values in
+#   fixtures/laplace_residual_parity/ref_*.toml  <- parity/gen_laplace_residual_parity.R
+# `residuals(fit)` (type = :response) is y - fitted(fit), the conditional value; it is compared with drmTMB's
+# `residuals(fit, "response")`: at 1e-6 where the package and drmTMB use the same Laplace integral (the
+# ZeroOneBeta `marginal = :Laplace` fit), and in the three steps above for the Binomial sd(g) routes, where
+# the default quadrature differs from drmTMB's Laplace fit. `type = :quantile` is the only other type this
+# package returns (no Pearson or deviance residual); see the notes at the quantile checks for what is pinned.
+using DRModels, Test, TOML, LinearAlgebra, Statistics, Random
 using SpecialFunctions: erfc, loggamma
 import ForwardDiff
 
@@ -101,6 +109,22 @@ end
         @test zero == fit.means[:mu]
         @test maximum(abs.(cond .- zero)) > 1e-3
         @test residuals(fit) ≈ d.y_zoib .- cond
+        # residuals against drmTMB's own (same Laplace integral, so the usual 1e-6)
+        rr = _lm_ref("laplace_residual_parity", "zob_sigma_x1")
+        @test abs(loglik(fit) - rr["loglik"]) <= 1e-4
+        @test maximum(abs.(residuals(fit) .- Float64.(rr["response"]))) < _LM_TOL
+        @test maximum(abs.(residuals(fit; re = :zero) .- (d.y_zoib .- zero))) < 1e-12
+        # Quantile residuals. drmTMB's are randomised at the atoms 0 and 1, so no draw can be matched across
+        # languages: the deterministic ends of the interval a draw comes from are compared instead. The atom
+        # rows' interval depends only on zoi and coi (no random effect), so a draw must land inside drmTMB's
+        # interval; the continuous rows are NOT pinned here. This package judges them against the
+        # sigma_b-marginal Beta distribution (as for any `(1 | g)` mean fit), drmTMB against the conditional
+        # one at the modes, and the two differ by up to about 0.6 on these data.
+        qlo = Float64.(rr["q_lower"]); qhi = Float64.(rr["q_upper"])
+        atom = (d.y_zoib .== 0) .| (d.y_zoib .== 1)
+        @test count(atom) == 30
+        qres = residuals(fit; type = :quantile, rng = Random.MersenneTwister(1))
+        @test all(qlo[atom] .- 1e-8 .<= qres[atom] .<= qhi[atom] .+ 1e-8)
         # the stored contribution solves the inner problem group by group (one value per group)
         th = fit.theta; eta = fit.scales[:cond_fit_eta_re]
         eta0 = th[1] .+ th[2] .* d.x1; phi = exp.(-2 .* (th[3] .+ th[4] .* d.x1))
@@ -127,6 +151,9 @@ end
         eta = fit.scales[:cond_fit_eta_re]
         bm, zo, co = fit.scales[:beta_mu], fit.scales[:zoi], fit.scales[:coi]
         @test cond ≈ (1 .- zo) .* (1 ./ (1 .+ exp.(-(log.(bm ./ (1 .- bm)) .+ eta)))) .+ zo .* co
+        # Against drmTMB: quadrature against Laplace, so only the looser bound that the fitted values meet.
+        rr = _lm_ref("laplace_residual_parity", "zob_sigma_x1")
+        @test maximum(abs.(residuals(fit) .- Float64.(rr["response"]))) < 1e-3
     end
 end
 
@@ -167,6 +194,20 @@ end
             @test zero == fit.means[:mu]
             @test maximum(abs.(cond .- zero)) > 1e-3
             @test residuals(fit) ≈ fit.obs[:mu] .- cond
+            # Response residuals against drmTMB's (observed proportion minus conditional mean), same three steps
+            # as for fitted(): drmTMB's estimates give drmTMB's residuals at 1e-6, the package's own estimates
+            # give the package's at 1e-8, and the two differ by the quadrature/Laplace gap (< 1e-3).
+            rr = _lm_ref("laplace_residual_parity", id)
+            @test abs(rr["loglik"] - ref["loglik"]) < 1e-9                  # same drmTMB fit as the fitted() fixture
+            prop = d.s ./ (d.s .+ d.fl)
+            @test maximum(abs.(prop .- _lm_sdreg_conditional(Float64.(rr["theta"]), d, link) .- Float64.(rr["response"]))) < _LM_TOL
+            @test maximum(abs.(residuals(fit) .- (prop .- _lm_sdreg_conditional(fit.theta, d, link)))) < 1e-8
+            @test maximum(abs.(residuals(fit) .- Float64.(rr["response"]))) < 1e-3
+            # Quantile residuals are NOT pinned on this route: they are randomised (Binomial), and this package
+            # judges them against the population-level distribution (it records no modes for the quantile
+            # code), where drmTMB's use the conditional one: only 129 of 240 (logit) and 126 of 240 (probit) draws
+            # fell inside drmTMB's interval (1e-3 slack) when this test was written. The response residuals above
+            # are the pinned ones.
         end
     end
 end
