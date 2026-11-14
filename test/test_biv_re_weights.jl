@@ -1,7 +1,7 @@
 # Prior weights on the bivariate Gaussian with an ordinary correlated random intercept
 # `(1 | p | g)` in mu1 and mu2, pinned to drmTMB 0.8.1.
 #
-# drmTMB multiplies a row's whole log density by its weight (checked on Totoro: an integer weight
+# drmTMB multiplies a row's whole log density by its weight (checked on a Linux server: an integer weight
 # reproduces the replicated row exactly, ML and REML, and a zero weight equals dropping the row).
 # Reference: test/fixtures/biv_re_weights/{reference,fitted_reference}.tsv, written by make_reference.R
 # in the same folder (drmTMB 0.8.1).
@@ -94,7 +94,7 @@ function _brw_check(cell, fit, ncoef, d)
     end
     # Conditional fitted values per response. The task fixed no bound for these. On the interior cells
     # R's own modes sit up to 7e-4 from the exact Gaussian modes computed at R's own estimates (checked
-    # by hand on Totoro), so the bound here is 2e-3; the weighted-versus-replicated test below checks
+    # by hand on a Linux server), so the bound here is 2e-3; the weighted-versus-replicated test below checks
     # the modes of this route to 1e-6.
     cf = _brw_conditional(fit, d)
     @test maximum(abs.(cf .- _BRW_FIT[cell])) <= 2e-3
