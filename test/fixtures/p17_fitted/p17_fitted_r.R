@@ -1,6 +1,6 @@
 # Regenerates the R reference values for test/test_fitted_conditional.jl.
 #
-# Run on a machine with drmTMB 0.8.1 installed (the reference was made on Totoro, library
+# Run on a machine with drmTMB 0.8.1 installed (the reference was made on a Linux server, library
 # ~/drm_campaign_20261108/Rlib, R 4.6.1):
 #
 #   DRMTMB_LIB=~/drm_campaign_20261108/Rlib Rscript p17_fitted_r.R data.csv p17_fitted_r_reference.csv
