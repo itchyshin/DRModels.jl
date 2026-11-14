@@ -674,7 +674,7 @@ function _sparse_trace_product(A, B)
 end
 
 function _poisson_phylo_mode(y, η0, leaf_node, Q, logσ; b0 = nothing,
-                             maxiter::Int = 60, tol::Real = 1e-8)
+                             maxiter::Int = 60, tol::Real = 1e-8, weights = nothing)
     q = size(Q, 1)
     b = b0 === nothing ? zeros(q) : copy(b0)
     invσ2 = exp(-2 * logσ)
@@ -683,7 +683,7 @@ function _poisson_phylo_mode(y, η0, leaf_node, Q, logσ; b0 = nothing,
         s = zero(eltype(bb))
         @inbounds for i in eachindex(y)
             η = clamp(η0[i] + bb[leaf_node[i]], -30.0, 30.0)
-            s += exp(η) - y[i] * η
+            s += (weights === nothing ? 1.0 : weights[i]) * (exp(η) - y[i] * η)
         end
         return s + 0.5 * invσ2 * dot(bb, Q * bb)
     end
@@ -699,8 +699,9 @@ function _poisson_phylo_mode(y, η0, leaf_node, Q, logσ; b0 = nothing,
             li = leaf_node[i]
             η = clamp(η0[i] + b[li], -30.0, 30.0)
             μ = exp(η)
-            grad[li] += μ - y[i]
-            diagH[li] += μ
+            wi = weights === nothing ? 1.0 : weights[i]      # prior weight: row log-lik multiplier
+            grad[li] += wi * (μ - y[i])
+            diagH[li] += wi * μ
         end
         grad .+= invσ2 .* (Q * b)
         Hmat = invσ2 .* Q + spdiagm(0 => diagH)
@@ -767,7 +768,7 @@ introduces. Returns `(val[, grad], b, ok)`; on a non-PD inner solve `ok = false`
 function _poisson_phylo_laplace_fg(y, Xμ, leaf_node, Q, logdetQ, lf, θ;
                                    grad::Bool = false, b0 = nothing,
                                    newton_tol::Real = 1e-10, newton_maxiter::Int = 60,
-                                   raw_scales::Bool = false, offset = nothing)
+                                   raw_scales::Bool = false, offset = nothing, weights = nothing)
     # newton_tol was 1e-8 until 2026-08-26. That is tight enough for coefficients
     # and logLik (parity ~1e-8) but NOT for the SECOND-derivative quantity: the
     # inner mode's residual error propagates into the Hessian, and therefore into
@@ -795,7 +796,8 @@ function _poisson_phylo_laplace_fg(y, Xμ, leaf_node, Q, logdetQ, lf, θ;
     # in θ and b, so every derivative below is unchanged.
     offset === nothing || (η0 = η0 .+ offset)
     b, ch, _, ok = _poisson_phylo_mode(y, η0, leaf_node, Q, logσ;
-                                       b0 = b0, tol = newton_tol, maxiter = newton_maxiter)
+                                       b0 = b0, tol = newton_tol, maxiter = newton_maxiter,
+                                       weights = weights)
     if !ok
         return grad ? (1e18, fill(NaN, length(θ)), b, false) : (1e18, b, false)
     end
@@ -806,9 +808,10 @@ function _poisson_phylo_laplace_fg(y, Xμ, leaf_node, Q, logdetQ, lf, θ;
     @inbounds for i in eachindex(y)
         η = clamp(η0[i] + b[leaf_node[i]], -30.0, 30.0)
         μ = exp(η)
-        μstore[i] = μ
-        data += μ - y[i] * η + lf[i]
-        r = μ - y[i]
+        wi = weights === nothing ? 1.0 : weights[i]          # prior weight (drmTMB `weights`)
+        μstore[i] = wi * μ                                   # weighted data curvature (d²ℓ = d³ℓ = w·μ)
+        data += wi * (μ - y[i] * η + lf[i])
+        r = wi * (μ - y[i])
         for k in 1:pμ
             gradβ_raw[k] += Xμ[i, k] * r
         end
