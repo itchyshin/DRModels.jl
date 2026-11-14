@@ -83,7 +83,8 @@ fittw = drm(bf(@formula(y ~ x), @formula(sigma ~ 1), @formula(nu ~ 1)), Tweedie(
 
 For **ordered categories** (Likert-type ratings, severity classes),
 `CumulativeLogit()` models `Pr(y ≤ k) = logistic(θ_k − η)` with ordered
-cutpoints. The response is coded `1, 2, …, K`; the location intercept is dropped
+cutpoints. The response is coded `1, 2, …, K`, and every code in that range must
+be observed; the location intercept is dropped
 (the cutpoints absorb it):
 
 ```@example fam

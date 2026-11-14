@@ -174,6 +174,7 @@ fit = drm(
     (marginal === nothing || marginal === :LA) ||
         throw(ArgumentError("drm: `marginal = :$marginal` is not supported for the bivariate " *
             "Gaussian route (it has no `marginal` choice; the default `:LA` is the only value accepted)."))
+    _require_simple_bar_groups(f)   # nested `g / h` and other compound groupings: a named refusal
     _require_formula_column_lengths(f, data)   # #1022: no ragged columns under @inbounds
     data = _drop_missing_predictor_rows(f, data)   # #1089: R's na.omit, with a count
     data = _apply_bivariate_response_policy(f, data, missing)   # drmTMB's miss_control(response =): default "drop"

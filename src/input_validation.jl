@@ -268,6 +268,7 @@ column lengths (#1022) and unused structured keywords (#1010).
 """
 function _drm_entry_guard(f::DrmFormula, fam, data; tree = nothing, K = nothing,
                           A = nothing, Ainv = nothing, coords = nothing)
+    _require_simple_bar_groups(f)
     _require_family_dpars(f, fam)
     _require_supported_random_terms(f, data)
     _require_offset_supported(f, fam)
@@ -342,6 +343,86 @@ function _require_supported_random_terms(f::DrmFormula, data)
                     "a factor (element type $(nonmissingtype(eltype(col)))). drmTMB refuses this " *
                     "too. Use a numeric 0/1 indicator column for one level, e.g. `(0 + $(v)_b | g)`, " *
                     "or put the factor in the fixed effects and keep `(1 | g)`."))
+            end
+        end
+    end
+    return nothing
+end
+
+# ── nested and compound random-effect groupings ─────────────────────────────
+#
+# A random-effect bar groups by ONE plain column: `(1 | g)`. `(1 | g / h)`, `(1 | g & h)`,
+# `(1 | h %in% g)`, `(1 | g:h)` and `(1 | f(g))` put an expression after the bar. They reached
+# `_split_ranef`, which read `.sym` off a `FunctionTerm` and leaked "type FunctionTerm has no
+# field sym" (a FieldError on Julia 1.12 and later). drmTMB refuses the same terms with
+# "Random-effect grouping terms must be simple variables", so this is a refusal that names the
+# term and the spelling that works: one column per grouping, `(1 | g) + (1 | gh)`.
+# Source text of a term: the original expression, with R's `h %in% g` (which Julia reads as
+# `(h % in) % g`) written back the way the user typed it.
+function _bar_expr_label(t::FunctionTerm)
+    if t.f === (%) && length(t.args) == 2 && t.args[1] isa FunctionTerm && t.args[1].f === (%) &&
+       length(t.args[1].args) == 2 && t.args[1].args[2] isa Term && t.args[1].args[2].sym === :in
+        return string(_bar_text(t.args[1].args[1]), " %in% ", _bar_text(t.args[2]))
+    end
+    return string(t.exorig)
+end
+_bar_text(t::FunctionTerm) = _bar_expr_label(t)
+_bar_text(t) = string(t)
+
+# The two plain columns an `a / b`, `a & b`, `a:b` or `b %in% a` grouping is made of, as
+# `(op, a, b)` with `a` the outer column, or `nothing` when it is not that shape.
+function _bar_pair(grp)
+    grp isa FunctionTerm || return nothing
+    if grp.f === (%) && length(grp.args) == 2 && grp.args[1] isa FunctionTerm && grp.args[1].f === (%) &&
+       length(grp.args[1].args) == 2 && grp.args[1].args[2] isa Term && grp.args[1].args[2].sym === :in
+        b, a = grp.args[1].args[1], grp.args[2]
+        return (a isa Term && b isa Term) ? (:in, a.sym, b.sym) : nothing
+    end
+    (grp.f in (/, &, :) && length(grp.args) == 2 && all(x -> x isa Term, grp.args)) || return nothing
+    return (grp.f === (/) ? :nest : :inter, grp.args[1].sym, grp.args[2].sym)
+end
+
+function _refuse_bar_group(lhs::AbstractString, glabel::AbstractString, pair)
+    what = pair === nothing ? "an expression" :
+           pair[1] === :nest ? "the nested spelling `/`" :
+           pair[1] === :in ? "the nested spelling `%in%`" : "an interaction of two columns"
+    fix = if pair === nothing
+        "Create a plain column first and group by it."
+    else
+        a, b = pair[2], pair[3]; col = string(a, "_", b)
+        make = "add a column `$col = string.($a, \":\", $b)` to the data"
+        spell = pair[1] === :nest ? "`($lhs | $a) + ($lhs | $col)`" : "`($lhs | $col)`"
+        "To get this model, $make and write $spell."
+    end
+    throw(ArgumentError("drm: the random-effect term `($lhs | $glabel)` groups by `$glabel`, " *
+        "$what rather than one plain column, and this is not supported (drmTMB refuses it too: " *
+        "\"Random-effect grouping terms must be simple variables\"). $fix"))
+end
+
+# `bar` is a `(lhs | g)` FunctionTerm. `(lhs | label | g)` stores the label inside lhs.
+function _require_plain_bar_group(bar::FunctionTerm)
+    length(bar.args) == 2 || return nothing
+    grp = bar.args[2]
+    grp isa Term && return nothing
+    # `(1 | p | phylo(species))`: a structured marker is a valid group spelling.
+    grp isa FunctionTerm && grp.f in (phylo, relmat, animal, spatial, temporal) && return nothing
+    _refuse_bar_group(_bar_text(bar.args[1]), _bar_text(grp), _bar_pair(grp))
+end
+
+function _require_simple_bar_groups(f::Union{DrmFormula,BivariateDrmFormula})
+    for (_, rhs) in f.forms
+        for t in _rhs_terms(rhs)
+            t isa FunctionTerm || continue
+            if t.f === (|)
+                _require_plain_bar_group(t)
+            elseif t.f === (:) && length(t.args) == 2 && t.args[1] isa FunctionTerm && t.args[1].f === (|)
+                # `(1 | g:h)` parses as `(1 | g):h` because `:` binds looser than `|`.
+                inner = t.args[1]; g1 = inner.args[2]; h1 = t.args[2]
+                pair = (g1 isa Term && h1 isa Term) ? (:inter, g1.sym, h1.sym) : nothing
+                _refuse_bar_group(_bar_text(inner.args[1]), string(_bar_text(g1), ":", _bar_text(h1)), pair)
+            elseif t.f in (phylo, relmat, animal, spatial, temporal) && !isempty(t.args) &&
+                   t.args[1] isa FunctionTerm && t.args[1].f === (|)
+                _require_plain_bar_group(t.args[1])
             end
         end
     end

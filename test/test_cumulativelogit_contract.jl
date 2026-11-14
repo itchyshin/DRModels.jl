@@ -82,13 +82,12 @@ end
         @test_throws r"K ≥ 2" run(fill(1.0, 5))
 
         # A response whose levels skip a category (here 3 of 1..4 is absent) is
-        # NOT refused today: the fit runs, with a threshold gap running off to
-        # -Inf. Expected behaviour is a refusal naming the missing level.
+        # refused before a cutpoint is allocated for the missing level (#1303).
         ymiss = [1.0, 2.0, 4.0, 4.0, 2.0, 1.0, 4.0, 2.0]
-        @test_broken _cl_throws(() -> run(ymiss; x = randn(MersenneTwister(1), 8)))
-        # Only one observed level above 1 (all 2s, so level 1 is missing) is also
-        # accepted today and reports is_converged == true.
-        @test_broken _cl_throws(() -> run(fill(2.0, 5)))
+        @test _cl_throws(() -> run(ymiss; x = randn(MersenneTwister(1), 8)))
+        # Only one observed level above 1 (all 2s, so level 1 is missing) is
+        # refused the same way.
+        @test _cl_throws(() -> run(fill(2.0, 5)))
     end
 
     for K in (3, 4, 5)
