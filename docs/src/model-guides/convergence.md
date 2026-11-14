@@ -69,10 +69,13 @@ boundary likelihood-ratio limits can be nonstandard [Self and Liang
 (1987)](https://doi.org/10.1080/01621459.1987.10478472).
 
 When the fit flags a coordinate as flat (the warning names it as
-`flat_coordinates`), `vcov(fit)` holds `NaN` in that coordinate's row and
-column, and the other coordinates are inverted without it. `stderror(fit)` shows
-`Inf` there and the Wald interval is unbounded. Use a profile or bootstrap
-interval for that parameter.
+`flat_coordinates`, and `bridge_diagnostics(fit).boundary` lists it), `vcov(fit)`
+holds `NaN` in that coordinate's row and column, and the other coordinates are
+inverted without it. `stderror(fit)` is `NaN` there and the Wald interval is
+unbounded. Predictions and ratios that do not use that coordinate keep their
+standard errors. `issymmetric` and `eigvals` on the full `vcov` then give `false`
+or an error, so call them on the unflagged block. Use a profile or bootstrap
+interval for the flagged parameter.
 
 This advice applies to variance components estimated at zero. A Student-t
 shape parameter near its infinite-`nu` Gaussian limit is a different
