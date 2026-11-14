@@ -156,7 +156,7 @@ end
         # Wrong provider keywords (the entry guard refuses an unused `K`).
         @test_throws r"`K = …` was supplied" drm(f, Gaussian(); data = fx.data, tree = nwk, K = Cphy)
         fs = _psq2_formula(:spatial, Gaussian())
-        @test_throws r"`K = …` was supplied" drm(fs, Gaussian(); data = fx.data, coords, K = Csp)
+        @test_throws r"both `K = …` and `coords = …`" drm(fs, Gaussian(); data = fx.data, coords, K = Csp)
         # One SD formula is not enough for the q2 block.
         one = bf(@formula(y ~ x + phylo(1 + x | id)), @formula(sd(id, phylogenetic, coef(x)) ~ z1))
         @test_throws r"one SD formula for the intercept" drm(one, Gaussian(); data = fx.data, tree = nwk)
