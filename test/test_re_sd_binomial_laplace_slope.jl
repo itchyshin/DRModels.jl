@@ -33,7 +33,7 @@ using Test, DRModels, DelimitedFiles, LinearAlgebra
         V = vc(fit)[:g]
         @test V ≈ [sd1^2 rho*sd1*sd2; rho*sd1*sd2 sd2^2] rtol = 1e-12
         @test sqrt.(diag(V)) ≈ [sd[:g_intercept], sd[:g_slope]] rtol = 1e-12
-        # against R, log SD scale (lane rule 5e-3), correlation on the atanh scale
+        # against R, log SD scale (5e-3), correlation on the atanh scale
         @test abs(log(sd[:g_intercept]) - r_logsd[1]) < 5e-3
         @test abs(log(sd[:g_slope]) - r_logsd[2]) < 5e-3
         @test abs(atanh(V[1, 2] / sqrt(V[1, 1] * V[2, 2])) - r_eta) < 5e-3
