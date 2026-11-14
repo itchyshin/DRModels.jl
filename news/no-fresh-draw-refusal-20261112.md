@@ -5,8 +5,8 @@
   and slope-only shapes such as `(0 + x | g) + (0 + z | g)`.
   None of them has a fresh random-effect draw. Until now the bootstrap quietly drew responses with the
   random effects set to zero, so the variance-component interval collapses.
-  The message names the terms you fitted. For Gamma it points to `simulate(fit; data = data, re = :zero)`,
-  which still works. For Binomial that call fails on this version (the fit does not carry trials),
-  so the message says no draw is available yet.
+  The message names the terms you fitted and points to `simulate(fit; data = data, re = :zero)`
+  for a conditional draw where the fitted object supports it. Binomial and the other families share one
+  message form and one rule (see the separate notes on Binomial and on slopes).
   A single `(1 | g)` is unchanged for both families. Gamma `(0 + x | g)` and `(1 + x | g)` are refused too (see the separate note on Gamma slopes).
   This is a maintainer decision: refuse until the fresh draw exists.

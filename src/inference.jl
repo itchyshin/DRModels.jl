@@ -2429,33 +2429,41 @@ function _marginal_simulator(fit::DrmFit, data; K=nothing, A=nothing, tree=nothi
             "`meta_V(...)` + random-effect fit (pass the same `data` and `tree` / `K` / `A` " *
             "used to fit it); the conditional fallback would drop the random effect"))
     end
-    # Gamma, Beta, Student, LogNormal and Binomial fits with two or more ordinary random-effect terms (and a single
-    # `(0 + x | g)` / `(1 + x | g)` on every one of them but Binomial) have no fresh-draw simulator (independent slope with intercept, crossed or nested intercepts, mixed shapes). Falling
-    # back to the conditional draw (random effects at zero) would collapse the variance-component interval
-    # without a message, so refuse, naming the shape the user fitted.
+    # Gamma, Beta, Student, LogNormal and Binomial fits whose random effects have no fresh-draw simulator
+    # (every Binomial shape except one `(1 | g)`; two or more ordinary terms, or one `(0 + x | g)` /
+    # `(1 + x | g)`, on the other four) would fall back to the conditional draw (random effects at zero).
+    # That collapses the variance-component interval without a message, so refuse, naming the fitted terms.
+    # The check does not depend on whether the fit stores its trial counts.
     if sim === nothing && _is_no_fresh_draw_slope_fit(fit)
         throw(ArgumentError(_no_fresh_draw_message(fit)))
     end
     return sim
 end
 
-function _is_no_fresh_draw_slope_fit(fit::DrmFit)
-    fit.family isa Union{Gamma,Binomial,Beta,Student,LogNormal} && fit.formula isa DrmFormula || return false
+# The ordinary random-effect bars of a fit that has no fresh-draw simulator, or `nothing` when the fit has
+# none, has a structured or `meta_V` term (other routes own those), or keeps its fresh draw.
+# Binomial: every shape except a single `(1 | g)`. Gamma, Beta, Student, LogNormal: two or more ordinary
+# terms, or a single `(0 + x | g)` / `(1 + x | g)`.
+function _no_fresh_draw_bars(fit::DrmFit)
+    fit.family isa Union{Gamma,Binomial,Beta,Student,LogNormal} && fit.formula isa DrmFormula || return nothing
     rhs = Dict(fit.formula.forms)
-    haskey(rhs, :mu) || return false
+    haskey(rhs, :mu) || return nothing
     _, re, metav, structured, _ = _split_ranef(rhs[:mu]; allow_phylo_slope = true)
-    metav === nothing && structured === nothing || return false
-    length(re) >= 2 && return true
-    # A single `(0 + x | g)` or `(1 + x | g)` (Gamma, Beta, Student, LogNormal) has no fresh draw either; it used to fall back
-    # to random effects at zero without a message (the estimand changes, so it is refused like the rest).
-    return !(fit.family isa Binomial) && length(re) == 1 && _laplace_lhs_kind(re[1][1]) in (:slope, :corr)
+    metav === nothing && structured === nothing && !isempty(re) || return nothing
+    length(re) >= 2 && return re
+    if fit.family isa Binomial
+        k, _ = try _re_kind(re[1][1]) catch; (:other, nothing) end
+        return k === :intercept ? nothing : re
+    end
+    return _laplace_lhs_kind(re[1][1]) in (:slope, :corr) ? re : nothing
 end
 
-# The refusal text names the terms the user fitted and the kind of shape, and offers only an escape
-# that works for the family: `simulate(...; re = :zero)` works for every family but Binomial, where a fitted Binomial of
-# these shapes does not carry trials on this base, so it is not offered there.
+_is_no_fresh_draw_slope_fit(fit::DrmFit) = _no_fresh_draw_bars(fit) !== nothing
+
+# The refusal text names the terms the user fitted and the kind of shape. For Binomial the several-term
+# shapes are reported as "several random-effect terms"; the other families name the shape.
 function _no_fresh_draw_message(fit::DrmFit)
-    _, re, _, _, _ = _split_ranef(Dict(fit.formula.forms)[:mu]; allow_phylo_slope = true)
+    re = _no_fresh_draw_bars(fit)
     rk = [try _re_kind(lhs) catch; (:other, nothing) end for (lhs, _) in re]
     kinds = first.(rk)
     bar(k, v, lhs, grp) = k === :intercept ? "(1 | $grp)" : k === :slope ? "(0 + $v | $grp)" :
@@ -2466,6 +2474,10 @@ function _no_fresh_draw_message(fit::DrmFit)
         "a random slope without an intercept"
     elseif length(re) == 1 && kinds[1] === :corr
         "a correlated random intercept and slope"
+    elseif length(re) == 1
+        "a random-slope term"
+    elseif fit.family isa Binomial
+        "several random-effect terms"
     elseif all(==(:intercept), kinds)
         "crossed or nested random intercepts"
     elseif length(unique(groups)) == 1 && all(in((:intercept, :slope)), kinds) && :intercept in kinds
@@ -2480,16 +2492,14 @@ function _no_fresh_draw_message(fit::DrmFit)
         "a mix of random-effect terms"
     end
     fam = string(nameof(typeof(fit.family)), "()")
-    escape = !(fit.family isa Binomial) ?
-        "To draw responses with the random effects set to zero (a conditional draw, not a fresh draw), " *
-        "call `simulate(fit; data = data, re = :zero)`; the bootstrap has no such option." :
-        "`simulate(fit; data = data, re = :zero)` does not work for a Binomial fit of this shape on this " *
-        "version (the fitted object does not carry trials), so no draw is available yet. " *
-        "A single `(1 | g)` keeps its fresh draw."
+    keep = fit.family isa Binomial ? " A single `(1 | g)` keeps its fresh draw." : ""
     return "no fresh random-effect draw is implemented for $fam with $shape ($terms), so " *
         "`bootstrap_summary` / `bootstrap_result` / `bootstrap_ci` and the default " *
         "`simulate(fit; data = data)` are refused: the fallback would draw responses with the random " *
-        "effects set to zero, which collapses the variance-component interval without a message. " * escape
+        "effects set to zero, which collapses the variance-component interval without a message. " *
+        "To draw responses with the random effects set to zero (a conditional draw, not a fresh draw), " *
+        "call `simulate(fit; data = data, re = :zero)` where the fitted object supports it; " *
+        "the bootstrap has no such option." * keep
 end
 
 function _is_meta_gaussian_re(fit::DrmFit)
