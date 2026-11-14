@@ -2479,7 +2479,7 @@ end
 
 # The ordinary random-effect bars of a fit that has no fresh-draw simulator, or `nothing` when the fit has
 # none, has a structured or `meta_V` term (other routes own those), or keeps its fresh draw.
-# Binomial: every shape except a single `(1 | g)`. Gamma, Beta, Student, LogNormal: two or more ordinary
+# Binomial: every shape except a single `(1 | g)` and several intercept-only terms. Gamma, Beta, Student, LogNormal: two or more ordinary
 # terms, or a single `(0 + x | g)` / `(1 + x | g)`.
 function _no_fresh_draw_bars(fit::DrmFit)
     fit.family isa Union{Gamma,Binomial,Beta,Student,LogNormal} && fit.formula isa DrmFormula || return nothing
@@ -2487,7 +2487,12 @@ function _no_fresh_draw_bars(fit::DrmFit)
     haskey(rhs, :mu) || return nothing
     _, re, metav, structured, _ = _split_ranef(rhs[:mu]; allow_phylo_slope = true)
     metav === nothing && structured === nothing && !isempty(re) || return nothing
-    length(re) >= 2 && return re
+    if length(re) >= 2
+        # several intercept-only Binomial terms have a fresh draw (the simulator for several random intercepts)
+        fit.family isa Binomial &&
+            all(r -> first(try _re_kind(r[1]) catch; (:other, nothing) end) === :intercept, re) && return nothing
+        return re
+    end
     if fit.family isa Binomial
         k, _ = try _re_kind(re[1][1]) catch; (:other, nothing) end
         return k === :intercept ? nothing : re
