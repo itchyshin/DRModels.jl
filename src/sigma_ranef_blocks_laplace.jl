@@ -224,7 +224,12 @@ function _fit_sigma_blocks_laplace(fam, y, Xμ, Xσ, blocks, nmμ, nmσ, g_tol, 
     end
 
     # Conditional modes and fitted quantities at θ̂.
-    vhat, _ = _gsl_mode(joint_at(θ̂), zeros(m))
+    vhat, okmode = _gsl_mode(joint_at(θ̂), zeros(m))
+    if !okmode
+        @warn "drm: $what: the conditional modes at the estimate did not converge from a zero start; " *
+              "`ranef(fit)` may be unreliable and the fit is marked not converged."
+        conv = false
+    end
     mu_fixed = Xμ * θ̂[1:pμ]
     eta_fixed = Xσ * θ̂[(pμ+1):(pμ+pσ)]
     # Population-level (random effects = 0) means and scales, as every other random-effect route
@@ -414,7 +419,8 @@ function _sigma_blocks_shape(f::DrmFormula, fam)
                 re[1][2] !== sre[1][2]
         end
         return ok ? (re, sre) : nothing
-    catch
+    catch e
+        e isa InterruptException && rethrow()
         return nothing
     end
 end

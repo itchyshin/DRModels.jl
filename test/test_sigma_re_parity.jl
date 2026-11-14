@@ -175,14 +175,16 @@ end
         @test occursin("only the mean formula may carry a random effect", msg(() -> drm(fm, fam; data = SRE)))
     end
     # Gaussian: an intercept and a slope on one sigma group, a slope plus an intercept on another, two sigma terms plus a mean term
-    for fm in (bf(@formula(y_g ~ x1), @formula(sigma ~ x1 + (1 | g) + (0 + x1 | g))),
-               bf(@formula(y_g ~ x1), @formula(sigma ~ x1 + (0 + x1 | g) + (1 | g2))),
-               bf(@formula(y_g ~ x1 + (1 | g)), @formula(sigma ~ x1 + (1 | g2) + (1 | g))))
-        @test !isempty(msg(() -> drm(fm, Gaussian(); data = SRE)))
+    shapes = "the supported random-effect shapes on `sigma` are"
+    for (fm, want) in ((bf(@formula(y_g ~ x1), @formula(sigma ~ x1 + (1 | g) + (0 + x1 | g))), shapes),
+                       (bf(@formula(y_g ~ x1), @formula(sigma ~ x1 + (0 + x1 | g) + (1 | g2))), shapes),
+                       (bf(@formula(y_g ~ x1 + (1 | g)), @formula(sigma ~ x1 + (1 | g2) + (1 | g))),
+                        "support a single `sigma` random INTERCEPT"))
+        @test occursin(want, msg(() -> drm(fm, Gaussian(); data = SRE)))
     end
     # offsets and non-default marginals are refused, never dropped
     @test occursin("offset", msg(() -> drm(bf(@formula(y_nb ~ x1 + offset(x1)), @formula(sigma ~ x1 + (1 | g))), NegBinomial2(); data = SRE)))
-    @test !isempty(msg(() -> drm(bf(@formula(y_nb ~ x1), @formula(sigma ~ x1 + (1 | g))), NegBinomial2(); data = SRE, marginal = :VA)))
+    @test occursin("fitted by the Laplace approximation only", msg(() -> drm(bf(@formula(y_nb ~ x1), @formula(sigma ~ x1 + (1 | g))), NegBinomial2(); data = SRE, marginal = :VA)))
 end
 
 # Missing responses: as on the other random-effect routes the rows are dropped with a warning, and the
