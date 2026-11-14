@@ -181,7 +181,7 @@ end
     confint(fit; level = 0.95, method = :wald, threads = false, parm = nothing)
 
 Confidence intervals for every coefficient, as a vector of
-`(param, coef, estimate, lower, upper)` rows on each parameter's working scale
+`(param, coef, estimate, lower, upper, scale)` rows on each parameter's working scale
 (μ on the response scale; σ on `log σ`; ρ12 on `atanh ρ12`; random-effect SDs on
 `log σ_b`).
 
