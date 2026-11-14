@@ -541,11 +541,21 @@ function _conditional_ratio(fit::DrmFit, newdata; kind::Symbol, level::Real, wha
     d = 2 .* (Xsd * α .- Xσ * γ)
     est = 1 ./ (1 .+ exp.(-d))
     se = similar(d)
+    # A coordinate the fit flagged as a boundary has NaN variance in `V`. `0 * NaN` is NaN,
+    # so a row whose gradient is zero there would lose its standard error. Drop the flagged
+    # coordinates for such a row; if the row depends on one, the NaN stays.
+    flagged = findall(i -> isnan(V[i, i]), 1:length(fit.theta))
+    keep = setdiff(1:length(fit.theta), flagged)
     for i in 1:nrows
         c = zeros(length(fit.theta))
         c[isd] .= 2 .* Xsd[i, :]
         c[isg] .= -2 .* Xσ[i, :]
-        se[i] = sqrt(max(dot(c, V * c), 0.0))
+        if !isempty(flagged) && all(iszero, c[flagged])
+            ck = c[keep]
+            se[i] = sqrt(max(dot(ck, V[keep, keep] * ck), 0.0))
+        else
+            se[i] = sqrt(max(dot(c, V * c), 0.0))
+        end
     end
     z = quantile(Normal(), 1 - (1 - level) / 2)
     lo = 1 ./ (1 .+ exp.(-(d .- z .* se)))
