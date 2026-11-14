@@ -1,4 +1,4 @@
-# fitted() default: random-effect modes included, used rows only, as drmTMB 0.8.1 (P17a, P17b).
+# fitted() default: random-effect modes included, used rows only, as drmTMB 0.8.1.
 #
 # `fitted(fit)` is conditional (`re = :conditional`): it adds the fitted random-effect modes, as
 # drmTMB's `fitted()` does. `fitted(fit; re = :zero)` is the population-level value `fitted(fit)`
@@ -48,7 +48,7 @@ function _fc_reference(file = "p17_fitted_r_reference.csv")
     return ref
 end
 
-# (cell id, fitting closure). The ids are the gap-map cell keys (the 17 cells of P17a, the 4 of P17b).
+# (cell id, fitting closure). The ids are the gap-map cell keys (17 cells with a complete response, 4 with a missing response).
 const _FC_CELLS = [
     ("H|meta|(1|g)", d -> drm(bf(@formula(yi ~ x1 + (1 | g) + meta_V(vi)), @formula(sigma ~ 1)), Gaussian(); data = d)),
     ("H|meta|(1|g)+(1|g2)", d -> drm(bf(@formula(yi ~ x1 + (1 | g) + (1 | g2) + meta_V(vi)), @formula(sigma ~ 1)), Gaussian(); data = d)),
@@ -69,7 +69,7 @@ const _FC_CELLS = [
     ("H|meta|(1|g)|REML", d -> drm(bf(@formula(yi ~ x1 + (1 | g) + meta_V(vi)), @formula(sigma ~ 1)), Gaussian(); data = d, method = :REML)),
     ("J|lognormal|sigma=x1+(1|g)", d -> drm(bf(@formula(y_ln ~ x1), @formula(sigma ~ x1 + (1 | g))), LogNormal(); data = d)),
     ("J|gaussian|mu=(1|g)|sigma=(1|g2)", d -> drm(bf(@formula(y_g ~ x1 + (1 | g)), @formula(sigma ~ x1 + (1 | g2))), Gaussian(); data = d)),
-    # P17b: a missing response
+    # a missing response
     ("K|gaussian|NA in response", d -> drm(bf(@formula(y_gm ~ x1), @formula(sigma ~ 1)), Gaussian(); data = d)),
     ("K|gaussian|NA in response|REML", d -> drm(bf(@formula(y_gm ~ x1), @formula(sigma ~ 1)), Gaussian(); data = d, method = :REML)),
     ("K|gaussian|NA in response + weights", d -> drm(bf(@formula(y_gm ~ x1), @formula(sigma ~ 1)), Gaussian(); data = d, weights = d.w)),
@@ -81,7 +81,7 @@ const _FC_CELLS = [
 # fitted scores by up to 7e-6.
 _fc_tol(id) = occursin("cumul", id) ? 2e-5 : 1e-6
 
-@testset "fitted(): conditional default, used rows (P17a, P17b)" begin
+@testset "fitted(): conditional default, used rows (complete and missing responses)" begin
     d = _fc_data()
     ref = _fc_reference()
     for (id, fit_it) in _FC_CELLS
@@ -99,7 +99,7 @@ _fc_tol(id) = occursin("cumul", id) ? 2e-5 : 1e-6
                 @test maximum(abs.(zero .- r.pop)) < _fc_tol(id)               # population value, as before
             end
             if startswith(id, "K|") && !occursin("NA in both", id)
-                # P17b: the 16 rows with a missing response are not returned
+                # the 16 rows with a missing response are not returned
                 @test nobs(fit) == 144 && length(cond) == 144 && length(zero) == 144
             end
             # residuals are y - fitted on the same rows and at the same random-effect level
@@ -151,7 +151,7 @@ end
         @test length(rv[:mu1]) == length(fv[:mu1])
     end
     @testset "a route that keeps no modes refuses the conditional default and never fakes it" begin
-        # A Poisson relmat (not one of the two phylo groups that keep their modes, P20a) keeps no modes.
+        # A Poisson relmat (not one of the two phylo groups that keep their modes) keeps no modes.
         rng = StableRNG(20261110)
         G, m = 15, 4
         n = G * m
@@ -406,7 +406,7 @@ end
     d = _fc_data()
     nr(f) = (err = try fitted(f); nothing catch e; e end; err isa ArgumentError && occursin("re = :zero", sprint(showerror, err)))
     # 1. and 2. (Gaussian relmat / animal / dense phylo, and phylo Laplace for the six count and continuous
-    # families) keep their modes since P20a: see test_fitted_phylo_modes.jl.
+    # families) keep their modes: see test_fitted_phylo_modes.jl.
     # 4. ZeroOneBeta with a random intercept
     zf = drm(bf(@formula(y_zoib ~ x1 + (1 | g)), @formula(sigma ~ 1), @formula(zoi ~ 1), @formula(coi ~ 1)),
              ZeroOneBeta(); data = d)
