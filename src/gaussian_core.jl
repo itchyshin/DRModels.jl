@@ -2629,7 +2629,11 @@ returns a population-level value under the conditional default. The routes that 
 keep them are listed in the news note of the change; they include the single
 `relmat(1 | g)`, `animal(1 | g)` and dense `phylo(1 | g)` Gaussian fits and the
 `phylo(1 | g)` Laplace fits of Poisson, Binomial, BetaBinomial, NB2, Gamma and Beta,
-where the modes are the BLUPs or the inner Laplace modes at the fitted parameters.
+where the modes are the BLUPs or the inner Laplace modes at the fitted parameters. The
+zero-inflated Poisson, zero-inflated NB2 and zero-truncated NB2 fits with one `(1 | g)`
+and the `CumulativeLogit` fit with `(1 | g) + (0 + x | g)` keep them too: the zero
+inflation, the truncation and the category scores are applied at the conditional `μ`
+(or linear predictor), as drmTMB does.
 
 **Rows.** Only the rows used in the fit are returned, as in drmTMB: a row whose
 response is missing (`missing` / `NaN`) is not in the vector, so `length(fitted(fit))
