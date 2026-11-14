@@ -51,9 +51,15 @@ end
 # non-PD boundary direction from poisoning the whole SE vector with NaN.
 _boundary_se(v::Real) = (isfinite(v) && v > 0) ? sqrt(v) : Inf
 
+# `scale` names the scale of `estimate`, `lower` and `upper`: `:log_sd` for a random-effect SD
+# row on the log SD scale, `:sd` for one on the SD scale, `:link` for every other row (a
+# coefficient on its own link scale).
 const _CIRow = NamedTuple{
-    (:param, :coef, :estimate, :lower, :upper),Tuple{Symbol,String,Float64,Float64,Float64}
+    (:param, :coef, :estimate, :lower, :upper, :scale),
+    Tuple{Symbol,String,Float64,Float64,Float64,Symbol},
 }
+
+_ci_row_scale(param::Symbol) = _is_log_sd_profile_param(param) ? :log_sd : :link
 
 const _BootstrapSummaryRow = NamedTuple{
     (:param, :coef, :estimate, :std_error, :lower, :upper),
@@ -175,7 +181,7 @@ end
     confint(fit; level = 0.95, method = :wald, threads = false, parm = nothing)
 
 Confidence intervals for every coefficient, as a vector of
-`(param, coef, estimate, lower, upper)` rows on each parameter's working scale
+`(param, coef, estimate, lower, upper, scale)` rows on each parameter's working scale
 (μ on the response scale; σ on `log σ`; ρ12 on `atanh ρ12`; random-effect SDs on
 `log σ_b`).
 
@@ -217,6 +223,12 @@ Confidence intervals for every coefficient, as a vector of
   A random-effect SD (`:resd`) whose lower arm reaches the numerical floor
   without an LR crossing is reported on the SD scale as `[0, u]` (drmTMB
   `profile.boundary`), not as a thrown error and not as `(-Inf, Inf)`.
+
+Every row also carries a `scale` field that names the scale of `estimate`, `lower`
+and `upper`: `:log_sd` for a random-effect SD row on the log SD scale (the scale of
+`coef(fit, :resd)` and of the Wald row), `:sd` for a row on the SD scale (the `[0, u]`
+boundary row above), and `:link` for every other row. The numbers of a row do not
+depend on this field.
 
 Mirrors drmTMB's `confint(fit, method = "wald" | "profile")`.
 """
@@ -294,7 +306,7 @@ function _glsp_stored_profile_rows(fit::DrmFit)
         lo, hi = fit.scales[sdkey]
         est = exp(coef(fit, param)[1])                 # SD-scale point estimate
         push!(rows, (param=param, coef=namemap[param][1], estimate=Float64(est),
-                     lower=Float64(lo), upper=Float64(hi)))
+                     lower=Float64(lo), upper=Float64(hi), scale=:sd))
     end
     return rows
 end
@@ -526,7 +538,8 @@ function _wald_ci(fit::DrmFit, level::Real, parm)
             s = se[idx]
             push!(
                 rows,
-                (param=p, coef=nms[j], estimate=est, lower=est - z * s, upper=est + z * s),
+                (param=p, coef=nms[j], estimate=est, lower=est - z * s, upper=est + z * s,
+                 scale=_ci_row_scale(p)),
             )
         end
     end
@@ -593,6 +606,7 @@ function _ls_profile_result(fit::DrmFit; level::Real=0.95, threads::Bool=false, 
                 estimate=fit.theta[job.k],
                 lower=ci.lower,
                 upper=ci.upper,
+                scale=_ci_row_scale(job.param),
             )
             lower_status = ci.lower_status
             upper_status = ci.upper_status
@@ -743,7 +757,8 @@ function _loconly_profile_row_result(
     end
     rewritten = _rewrite_log_sd_boundary_ci(job, est, lo, hi, lstats, rstats)
     rewritten === nothing || return rewritten
-    row = (param=job.param, coef=job.coef, estimate=est, lower=lo, upper=hi)
+    row = (param=job.param, coef=job.coef, estimate=est, lower=lo, upper=hi,
+           scale=_ci_row_scale(job.param))
     stats = (
         param=job.param,
         coef=job.coef,
@@ -1510,7 +1525,8 @@ function _profile_row_result(
     end
     rewritten = _rewrite_log_sd_boundary_ci(job, est, lo, hi, lstats, rstats)
     rewritten === nothing || return rewritten
-    row = (param=job.param, coef=job.coef, estimate=est, lower=lo, upper=hi)
+    row = (param=job.param, coef=job.coef, estimate=est, lower=lo, upper=hi,
+           scale=_ci_row_scale(job.param))
     stats = (
         param=job.param,
         coef=job.coef,
@@ -1543,7 +1559,7 @@ function _rewrite_log_sd_boundary_ci(job, log_est, lo, hi, lstats, rstats)
     sd_est = log_est <= _PROFILE_SD_LOG_FLOOR ? 0.0 : exp(log_est)
     upper_ok = isfinite(hi) && !rstats.endpoint_failed && !rstats.unbounded
     sd_hi = upper_ok ? exp(hi) : Inf
-    row = (param=job.param, coef=job.coef, estimate=sd_est, lower=0.0, upper=sd_hi)
+    row = (param=job.param, coef=job.coef, estimate=sd_est, lower=0.0, upper=sd_hi, scale=:sd)
     stats = (
         param=job.param,
         coef=job.coef,
@@ -4420,7 +4436,8 @@ end
 
 function _bootstrap_ci_rows(rows)
     return _CIRow[
-        (param=r.param, coef=r.coef, estimate=r.estimate, lower=r.lower, upper=r.upper) for
+        (param=r.param, coef=r.coef, estimate=r.estimate, lower=r.lower, upper=r.upper,
+         scale=_ci_row_scale(r.param)) for
         r in rows
     ]
 end
