@@ -145,8 +145,11 @@ const _FM_NA_CELLS = [
             res = residuals(fit)
             @test length(res) == nused && !any(isnan, res)
             y = first(values(fit.obs))
-            used = .!isnan.(y)
-            @test count(used) == nused || all(used)                       # rows dropped for a predictor are not in `obs`
+            used = .!isnan.(y)                                            # rows dropped for a predictor are not in `obs`
+            @test count(used) == nused
+            # value pin: drmTMB's response residual is y - fitted(fit), so the package's residuals equal the
+            # observed responses on the used rows minus drmTMB's fitted values
+            @test maximum(abs.(res .- (y[used] .- ref))) < 1e-6
             @test length(residuals(fit; re = :zero)) == nused
         end
     end
