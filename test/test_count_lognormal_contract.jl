@@ -43,7 +43,15 @@ function _contract_checks(fit, data, y, k, ll_ref; support)
     rq = residuals(fit; type = :quantile)
     @test length(rq) == n && all(isfinite, rq)
     @test abs(mean(rq)) < 0.25 && 0.7 < std(rq) < 1.3
-    @test_throws ArgumentError residuals(fit; type = :pearson)
+    # Pearson residuals exist for Poisson and NegBinomial2 (not for LogNormal, which stays refused by name)
+    if fit.family isa LogNormal
+        @test_throws ArgumentError residuals(fit; type = :pearson)
+    else
+        rp = residuals(fit; type = :pearson)
+        @test length(rp) == n && all(isfinite, rp)
+        @test sign.(rp) == sign.(y .- fitted(fit))
+        fit.family isa Poisson && @test rp ≈ (y .- fitted(fit)) ./ sqrt.(fitted(fit)) rtol = 1e-12
+    end
 
     s1 = simulate(fit; rng = MersenneTwister(5))
     s2 = simulate(fit; rng = MersenneTwister(5))
