@@ -9,14 +9,18 @@ const PTO = TableOracleFixture
     observer = ("gamma(2.0588235294117645,3.5)", "ranef_sd", "observer", "mu")
     meanprior = ("normal(0.25,1.4)", "fixef", "(Intercept)", "mu")
     scaleprior = ("normal(-0.1,0.7)", "fixef", "x", "sigma")
-    rows = Dict("site"=>[site], "observer"=>[observer], "both"=>[site,observer],
+    rows = Dict("none"=>[], "site"=>[site], "observer"=>[observer], "both"=>[site,observer],
                 "mixed"=>[meanprior,scaleprior,site,observer])
     fits = Dict()
     for (dataset, y) in PTO.Y, (case, entries) in rows
-        table = (prior=first.(entries), class=getindex.(entries,2),
-                 coef=getindex.(entries,3), dpar=getindex.(entries,4))
         data = (y=y, x=PTO.X, site=PTO.SITE, observer=PTO.OBSERVER)
-        fits[(dataset,case)] = drm(f, Gaussian(); data=data, priors=table)
+        if case == "none"
+            fits[(dataset,case)] = drm(f, Gaussian(); data=data)
+        else
+            table = (prior=first.(entries), class=getindex.(entries,2),
+                     coef=getindex.(entries,3), dpar=getindex.(entries,4))
+            fits[(dataset,case)] = drm(f, Gaussian(); data=data, priors=table)
+        end
     end
     for (dataset,case,q,obj,grad,hess) in PTO.RECORDS
         fit = fits[(dataset,case)]
