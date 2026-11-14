@@ -217,6 +217,10 @@ Confidence intervals for every coefficient, as a vector of
   A random-effect SD (`:resd`) whose lower arm reaches the numerical floor
   without an LR crossing is reported on the SD scale as `[0, u]` (drmTMB
   `profile.boundary`), not as a thrown error and not as `(-Inf, Inf)`.
+  The upper limit `u` is where the profile deviance reaches the `χ²₁` quantile at
+  `level` (3.84 at 0.95). When the SD estimate is at or near zero (about 1e-4 or
+  less) the upper-limit search starts one log unit above the estimate, because the
+  Wald standard error there is not a usable scale; interior SDs are unchanged.
 
 Mirrors drmTMB's `confint(fit, method = "wald" | "profile")`.
 """
@@ -955,6 +959,10 @@ const _PROFILE_MIN_STEP = 1e-6
 _is_log_sd_profile_param(param::Symbol) =
     param === :resd || param === :resd_mu || param === :resd_sigma
 
+# A log SD at or below this value is an SD of about 1e-4 or less: effectively zero, where
+# the pseudo-inverse Wald SE is not a scale for the search (it can be 1e7 on the log scale).
+const _PROFILE_SD_ZERO_LOG = log(1e-4)
+
 function _profile_usable_step(se_k::Real, est::Real)
     (isfinite(se_k) && se_k > _PROFILE_MIN_STEP) && return Float64(se_k)
     return 1.0
@@ -1488,6 +1496,12 @@ function _profile_row_result(
     est = θ̂[k]
     allow_lower = _is_log_sd_profile_param(job.param)
     s = _profile_usable_step(se[k], est)
+    # Zero-anchored SD: a variance at (or numerically at) zero has no usable Wald scale. A
+    # starting step of 1e7 on the log scale never brackets the crossing within the
+    # root-finder's iteration budget, so the upper arm was reported as failed. Start from one
+    # log unit instead; the bracket then grows by 1.6 per step up to the crossing. Interior
+    # SDs (above 1e-4) keep the Wald step unchanged.
+    allow_lower && est <= _PROFILE_SD_ZERO_LOG && (s = 1.0)
     u0 = θ̂[[i for i in 1:length(θ̂) if i != k]]
     if endpoint_threads && Threads.nthreads() > 1
         left = Threads.@spawn _profile_endpoint_result(
