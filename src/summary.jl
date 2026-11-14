@@ -240,6 +240,9 @@ function Base.show(io::IO, ::MIME"text/plain", fit::DrmFit)
                 "   converged = ", status === :converged)
     mnote = _marginal_note(fit)
     mnote === nothing || println(io, "  ", mnote)
+    haskey(fit.scales, :spatial_range) && println(io, "  Spatial range = ",
+        @sprintf("%.4g", first(fit.scales[:spatial_range])),
+        " (fixed at the median distance between sites, as drmTMB; not estimated)")
     # #949: show the trusted accessor; say so when the raw optimiser flag disagrees.
     (fit.converged && status !== :converged) && println(io, "  (the optimiser stopped normally, " *
         "but convergence_status is ", status, " -- see `convergence_status`)")

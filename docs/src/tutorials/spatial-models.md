@@ -3,23 +3,22 @@
 !!! note "Status: Stable (Gaussian mean, coordinate-direct)"
     Mirrors drmTMB's [Coordinate-spatial structured effects](https://itchyshin.github.io/drmTMB/articles/spatial-models.html).
     **In DRModels.jl today:** `spatial(1 | site)` on the Gaussian **mean** with site
-    coordinates; an exponential spatial correlation `K(ρ) = exp(-d / ρ)` whose
-    range `ρ` is estimated jointly. Closed-form GLS (coordinate-direct;
-    mesh/SPDE is planned).
+    coordinates; an exponential spatial correlation `K = exp(-d / ρ) + 1e-6 I`
+    whose range `ρ` is **fixed** at the median positive pairwise distance, as in
+    drmTMB. Closed-form GLS, ML or REML (coordinate-direct; mesh/SPDE is planned).
 
-!!! warning "Not the same model as drmTMB's `spatial()`"
-    The same `spatial(1 | site)` term means different things in the two
-    packages. DRModels.jl **estimates** the range `ρ`. drmTMB **fixes** the
-    range at the median positive pairwise distance between sites and estimates
-    only the spatial SD. On the same data and formula the two packages
-    therefore report different log-likelihoods and spatial SDs; the
-    DRModels.jl fit has one more parameter. Compare the two only after
-    accounting for this.
+!!! note "The range is fixed, not estimated"
+    As in drmTMB, `spatial(1 | site)` does not estimate the range. It fixes `ρ`
+    at the median positive pairwise distance between sites and estimates only the
+    spatial SD. If the true range is far from the median distance the fixed
+    kernel is a misspecified model: the spatial SD absorbs the difference. Before
+    this change DRModels.jl estimated the range on the Gaussian route, which gave
+    a different log-likelihood and spatial SD from drmTMB on the same data.
 
 Nearby sites tend to be similar. `spatial(1 | site)` adds a random intercept
 with a distance-based correlation built from the site coordinates,
-`u ~ N(0, σ_s² K(ρ))`, and estimates the spatial **range** `ρ` along with the
-spatial SD. Pass one coordinate row per site and label the rows with `ids`.
+`u ~ N(0, σ_s² K(ρ))`, with the spatial **range** `ρ` fixed at the median
+positive pairwise distance; only the spatial SD is estimated. Pass one coordinate row per site and label the rows with `ids`.
 The labels must match the values in the grouping column. A `Dict` from site
 labels to coordinate vectors is another option. Unlabelled matrices retain
 first-seen site ordering and emit a warning; their rows are not sorted by label.
@@ -52,7 +51,8 @@ re_sd(fit)[:site]      # spatial SD (square it for the spatial variance)
 random-effect (co)variance summary for the structured block.
 
 ```@example sp
-exp(coef(fit, :range)[1])     # estimated spatial range ρ
+using Statistics
+median(Ddist[Ddist .> 0])     # the fixed range ρ (median positive pairwise distance)
 ```
 
 This is one simulated realization; it does not establish general parameter
@@ -61,16 +61,15 @@ and range. For Gaussian mean models, `spatial`, `phylo`, `animal`, and `relmat`
 share the closed-form structured GLS engine; the source of the correlation
 differs (coordinates, tree, pedigree, or supplied matrix).
 
-Check the fitted model before interpreting the spatial SD or range. Start with
+Check the fitted model before interpreting the spatial SD. Start with
 [`check_drm`](@ref) and read its convergence, gradient, and Hessian messages;
 then use [Improving convergence](../model-guides/convergence.md) if any of those
 checks warn. The [Detailed capabilities & limits](../capabilities.md) page states
 what this Gaussian spatial route does and does not establish about uncertainty.
 
 !!! note "Spatial routes depend on the family"
-    This tutorial uses the exact Gaussian coordinate-spatial route, which
-    estimates the range. The non-Gaussian families that take `coords`, Poisson
-    included, fix the range as drmTMB does: the kernel is `exp(-d / m) + 1e-6 I`, with
+    This tutorial uses the exact Gaussian coordinate-spatial route. Every route
+    that takes `coords` fixes the range as drmTMB does: the kernel is `exp(-d / m) + 1e-6 I`, with
     `m` the median positive pairwise distance between sites.
 
     - **Gamma** accepts `spatial(1 | site)` with `coords` (native kernel) or
@@ -81,10 +80,10 @@ what this Gaussian spatial route does and does not establish about uncertainty.
     - **Beta** accepts `spatial(1 | site)` with a supplied `K` when `sigma ~ 1`
       and no SD formula is used. With `sd(site, spatial) ~ z` it takes
       `coords` (native kernel) and refuses `K`.
-    - **Binomial** refuses a bare `spatial(1 | site)` on the mean. It accepts
-      `spatial` with an `sd(site, spatial)` formula and `coords`. That route
-      keeps the older fixed range (the mean pairwise distance, 1e-8 ridge)
-      because drmTMB has no Binomial spatial route to match.
+    - **Binomial** accepts `spatial(1 | site)` on the mean, bare or with an
+      `sd(site, spatial)` formula, with `coords`. It does not take `K`. It uses the
+      same fixed median-distance kernel as drmTMB (earlier versions used the mean
+      pairwise distance and a 1e-8 ridge).
 
     Check the family-specific restrictions in
     [Detailed capabilities and limits](../capabilities.md).

@@ -2671,7 +2671,7 @@ function _binomial_sd_marginal_simulator(fit::DrmFit, data, re;
             "bootstrap: data are missing structured grouping column `$group`"))
         gidx, G = _group_index(getproperty(data, group))
         provider === :spatial && (matrix = _spatial_covariance_from_coords(
-            group, G, coords, nothing; legacy_mean_range = true))   # mirrors the binomial fit
+            group, G, coords, nothing))   # mirrors the binomial fit: drmTMB's fixed median-distance kernel
         matrix === nothing && throw(ArgumentError(
             "bootstrap: supply the same structured covariance `$matrix_name` used to fit the Binomial $provider SD model"))
         C = Matrix{Float64}(matrix)

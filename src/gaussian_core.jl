@@ -1738,7 +1738,7 @@ function _drm_gaussian_fit(f::DrmFormula, fam::Gaussian; data, K = nothing, A = 
             all(k -> k in (:intercept, :slope), re_kinds_reml) &&
             structured === nothing && length(_collect_structured(rhs[:mu])) == 0
         reml_dense_structured = reml_gauss_ok && structured !== nothing &&
-            structured[1] in (:relmat, :animal) && structured_slope === nothing &&
+            structured[1] in (:relmat, :animal, :spatial) && structured_slope === nothing &&
             length(all_structured) == 1 && isempty(re)
         reml_phylo_slope = reml_gauss_ok && structured !== nothing && structured[1] === :phylo &&
             structured_slope !== nothing && length(all_structured) == 1 && isempty(re)
@@ -1762,13 +1762,6 @@ function _drm_gaussian_fit(f::DrmFormula, fam::Gaussian; data, K = nothing, A = 
                 "term: those shapes fit by maximum likelihood only (`method = :ML`) or not at all. " *
                 "REML is available for a correlated block alone, or beside random INTERCEPTS " *
                 "`(1 | h)` on other groupings."))
-        structured !== nothing && structured[1] === :spatial && isempty(re) && reml_gauss_ok &&
-            throw(ArgumentError("drm: method = :REML is not implemented for the bare `spatial(1 | g)`: " *
-                "this route estimates the exponential range, while drmTMB fixes it at the median " *
-                "pairwise distance, so the two maximum likelihoods differ (about 0.9 logLik on the " *
-                "reference data) and a restricted likelihood would not match drmTMB(REML = TRUE). " *
-                "For drmTMB's fixed-range kernel write `sd(g, spatial) ~ 1` beside the term " *
-                "(that route supports REML), or use method = :ML."))
         (ordinary_mean_intercept || corr_mean_slope || phylo_mean_only ||
          reml_scalar_slope || reml_multi_scalar || reml_dense_structured || reml_phylo_slope ||
          reml_corr_multi || reml_corr_crossed || reml_meta ||
@@ -2048,7 +2041,15 @@ function _drm_gaussian_fit(f::DrmFormula, fam::Gaussian; data, K = nothing, A = 
             _require_finite_inputs(; coords=coords)
             cmat = Matrix{Float64}(coords)
             size(cmat, 1) == G || error("coords must have $G rows (one per `$grp` level)")
-            return _withformula(_fit_spatial_gaussian(fam, y, Xμ, Xσ, gidx, G, cmat, nmμ, nmσ, grp, g_tol), f)
+            # drmTMB's kernel: the range is FIXED at the median positive pairwise distance
+            # (`_gaussian_spatial_sd_kernel`), not estimated. This is the relmat route with that K.
+            G >= 2 || error("spatial(1 | $(grp)) needs at least 2 distinct sites; got G=$(G).")
+            all(iszero, [sqrt(sum(abs2, cmat[k, :] .- cmat[l, :])) for k in 1:G for l in (k+1):G]) &&
+                error("spatial(1 | $(grp)): all site coordinates coincide; the median pairwise " *
+                      "distance that fixes the spatial range is not defined. Check for dropped coordinate variation.")
+            Ksp = _gaussian_spatial_sd_kernel(cmat, G, grp)
+            return _withformula(_fit_structured_gaussian(fam, y, Xμ, Xσ, gidx, G, Ksp, nmμ, nmσ, grp, g_tol;
+                                                         reml = method === :REML), f)
         end
         Kmat = if kind === :relmat
             K === nothing && error("relmat(1 | $grp) needs `K = …`")
@@ -2601,6 +2602,15 @@ coef(fit::DrmFit) = fit.theta
 function coef(fit::DrmFit, param::Symbol)
     for (p, r) in fit.blocks
         p === param && return fit.theta[r]
+    end
+    # A spatial fit with the range fixed at the median distance stores that value outside
+    # `theta`: it is returned here (distance scale), but it is not a parameter, so it is not in
+    # `coef(fit)`, `vcov`, `stderror`, `dof` or `aic`.
+    param === :range && haskey(fit.scales, :spatial_range) && return copy(fit.scales[:spatial_range])
+    if param === :range && fit.formula isa DrmFormula && :spatial in _structured_marker_kinds(fit.formula)
+        throw(ArgumentError("no parameter range in fit: the spatial range is fixed at the median positive " *
+            "pairwise distance between the sites, as in drmTMB, and is not estimated. This fit does not store " *
+            "its value; compute it as the median of the positive pairwise distances between the rows of `coords`."))
     end
     throw(ArgumentError("no parameter $param in fit (have $(first.(fit.blocks)))"))
 end
