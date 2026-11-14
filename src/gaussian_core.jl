@@ -472,8 +472,9 @@ _withmap(fit::DrmFit, pen_value::Real, spec) = DrmFit(fit.family, fit.blocks, fi
 _is_fixed_prior_fit(fit::DrmFit) = fit.penalty isa NamedTuple && haskey(fit.penalty, :kind) && fit.penalty.kind in (:fixed_priors, :sd_priors)
 _prior_kind_label(fit::DrmFit) = fit.penalty.kind === :sd_priors ? "SD-prior" : "fixed-prior"
 
-function _with_prior_table_input(fit::DrmFit, input)
+function _with_prior_table_input(fit, input)
     Tables.istable(input) || return fit
+    fit isa DrmFit || throw(ArgumentError("prior tables are not supported for this fit type"))
     _is_fixed_prior_fit(fit) || throw(ArgumentError("prior table fit did not retain prior metadata"))
     meta = merge(fit.penalty, (input_table=deepcopy(input),))
     DrmFit(fit.family, fit.blocks, fit.coefnames, fit.theta, fit.vcov, fit.loglik,

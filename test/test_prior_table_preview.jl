@@ -78,3 +78,18 @@ end
     @test [r.coef for r in replay.penalty.rows] == ["x","(Intercept)"]
     @test replay.penalty.input_table == table
 end
+
+@testset "non-table fit types pass through without priors" begin
+    marker = Ref(1)
+    @test DRModels._with_prior_table_input(marker, nothing) === marker
+    specs = drm_priors(drm_prior_normal(dpar="mu", coef="x", sd=2))
+    @test DRModels._with_prior_table_input(marker, specs) === marker
+    table = (prior=["normal(0,2)"], class=["fixef"], coef=["x"])
+    @test_throws ArgumentError DRModels._with_prior_table_input(marker, table)
+    z = collect(range(-1.2, 1.2; length=32))
+    x = Union{Missing,Float64}[i in (8,18,24) ? missing : 0.15+0.65*z[i]+0.15*sin(i) for i in eachindex(z)]
+    y = Union{Missing,Float64}[i in (4,24) ? missing : 0.3+0.4*z[i]+0.7*(0.15+0.65*z[i]+0.15*sin(i))+0.18*cos(i) for i in eachindex(z)]
+    f = bf(@formula(y~z+mi(x)), @formula(sigma~1))
+    control = DRModels.miss_control(response="include", predictor="model")
+    @test_throws ArgumentError drm(f, Gaussian(); data=(;y,x,z), impute=(x=@formula(x~z),), missing=control, priors=table)
+end
