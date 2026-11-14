@@ -154,10 +154,19 @@ _quiet(f) = Logging.with_logger(f, Logging.NullLogger())
                 drm(bf(@formula(y ~ x), @formula(sigma ~ 1)), NegBinomial2(); data = (; y, x = u .* x0))
             end
         end
-        for u in (1e-5, 1.0, 1e5)
-            fit = nb2(u)
-            @test bridge_diagnostics(fit).boundary == [3]
-            @test isnan(stderror(fit)[3]) && all(isfinite, stderror(fit)[1:2])
+        # The flag is the same at every unit. When the size runs off (log size below -8, as
+        # on Julia 1.13) it is the log size; the optimiser on Julia 1.10 stops at a finite
+        # size on this data, and then nothing is flagged, at every unit.
+        fits = [nb2(u) for u in (1e-5, 1.0, 1e5)]
+        flags = [bridge_diagnostics(f).boundary for f in fits]
+        @test all(==(flags[2]), flags)
+        for f in fits
+            if f.theta[3] < -8
+                @test bridge_diagnostics(f).boundary == [3]
+                @test isnan(stderror(f)[3]) && all(isfinite, stderror(f)[1:2])
+            else
+                @test isempty(bridge_diagnostics(f).boundary) && all(isfinite, stderror(f))
+            end
         end
 
         # complete separation: flagged by the separation screen, whatever the units
