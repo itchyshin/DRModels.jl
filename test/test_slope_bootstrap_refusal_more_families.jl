@@ -30,8 +30,8 @@ const _SBR_FAMILIES = [("Beta", DRModels.Beta(), :ybeta), ("Student", Student(),
     ]
     for (fname, fam, resp) in _SBR_FAMILIES, (terms, label) in cases
         @testset "$fname $terms" begin
-            fo = Core.eval(@__MODULE__, Meta.parse("bf(@formula($resp ~ x + $terms))"))
-            fit = drm(fo, fam; data = d, se = false)
+            fo = Core.eval(@__MODULE__, Meta.parse("bf(@formula($resp ~ x + $terms), @formula(sigma ~ 1))"))
+            fit = drm(fo, fam; data = d)
             calls = (
                 "bootstrap_summary" => () -> bootstrap_summary(fit; data = d, B = 2, rng = Random.Xoshiro(1)),
                 "bootstrap_result" => () -> bootstrap_result(fit; data = d, B = 2, rng = Random.Xoshiro(1)),
@@ -57,8 +57,8 @@ end
     for (fname, fam, resp) in _SBR_FAMILIES
         # fixed effects only and a single (1 | g) keep their draws and their bootstrap
         for terms in ("", " + (1 | g)")
-            fo = Core.eval(@__MODULE__, Meta.parse("bf(@formula($resp ~ x$terms))"))
-            fit = drm(fo, fam; data = d, se = false)
+            fo = Core.eval(@__MODULE__, Meta.parse("bf(@formula($resp ~ x$terms), @formula(sigma ~ 1))"))
+            fit = drm(fo, fam; data = d)
             @test length(simulate(fit; data = d, rng = Random.Xoshiro(1))) == length(d.x)
             @test size(bootstrap_summary(fit; data = d, B = 2, rng = Random.Xoshiro(1)), 1) == length(coef(fit))
         end
