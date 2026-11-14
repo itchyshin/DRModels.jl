@@ -2,13 +2,13 @@
 # zero-truncated NB2 random-intercept routes and on the CumulativeLogit independent
 # intercept + slope route (all fitted by the dense Laplace spine of `indep_slopes_laplace.jl`).
 #
-# Before, these fits kept no modes and `fitted(fit)` was the population value: logLik agreed with
+# These fits kept no modes (main: `fitted(fit)` is the population value; the conditional default refuses): logLik agreed with
 # drmTMB 0.8.1 and `fitted()` differed by 0.7 to 2.1. Now `fitted(fit)` is drmTMB's `fitted()`:
 # the expected response with the modes in the count mean (ZIP / ZINB: (1 - zi) * mu, truncated NB2:
 # mu / (1 - P(0)), ordinal: the expected category score).
 #
 # References: test/fixtures/fitted_modes_zi_ordinal/fitted_modes_reference.csv, written by
-# fitted_modes_r.R in the same folder (drmTMB 0.8.1, R 4.6.1, Totoro) from the data of
+# fitted_modes_r.R in the same folder (drmTMB 0.8.1, R 4.6.1) from the data of
 # test/fixtures/p17_fitted/data.csv. Bounds are those of test_fitted_conditional.jl and are not
 # loosened: 1e-6 on fitted values (2e-5 for the ordinal route), 1e-4 on logLik.
 # The modes are also checked against a joint density maximised here, independently of the package.
