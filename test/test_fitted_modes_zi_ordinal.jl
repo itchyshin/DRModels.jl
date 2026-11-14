@@ -2,8 +2,9 @@
 # zero-truncated NB2 random-intercept routes and on the CumulativeLogit independent
 # intercept + slope route (all fitted by the dense Laplace spine of `indep_slopes_laplace.jl`).
 #
-# These fits kept no modes (main: `fitted(fit)` is the population value; the conditional default refuses): logLik agreed with
-# drmTMB 0.8.1 and `fitted()` differed by 0.7 to 2.1. Now `fitted(fit)` is drmTMB's `fitted()`:
+# These fits kept no modes. With the random-effect support of #1317 alone, `fitted(fit)` was the population
+# value (logLik agreed with drmTMB 0.8.1 and `fitted()` differed by 0.7 to 2.1); with the conditional default
+# of `fitted()` also in place it refused them. Now `fitted(fit)` is drmTMB's `fitted()`:
 # the expected response with the modes in the count mean (ZIP / ZINB: (1 - zi) * mu, truncated NB2:
 # mu / (1 - P(0)), ordinal: the expected category score).
 #
