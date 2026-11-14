@@ -655,6 +655,9 @@ function _gaussian_spatial_sd_kernel(coords, G::Int, grp::Symbol)
         "at least two sites must have distinct coordinates."))
     rng = median(pos)
     (isfinite(rng) && rng > 0) || (rng = maximum(pos))
+    # Remember the fixed range for the fit being built: `_drm_run_controlled` stores it in
+    # `fit.scales[:spatial_range]` so `summary` can print it and `coef(fit, :range)` can return it.
+    task_local_storage(_SPATIAL_RANGE_KEY, Float64(rng))
     return exp.(-Dd ./ rng) + 1e-6 * I
 end
 

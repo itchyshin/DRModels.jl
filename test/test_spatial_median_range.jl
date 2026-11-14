@@ -55,15 +55,42 @@ end
     end
 end
 
-@testset "coef(fit, :range) says the range is fixed" begin
+@testset "the fixed range is stored, printed, and is not a parameter" begin
     data, coords, _ = _smr_load()
-    fit = drm(bf(@formula(y ~ x + spatial(1 | g)), @formula(sigma ~ 1)), Gaussian(); data, coords)
-    err = try coef(fit, :range); nothing catch e e end
-    @test err isa ArgumentError
-    @test occursin("fixed at the median positive pairwise distance", sprint(showerror, err))
-    # A fit with no spatial term keeps the generic message.
+    # hand computation: median of the positive pairwise distances between the sites
+    sites = sort(collect(keys(coords)))
+    xy = reduce(vcat, [permutedims(coords[k]) for k in sites])
+    pos = [norm(xy[a, :] - xy[b, :]) for a in 1:20 for b in (a + 1):20
+           if norm(xy[a, :] - xy[b, :]) > 0]
+    m = median(pos)
+    fits = Dict(
+        "Gaussian ML" => drm(bf(@formula(y ~ x + spatial(1 | g)), @formula(sigma ~ 1)), Gaussian();
+                             data, coords),
+        "Gaussian REML" => drm(bf(@formula(y ~ x + spatial(1 | g)), @formula(sigma ~ 1)), Gaussian();
+                               data, coords, method = :REML),
+        "Binomial" => drm(bf(@formula(cbind(s, fl) ~ x + spatial(1 | g))), Binomial(); data, coords),
+        "Poisson" => drm(bf(@formula(s ~ x + spatial(1 | g))), Poisson(); data, coords))
+    @testset "$lab" for (lab, fit) in fits
+        @test coef(fit, :range) == [m]                      # stored, distance scale
+        txt = sprint(show, MIME("text/plain"), fit)
+        @test occursin("Spatial range = $(round(m; sigdigits = 4))", txt)
+        @test occursin("fixed at the median distance between sites", txt)
+        @test occursin("not estimated", txt)
+        # a fixed quantity is not a parameter
+        @test !any(b -> first(b) === :range, fit.blocks)
+        @test size(vcov(fit)) == (length(fit.theta), length(fit.theta))
+        @test length(stderror(fit)) == length(fit.theta)
+        @test length(coef(fit)) == length(fit.theta)
+        @test aic(fit) ≈ -2 * loglikelihood(fit) + 2 * length(fit.theta)
+        @test dof(fit) == length(fit.theta)
+    end
+    # The Gaussian ML fit had five parameters when the range was estimated: now four.
+    @test length(fits["Gaussian ML"].theta) == 4
+    # No spatial term: no stored range, and the generic message.
     plain = drm(bf(@formula(y ~ x)), Gaussian(); data)
-    err2 = try coef(plain, :range); nothing catch e e end
-    @test err2 isa ArgumentError
-    @test !occursin("fixed at the median", sprint(showerror, err2))
+    @test !haskey(plain.scales, :spatial_range)
+    @test !occursin("Spatial range", sprint(show, MIME("text/plain"), plain))
+    err = try coef(plain, :range); nothing catch e e end
+    @test err isa ArgumentError
+    @test !occursin("fixed at the median", sprint(showerror, err))
 end

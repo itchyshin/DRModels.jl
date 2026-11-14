@@ -2485,9 +2485,13 @@ function coef(fit::DrmFit, param::Symbol)
     for (p, r) in fit.blocks
         p === param && return fit.theta[r]
     end
+    # A spatial fit with the range fixed at the median distance stores that value outside
+    # `theta`: it is returned here (distance scale), but it is not a parameter, so it is not in
+    # `coef(fit)`, `vcov`, `stderror`, `dof` or `aic`.
+    param === :range && haskey(fit.scales, :spatial_range) && return copy(fit.scales[:spatial_range])
     if param === :range && fit.formula isa DrmFormula && :spatial in _structured_marker_kinds(fit.formula)
         throw(ArgumentError("no parameter range in fit: the spatial range is fixed at the median positive " *
-            "pairwise distance between the sites, as in drmTMB, and is not estimated. The fit does not store " *
+            "pairwise distance between the sites, as in drmTMB, and is not estimated. This fit does not store " *
             "its value; compute it as the median of the positive pairwise distances between the rows of `coords`."))
     end
     throw(ArgumentError("no parameter $param in fit (have $(first.(fit.blocks)))"))

@@ -451,12 +451,30 @@ function _drm_run_controlled_inner(body::Function, f, fam, control, weights)
     return _ctl_finish(fit, scope, fam)
 end
 
+# The fixed spatial range (median positive pairwise distance between sites) is not a
+# parameter. The kernel builder leaves it in task-local storage under this key; the entry
+# wrapper below moves it onto the fit it returns.
+const _SPATIAL_RANGE_KEY = :drm_spatial_fixed_range
+
 function _drm_run_controlled(body::Function, f, fam, control, weights)
+    tls = task_local_storage()
+    old = get(tls, _SPATIAL_RANGE_KEY, nothing)
+    tls[_SPATIAL_RANGE_KEY] = nothing
     try
-        return _drm_run_controlled_inner(body, f, fam, control, weights)
+        fit = _drm_run_controlled_inner(body, f, fam, control, weights)
+        rng = tls[_SPATIAL_RANGE_KEY]
+        if fit isa DrmFit && rng !== nothing && !haskey(fit.scales, :spatial_range)
+            fit.scales[:spatial_range] = [rng]
+        end
+        return fit
     catch e
         e isa MethodError && _refuse_kwarg_methoderror(e, f, fam)
         rethrow()
+    finally
+        # An enclosing `drm` call (the missing-response wrappers re-enter `drm`) keeps what this
+        # call recorded; otherwise the earlier value is restored.
+        seen = get(tls, _SPATIAL_RANGE_KEY, nothing)
+        tls[_SPATIAL_RANGE_KEY] = seen === nothing ? old : seen
     end
 end
 
