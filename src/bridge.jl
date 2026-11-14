@@ -392,7 +392,23 @@ function drm_bridge_inference(; formula, family::AbstractString, data,
     dat = _bridge_data(data)
     bundle, dat, labels = _bridge_formula(formula, family, dat; labels = true)
     fam = _bridge_family(family)
-    opts = _bridge_options(options)
+    opts = _bridge_prior_safe_options(options)
+    version = _bridge_prior_contract(opts)
+    if version === :v1 && haskey(opts, :priors)
+        input = opts[:priors]
+        typed = input isa AbstractVector && (eltype(input) <: AbstractDrmPrior ||
+            (!isempty(input) && all(p -> p isa AbstractDrmPrior, input)))
+        if !typed
+            haskey(opts, :prior_expected) || throw(ArgumentError("drm_bridge: priors require prior_expected"))
+            opts[:priors] = _bridge_prepare_fixed_priors(bundle, fam, labels, input, opts[:prior_expected])
+        elseif haskey(opts, :prior_expected)
+            throw(ArgumentError("drm_bridge_inference: prior_expected requires serialized prior rows"))
+        end
+    elseif version === :v1 && haskey(opts, :prior_expected)
+        throw(ArgumentError("drm_bridge: prior_expected requires priors"))
+    elseif version in (:v2, :v3)
+        throw(ArgumentError("drm_bridge_inference: SD-prior inference is not supported"))
+    end
     bridge_method = lowercase(strip(String(method)))
     is_biv = bundle isa BivariateDrmFormula
     target = parm === nothing ? nothing : _bridge_parse_inference_parm(parm)
