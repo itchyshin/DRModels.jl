@@ -88,7 +88,10 @@ fit.marginal   # :Laplace
 
 On these five families (Poisson, Binomial, NegBinomial2, Gamma and Beta),
 `:Laplace` covers one ordinary `(1 | g)` on the mean (`sigma ~ 1` for the scale
-families), by maximum likelihood. `Student()` accepts it too for one ordinary
+families), by maximum likelihood. `CumulativeLogit()` accepts it for one
+ordinary `(1 | g)` (no slope, no other term); its default is 41-node adaptive
+quadrature, which sits 0.01 to 0.15 above drmTMB's log-likelihood on the test
+data, and `:Laplace` reproduces drmTMB's value. `Student()` accepts it too for one ordinary
 `(1 | g)` on the mean (`sigma` and `nu` may carry fixed-effect formulas). A
 Gaussian random intercept on `sigma`, `sigma ~ 1 + (1 | g)`, with a fixed-effect
 mean also accepts it. `LogNormal()` accepts the selector for one ordinary mean
