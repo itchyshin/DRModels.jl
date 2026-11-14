@@ -16,6 +16,19 @@ import Distributions
 
 const DVG = DRModels
 
+# Run `f`, capturing its warnings; return (result, coordinates the guard flagged as flat).
+# The flag is the `flat_coordinates` payload of the guard's warning.
+function _flat_logged(f)
+    lg = Test.TestLogger(min_level = Logging.Warn)
+    out = Logging.with_logger(f, lg)
+    @test length(lg.logs) == 1
+    flat = Int[]
+    for r in lg.logs, (k, v) in r.kwargs
+        k === :flat_coordinates && append!(flat, v)
+    end
+    return out, flat
+end
+
 @testset "vcov guard (boundary-singular Hessian)" begin
 
     @testset "well-conditioned Hessian inverts exactly" begin
@@ -31,11 +44,12 @@ const DVG = DRModels
              -14.5 85.6 0.0 0.4
              0.0 0.0 0.0 0.0
              3.8 0.4 0.0 12.1]
-        V = @test_logs (:warn,) DVG._vcov_from_hessian(H)
-        @test all(isfinite, V)
-        @test issymmetric(V)
+        V, flat = _flat_logged(() -> DVG._vcov_from_hessian(H))
+        @test flat == [3]
+        @test all(isfinite, V[[1, 2, 4], [1, 2, 4]])
+        @test issymmetric(V[[1, 2, 4], [1, 2, 4]])
         # The flat coordinate must not acquire a spurious finite variance.
-        @test V[3, 3] == 0
+        @test all(isnan, V[3, :]) && all(isnan, V[:, 3])
     end
 
     @testset "near-singular Hessian is treated as singular on every platform" begin
@@ -44,9 +58,10 @@ const DVG = DRModels
              -14.5 85.6 0.0 0.4
              0.0 0.0 9.85e-16 0.0
              3.8 0.4 0.0 12.1]
-        V = @test_logs (:warn,) DVG._vcov_from_hessian(H)
-        @test all(isfinite, V)
-        @test V[3, 3] < 1.0   # not the 1e15 a raw inverse would produce
+        V, flat = _flat_logged(() -> DVG._vcov_from_hessian(H))
+        @test flat == [3]
+        @test all(isfinite, V[[1, 2, 4], [1, 2, 4]])
+        @test isnan(V[3, 3])   # not the 1e15 a raw inverse would produce
     end
 
     @testset "regression: NB2 at r → ∞ on Poisson data does not throw" begin
@@ -66,7 +81,9 @@ const DVG = DRModels
         fit_nb = DRModels._fit_nb2_ranef_va(DRModels.NegBinomial2(), y, Xμ, Xσ, gidx, ng,
                                        ["(Intercept)", "x"], ["(Intercept)"], :g, 1e-8)
         @test all(isfinite, fit_nb.theta)
-        @test all(isfinite, fit_nb.vcov)
+        @test bridge_diagnostics(fit_nb).boundary == [3]
+        @test all(isnan, fit_nb.vcov[3, :]) && all(isnan, fit_nb.vcov[:, 3])
+        @test all(isfinite, fit_nb.vcov[[1, 2, 4], [1, 2, 4]])
     end
 end
 
@@ -108,9 +125,12 @@ end
         @test occursin("NOT trustworthy", captured)
         @test occursin("sparse-Laplace GLMM (general-mean nuisance)", captured)
 
-        # The pseudo-inverse fallback, not the old silent identity matrix.
-        @test all(isfinite, fit.vcov)
-        @test issymmetric(fit.vcov)
+        # The guard's fallback, not the old silent identity matrix: the flagged
+        # coordinate is NaN and the rest is finite and symmetric.
+        @test bridge_diagnostics(fit).boundary == [4]
+        @test all(isnan, fit.vcov[4, :]) && all(isnan, fit.vcov[:, 4])
+        @test all(isfinite, fit.vcov[1:3, 1:3])
+        @test issymmetric(fit.vcov[1:3, 1:3])
     end
 
     @testset "well-conditioned fit on the same route stays silent" begin

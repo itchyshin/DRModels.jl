@@ -79,7 +79,8 @@ const _DVG = DRModels
         # code that takes sqrt of the diagonal no longer throws
         @test (sqrt.(diag(V)); true)
         se = stderror(fit)
-        @test all(isfinite, se[1:2]) && se[3] == Inf
+        @test all(isfinite, se[1:2]) && isnan(se[3])
+        @test bridge_diagnostics(fit).boundary == [3]
         @test convergence_status(fit) === :boundary
         # printing and tables: no error, NaN rows
         ct = coeftable(fit)
