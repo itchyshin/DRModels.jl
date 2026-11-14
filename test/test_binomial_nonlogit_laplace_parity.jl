@@ -4,9 +4,9 @@
 # `test/parity/gen_laplace_more_shapes_parity.R` (max|grad| < 1e-6, all SEs finite; numbers and
 # simulated data only). Bounds are the lane's and are never loosened:
 #   logLik 1e-4 (absolute) | fixed effects 1e-3 R SE | log SD 5e-3.
-# `fitted()` is NOT compared with R here: on this data drmTMB's fitted values differ from the
-# population-level ones DRModels.jl returns by 0.29 to 0.35 on the default route too (a separate,
-# maintainer-held choice); the test pins DRModels.jl's own definition instead.
+# `fitted(fit)` (conditional: the stored random-effect modes are included) is compared with drmTMB's
+# `fitted()` at 1e-6; `fitted(fit; re = :zero)` is the population value, pinned against the inverse
+# link of the linear predictor at 1e-12 as before.
 using DRModels, Test, TOML, Random, LinearAlgebra, Statistics
 using SpecialFunctions: erf
 
@@ -55,7 +55,8 @@ const _BNL_CELLS = (
             Xβ = θ[1] .+ θ[2] .* d.x1
             invlink = c.link === :probit ? (η -> 0.5 * (1 + erf(η / sqrt(2)))) :
                                            (η -> -expm1(-exp(η)))
-            @test maximum(abs.(fitted(fit) .- invlink.(Xβ))) <= 1e-12
+            @test maximum(abs.(fitted(fit; re = :zero) .- invlink.(Xβ))) <= 1e-12
+            @test maximum(abs.(fitted(fit) .- Float64.(ref["fitted"]))) <= 1e-6
             # the default integrator is unchanged and gives a different number
             fla = drm(c.form, fam; data = d)
             @test fla.marginal === :LA

@@ -418,10 +418,12 @@ end
     nr(f) = (err = try fitted(f); nothing catch e; e end; err isa ArgumentError && occursin("re = :zero", sprint(showerror, err)))
     # 1. and 2. (Gaussian relmat / animal / dense phylo, and phylo Laplace for the six count and continuous
     # families) keep their modes since P20a: see test_fitted_phylo_modes.jl.
-    # 4. ZeroOneBeta with a random intercept
+    # 4. ZeroOneBeta with a random intercept keeps its modes since the Laplace-modes change
+    # (test_laplace_fitted_modes_more.jl): the conditional default no longer refuses it.
     zf = drm(bf(@formula(y_zoib ~ x1 + (1 | g)), @formula(sigma ~ 1), @formula(zoi ~ 1), @formula(coi ~ 1)),
              ZeroOneBeta(); data = d)
-    @test nr(zf)
+    @test !nr(zf)
+    @test all(isfinite, fitted(zf)) && length(fitted(zf)) == nobs(zf)
     # 8. crossed random intercepts solved by adaptive quadrature (opt-in)
     cf = drm(bf(@formula(y_pois ~ x1 + (1 | g2) + (1 | f2))), Poisson(); data = d, se = false, marginal = :AGHQ)
     @test nr(cf)
