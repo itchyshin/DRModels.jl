@@ -10,9 +10,9 @@
   `rho12 ~ x1`, `sigma1 ~ x1`, missing responses): log-likelihood within 1e-4,
   fixed effects within 1e-3 of the R SE, SEs within 1e-3 relative. Still refused
   with a clear error: random effects on `sigma1`/`sigma2`, one-sided or
-  unlabelled `(1 | g)` terms, `(1 + x | p | g)`, partly observed rows
-  (`miss_control(response = "include")`), row `weights`, known `V`, and
-  Student-t / lognormal bivariate families.
+  unlabelled `(1 | g)` terms, `(1 + x | p | g)`, row `weights`, known `V`, and
+  Student-t / lognormal bivariate families. Partly observed rows
+  (`miss_control(response = "include")`) are accepted (see the `include` entry).
 
   After independent review: the objective no longer throws when a line-search
   trial overflows (the fit crashed with "matrix contains Infs or NaNs" at about
@@ -21,5 +21,6 @@
   used to refit group-free data, giving intervals that were far too narrow);
   `tree`, `K`, `A`, `coords` and `spatial_range` are refused on this route; the
   group-covariance coefficients are named `Sigma_g:L11/L21/L22` (the structured
-  routes keep `Sigma_a`). `residuals(fit)` are marginal (`y - X b`), not
-  conditional on the group effects as in drmTMB.
+  routes keep `Sigma_a`). `residuals(fit)` are conditional on the group effects
+  (`y - fitted(fit)`), as in drmTMB; `residuals(fit; re = :zero)` gives the
+  marginal residuals `y - X b`.
