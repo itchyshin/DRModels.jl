@@ -39,19 +39,38 @@ For a bivariate model, a row is dropped when either response is missing. That
 discards the observed half of each incomplete pair.
 
 `missing = miss_control(response = "include")` keeps the partly observed rows of a bivariate
-Gaussian fit and uses the likelihood of the response that was observed. That is
-valid when the missing values are missing at random: the chance that a value is
-missing may depend on the observed responses and the predictors in the model,
-but not on the missing value itself. With `method = :REML` on the bivariate
-`(1 | p | g)` route, two further points apply. A REML log-likelihood is only
-comparable between fits that have the same fixed effects and the same rows
-(the same missing pattern); comparing REML values across different fixed-effect
-formulas or different `missing` settings is not meaningful, so use `method = :ML`
-for such comparisons. And REML needs the fixed-effect design of the observed rows of each
-response to have full rank: a covariate that is constant or equal to another
-covariate on those rows, although it varies in the full data, is refused by
-name. drmTMB 0.8.1 does not implement REML together with `response = "include"`
-at all, so this goes beyond drmTMB.
+Gaussian fit and uses the likelihood of the response that was observed in each of them.
+
+**Missing at random.** This is valid when the values are missing at random. In plain
+words: once the observed responses and the predictors in the model are taken into account,
+whether a value is missing tells you nothing more about what that value would have been. It
+fails when the missingness depends on the missing value itself (for example, the largest
+`y1` values are the ones that were not recorded), or on something related to the response
+that is not in the model. Neither the default (dropping the rows) nor `"include"` protects
+against that; `"include"` needs a weaker condition for the rows it keeps, but it is still an assumption.
+
+**REML with kept rows.** On the bivariate `(1 | p | g)` route, `method = :REML` together with
+`response = "include"` fits the restricted likelihood of the observed entries. drmTMB 0.8.1
+refuses that combination ("`REML` is not implemented with explicit missing-data engines yet"),
+so this goes beyond drmTMB and there is no R reference to compare with. It was checked
+against a dense computation of the restricted likelihood of the observed entries
+(`test/test_biv_re_include.jl`, agreement 1e-8) and against `nlme::lme` REML fits of the same model
+written in long format, one row per observed entry (`test/test_biv_re_include_nlme.jl`).
+Three safeguards apply:
+
+- The fixed-effect design of the observed entries of each response must have full column rank.
+  A column that is constant, or equal to another column, on the rows where that response is
+  observed (a factor level seen only in rows with a missing response, a covariate that is constant there,
+  a level whose rows all have weight 0) is refused by name. The message names `REML`, the
+  response, the aliased columns and the options: remove or recode the term, use `method = :ML`, or take
+  the rows with a missing response out of `data` before the call. A response with fewer observed
+  entries than columns is refused with its own message, also under ML.
+- A REML log-likelihood is comparable only between fits with the same fixed-effect design and the
+  same used entries. A fit that keeps partly observed rows is not comparable with a complete-case fit
+  of the same data (they use different entries), and REML values for different fixed-effect formulas
+  are not comparable either. Do not use REML log-likelihoods, AIC, or likelihood-ratio tests to compare
+  models with different fixed effects; refit with `method = :ML` for that.
+- The missing-at-random assumption above applies to the kept rows.
 
 ## Missing predictors
 
