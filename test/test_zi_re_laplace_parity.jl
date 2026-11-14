@@ -11,6 +11,7 @@
 using DRModels, Test, TOML
 
 const _ZR_DIR = joinpath(@__DIR__, "fixtures", "zi_re_parity")
+const _ZR_FITTED_TOL = 1e-6   # the fitted() bound of test_fitted_conditional.jl for Laplace routes
 
 function _zr_data(route)
     L = readlines(joinpath(_ZR_DIR, route, "data.csv"))
@@ -111,8 +112,19 @@ end
     # same fit through the explicit Laplace request; update repeats it
     @test loglik(drm(zf, Poisson(); data = d, marginal = :Laplace)) ≈ loglik(fit)
     @test loglik(update(fit, fit.formula; data = d)) ≈ loglik(fit)
-    # fitted() is the expected response; predict() the count-component mean (as for fixed-effects ZIP)
-    @test mean(fitted(fit)) < mean(predict(fit, d))
+    # fitted() is conditional by default and this route keeps no random-effect modes, so the default
+    # refuses by name and points to `re = :zero`. With `re = :zero` fitted() is the expected response,
+    # (1 - pi) * exp(mu) with the random effect at zero, pinned row by row to drmTMB 0.8.1; predict()
+    # is the count-component mean (as for fixed-effects ZIP).
+    ferr = try; fitted(fit); nothing; catch e; e; end
+    @test ferr isa ArgumentError
+    @test occursin("re = :zero", sprint(showerror, ferr))
+    fz = fitted(fit; re = :zero)
+    fref = readlines(joinpath(_ZR_DIR, "zip_g", "fitted_r.csv"))[2:end]
+    fpop = [parse(Float64, split(l, ',')[3]) for l in fref]
+    @test length(fz) == length(fpop) == length(d.y)
+    @test maximum(abs.(fz .- fpop)) <= _ZR_FITTED_TOL
+    @test mean(fz) < mean(predict(fit, d))
     # fresh-random-effect simulation reproduces the data's zero share and mean (marginal draw)
     ys = [simulate(fit; data = d, rng = Random.Xoshiro(s)) for s in 1:30]
     @test abs(mean(count(==(0), y) / length(y) for y in ys) - count(==(0), d.y) / length(d.y)) < 0.04
@@ -157,7 +169,18 @@ end
     @test_throws ArgumentError drm(bf(@formula(y ~ x + (1 | g) + (0 + x | g))), CumulativeLogit(); data = dc, marginal = :AGHQ)
     db = _zr_data("binom3")
     bf3 = drm(bf(@formula(y ~ x + (1 | g) + (1 | g2) + (1 | h))), Binomial(); data = db)
-    @test_throws ArgumentError bootstrap_summary(bf3; data = db, B = 2, rng = Random.Xoshiro(1))
+    # The refusal is gone: a fresh-random-effect simulator for several ordinary random intercepts is
+    # on this tree. Its draws carry the random effects: the variance of the group means is the data's,
+    # not the binomial noise alone (about a third of it).
+    @test size(bootstrap_summary(bf3; data = db, B = 2, rng = Random.Xoshiro(1)), 1) == 5
+    gl = unique(db.g)
+    gmv(y) = var([mean(y[db.g .== k]) for k in gl])
+    vdata = gmv(db.y)
+    vdraw = mean(gmv(simulate(bf3; data = db, rng = Random.Xoshiro(k))) for k in 1:100)
+    pbar = mean(db.y)
+    vnoise = mean(pbar * (1 - pbar) / count(==(k), db.g) for k in gl)
+    @test vdraw > 2 * vnoise
+    @test 0.75 < vdraw / vdata < 1.33
     @test_throws ArgumentError residuals(bf3; type = :quantile)
 end
 
