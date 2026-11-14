@@ -230,7 +230,8 @@ distributional parameters:
   response missing by default (drmTMB `miss_control(response = "drop")`, silent;
   DRModels.jl warns with the count). `missing = miss_control(response = "include")`
   keeps partly observed rows and fits the marginal likelihood of the observed
-  response in both, also on the `(1 | p | g)` random-effect route. Before this default was aligned, DRModels.jl kept those rows
+  response in both, also on the `(1 | p | g)` random-effect route (with `method = :REML` only DRModels.jl
+  accepts it; drmTMB refuses). Before this default was aligned, DRModels.jl kept those rows
   unasked and its logLik differed from drmTMB's by 15 to 30 units on the same data.
 
 drmTMB's exact R spelling for per-parameter prediction is not asserted here.

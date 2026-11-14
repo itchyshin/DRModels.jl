@@ -143,7 +143,18 @@ row of `data`, missing rows included (a vector already cut to the kept rows is r
 `confint(fit; method = :profile)` is refused on a REML fit of this route, because the
 stored objective is the ML likelihood; use `method = :wald`, the bootstrap, or an ML fit.
 With `miss_control(response = "include")`, rows with one response missing stay in the fit
-with their weights (the observed cell only). A random effect on the means AND one on
+with their weights (the observed cell only). That is valid when values are missing at random
+(given the observed responses and the predictors in the model, missingness says nothing more about
+the missing value); it fails when missingness depends on the missing value itself. With
+`method = :REML` the fit is the restricted likelihood of the observed cells, which goes beyond
+drmTMB 0.8.1 (it refuses REML together with `"include"`, so there is no R reference; the value is
+checked against a dense computation and against `nlme::lme`). It needs a full-rank fixed-effect
+design among the observed rows of each response and refuses by name otherwise (an aliased or
+constant column, a factor level seen only in rows with a missing response or weight 0): remove or
+recode the term, use `method = :ML`, or take those rows out of `data`. A REML log-likelihood is
+comparable only between fits with the same fixed-effect design and the same used entries, so a fit
+with kept rows is not comparable with a complete-case fit, and REML values must not be used for
+likelihood-ratio tests of fixed effects (use `method = :ML`). A random effect on the means AND one on
 `sigma1`/`sigma2` in the same model, and `V`, are refused.
 
 With an ordinary `(1 | p | g)` written in BOTH `sigma1` and `sigma2` (same label and
