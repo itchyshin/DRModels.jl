@@ -5,7 +5,8 @@
 #     (X' W X)^-1 + J V_sigma J'      with J = d beta_hat / d beta_sigma,
 # and the location-scale covariance block J V_sigma. The plug-in GLS covariance
 # (X' W X)^-1 alone is 0.5 percent too small when sigma has a regression.
-using DRModels, Test, LinearAlgebra, Distributions
+using DRModels, Test, LinearAlgebra
+using Distributions: Normal, quantile
 
 function _remlse_data(name)
     if name == "a"
