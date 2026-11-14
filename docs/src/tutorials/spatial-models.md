@@ -80,10 +80,10 @@ what this Gaussian spatial route does and does not establish about uncertainty.
     - **Beta** accepts `spatial(1 | site)` with a supplied `K` when `sigma ~ 1`
       and no SD formula is used. With `sd(site, spatial) ~ z` it takes
       `coords` (native kernel) and refuses `K`.
-    - **Binomial** refuses a bare `spatial(1 | site)` on the mean. It accepts
-      `spatial` with an `sd(site, spatial)` formula and `coords`, on the same fixed
-      median-distance kernel as drmTMB (earlier versions used the mean pairwise
-      distance and a 1e-8 ridge).
+    - **Binomial** accepts `spatial(1 | site)` on the mean, bare or with an
+      `sd(site, spatial)` formula, with `coords`. It does not take `K`. It uses the
+      same fixed median-distance kernel as drmTMB (earlier versions used the mean
+      pairwise distance and a 1e-8 ridge).
 
     Check the family-specific restrictions in
     [Detailed capabilities and limits](../capabilities.md).
