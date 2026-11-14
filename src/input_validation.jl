@@ -291,6 +291,32 @@ function _drm_entry_guard(f::DrmFormula, fam, data; tree = nothing, K = nothing,
     _require_formula_column_lengths(f, data)
     _require_sd_group_levels(f, data)
     _require_structured_keywords_used(f, fam; tree = tree, K = K, A = A, Ainv = Ainv, coords = coords)
+    _require_one_structured_marker(f, fam)
+    return nothing
+end
+
+"""
+    _require_one_structured_marker(f, fam)
+
+Every non-Gaussian univariate route fits at most ONE structured marker (`phylo`, `relmat`,
+`animal`, `spatial`) per formula. `_split_ranef` returns only the first one, so a second marker
+(`y ~ x + spatial(1 | g) + relmat(1 | h)`) was neither stored nor refused on routes that read
+only that slot: the fit used the first term alone and the second was dropped silently. This
+refuses it, naming both terms. Gaussian and LogNormal are exempt: the Gaussian mean route fits two
+structured terms (`phylo(1 | species) + relmat(1 | id)`) and keeps its own checks, and LogNormal
+passes its structured markers to it on `log(y)`.
+"""
+function _require_one_structured_marker(f::DrmFormula, fam)
+    (fam isa Gaussian || fam isa LogNormal) && return nothing   # LogNormal delegates to the Gaussian two-structured router
+    for (p, rhs) in f.forms
+        marks = _collect_structured(rhs)
+        length(marks) > 1 || continue
+        show1(m) = "`$(m[1])(… | $(m[2]))`"
+        more = length(marks) > 2 ? " (and $(length(marks) - 2) more)" : ""
+        throw(ArgumentError("drm: the $(nameof(typeof(fam))) route fits one structured term per formula, " *
+            "but `$p` has two: $(show1(marks[1])) and $(show1(marks[2]))$more. Keep one structured term, " *
+            "or use `Gaussian()`, whose mean can carry two (for example `phylo(1 | species) + relmat(1 | id)`)."))
+    end
     return nothing
 end
 
