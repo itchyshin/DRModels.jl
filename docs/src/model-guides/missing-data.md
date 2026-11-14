@@ -47,7 +47,9 @@ whether a value is missing tells you nothing more about what that value would ha
 fails when the missingness depends on the missing value itself (for example, the largest
 `y1` values are the ones that were not recorded), or on something related to the response
 that is not in the model. Neither the default (dropping the rows) nor `"include"` protects
-against that; `"include"` needs a weaker condition for the rows it keeps, but it is still an assumption.
+against that. The difference is what the check involves: dropping the rows is valid only if missingness is also unrelated
+to the other response of the same row, while `"include"` does not need that, because it uses the observed response of
+those rows. Both still rely on the missing-at-random assumption.
 
 **REML with kept rows.** On the bivariate `(1 | p | g)` route, `method = :REML` together with
 `response = "include"` fits the restricted likelihood of the observed entries. drmTMB 0.8.1
@@ -62,15 +64,23 @@ Three safeguards apply:
   A column that is constant, or equal to another column, on the rows where that response is
   observed (a factor level seen only in rows with a missing response, a covariate that is constant there,
   a level whose rows all have weight 0) is refused by name. The message names `REML`, the
-  response, the aliased columns and the options: remove or recode the term, use `method = :ML`, or take
-  the rows with a missing response out of `data` before the call. A response with fewer observed
+  response, the aliased columns and the options, which depend on the cause. Remove or recode the term,
+  or use `method = :ML`, always works. Taking the rows with a missing response out of `data` (with a freshly
+  built formula) helps only for a factor level seen in those rows alone; a covariate that is constant on the
+  observed rows stays constant after the rows are removed. A formula object reused after a fit on other
+  data keeps that data's factor levels, so build it afresh. A response with fewer observed
   entries than columns is refused with its own message, also under ML.
 - A REML log-likelihood is comparable only between fits with the same fixed-effect design and the
   same used entries. A fit that keeps partly observed rows is not comparable with a complete-case fit
   of the same data (they use different entries), and REML values for different fixed-effect formulas
   are not comparable either. Do not use REML log-likelihoods, AIC, or likelihood-ratio tests to compare
   models with different fixed effects; refit with `method = :ML` for that.
-- The missing-at-random assumption above applies to the kept rows.
+- Rescaling a predictor changes the REML log-likelihood. Multiplying a fixed-effect column by `s` leaves the
+  fit unchanged (the coefficient is divided by `s`) but shifts the REML log-likelihood by `-log(s)`, or by
+  minus the sum of `log(s)` over all rescaled columns. A fit with a standardised predictor and a fit with the
+  raw predictor therefore have different REML log-likelihoods; compare them only on the same scale.
+  `method = :ML` values do not shift.
+- The kept rows rely on the same missing-at-random assumption as above; nothing extra is checked for them.
 
 ## Missing predictors
 
