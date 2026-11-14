@@ -180,7 +180,7 @@ end
     end
 end
 
-@testset "weights with missing responses: kept rows keep their weights; include stays refused" begin
+@testset "weights with missing responses: kept rows keep their weights; include keeps the partly observed rows" begin
     d = _BRW_D
     obs = .!(ismissing.(d.y1m) .| ismissing.(d.y2m))
     dk = (; g = d.g[obs], x1 = d.x1[obs], x2 = d.x2[obs],
@@ -190,8 +190,10 @@ end
     end
     f_pre = drm(_BRW_FM, Gaussian(); data = dk, weights = d.w[obs])
     @test f_drop.loglik == f_pre.loglik && f_drop.theta == f_pre.theta
-    @test_throws ArgumentError drm(_BRW_FM, Gaussian(); data = d, weights = d.w,
-                                   missing = miss_control(response = "include"))
+    # include keeps rows with one response observed, each with its weight (test_fitted_modes_bivariate_weights.jl
+    # checks the fit against drmTMB)
+    f_inc = drm(_BRW_FM, Gaussian(); data = d, weights = d.w, missing = miss_control(response = "include"))
+    @test f_inc.nobs > f_drop.nobs
     # Weights already cut to the kept rows are NOT accepted: one weight per row of `data`, as in R.
     # (Before, a vector whose length equalled the kept row count was taken as aligned, silently.)
     ncut = count(obs)
