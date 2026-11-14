@@ -83,3 +83,39 @@ end
         @test 0.5 < fresh / gv(d.s) < 2
     end
 end
+
+@testset "Binomial crossed intercepts: the draws that bootstrap_result itself makes carry the group effects" begin
+    using Statistics, StableRNGs
+    # No R reference exists for this cell (drmTMB has no bootstrap for this model), so the bounds below come
+    # from a simulation, not from a parity number, and are never to be loosened. Fixed StableRNG streams
+    # (and `MersenneTwister` seeded from them for the replicates, as the bootstrap seeds them): the same on
+    # every Julia. Default marginal only: the AGHQ refits cost about 1.5 s each, and both estimators share
+    # the one marginal simulator that this checks.
+    d0 = _bsl_data(5)
+    d = merge(d0, (; h = string.("h", rand(Random.Xoshiro(9), 1:6, length(d0.x)))))
+    gl = unique(d.g)
+    gv(y) = var([mean(y[d.g .== k]) for k in gl])
+    fit = drm(bf(@formula(cbind(s, f) ~ x + (1 | g) + (1 | h))), Binomial(); data = d)
+    res = bootstrap_result(fit; data = d, B = 200, rng = StableRNG(20261114))
+    @test res.used >= 60      # refits that do not converge are dropped; about half are, 90 or more are kept
+    # Main check 1: the variance of the group means over the bootstrap's own simulated data sets. Replicate b
+    # is the marginal simulator run on MersenneTwister(res.seeds[b]). Against the same statistic with the
+    # random effects at zero the ratio is 4.6 (20000 data sets simulated independently of the package; 0.1%
+    # quantile of the ratio of the two means 4.1); two statistics that both carry no random effects give a
+    # ratio of 1.0 (99.9% quantile 1.13). The threshold 2 sits between the two, a factor of 2 from each centre.
+    sim = DRModels._marginal_simulator(fit, d)
+    vboot = mean(gv(sim(Random.MersenneTwister(sd))) for sd in res.seeds)
+    vzero = mean(gv(simulate(fit; data = d, re = :zero, rng = StableRNG(k))) for k in 1:100)
+    @test vboot > 2 * vzero
+    # Main check 2, on the refits that `bootstrap_summary` reports (`res.summary` is its table): the variance of
+    # the refitted intercept against the noise-only value, the squared standard error of the fixed-effect
+    # model (no random effect). With the random effects drawn it is 7.7 times that (4000 refits from the fitted
+    # parameters; 1% quantile of one B = 200 call 5.4); with them at zero it is 1.1 times (99% quantile 1.6).
+    # The threshold 2.5 is a factor of 2.3 above the noise-only centre and 2.2 below the lowest drawn value.
+    se_fixed = sqrt(vcov(drm(bf(@formula(cbind(s, f) ~ x)), Binomial(); data = d))[1, 1])
+    row(p, c) = only(r for r in res.summary if r.param === p && r.coef == c)
+    @test row(:mu, "(Intercept)").std_error^2 > 2.5 * se_fixed^2
+    # The lower end of the interval of log SD(g) stays away from the boundary when the effects are drawn (1%
+    # quantile -1.56 against a fitted -0.85); draws at zero put it below -15 in 99% of calls.
+    @test row(:resd, "g").lower > log(0.1)
+end
