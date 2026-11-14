@@ -4,8 +4,11 @@
   `(1 | g)` left out of `reduced`), the reference is the equal mixture of
   chi-square(0) and chi-square(1), so `pvalue = 0.5 * P(chi-square(1) >
   statistic)` (Self and Liang 1987; Stram and Lee 1994). The result also carries
-  `pvalue_naive` and `reference`. The default is unchanged: plain chi-square with
-  the existing boundary warning. The option is refused by name for any other pair:
+  `pvalue_naive` and `reference`. The equal mixture is the correct null for this test,
+  and the plain chi-square(1) is conservative: its p-values are about twice as
+  large and it rejects less often than its nominal level. The default is
+  unchanged: plain chi-square with the existing boundary warning (the mixture is
+  opt-in). The option is refused by name for any other pair:
   a difference in fixed effects, more than one added variance, or an added
   correlation (a random slope with its correlation, where a different mixture
   applies, and `(1 | g) + (0 + x | g)` against `(1 + x | g)`, where the plain

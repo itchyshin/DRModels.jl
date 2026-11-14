@@ -104,3 +104,36 @@ import Distributions
         @test t.pvalue ≈ lrt_boundary(nb, pois; q = 1).pvalue rtol = 1e-12
     end
 end
+
+# The refusal margin is `-1e-6 * max(1, |loglik|)`. A nested pair whose group variance is estimated at
+# zero gives a statistic of optimiser-noise size (below 1e-8 here), which must be accepted at any data size;
+# a pair that is not nested must be refused at any data size. The same two checks were also run with
+# 500000 rows (statistic 1.9e-6 for the boundary pair, -5.8e5 for the non-nested pair): not repeated here
+# because the fits take about half a minute each.
+@testset "negative-statistic margin at 50 and 5000 rows" begin
+    for (n, G) in ((50, 10), (5000, 100))
+        rng = Random.MersenneTwister(3); m = n ÷ G
+        g = repeat(1:G, inner = m); h = repeat(1:G, outer = m); k = mod.(3 .* h .+ g, 7)
+        x = repeat(collect(range(-1.5, 1.5; length = m)), outer = G)
+        e = 0.7 .* randn(rng, n)
+        for j in 1:G
+            r = ((j - 1) * m + 1):(j * m)
+            e[r] .-= sum(e[r]) / m                      # every group mean is zero: the group variance is 0
+        end
+        d0 = (; y = 0.5 .- 0.4 .* x .+ e, x, g)
+        red0 = drm(bf(@formula(y ~ x), @formula(sigma ~ 1)), Gaussian(); data = d0)
+        full0 = drm(bf(@formula(y ~ x + (1 | g)), @formula(sigma ~ 1)), Gaussian(); data = d0)
+        t = lrtest(red0, full0; mixture = true)
+        @test abs(t.statistic) < 1e-8
+        @test t.reference === :chibar_0_1
+        # not nested: y follows the grouping h, the full model has two unrelated groupings
+        yb = 0.3 .+ 1.2 .* randn(rng, G)[h] .+ 0.5 .* randn(rng, n)
+        d1 = (; y = yb, h, k, g)
+        red1 = drm(bf(@formula(y ~ 1 + (1 | h)), @formula(sigma ~ 1)), Gaussian(); data = d1)
+        non = drm(bf(@formula(y ~ 1 + (1 | g) + (1 | k)), @formula(sigma ~ 1)), Gaussian(); data = d1)
+        @test lrtest(red1, non).statistic < -1.0
+        err = try lrtest(red1, non; mixture = true); nothing catch e; e end
+        @test err isa ArgumentError
+        @test occursin("not nested or a fit did not converge", err.msg)
+    end
+end

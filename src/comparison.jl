@@ -73,6 +73,14 @@ plain `χ²(dof)` p-value) and `reference = :chibar_0_1`; the boundary warning i
 not emitted, because the caveat is handled. The default stays `mixture = false`
 (plain `χ²`, with the warning), so existing calls do not change.
 
+The equal mixture of `χ²(0)` and `χ²(1)` is the correct null for this test. The tested
+variance sits at the edge of its range, so the statistic is exactly zero in about half of
+the data sets, and only the other half follows `χ²(1)`. The plain `χ²(1)` is therefore
+conservative: whenever the statistic is positive its p-value is about twice the mixture
+p-value, and the plain test rejects less often than its nominal level. The mixture stays
+opt-in here, and the plain test is still the default. A test of a correlation alone is
+refused under `mixture = true` (see below), because the mixture does not apply to it.
+
 `mixture = true` is refused with an `ArgumentError`, by name, unless `full` adds
 exactly one variance (SD) parameter, no correlation parameter, and the fixed
 effects of the two fits are identical (or the pair is Poisson ⊂ NegBinomial2 with
