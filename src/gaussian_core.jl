@@ -4485,6 +4485,30 @@ function _intercept_only_sd(fit)
     return (; group = only(groups), sd)
 end
 
+# A correlated block can be stored two ways in `:recov`. The Gaussian/Poisson-style routes
+# keep a log-Cholesky triple (`g:L11`, `g:L22`, `g:L21`). The Binomial SD/partial-correlation
+# route (`marginal = :Laplace`, and q >= 3 blocks) keeps one log SD per coefficient followed by
+# the atanh partial correlations (`g:log_sd_<coef>` ..., `g:atanh_rho`). `re_sd` and `vc`
+# must decode each its own way.
+function _recov_is_sd_corr(fit)
+    nms = first(cn[2] for cn in fit.coefnames if cn[1] === :recov)
+    return !isempty(nms) && occursin(":log_sd_", first(nms))
+end
+
+# -> (group, labels, sds, covariance) for an SD/partial-correlation `:recov` block.
+function _recov_sd_corr_decode(fit, r)
+    nms = first(cn[2] for cn in fit.coefnames if cn[1] === :recov)
+    q = count(n -> occursin(":log_sd_", n), nms)
+    grp = split(first(nms), ":")[1]
+    th = fit.theta[r]
+    sds = _binomial_sd_scale(th[1:q])
+    coefs = [String(split(n, ":log_sd_")[2]) for n in nms[1:q]]
+    labels = q == 2 ? ["intercept", "slope"] : coefs
+    L = _binomial_partial_correlation_cholesky(th[(q + 1):end], q)
+    Σ = Diagonal(sds) * (L * transpose(L)) * Diagonal(sds)
+    return grp, labels, sds, Matrix{Float64}(Σ)
+end
+
 """
     re_sd(fit; scale = :native, tree = nothing) -> Dict{Symbol,Float64}
 
@@ -4546,6 +4570,13 @@ function re_sd(fit::DrmFit; scale::Symbol = :native, tree = nothing)
             nms = first(cn[2] for cn in fit.coefnames if cn[1] === :resd)
             for (j, nm) in enumerate(nms)
                 d[Symbol(nm)] = exp(fit.theta[r[j]])
+            end
+        elseif p === :recov && _recov_is_sd_corr(fit)
+            # Binomial correlated block on the SD/partial-correlation route: the block
+            # holds log SDs and atanh partial correlations, not a Cholesky triple.
+            grp, labels, sds, _ = _recov_sd_corr_decode(fit, r)
+            for (lab, sd) in zip(labels, sds)
+                d[Symbol(grp * "_" * lab)] = sd
             end
         elseif p === :recov
             # Same Cholesky decoding as vc(fit): l11 = intercept SD, and the

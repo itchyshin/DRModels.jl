@@ -1338,7 +1338,10 @@ function vc(fit::DrmFit)
         d[Symbol(fit.ranef.group)] = Matrix{Float64}(fit.ranef.Sigma_a)
     end
     for (p, r) in fit.blocks
-        if p === :recov
+        if p === :recov && _recov_is_sd_corr(fit)
+            grp, _, _, Σ = _recov_sd_corr_decode(fit, r)
+            d[Symbol(grp)] = Σ
+        elseif p === :recov
             a, b, cc = fit.theta[r]
             l11 = exp(a); l22 = exp(b)
             Σ = [l11^2 cc*l11; cc*l11 cc^2+l22^2]
