@@ -172,7 +172,7 @@ _pit_obs(::Any, i; obs, scales)          = obs[:mu][i]
 # mode contribution `scales[:cond_eta_re]` (see `_attach_conditional_structured!`)
 # and `_conditional_mean_at_modes` shifts the mean by it. The joint mean + sigma
 # routes store the conditional mean and conditional `sigma` directly in
-# `fit.means[:mu]` / `fit.scales[:sigma]`. `fitted(fit)` stays population level
+# `fit.means[:mu]` / `fit.scales[:sigma]`. `fitted(fit)` is conditional by default (`re = :zero` is population level)
 # (except the joint routes). Conditional residuals are not marginally N(0, 1): their
 # SD is below 1 (about 0.8-1 on the test fixtures), as for any residual evaluated at
 # posterior modes.
@@ -188,6 +188,15 @@ _ranef_link(::ZeroOneBeta) = (μ -> (m = clamp(μ, eps(), 1 - eps()); log(m / (1
 _ranef_link(::Gaussian) = (identity, identity)
 _ranef_link(::Student) = (identity, identity)
 _ranef_link(fam) = nothing
+
+# Link pair (g, g⁻¹) of the component mean for the conditional `fitted(fit)`, or `nothing`
+# when the conditional value is not defined on the route (see `_fitted_component_mu`).
+# Binomial uses its own link (logit, probit or cloglog); ZeroOneBeta stores the mixture mean,
+# so it is not a link pair of `means[:mu]`.
+_fitted_link(fam) = _ranef_link(fam)
+_fitted_link(fam::Binomial) = (p -> _binomial_start(fam, p), η -> _binomial_mean(fam, η))
+_fitted_link(::ZeroOneBeta) = nothing
+_fitted_link(::Tweedie) = (μ -> log(max(μ, eps())), exp)
 
 # A single length-n Dict sliced down to a length-1 Dict at row `i`, so the
 # per-family `_conditional_dist(fam, 1; μ, scales, obs, …)` builder can be
@@ -476,6 +485,7 @@ end
 # exact z-score and skip Φ⁻¹(Φ(z)), which otherwise loses upper-tail
 # precision and caps |r| at about 8.13.
 function _quantile_residuals(fit::DrmFit, rng)
+    _refuse_multi_re_laplace(fit, "residuals(type = :quantile)")
     haskey(fit.means, :mu) ||
         throw(ArgumentError("residuals(type=:quantile) is univariate-only"))
     fam = fit.family

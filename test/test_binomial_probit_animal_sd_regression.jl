@@ -64,9 +64,9 @@ end
                 Distributions.cdf.(Ref(Distributions.Normal()), eta_link) :
                 -expm1.(-exp.(eta_link))
             @test predict(fit, fixture.data) ≈ expected_mean
-            @test fitted(fit) ≈ expected_mean
+            @test fitted(fit; re = :zero) ≈ expected_mean
             @test marginal_parameters(fit)[:mu] ≈ expected_mean
-            @test residuals(fit) ≈ fixture.data.y .- expected_mean
+            @test residuals(fit; re = :zero) ≈ fixture.data.y .- expected_mean
             sim_seed = 20261029
             observed_simulation = simulate(fit; re = :zero, rng = MersenneTwister(sim_seed))
             expected_rng = MersenneTwister(sim_seed)
