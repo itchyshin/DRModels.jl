@@ -25,3 +25,5 @@ A separately authored reference builder was added at `test/fixtures/struct_sd_co
 A second 14-case run matched all 99 rows exactly and recorded the loaded package path, R and BLAS settings, and input and script hashes before and after execution. The installed drmTMB source commit remains unknown.
 
 The package DESCRIPTION and compiled-library hashes were recorded in the environment receipt and matched at review; they were not hashed before and after execution.
+
+On 2026-11-15, with maintainer authorization, the copied structured-SD reference runner was removed from the isolated release candidate, and the independently authored builder remains. The removed script remains in Git history. PR #1274 has not been changed and needs reconciliation. Final source-tree and release-archive license audits remain open.
