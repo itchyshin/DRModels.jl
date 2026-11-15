@@ -94,13 +94,16 @@ correlation, whose null value is interior, so the plain `χ²(1)` is the right
 test. Use a parametric bootstrap for the first of these.
 A slope on the log standard deviation is an interior null, not a variance at
 zero, so `sd(g) ~ z` against `sd(g) ~ 1`, and `(1 | g)` against `sd(g) ~ z`,
-are refused. The one added standard deviation is matched by grouping, not by
-the raw coefficient string and not by count alone: a one-group `sd:(Intercept)`,
-a plain `resd:g`, and a two-group `sd:g: (Intercept)` are the same component `g`,
-and the same rule applies to `sd_phylo` and a phylogenetic intercept. `(1 | g)`
-against `(1 | h) + (1 | k)` is refused when the statistic is positive. A clearly
-negative statistic on that pair is still reported as not nested, before the
-label check.
+are refused. The one added standard deviation is matched by its covariance
+structure and its grouping, not by the raw coefficient string and not by count
+alone: a one-group `sd:(Intercept)`, a plain `resd:g`, and a two-group
+`sd:g: (Intercept)` are the same iid component on `g`, and `sd_phylo` is the
+same component as a phylogenetic intercept on that grouping. An iid intercept
+and a phylogenetic, spatial, animal, or relmat intercept on the same grouping
+are different components, so `phylo(1 | sp)` against `(1 | sp) + (1 | g)` is
+refused. `(1 | g)` against `(1 | h) + (1 | k)` is refused when the statistic
+is positive. A clearly negative statistic on that pair is still reported as
+not nested, before the label check.
 `mixture = true` also refuses a clearly negative statistic, one below
 `-1e-6 * max(1, |loglik(full)|, |loglik(reduced)|)`, as "not nested or a fit did
 not converge", instead of returning `pvalue = 0.5`. A statistic within that margin
@@ -374,31 +377,158 @@ end
 # formula. Two groups in that block are `sd:g: (Intercept)` and `sd:h: (Intercept)`,
 # and a plain `(1 | h)` moves into the same block once any `sd` formula is present.
 # `sd_phylo:(Intercept)` and a phylogenetic `resd` intercept are the same kind of
-# split. Match on the grouping, and keep the raw strings for the refusal message.
+# split. The canonical key is `structure:grouping` (`iid:g`, `phylo:species`),
+# so a structured intercept does not alias an iid intercept on the same grouping.
+# The raw coefficient strings stay in the refusal message.
+#
+# Structure comes from the fitted term, not from the spelling of the coefficient.
+# An `:sd_phylo` block is phylogenetic. An `:sd` block reads `sd_targets` (so
+# `sd(g, spatial)` is `spatial`, and a plain bar pulled into that block, which
+# has no target, is `iid`). A `:resd` name is matched to the formula's ordinary
+# bars and structured markers. Where an ordinary intercept shares the marker's
+# grouping, the structured-plus-ranef route stores the ordinary one as `g_iid`
+# and the marker as `g` (`_drm_gaussian_structured_plus_ranef`); that label is
+# emitted only for a collision the formula actually contains. A temporal fit's
+# `ranef.temporal` record is used instead: its bare group is the temporal SD,
+# and the stable field is `g_iid` or `g_phylo`.
+_sd_structure_token(level::Symbol) = if level === :phylogenetic
+    "phylo"
+elseif level === :phylogenetic_interaction
+    "phylo_interaction"
+else
+    String(level)
+end
+
+_sd_key(structure::AbstractString, group::AbstractString) = string(structure, ":", group)
+
 function _canonical_sd_label(fit::DrmFit, label::AbstractString)
     i = findfirst(':', label)
     i === nothing && return String(label)
     block = label[1:prevind(label, i)]
     rest = label[nextind(label, i):end]
     if block == "sd" || block == "sd_phylo"
-        return _canonical_sd_block_name(fit, block, rest, label)
+        group = _sd_intercept_group(fit, block, rest)
+        group === nothing && return String(label)
+        structure = _sd_block_structure(fit, block, group)
+        structure === nothing && return String(label)
+        return _sd_key(structure, group)
     elseif block == "resd"
-        return rest
+        return _canonical_resd_name(fit, rest)
     end
     return String(label)
 end
 
 # `"g: (Intercept)"` carries its group. A bare `"(Intercept)"` is the only
-# component of that block, so the group comes from the formula.
-function _canonical_sd_block_name(fit::DrmFit, block::AbstractString, rest::AbstractString,
-                                  label::AbstractString)
+# component of that block, so the group comes from the formula. `nothing` when
+# this coefficient is not an intercept the formula can name.
+function _sd_intercept_group(fit::DrmFit, block::AbstractString, rest::AbstractString)
     suffix = ": (Intercept)"
     if endswith(rest, suffix)
         return chop(rest; tail = length(suffix))
     end
-    rest == "(Intercept)" || return String(label)
-    group = _bare_sd_intercept_group(fit, block)
-    return group === nothing ? String(label) : group
+    rest == "(Intercept)" || return nothing
+    return _bare_sd_intercept_group(fit, block)
+end
+
+# `:sd_phylo` is phylogenetic. A plain `:sd` column is the level of the one
+# `sd()` target on that grouping, or `iid` when the column is an ordinary bar
+# with no target of its own. `nothing` when several targets disagree.
+function _sd_block_structure(fit::DrmFit, block::AbstractString, group::AbstractString)
+    block == "sd_phylo" && return "phylo"
+    f = fit.formula
+    f isa DrmFormula || return "iid"
+    levels = Symbol[]
+    for item in _sd_target_parts(f)
+        t = item.target
+        String(t.group) == group || continue
+        push!(levels, t.level)
+    end
+    unique!(levels)
+    isempty(levels) && return "iid"
+    return length(levels) == 1 ? _sd_structure_token(only(levels)) : nothing
+end
+
+function _canonical_resd_name(fit::DrmFit, name::AbstractString)
+    temporal = _temporal_sd_keys(fit)
+    if temporal !== nothing
+        return get(temporal, String(name), String(name))
+    end
+    keyed = _formula_resd_keys(fit)
+    keyed === nothing && return String(name)
+    return get(keyed, String(name), String(name))
+end
+
+# `ranef.temporal` is the fitted temporal term. The bare group name is that
+# term's SD. A stable ordinary intercept is `g_iid`; a paired phylogenetic
+# field is `g_phylo`. The two stable fields are never both present.
+function _temporal_sd_keys(fit::DrmFit)
+    re = fit.ranef
+    (re isa NamedTuple && hasproperty(re, :temporal)) || return nothing
+    info = re.temporal
+    hasproperty(info, :group) || return nothing
+    g = String(info.group)
+    out = Dict{String,String}(g => _sd_key("temporal", g))
+    if get(info, :has_ordinary, false) === true
+        out[g * "_iid"] = _sd_key("iid", g)
+    elseif get(info, :phylo, nothing) !== nothing
+        out[g * "_phylo"] = _sd_key("phylo", g)
+    end
+    return out
+end
+
+# Coefficient name → canonical key, from the mean formula's ordinary bars and
+# structured markers (`phylo` / `spatial` / `animal` / `relmat`). A name this
+# does not predict is left out, and the caller keeps the raw string.
+function _formula_resd_keys(fit::DrmFit)
+    f = fit.formula
+    f isa DrmFormula || return nothing
+    mu = _formula_mu_rhs(f)
+    mu === nothing && return nothing
+    local split
+    try
+        split = _split_ranef(mu;
+            allow_phylo_slope = true, allow_phylo_slope_only = true,
+            allow_animal_slope = true, allow_animal_intercept_slope = true,
+            allow_relmat_slope = true, allow_relmat_intercept_slope = true,
+            allow_spatial_slope = true, allow_spatial_intercept_slope = true,
+            allow_temporal = true)
+    catch
+        return nothing
+    end
+    _, re, _, structured, structured_slope, _, animal_slope = split
+    markers = _collect_structured(mu)
+    structured_groups = Set(last(marker) for marker in markers)
+    out = Dict{String,String}()
+    for (lhs, grp) in re
+        kind_var = try
+            _re_kind(lhs)
+        catch
+            continue
+        end
+        kind, var = kind_var
+        if kind === :intercept
+            # Collision with a structured marker on this grouping: the ordinary
+            # intercept is stored as `g_iid`, the marker keeps the bare group.
+            label = grp in structured_groups ? string(grp, "_iid") : String(grp)
+            out[label] = _sd_key("iid", String(grp))
+        elseif kind === :slope && var !== nothing
+            label = string(grp, ":", var)
+            out[label] = _sd_key("iid", label)
+        end
+    end
+    for (kind, grp) in markers
+        label = String(grp)
+        haskey(out, label) || (out[label] = _sd_key(_sd_structure_token(kind), label))
+    end
+    if structured !== nothing
+        slope = structured_slope !== nothing ? structured_slope : animal_slope
+        kind, grp = structured
+        if slope !== nothing
+            label = string(grp, ":", slope)
+            haskey(out, label) || (out[label] = _sd_key(_sd_structure_token(kind), label))
+        end
+    end
+    return out
 end
 
 function _formula_mu_rhs(f::DrmFormula)
@@ -432,7 +562,11 @@ function _bare_sd_intercept_group(fit::DrmFit, block::AbstractString)
     end
     block == "sd" || return nothing
     groups = unique(String(grp) for (_, grp) in re)
-    return length(groups) == 1 ? only(groups) : nothing
+    length(groups) == 1 && return only(groups)
+    # `sd(g, spatial)` (and animal / relmat) has no ordinary `(1 | g)` bar.
+    # The one `sd()` target names the grouping.
+    targets = _sd_target_parts(f)
+    return length(targets) == 1 ? String(only(targets).target.group) : nothing
 end
 
 _canonical_sd_labels(fit::DrmFit, labels) = [_canonical_sd_label(fit, s) for s in labels]

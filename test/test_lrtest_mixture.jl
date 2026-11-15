@@ -249,3 +249,86 @@ end
     @test t.reference === :chibar_0_1
     @test t.pvalue ≈ 0.5 * Distributions.ccdf(Distributions.Chisq(1), max(t.statistic, 0)) rtol = 1e-12
 end
+
+# `phylo(1 | sp)` and `(1 | sp)` are both stored as `resd:sp`. They are not the
+# same component. 4-tip tree, m = 6, seed 41. Each statistic is positive, so
+# the refusal is the label guard.
+@testset "a phylogenetic intercept is not an iid intercept on the same group" begin
+    Random.seed!(41)
+    phy = DRModels.augmented_phy("((t1:1,t2:1):1,(t3:1,t4:1):1);")
+    tips = String.(phy.leaf_names)
+    m = 6
+    sp = repeat(tips, inner = m)
+    ng = length(tips)
+    g = repeat(1:ng, outer = m)
+    nn = length(sp)
+    x = randn(nn)
+    tip_eff = Dict(tips[i] => 0.9 * randn() for i in eachindex(tips))
+    y = 0.3 .+ 0.25 .* x .+ [tip_eff[s] for s in sp] .+ 0.8 .* randn(ng)[g] .+
+        0.35 .* randn(nn)
+    d = (; y, x, sp, g)
+    sig = @formula(sigma ~ 1)
+    phylo_only = drm(bf(@formula(y ~ x + phylo(1 | sp)), sig), Gaussian(); data = d, tree = phy)
+    iid_only = drm(bf(@formula(y ~ x + (1 | sp)), sig), Gaussian(); data = d)
+    iid_both = drm(bf(@formula(y ~ x + (1 | sp) + (1 | g)), sig), Gaussian(); data = d)
+    phylo_g = drm(bf(@formula(y ~ x + phylo(1 | sp) + (1 | g)), sig),
+                  Gaussian(); data = d, tree = phy)
+    function refused(reduced, full)
+        err = try
+            lrtest(reduced, full; mixture = true)
+            nothing
+        catch e
+            e
+        end
+        @test err isa ArgumentError
+        @test occursin("mixture = true", err.msg)
+        @test occursin("label", err.msg)
+        @test occursin("not that pair", err.msg)
+        return err
+    end
+    # (1) phylo(1 | sp) against (1 | sp) + (1 | g)
+    err = refused(phylo_only, iid_both)
+    @test occursin("[resd:sp]", err.msg)
+    @test occursin("resd:g", err.msg)
+    # (2) (1 | sp) against phylo(1 | sp) + (1 | g)
+    err = refused(iid_only, phylo_g)
+    @test occursin("[resd:sp]", err.msg)
+    @test occursin("resd:g", err.msg)
+end
+
+# `spatial(1 | g)` is also stored as `resd:g`, the same string as `(1 | g)`.
+# The public Gaussian route fixes the range, so the fit has one SD and no
+# `:range` block, and `spatial(1 | g)` against `(1 | g) + (1 | h)` would pass
+# the one-SD count. `spatial(1 | g)` cannot be combined with an ordinary bar
+# (the router refuses it), so the mirror pair does not fit. `animal(1 | g)` and
+# `relmat(1 | g)` use the same bare-group `resd` label and the same `g_iid`
+# collision label when an ordinary intercept shares the grouping; the structure
+# key covers them on that metadata.
+@testset "a spatial intercept is not an iid intercept on the same group" begin
+    Random.seed!(41)
+    G = 4
+    m = 6
+    nn = G * m
+    g = repeat(1:G, inner = m)
+    h = repeat(1:G, outer = m)
+    x = randn(nn)
+    y = 0.2 .+ 0.3 .* x .+ (0.9 .* randn(G))[g] .+ (0.7 .* randn(G))[h] .+ 0.35 .* randn(nn)
+    d = (; y, x, g, h)
+    coords = Dict(i => [Float64(i), 0.0] for i in 1:G)
+    sig = @formula(sigma ~ 1)
+    spatial_only = drm(bf(@formula(y ~ x + spatial(1 | g)), sig), Gaussian();
+                       data = d, coords = coords)
+    iid_both = drm(bf(@formula(y ~ x + (1 | g) + (1 | h)), sig), Gaussian(); data = d)
+    err = try
+        lrtest(spatial_only, iid_both; mixture = true)
+        nothing
+    catch e
+        e
+    end
+    @test err isa ArgumentError
+    @test occursin("mixture = true", err.msg)
+    @test occursin("label", err.msg)
+    @test occursin("not that pair", err.msg)
+    @test occursin("[resd:g]", err.msg)
+    @test occursin("resd:h", err.msg)
+end
