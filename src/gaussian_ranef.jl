@@ -784,6 +784,8 @@ function _re_lbfgs_with_restart(nll, θ0::AbstractVector, θ0_restart::AbstractV
 end
 
 _sd_prior_stationary(score) = all(isfinite, score) && maximum(abs, score) <= 1e-6
+_multi_sd_prior_converged(optim_ok, score, theta, rows) = optim_ok && _sd_prior_stationary(score) &&
+    all(row -> _sd_prior_interior(theta[row.index]) && abs(theta[row.index]) < 30.0, rows)
 # Reject a numerically zero or overflowing variance even when a nearly flat
 # Gamma density makes the score alone look small. This is not an optimizer bound.
 _sd_prior_interior(eta) = isfinite(eta) && 0 < exp(2eta) < Inf && isfinite(exp(-2eta))
@@ -1404,7 +1406,8 @@ function _reml_add_restriction(nll_ml_val, XtVinvX, p::Int)
 end
 
 function _fit_multi_ranef_gaussian(fam::Gaussian, y, Xμ, Xσ, comps, nmμ, nmσ, g_tol;
-                                   reml::Bool = false)
+                                   reml::Bool = false, prior_rows=nothing,
+                                   sd_priors=nothing, prior_specs=nothing)
     n = length(y); pμ, pσ = size(Xμ, 2), size(Xσ, 2)
     K = length(comps)
     # #977: Z is kept sparse (one nonzero per component per row) and the Float64
@@ -1418,7 +1421,7 @@ function _fit_multi_ranef_gaussian(fam::Gaussian, y, Xμ, Xσ, comps, nmμ, nmσ
     cache = Ref{Any}(nothing)     # factor at the last Float64 θ: grad! reuses nll's
     Zdense = Ref{Union{Nothing,Matrix{Float64}}}(nothing)
     _zdense() = (Zdense[] === nothing && (Zdense[] = Matrix(des.Z)); Zdense[]::Matrix{Float64})
-    function nll(θ)
+    function data_nll(θ)
         βμ = θ[1:pμ]; βσ = θ[pμ+1:pμ+pσ]
         ημ = Xμ * βμ
         ησ = clamp.(Xσ * βσ, -30.0, 30.0)          # bound σ predictor: keep exp finite
@@ -1442,7 +1445,7 @@ function _fit_multi_ranef_gaussian(fam::Gaussian, y, Xμ, Xσ, comps, nmμ, nmσ
         return val
     end
 
-    function grad!(Gout, θ)
+    function data_grad!(Gout, θ)
         fill!(Gout, 0.0)
         βμ = θ[1:pμ]; βσ = θ[pμ+1:pμ+pσ]
         ημ = Xμ * βμ
@@ -1473,6 +1476,21 @@ function _fit_multi_ranef_gaussian(fam::Gaussian, y, Xμ, Xσ, comps, nmμ, nmσ
             Gout[pμ+pσ+k] = sum(1 .- dH[cols]) - sum(abs2, bscaled[cols])
         end
         return Gout
+    end
+    penalized = prior_rows !== nothing
+    nll(θ) = penalized ? data_nll(θ) + _fixed_prior_value(prior_rows, θ) +
+        sum((_sd_prior_value(row, θ) for row in sd_priors); init=zero(eltype(θ))) : data_nll(θ)
+    function grad!(Gout, θ)
+        data_grad!(Gout, θ)
+        if penalized
+            for row in prior_rows
+                Gout[row.index] += row.precision * (θ[row.index] - row.mean)
+            end
+            for row in sd_priors
+                Gout[row.index] += row.rate * exp(θ[row.index]) - (row.shape - 1)
+            end
+        end
+        Gout
     end
     βμ0 = Xμ \ y; res0 = y - Xμ * βμ0
     s0 = std(res0) / sqrt(K + 1)                   # balanced variance split: resid + K REs
@@ -1506,6 +1524,9 @@ function _fit_multi_ranef_gaussian(fam::Gaussian, y, Xμ, Xσ, comps, nmμ, nmσ
     end
     res = Optim.optimize(od, θ0, Optim.LBFGS(), Optim.Options(g_tol = g_tol))
     θ̂ = Optim.minimizer(res)
+    if penalized && any(row -> abs(θ̂[row.index]) >= 30.0, sd_priors)
+        throw(ArgumentError("targeted random-effect SD reached the likelihood clamp; no interior prior fit is available"))
+    end
     # vcov from the AD Hessian of `nll`. `nll` returns a flat 1e18 penalty when
     # the capacitance factorisation fails, so ForwardDiff's directional probes near a
     # near-singular capacitance (extreme σ ratios) can straddle that branch and
@@ -1558,7 +1579,16 @@ function _fit_multi_ranef_gaussian(fam::Gaussian, y, Xμ, Xσ, comps, nmμ, nmσ
         end
         d
     end
-    fit = _withranef(_withnll(DrmFit(fam, blocks, names, θ̂, V, -nll(θ̂), n, drm_optim_converged(res), means, obs, scales), nll, grad!), blup)
+    converged = drm_optim_converged(res)
+    if penalized && !isempty(sd_priors)
+        score = zeros(length(θ̂)); grad!(score, θ̂)
+        converged = _multi_sd_prior_converged(converged, score, θ̂, sd_priors)
+    end
+    fit = _withranef(_withnll(DrmFit(fam, blocks, names, θ̂, V, -data_nll(θ̂), n, converged, means, obs, scales), nll, grad!), blup)
+    if penalized
+        return isempty(sd_priors) ? _with_fixed_priors(fit, prior_rows, data_nll; preserve_grad=true) :
+               _with_multi_sd_priors(fit, prior_rows, sd_priors, data_nll, prior_specs)
+    end
     # Profile intervals reuse the ML nll (same convention as the `(1 | g)` REML route).
     reml && return _withreml(fit, -nll_reml(θ̂), -nll(θ̂))
     return fit

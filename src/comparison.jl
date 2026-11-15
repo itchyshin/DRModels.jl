@@ -483,7 +483,14 @@ function update(fit::DrmFit, formula, args...; data, kwargs...)
         stored = Base.structdiff(stored, NamedTuple{(:priors,)})
     end
     merged = merge(stored, NamedTuple(kwargs))
-    return drm(formula, fit.family; data = data, merged...)
+    refit = drm(formula, fit.family; data = data, merged...)
+    # Replay the resolved specifications, while retaining the original table for
+    # provenance. Do not reinterpret a broad selector against the new formula.
+    if _is_fixed_prior_fit(fit) && haskey(fit.penalty, :input_table) &&
+            haskey(merged, :priors) && !haskey(kwargs, :priors)
+        return _with_prior_table_input(refit, fit.penalty.input_table)
+    end
+    return refit
 end
 
 # Estimation options `DrmFit` actually stores. `:ML` and `:LA` are `drm`
