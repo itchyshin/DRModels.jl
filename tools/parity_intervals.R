@@ -121,13 +121,21 @@ list(
     id    = "fe_skew_normal",
     label = "Skew-normal (mu ~ x, sigma ~ z, nu ~ 1), fixed effects",
     build = function() {
-      set.seed(20260608); n <- 500; nu <- 1.6
-      x <- rnorm(n); z <- rnorm(n)
-      mu <- 0.20 + 0.45 * x; sigma <- exp(-0.35 + 0.18 * z)
-      delta <- nu / sqrt(1 + nu^2); ms <- delta * sqrt(2 / pi)
-      omega <- sigma / sqrt(1 - ms^2); xi <- mu - omega * ms
-      data.frame(y = xi + omega * (delta * abs(rnorm(n)) + sqrt(1 - delta^2) * rnorm(n)),
-                 x = x, z = z)
+      set.seed(20260608L)
+      n <- 500L
+      slant <- 1.6
+      x <- rnorm(n)
+      z <- rnorm(n)
+      u <- rnorm(n)
+      v <- rnorm(n)
+      mu <- 0.20 + 0.45 * x
+      sigma <- exp(-0.35 + 0.18 * z)
+      delta <- slant / sqrt(1 + slant^2)
+      m <- delta * sqrt(2 / pi)
+      omega <- sigma / sqrt(1 - m^2)
+      xi <- mu - omega * m
+      y <- xi + omega * (delta * abs(u) + sqrt(1 - delta^2) * v)
+      data.frame(y = y, x = x, z = z)
     },
     formula = function() bf(y ~ x, sigma ~ z, nu ~ 1),
     family  = function() skew_normal()
