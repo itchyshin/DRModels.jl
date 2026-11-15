@@ -141,7 +141,7 @@ using Distributions: MvNormal, Normal, logpdf
         @test Dict(fit.coefnames)[:temporal_decay] == [lbl]
         tp = temporal_parameters(fit)
         @test tp.decay ≈ exp(only(coef(fit, :temporal_decay)))
-        @test predict(fit, d) ≈ fitted(fit) ≈ X * coef(fit, :mu)
+        @test predict(fit, d) ≈ fitted(fit; re = :zero) ≈ X * coef(fit, :mu)
         @test structured_effects(fit) == [(dpar = :mu, kind = :temporal, grouping = :id)]
         # conditional modes against the dense model: temporal σ_t² R V⁻¹ r (rows),
         # intercept σ_b² Zᵀ V⁻¹ r (series in first-seen order)
@@ -160,7 +160,7 @@ using Distributions: MvNormal, Normal, logpdf
         d = sim_data(StableRNG(71); S = 300, sb = 0.4)
         fit = drm(fOUi, Gaussian(); data = d)
         tp = temporal_parameters(fit)
-        E = simulate(fit; nsim = 400, rng = StableRNG(72)) .- fitted(fit)
+        E = simulate(fit; nsim = 400, rng = StableRNG(72)) .- fitted(fit; re = :zero)
         v_model = tp.sd^2 + tp.sd_iid^2 + tp.sigma^2
         @test mean(var(E; dims = 1)) ≈ v_model rtol = 0.03
         # covariance of two rows of one series = σ_t² e^{−λ|Δt|} + σ_b²

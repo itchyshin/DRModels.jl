@@ -53,7 +53,7 @@ confint(fit; method = :profile)
 ## Fitted values and residuals
 
 ```@example wf
-ŷ = fitted(fit)            # fitted means (Xβ̂)
+ŷ = fitted(fit)            # fitted means (Xβ̂; plus the fitted random-effect modes, if any)
 res = residuals(fit)       # observed − fitted
 (n = length(res), sum_resid = round(sum(res), digits = 6))
 ```
