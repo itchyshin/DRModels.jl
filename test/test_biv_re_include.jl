@@ -307,6 +307,8 @@ end
         @test errz isa ArgumentError && occursin("`zall` is zero on every row (a column of zeros", msgz)
         @test occursin("Remove or recode the term that is zero on every row, or use method = :ML.", msgz)
         @test !occursin("afresh", msgz) && !occursin("factor level", msgz) && !occursin("level", msgz)
+        # the cause is a column of zeros, so the text must not blame a duplicate or aliased column
+        @test !occursin("duplicate", msgz) && !occursin("aliased column", msgz) && !occursin("equals a combination", msgz)
         # the advice works: drop the term (REML) or use ML
         @test isfinite(loglikelihood(drm(mk(@formula(y1m ~ x1 + (1 | p | g))), Gaussian(); data = merge(d0, (; zall)), missing = inc, method = :REML)))
         @test isfinite(loglikelihood(drm(mk(@formula(y1m ~ x1 + zall + (1 | p | g))), Gaussian(); data = merge(d0, (; zall)), missing = inc, method = :ML)))
@@ -322,6 +324,7 @@ end
         msgc = errc isa ArgumentError ? errc.msg : sprint(showerror, errc)
         @test errc isa ArgumentError && occursin("is zero on every row (a column of zeros", msgc) && !occursin("afresh", msgc)
         @test occursin("an interaction between factors with an empty cell", msgc)
+        @test !occursin("duplicate", msgc) && !occursin("aliased column", msgc) && !occursin("equals a combination", msgc)
         # the advice works: drop the empty interaction, or use ML
         @test isfinite(loglikelihood(drm(mk(@formula(y1m ~ x1 + fa + fb + (1 | p | g))), Gaussian(); data = dcell, missing = inc, method = :REML)))
         @test isfinite(loglikelihood(drm(mk(@formula(y1m ~ x1 + fa * fb + (1 | p | g))), Gaussian(); data = dcell, missing = inc, method = :ML)))
