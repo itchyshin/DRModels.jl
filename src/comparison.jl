@@ -94,10 +94,13 @@ correlation, whose null value is interior, so the plain `χ²(1)` is the right
 test. Use a parametric bootstrap for the first of these.
 A slope on the log standard deviation is an interior null, not a variance at
 zero, so `sd(g) ~ z` against `sd(g) ~ 1`, and `(1 | g)` against `sd(g) ~ z`,
-are refused. The one added standard deviation is matched by label, not by
-count: `(1 | g)` against `(1 | h) + (1 | k)` is refused when the statistic is
-positive. A clearly negative statistic on that pair is still reported as not
-nested, before the label check.
+are refused. The one added standard deviation is matched by grouping, not by
+the raw coefficient string and not by count alone: a one-group `sd:(Intercept)`,
+a plain `resd:g`, and a two-group `sd:g: (Intercept)` are the same component `g`,
+and the same rule applies to `sd_phylo` and a phylogenetic intercept. `(1 | g)`
+against `(1 | h) + (1 | k)` is refused when the statistic is positive. A clearly
+negative statistic on that pair is still reported as not nested, before the
+label check.
 `mixture = true` also refuses a clearly negative statistic, one below
 `-1e-6 * max(1, |loglik(full)|, |loglik(reduced)|)`, as "not nested or a fit did
 not converge", instead of returning `pvalue = 0.5`. A statistic within that margin
@@ -366,10 +369,79 @@ function _vc_sd_and_cor_labels(fit::DrmFit)
     return sd, cor
 end
 
+# The same random-effect SD is not stored under one spelling. A plain `(1 | g)`
+# is `resd:g`. One `sd(g) ~ 1` is `sd:(Intercept)`, with the group only on the
+# formula. Two groups in that block are `sd:g: (Intercept)` and `sd:h: (Intercept)`,
+# and a plain `(1 | h)` moves into the same block once any `sd` formula is present.
+# `sd_phylo:(Intercept)` and a phylogenetic `resd` intercept are the same kind of
+# split. Match on the grouping, and keep the raw strings for the refusal message.
+function _canonical_sd_label(fit::DrmFit, label::AbstractString)
+    i = findfirst(':', label)
+    i === nothing && return String(label)
+    block = label[1:prevind(label, i)]
+    rest = label[nextind(label, i):end]
+    if block == "sd" || block == "sd_phylo"
+        return _canonical_sd_block_name(fit, block, rest, label)
+    elseif block == "resd"
+        return rest
+    end
+    return String(label)
+end
+
+# `"g: (Intercept)"` carries its group. A bare `"(Intercept)"` is the only
+# component of that block, so the group comes from the formula.
+function _canonical_sd_block_name(fit::DrmFit, block::AbstractString, rest::AbstractString,
+                                  label::AbstractString)
+    suffix = ": (Intercept)"
+    if endswith(rest, suffix)
+        return chop(rest; tail = length(suffix))
+    end
+    rest == "(Intercept)" || return String(label)
+    group = _bare_sd_intercept_group(fit, block)
+    return group === nothing ? String(label) : group
+end
+
+function _formula_mu_rhs(f::DrmFormula)
+    for (p, rhs) in f.forms
+        p === :mu && return rhs
+    end
+    return nothing
+end
+
+# Group of a one-component `:sd` or `:sd_phylo` intercept. `nothing` when the
+# formula does not name exactly one group for that block; the raw label is then
+# left as it is, so two unnamed intercepts cannot alias each other.
+function _bare_sd_intercept_group(fit::DrmFit, block::AbstractString)
+    f = fit.formula
+    f isa DrmFormula || return nothing
+    if block == "sd_phylo"
+        parts = _sdphylo_parts(f)
+        length(parts) == 1 && return String(first(parts)[1])
+    end
+    mu = _formula_mu_rhs(f)
+    mu === nothing && return nothing
+    local re, structured
+    try
+        _, re, _, structured = _split_ranef(mu)
+    catch
+        return nothing
+    end
+    if block == "sd_phylo"
+        structured !== nothing && structured[1] === :phylo && return String(structured[2])
+        return nothing
+    end
+    block == "sd" || return nothing
+    groups = unique(String(grp) for (_, grp) in re)
+    return length(groups) == 1 ? only(groups) : nothing
+end
+
+_canonical_sd_labels(fit::DrmFit, labels) = [_canonical_sd_label(fit, s) for s in labels]
+
 function _matching_variance_labels_guard(reduced::DrmFit, full::DrmFit)
     sd_r, cor_r = _vc_sd_and_cor_labels(reduced)
     sd_f, cor_f = _vc_sd_and_cor_labels(full)
-    extra = _added_string_labels(sd_r, sd_f)
+    extra = _added_string_labels(_canonical_sd_labels(reduced, sd_r),
+                                 _canonical_sd_labels(full, sd_f))
     if extra !== nothing && length(extra) == 1 && _same_string_multiset(cor_r, cor_f)
         return nothing
     end

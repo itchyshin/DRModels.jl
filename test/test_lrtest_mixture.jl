@@ -187,6 +187,65 @@ end
     @test err isa ArgumentError
     @test occursin("mixture = true", err.msg)
     @test occursin("label", err.msg)
-    @test occursin("g", err.msg)
-    @test occursin("h", err.msg)
+    # The example in the message always names `(1 | g)` and `(1 | h)`, so the
+    # check has to be the labels the guard actually printed.
+    @test occursin("[resd:g]", err.msg)
+    @test occursin("[resd:h, resd:k]", err.msg)
+end
+
+# A one-group `sd(g) ~ 1` is labelled `sd:(Intercept)`. Two groups, or a plain
+# `(1 | h)` once any sd formula is present, are `sd:g: (Intercept)` and
+# `sd:h: (Intercept)`. A plain random intercept is `resd:g`. Those spellings are
+# one component. Seed 41, G = 20, m = 8.
+@testset "sd-block labels and plain random intercepts are the same group" begin
+    Random.seed!(41)
+    G = 20; m = 8; nn = G * m
+    g = repeat(1:G, inner = m)
+    h = repeat(1:G, outer = m)
+    x = randn(nn)
+    y = 0.2 .+ 0.4 .* x .+ randn(G)[g] .+ 0.7 .* randn(G)[h] .+ 0.5 .* randn(nn)
+    d = (; y, x, g, h)
+    red_sd = drm(bf(@formula(y ~ x + (1 | g)), @formula(sigma ~ 1), @formula(sd(g) ~ 1)),
+                 Gaussian(); data = d)
+    full_sd = drm(bf(@formula(y ~ x + (1 | g) + (1 | h)), @formula(sigma ~ 1),
+                   @formula(sd(g) ~ 1)),
+                  Gaussian(); data = d)
+    # (a) sd(g) ~ 1 on both sides; full adds (1 | h)
+    t = lrtest(red_sd, full_sd; mixture = true)
+    @test t.dof == 1
+    @test t.reference === :chibar_0_1
+    @test t.pvalue ≈ 0.5 * Distributions.ccdf(Distributions.Chisq(1), max(t.statistic, 0)) rtol = 1e-12
+    # (c) plain (1 | g), no sd formula, against the same full model
+    red_re = drm(bf(@formula(y ~ x + (1 | g)), @formula(sigma ~ 1)), Gaussian(); data = d)
+    t = lrtest(red_re, full_sd; mixture = true)
+    @test t.dof == 1
+    @test t.reference === :chibar_0_1
+    @test t.pvalue ≈ 0.5 * Distributions.ccdf(Distributions.Chisq(1), max(t.statistic, 0)) rtol = 1e-12
+end
+
+# Plain `phylo(1 | species)` is `resd:species`. The same intercept beside another
+# group, with `sd(species, phylogenetic) ~ 1`, is `sd_phylo:(Intercept)`.
+@testset "a phylogenetic intercept keeps its group under sd_phylo" begin
+    Random.seed!(41)
+    phy = DRModels.augmented_phy("((t1:1,t2:1):1,(t3:1,t4:1):1);")
+    tips = String.(phy.leaf_names)
+    m = 4
+    species = repeat(tips, inner = m)
+    ng = length(tips)
+    g = repeat(1:ng, outer = m)
+    nn = length(species)
+    x = randn(nn)
+    tip_eff = Dict(tips[i] => 0.8 * randn() for i in eachindex(tips))
+    y = 0.3 .+ 0.25 .* x .+ [tip_eff[s] for s in species] .+ 0.6 .* randn(ng)[g] .+
+        0.4 .* randn(nn)
+    d = (; y, x, species, g)
+    red = drm(bf(@formula(y ~ x + phylo(1 | species)), @formula(sigma ~ 1)),
+              Gaussian(); data = d, tree = phy)
+    full = drm(bf(@formula(y ~ x + (1 | g) + phylo(1 | species)),
+                  @formula(sigma ~ 1), @formula(sd(species, phylogenetic) ~ 1)),
+               Gaussian(); data = d, tree = phy)
+    t = lrtest(red, full; mixture = true)
+    @test t.dof == 1
+    @test t.reference === :chibar_0_1
+    @test t.pvalue ≈ 0.5 * Distributions.ccdf(Distributions.Chisq(1), max(t.statistic, 0)) rtol = 1e-12
 end
