@@ -172,7 +172,7 @@ function resolve_priors(f, fam; data, priors)
     for response in _formula_responses(f)
         response === nothing && continue
         (sd_intent || (table_rows === nothing && any(p -> p isa SDGammaPrior, priors))) && any(ismissing, _table_column(data, response)) && throw(ArgumentError("SD priors require complete responses"))
-        all(_observed_response_mask(_table_column(data, response))) || throw(ArgumentError("resolve_priors requires complete responses"))
+        _complete_response(_table_column(data, response)) || throw(ArgumentError("resolve_priors requires complete responses"))
     end
     if sd_intent
         cols = Tables.columntable(data)

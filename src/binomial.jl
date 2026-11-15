@@ -298,7 +298,7 @@ function _drm_binomial_fit(f::DrmFormula, fam::Binomial; data, tree = nothing,
         isempty(_sd_parts(f)) && isempty(_sdphylo_parts(f)) || throw(ArgumentError("fixed-effect priors do not support SD formulas"))
         for response in _formula_responses(f)
             response === nothing && continue
-            all(_observed_response_mask(_table_column(data, response))) || throw(ArgumentError("fixed-effect priors require complete responses"))
+            _complete_response(_table_column(data, response)) || throw(ArgumentError("fixed-effect priors require complete responses"))
         end
         _, re0, mv0, st0 = _split_ranef(Dict(f.forms)[:mu])
         isempty(re0) && mv0 === nothing && st0 === nothing || throw(ArgumentError("fixed-effect priors do not support random or structured effects"))

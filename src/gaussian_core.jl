@@ -672,6 +672,11 @@ end
 
 _observed_response_mask(y) = .!isnan.(Vector{Float64}(y))
 
+# True when no entry is `missing` or `NaN`. The prior routes refuse an incomplete
+# response by name; `missing` must reach that refusal, not a `Vector{Float64}`
+# conversion error inside `_observed_response_mask`.
+_complete_response(y) = !any(ismissing, y) && all(_observed_response_mask(y))
+
 function _table_column(data, name::Symbol)
     if data isa NamedTuple
         return getproperty(data, name)
@@ -1290,7 +1295,7 @@ function _drm_gaussian_fit(f::DrmFormula, fam::Gaussian; data, K = nothing, A = 
     if has_sd_prior && any(ismissing, _table_column(data, f.response))
         throw(ArgumentError("SD priors require complete responses"))
     end
-    if priors !== nothing && !all(_observed_response_mask(_table_column(data, f.response)))
+    if priors !== nothing && !_complete_response(_table_column(data, f.response))
         has_sd_prior && throw(ArgumentError("SD priors currently require complete responses"))
         throw(ArgumentError("fixed-effect priors currently require complete responses"))
     end
