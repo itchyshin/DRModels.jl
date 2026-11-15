@@ -8,7 +8,67 @@ human-readable changelog.
 
 ## v0.8.2
 
-- NB2 coordinate-based spatial random intercepts now fit with the fixed-range kernel. Models with a second structured term are refused, including the SD-formula route.
+- `lrtest(...; mixture = true)` identifies an iid random-intercept SD by its covariance structure and group across its different stored labels. Structured and iid components remain distinct, and swapped groups are refused.
+
+- Univariate fits now warn about an aliased fixed-effect design, mark the fit nonconverged and set the aliased coefficient's standard error to `NaN`. Printed tables can report all SEs as `NaN`, bootstrap refits fail and the aliased coefficient's interval is infinite. Bivariate and mixed-family fits are not covered; unreadable inputs and responses with missing values are left to the fitting route.
+
+- `marginal = :Laplace` supports Binomial probit and cloglog links for one mean random intercept or one correlated intercept-slope block, including `cbind` responses. Random slope alone, offsets, `sd()` formulas, VA and REML remain unsupported; the default quadrature route is unchanged.
+
+- Binomial quantile residuals now work with missing responses and with independent or crossed random-slope shapes. Missing-response rows are omitted; the slope and crossed routes use the fixed-effect distribution.
+
+- Binomial bootstrap and default simulation now refuse single random slopes, correlated `(1 + x | g)` blocks and the same-group intercept-plus-slope shape when a fresh random-effect draw is unavailable. Crossed intercepts, a single random intercept and explicit `re = :zero` are unchanged.
+
+- `confint` rows now include `scale`: `:log_sd` or `:sd` for random-effect SD profiles, and `:link` for other rows. Numbers are unchanged; code requiring exactly five fields or comparing to five-field named tuples must be updated.
+
+- Gamma, Beta and Student correlated intercept-slope fits retry a failed default line search with BackTracking before polishing. Fits that did not throw are unchanged; a retry can still report nonconvergence.
+
+- `marginal = :Laplace` supports `CumulativeLogit()` with one ordinary mean random intercept. Slopes, crossed or structured effects, offsets, `sd()` formulas, fixed-only models and `:VA` or `:AGHQ` remain refused. The default quadrature route is unchanged.
+
+- A fit whose optimizer did not converge now prints its final maximum absolute gradient, matching `check_drm(fit).max_abs_grad`; estimates, flags and tolerances do not change.
+
+- `fitted(fit)` is conditional for LogNormal fits with a `sigma` random intercept and Gaussian fits with mean and `sigma` random intercepts on different groups. `re = :zero` remains population-level; routes that keep no modes still refuse the conditional default.
+
+- Conditional `fitted` values are available for zero-inflated Poisson, zero-inflated and zero-truncated NB2 with one mean random intercept, and CumulativeLogit with an independent intercept and slope. `re = :zero` remains population-level; response residuals follow `fitted`.
+
+- Gamma bootstrap now refuses a single random slope or correlated intercept-slope when no fresh random-effect draw is available. Default simulation already refused these shapes and now names the fitted term; explicit `re = :zero` and a single random intercept are unchanged.
+
+- For opt-in Laplace fits of one ordinary mean random intercept in Poisson, NegBinomial2, Binomial, Gamma and Beta models, `fitted` and response residuals now use saved conditional modes. `re = :zero` is unchanged.
+
+- Conditional fitted values and response residuals are available on additional Laplace Binomial probit/cloglog correlated-block and ZeroOneBeta random-intercept routes, the default ZeroOneBeta random-intercept route, and Binomial random-intercept SD-regression routes. These are conditional values, not marginal means; quantile residuals remain population-level or integrated on the stated routes and can differ from drmTMB.
+
+- LogNormal correlated intercept-slope fits retry failed line searches with BackTracking before polishing. Previously successful fits are unchanged; a retried fit can still report nonconvergence.
+
+- Non-Gaussian independent-term Laplace fits ending at the lower log-SD search bound now report `:boundary` and warn about testing a variance against zero. Estimates and likelihood do not change; a profile interval may still fail to converge.
+
+- `lrtest(reduced, full; mixture = true)` offers the asymptotic equal chi-square(0)/chi-square(1) reference for adding exactly one variance with identical fixed effects and no added correlation. The result includes `pvalue_naive` and `reference`. Other comparisons and clearly negative statistics are refused; the default remains the plain chi-square test with its boundary warning.
+
+- Gamma and Binomial bootstrap and default simulation refuse multi-term ordinary random-effect shapes without fresh random-effect draws. Crossed or nested random intercepts remain supported; `re = :zero` requests a conditional draw where supported.
+
+- `residuals(fit; type = :pearson)` is available for fixed-effect Gaussian, Poisson, NegBinomial2, Gamma and Beta models, including diagonal `meta_V` without random effects. Unsupported families and routes, including random effects, are refused; only used rows are returned.
+
+- A random-effect SD profile estimated at or near zero can return an interval with lower limit zero and a searched upper limit instead of failing at the upper search. Interior SD profiles are unchanged.
+
+- Quantile residuals for a lone mean random slope now use the fixed-effect distribution instead of treating the slope as a random intercept. They are not a correct marginal check and can be more dispersed; random-intercept behavior is unchanged.
+
+- `re_sd()` and `vc()` now decode Binomial Laplace correlated-block slope SDs and covariances correctly; blocks with more coefficients return an SD for each coefficient. Fit estimates, standard errors and likelihoods are unchanged.
+
+- Fixed-effect Gaussian REML location standard errors and location-`sigma` covariance now include `sigma` coefficient uncertainty when `sigma` has a regression. ML, REML random-effect fits and estimates are unchanged.
+
+- A second structured term is now refused on non-Gaussian routes instead of being silently dropped. Gaussian and LogNormal two-structured routing is unchanged; the error names the terms and suggests keeping one or using a supported Gaussian model.
+
+- `marginal = :Laplace` supports a fixed-effect `sigma` formula with one ordinary mean random intercept for Gamma, Beta, NegBinomial2 and ZeroOneBeta. Random effects on `sigma`, offsets with a `sigma` formula, slopes and `sd()` formulas remain refused; the default route is unchanged.
+
+- Beta and Student random-slope, LogNormal correlated-slope, and specified multi-term fits now refuse bootstrap and default simulation when no fresh random-effect draw exists. A single LogNormal slope retains its implemented draw, and `re = :zero` remains available.
+
+- `spatial()` now refuses simultaneous `K` and `coords` instead of silently choosing one. Supply just one; single-input fits are unchanged.
+
+- Coordinate-based Gaussian ML and Binomial `spatial(1 | g)` routes now use the median positive pairwise-distance kernel, with the maximum distance as fallback when the median is zero; the Binomial slope and SD-formula variants use it too. Gaussian REML is now accepted. Existing fits on changed routes can differ, the range is fixed rather than estimated, and custom kernels can be supplied through `relmat(..., K = ...)`.
+
+- Crossed Tweedie fits warn and set `fit.geometry = :power_at_bound` when the fitted power is near its search-interval edge. Estimates and the interval are unchanged; these fits already report `is_converged = false`. The power cannot currently be fixed or the interval widened.
+
+- `vc()` and `re_sd()` now accept intercept-only structured SD blocks for the specified Binomial animal, relmat and spatial and Beta spatial routes, and Gaussian `sd(g) ~ 1`. Structured SD regressions with covariates remain refused by these accessors.
+
+- NB2 coordinate-based spatial random intercepts now fit with the fixed-range kernel.
 
 - Gaussian `meta_V` fits with a constant residual scale now support REML, including supported ordinary intercept terms. Structured terms, random slopes and a sigma predictor remain unsupported on this route.
 
@@ -78,7 +138,7 @@ human-readable changelog.
   A factor as a random slope, `(f | g)`, `(1 + f | g)` or `(0 + f | g)`, on any univariate family, and a random effect inside the `zi` or `hu` formula (`zi ~ 1 + (1 | g)`) are refused with an `ArgumentError` that says what to do (drmTMB refuses both). A cross-family pair that contains `LogNormal()` is refused the same way, with the list of supported families. Three inputs now fit and agree with drmTMB 0.8.1: Gaussian `method = :REML` with `y ~ f * x1` and `sigma ~ x1 + f` (a line-search step with a huge `sigma` coefficient made `logdet` fail; it now reports an infinite objective and the search backs off), `CumulativeLogit()` with a string or symbol response (coded 1..K in sorted label order; an `@info` names the order. drmTMB itself refuses a character response and an unordered factor, so this is a Julia convenience and the agreement is with an ordered factor in the same level order), and prior `weights` together with a missing response (the weights follow their rows, as in R). All six are pinned in `test/test_gap_v2_crashes.jl` against `test/fixtures/gap_v2_crashes/r_reference.csv`.
 - **Julia formula syntax still rejects the R double bar.** `@formula` cannot parse the R double bar `(1 + x1 || g)`; the error is raised when the formula is written, before `drm` runs. Write `(1 | g) + (0 + x1 | g)` for the double bar (same log-likelihood as drmTMB). Julia formulas now accept the supported `poly(x, d)` form described above.
 
-- **`method = :REML` now fits eight more Gaussian mean-side designs that drmTMB 0.8.1 fits with `REML = TRUE`.** Slope-only `(0 + x | g)`; several independent scalar terms (`(1 | g) + (0 + x1 | g) + ...`, and crossed `(1 | g) + (1 | g2)`); one `relmat(1 | g)` or `animal(1 | g)`; and `phylo(1 + x | g)` with two SDs, each with a constant residual scale. The objective is the exact restricted likelihood (ML plus half the log-determinant of `X'V^-1X`, minus half `p log(2 pi)`), the same one the existing `(1 | g)` route uses. On three simulated datasets per group the REML logLik agrees with R to 1e-4 or better (see `docs/dev-log/2026-11-09-gaussian-reml-routes.md`). `spatial(1 | g)` and a correlated `(1 + x | g)` block beside another term stay refused, each with its own message. The Gaussian shapes added to maximum likelihood in the same release (unstructured q3/q4 block, labelled q3/q4 block, a correlated block beside intercepts, independent intercept and slope with `sd()`) refuse `method = :REML` with a message saying so. A single labelled q2 block `(1 + x | p | g)` is the ordinary correlated block and fits under REML (no R comparison was run for it). Each of these routes needs a constant `sigma`, no `sigma` random effect and no `meta_V()`; rows with a missing response are dropped first (with a warning), so REML is computed on the complete cases.
+- **`method = :REML` now fits eight more Gaussian mean-side designs that drmTMB 0.8.1 fits with `REML = TRUE`.** Slope-only `(0 + x | g)`; several independent scalar terms (`(1 | g) + (0 + x1 | g) + ...`, and crossed `(1 | g) + (1 | g2)`); one `relmat(1 | g)` or `animal(1 | g)`; and `phylo(1 + x | g)` with two SDs, each with a constant residual scale. The objective is the exact restricted likelihood (ML plus half the log-determinant of `X'V^-1X`, minus half `p log(2 pi)`), the same one the existing `(1 | g)` route uses. On three simulated datasets per group the REML logLik agrees with R to 1e-4 or better (see `docs/dev-log/2026-11-09-gaussian-reml-routes.md`). These initial routes refused `spatial(1 | g)` and correlated blocks beside another term; later additions in this release extend REML to selected shapes as described elsewhere in this section. The initial ML-only shapes (unstructured q3/q4, labelled q3/q4, a correlated block beside intercepts, and independent intercept and slope with `sd()`) also gained additional REML support later in this release. A single labelled q2 block `(1 + x | p | g)` is the ordinary correlated block and fits under REML (no R comparison was run for it). Each of these routes needs a constant `sigma`, no `sigma` random effect and no `meta_V()`; rows with a missing response are dropped first (with a warning), so REML is computed on the complete cases.
 
 - **Gaussian `method = :REML` on more routes.** REML now fits a correlated block of
   3 or 4 coefficients `(1 + x1 + x2 [+ x3] | g)`, a correlated block of 2 to 4
@@ -95,13 +155,11 @@ human-readable changelog.
   forms were compared with R on one shape (ordinary q = 3). The evidence is in
   `docs/dev-log/2026-11-09-gaussian-reml-routes2.md`. These shapes keep a constant
   `sigma` and no `sd()` formula on the correlated blocks (drmTMB refuses REML there
-  too). The bare `spatial(1 | g)` stays ML only: it estimates the exponential range
-  where drmTMB fixes it, so the maximum likelihoods differ by design; the refusal now
-  says so and points to `sd(g, spatial) ~ 1`, which supports REML.
+  too). The coordinate-based bare `spatial(1 | g)` route now uses a fixed range and supports REML, as described above.
 
 - **Gaussian ordinary and crossed random-effect shapes that R fits.** Four
   shapes that the Gaussian mean route refused now fit by exact dense maximum
-  likelihood (ML only; `method = :REML` is refused with a message that says so, except that a single labelled q2 block `(1 + x | p | g)` is the ordinary correlated block and fits under REML):
+  likelihood. Later additions in this release extend REML to selected shapes, as described above:
   an unstructured block of three or four coefficients with no `sd()` formula,
   `(1 + x + z | g)`; a block label `(1 + x | p | g)` when only one term carries
   the label and `sigma` has no random effect; a correlated block beside random
@@ -109,9 +167,9 @@ human-readable changelog.
   `sd(g, coef(·)) ~ …` per block coefficient and `sd(h) ~ …`; and independent
   intercept and slope terms with `sd(g, coef(·)) ~ …`,
   `(1 | g) + (0 + x | g)`. Agreement with drmTMB 0.8.1 on three committed
-  datasets is in `docs/dev-log/2026-11-09-gaussian-sd-gaps.md`. Still refused:
-  a mean `sd(g) ~ …` formula together with a `sigma` random effect, and any
-  correlated block beside a slope term.
+  datasets is in `docs/dev-log/2026-11-09-gaussian-sd-gaps.md`. Later additions
+  support selected correlated-block and mean-SD-with-sigma-effect shapes described
+  below; unsupported combinations remain refused.
 
 - **More Gaussian random-effect shapes that R fits.** Two further groups fit by
   ML and agree with drmTMB 0.8.1 at the optimum on committed datasets (log-likelihood
