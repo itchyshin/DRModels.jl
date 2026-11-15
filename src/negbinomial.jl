@@ -248,10 +248,27 @@ function _drm_negbinomial2_fit(f::DrmFormula, fam::NegBinomial2; data, tree = no
         # `sigma ~ 1` keeps the scalar-dispersion spine; a covariate `sigma`
         # formula routes to the per-observation log-dispersion path (#164).
         kind, grp = st
+        # `_split_ranef` reports only the FIRST structured marker. Without this check a second one
+        # (`spatial(1 | g) + animal(1 | h)`, `phylo(1 | g) + relmat(1 | h)`, ...) is dropped and the
+        # one-term fit is returned as if both had been fitted. Refuse it by name instead.
+        structured_all = _collect_structured(rhs[:mu])
+        length(structured_all) == 1 || throw(ArgumentError(
+            "NegBinomial2() fits one structured random effect (`phylo`, `relmat`, `animal` or `spatial`) " *
+            "on the mean, but the formula has $(length(structured_all)): " *
+            join(("$k(1 | $gname)" for (k, gname) in structured_all), ", ") *
+            ". A second structured term is not implemented here (it would be dropped, not fitted), " *
+            "so it is refused. Keep one structured term, or use `Gaussian()`, which fits two."))
         labels = getproperty(data, grp)
         if kind === :phylo
             tree === nothing && error("phylo(1 | $grp) needs `tree = …`")
             return _withformula(_fit_nb2_phylo_laplace(fam, y, Xμ, Xσ, labels, tree, nmμ, nmσ, grp, g_tol; se = se), f)
+        elseif kind === :spatial && K === nothing && coords !== nothing
+            # Coordinate spatial intercept: drmTMB's fixed-range kernel, exp(-d / r) + 1e-6 I with
+            # r the median positive pairwise distance, exactly as the Poisson and Gamma routes.
+            _, Gsp = _group_index(labels)
+            Csp = _spatial_covariance_from_coords(grp, Gsp, coords, nothing)
+            return _withformula(_fit_nb2_relmat_laplace(fam, y, Xμ, Xσ, Csp, labels, nmμ, nmσ, grp, g_tol;
+                                                          se = se, normalize = true), f)
         elseif kind === :relmat || kind === :animal || kind === :spatial
             # General user-supplied PD covariance C on the mean intercept
             # (relatedness / animal model / precomputed spatial), with the NB2
@@ -267,8 +284,11 @@ function _drm_negbinomial2_fit(f::DrmFormula, fam::NegBinomial2; data, tree = no
     if !isempty(re)                                       # random effect on the mean → GHQ/Laplace or VA (#136)
         isva && (haskey(rhs, :zi) || haskey(rhs, :hu)) &&
             _va_reject(fam, "`zi`/`hu` combined with a random effect")
-        (haskey(rhs, :zi) || haskey(rhs, :hu)) &&
-            error("NegBinomial2() random effects cannot be combined with `zi`/`hu` yet")
+        if haskey(rhs, :zi) || haskey(rhs, :hu)
+            # One ordinary `(1 | g)` with `zi` / `hu`: drmTMB's Laplace objective (`zi_re_laplace.jl`).
+            # Laplace is the only integrator on this route (`:AGHQ` is refused above, REML earlier).
+            return _drm_zi_re_laplace(f, fam; data = data, g_tol = g_tol)
+        end
         if length(re) > 1
             isva && _va_reject(fam, "crossed/multiple random intercepts")
             if _has_indep_slopes(re)
@@ -356,6 +376,14 @@ function _drm_negbin2_sd_regression(f::DrmFormula, fam::NegBinomial2; data,
         data, tree, K, A, Ainv, coords, g_tol, se, nAGQ)
     isempty(_sdphylo_parts(f)) || return _drm_negbin2_phylo_sd_regression(
         f, fam; data, tree, K, A, Ainv, coords, g_tol, se, nAGQ)
+    # Same check as the no-`sd()` route: a second structured term would be dropped, so refuse it.
+    structured_all = _collect_structured(Dict(f.forms)[:mu])
+    length(structured_all) <= 1 || throw(ArgumentError(
+        "NegBinomial2() fits one structured random effect (`phylo`, `relmat`, `animal` or `spatial`) " *
+        "on the mean, but the formula has $(length(structured_all)): " *
+        join(("$k(1 | $gname)" for (k, gname) in structured_all), ", ") *
+        ". A second structured term is not implemented here (it would be dropped, not fitted), " *
+        "so it is refused. Keep one structured term, or use `Gaussian()`, which fits two."))
     spatial_sd_target = any(t.target.level === :spatial for t in _sd_target_parts(f))
     (tree === nothing && (coords === nothing || spatial_sd_target)) ||
         throw(ArgumentError("NegBinomial2 `sd(group) ~ …` supports ordinary effects, " *
@@ -1227,6 +1255,7 @@ function _fit_negbin2_ranef(fam::NegBinomial2, y, Xμ, Xσ, gidx, G, nmμ, nmσ,
     names = [:mu => nmμ, :sigma => nmσ, :resd => [String(grp)]]
     means = Dict(:mu => exp.(_eta_with_offset(Xμ, θ̂[1:pμ], offset))); obs = Dict(:mu => Vector{Float64}(y))   # population μ (b=0)
     scales = Dict(:sigma => _reported_sigma(Xσ * θ̂[(pμ+1):(pμ+pσ)], -20.0, 20.0, 3.0))
+    _record_cond_fit_aghq!(scales, nll, θ̂, bcache, gidx, Zre)   # fitted-row modes for `fitted(fit)`
     return _withiterations(
         _withnll(DrmFit(fam, blocks, names, θ̂, V, -nll(θ̂), n, Optim.converged(res), means, obs, scales), nll),
         Optim.iterations(res))
@@ -1267,6 +1296,7 @@ function _fit_negbin2_corr_ranef(fam::NegBinomial2, y, Xμ, Xσ, xs, gidx, G, nm
     names = [:mu => nmμ, :sigma => nmσ, :recov => ["$(grp):L11", "$(grp):L22", "$(grp):L21"]]
     means = Dict(:mu => exp.(Xμ * θ̂[1:pμ])); obs = Dict(:mu => Vector{Float64}(y))   # population μ (b=0)
     scales = Dict(:sigma => _reported_sigma(Xσ * θ̂[(pμ+1):(pμ+pσ)], -20.0, 20.0, 3.0))
+    _record_cond_fit_aghq!(scales, nll, θ̂, bcache, gidx, Zre)   # fitted-row modes for `fitted(fit)`
     return _withiterations(
         _withnll(DrmFit(fam, blocks, names, θ̂, V, -nll(θ̂), n, Optim.converged(res), means, obs, scales), nll),
         Optim.iterations(res))
@@ -1500,16 +1530,24 @@ struct TruncatedNegBinomial2 end
 
 @drm_entry function drm(f::DrmFormula, fam::TruncatedNegBinomial2; data,
              g_tol::Real = 1e-8, se::Bool = true,
-             nAGQ::Union{Nothing,Int} = nothing)
+             nAGQ::Union{Nothing,Int} = nothing,
+             marginal::Union{Nothing,Symbol} = nothing)
     _drm_entry_guard(f, fam, data)   # #1027 #1022
+    # `marginal` exists only so that `update` / `bootstrap` can repeat a fit of the one-`(1 | g)`
+    # Laplace route (its fit is tagged `:Laplace`); it is refused everywhere else, never ignored.
+    marginal === nothing || marginal === :Laplace || throw(ArgumentError(
+        "TruncatedNegBinomial2() accepts `marginal = :Laplace` only (its random-intercept route); " *
+        "got `marginal = :$marginal`."))
     if !isempty(_sd_parts(f)) || !isempty(_sdphylo_parts(f))
+        marginal === nothing ||
+            _refuse_unsupported_kwargs((:marginal,), f, fam, (:control, :data, :g_tol, :nAGQ, :se, :weights))
         nodes = nAGQ === nothing ? _SD_IID_AGHQ_K : nAGQ
         nodes >= 1 || throw(ArgumentError("nAGQ must be ≥ 1; got $nodes"))
         return _drm_truncated_negbin2_sd_regression(f, fam; data, g_tol, se,
                                                     nAGQ = nodes)
     end
     missing_fit = _fit_observed_response_rows(f, data) do data_observed
-        drm(f, fam; data = data_observed, g_tol = g_tol)
+        drm(f, fam; data = data_observed, g_tol = g_tol, marginal = marginal)
     end
     missing_fit !== nothing && return missing_fit
 
@@ -1517,11 +1555,16 @@ struct TruncatedNegBinomial2 end
         "nAGQ is currently supported for TruncatedNegBinomial2 random-effect SD regression only."))
     _lss_only_gaussian_guard(f, fam)   # #544: refuse, never silently drop, sd() parts
     rhs = Dict(f.forms)
-    for (_, r) in f.forms
+    for (pname, r) in f.forms
         _, re, mv, st = _split_ranef(r)
-        (isempty(re) && mv === nothing && st === nothing) ||
-            error("TruncatedNegBinomial2() currently supports fixed effects only")
+        (isempty(re) && mv === nothing && st === nothing) && continue
+        # One ordinary `(1 | g)` on `mu`: drmTMB's Laplace objective (`zi_re_laplace.jl`); every
+        # other random-effect shape stays refused (the route re-checks and names it).
+        pname === :mu && return _drm_zi_re_laplace(f, fam; data = data, g_tol = g_tol)
+        error("TruncatedNegBinomial2() currently supports fixed effects only")
     end
+    marginal === nothing ||
+        _refuse_unsupported_kwargs((:marginal,), f, fam, (:control, :data, :g_tol, :nAGQ, :se, :weights))
     # Refuse, never silently drop, a formula part this family does not consume.
     # Before this guard `drm(bf(y ~ x, sigma ~ 1, zi ~ w), TruncatedNegBinomial2())`
     # dropped `zi` from the likelihood without a word and fitted the plain

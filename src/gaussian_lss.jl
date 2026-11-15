@@ -320,6 +320,7 @@ function _fit_ranef_gaussian_lss(fam::Gaussian, y, Xμ, Xσ, Zg, gidx, G, nmμ, 
         [C[k] / (1 / exp(2 * ησb[k]) + S[k]) for k in 1:G]
     end
     re = Dict(Symbol(grp) => blup)
+    _record_cond_fit!(scales, (w === nothing ? ones(n) : w) .* blup[gidx])   # fitted-row modes for `fitted(fit)`
     fit = _withranef(_withnll(DrmFit(fam, blocks, names, θ̂, V, -nll(θ̂), n,
                                      converged, means, obs, scales), nll_ml), re)
     if reml
@@ -625,6 +626,7 @@ function _fit_structured_gaussian_lss(fam::Gaussian, y, Xμ, Xσ, Zg, gidx, G, K
     # conditional mean u = D b, so the row contribution is w_i * u[g(i)] and the
     # exported mode is b = u ./ sd_group, the same latent scale as every other
     # family's mode (b ~ N(0, C), effect = sd * b).
+    _record_cond_fit!(scales, w .* blup[gidx])   # fitted-row modes for `fitted(fit)`
     report_sd && !reml && _attach_conditional_structured!(
         scales, w .* blup[gidx], blup ./ exp.(Zg * θ̂[(pμ+pσ+1):end]))
     fit = _withranef(_withnll(DrmFit(fam, blocks, names, θ̂, V, -nll(θ̂), n,
