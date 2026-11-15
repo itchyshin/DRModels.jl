@@ -76,7 +76,15 @@ end
     precision_fit = drm(formula, Poisson(); data, Ainv, se = false)
     @test precision_fit.converged
     @test precision_fit.loglik ≈ fit.loglik atol = 2e-5
-    @test fitted(precision_fit) ≈ fitted(fit)
+    @test fitted(precision_fit) ≈ exp.(coef(precision_fit, :mu)[1] .+
+                                        coef(precision_fit, :mu)[2] .* x .+ log_exposure)
+    @test precision_fit.nll(theta) ≈ oracle atol = 3e-4
+    no_offset_oracle = _poisson_offset_sd_laplace_oracle(
+        theta, y, hcat(ones(length(y)), x), Zg[gidx, :], gidx, Q)
+    @test abs(oracle - no_offset_oracle) > 1e-2
+    # Near an SD boundary, equivalent optimizations can stop at slightly
+    # different points. Check fitted values alongside the shared-point oracle.
+    @test fitted(precision_fit) ≈ fitted(fit) rtol = 1e-6
 end
 
 @testset "Poisson animal-slope SD regression includes row offsets" begin

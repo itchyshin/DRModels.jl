@@ -472,11 +472,23 @@ _withmap(fit::DrmFit, pen_value::Real, spec) = DrmFit(fit.family, fit.blocks, fi
 _is_fixed_prior_fit(fit::DrmFit) = fit.penalty isa NamedTuple && haskey(fit.penalty, :kind) && fit.penalty.kind in (:fixed_priors, :sd_priors)
 _prior_kind_label(fit::DrmFit) = fit.penalty.kind === :sd_priors ? "SD-prior" : "fixed-prior"
 
-function _with_fixed_priors(fit::DrmFit, rows, data_nll)
+function _with_prior_table_input(fit, input)
+    Tables.istable(input) || return fit
+    fit isa DrmFit || throw(ArgumentError("prior tables are not supported for this fit type"))
+    _is_fixed_prior_fit(fit) || throw(ArgumentError("prior table fit did not retain prior metadata"))
+    meta = merge(fit.penalty, (input_table=deepcopy(input),))
+    DrmFit(fit.family, fit.blocks, fit.coefnames, fit.theta, fit.vcov, fit.loglik,
+        fit.nobs, fit.converged, fit.means, fit.obs, fit.scales, fit.formula,
+        fit.nll, fit.nllgrad, fit.ranef, fit.estim_method, fit.reml_loglik,
+        fit.ml_loglik, fit.marginal, fit.phylo_penalty, meta, fit.iterations,
+        fit.phylo_scale, fit.uncertainty, fit.geometry)
+end
+
+function _with_fixed_priors(fit::DrmFit, rows, data_nll; preserve_grad=false)
     active = !all(r -> r.kind === :ridge && r.precision == 0, rows)
     specs = [FixedPrior(r.kind, r.dpar, r.coef, nothing, r.mean, r.precision, r.constant) for r in rows]
     meta = (kind=:fixed_priors, rows=rows, data_nll=data_nll, specs=specs)
-    grad! = (g, theta) -> (g .= ForwardDiff.gradient(fit.nll, theta))
+    grad! = preserve_grad ? fit.nllgrad : (g, theta) -> (g .= ForwardDiff.gradient(fit.nll, theta))
     DrmFit(fit.family, fit.blocks, fit.coefnames, fit.theta, fit.vcov, fit.loglik,
         fit.nobs, fit.converged, fit.means, fit.obs, fit.scales, fit.formula,
         fit.nll, grad!, fit.ranef, active ? :MAP : :ML, fit.reml_loglik,
@@ -492,6 +504,18 @@ function _with_sd_priors(fit::DrmFit, rows, sdrow, data_nll, specs)
     DrmFit(fit.family, fit.blocks, fit.coefnames, fit.theta, fit.vcov, fit.loglik,
         fit.nobs, fit.converged, fit.means, fit.obs, fit.scales, fit.formula,
         fit.nll, grad!, fit.ranef, :MAP, fit.reml_loglik, fit.ml_loglik,
+        fit.marginal, fit.phylo_penalty, meta, fit.iterations, fit.phylo_scale,
+        fit.uncertainty, fit.geometry)
+end
+
+function _with_multi_sd_priors(fit::DrmFit, rows, sdrows, data_nll, specs)
+    vals = [_sd_prior_value(r, fit.theta) for r in sdrows]
+    meta = (kind=:sd_priors, rows=rows, sd_rows=sdrows, data_nll=data_nll,
+            specs=copy(specs), fixed_penalty=_fixed_prior_value(rows, fit.theta),
+            sd_penalties=vals, sd_penalty=sum(vals), objective=fit.nll(fit.theta))
+    DrmFit(fit.family, fit.blocks, fit.coefnames, fit.theta, fit.vcov, fit.loglik,
+        fit.nobs, fit.converged, fit.means, fit.obs, fit.scales, fit.formula,
+        fit.nll, fit.nllgrad, fit.ranef, :MAP, fit.reml_loglik, fit.ml_loglik,
         fit.marginal, fit.phylo_penalty, meta, fit.iterations, fit.phylo_scale,
         fit.uncertainty, fit.geometry)
 end
@@ -1113,7 +1137,8 @@ them.
     # The residual-variance / structured-variance BOUNDARY advisory (#724, #697) is
     # attached here, once, rather than in each of the fitter's return paths.
     fit = _apply_design_rank(_warn_variance_boundary(_drm_gaussian_fit(f_fit, fam; kw_fit...)))
-    return off === nothing ? fit : _gaussian_offset_restore(fit, f, off)
+    fit = off === nothing ? fit : _gaussian_offset_restore(fit, f, off)
+    return _with_prior_table_input(fit, get(kwargs, :priors, nothing))
 end
 
 # #938: strip a top-level `offset(...)` from the Gaussian mean and subtract it from
@@ -1178,6 +1203,7 @@ end
 
 function _drm_gaussian_fit(f::DrmFormula, fam::Gaussian; data, K = nothing, A = nothing, Ainv = nothing, tree = nothing, coords = nothing, g_tol::Real = 1e-8, algorithm::Symbol = :auto, method::Symbol = :ML, profile_ci::Bool = false, phylo_coupled::Bool = false, penalty = nothing, sparse = nothing, impute = nothing, missing = nothing, marginal::Symbol = :LA, ids = nothing, priors = nothing)
     f = _default_structured_q2_sd(f, fam; method)   # bare structured (1 + x | g): default `sd(…, coef(·)) ~ 1` (ML; REML for Gaussian animal, relmat, spatial)
+    Tables.istable(priors) && (priors = _table_priors_for_model(f, fam, data, priors))
     A, ids = _ainv_as_labelled_A(f, data, A, Ainv, ids)   # `Ainv` (precision) -> labelled covariance `A`
     _drm_entry_guard(f, fam, data; tree = tree, K = K, A = A, coords = coords)   # #1027 #1022 #1010
     A = _resolve_relatedness_labels(f, data, A, ids; coords = coords)   # #957: match `A` by label
@@ -1254,11 +1280,12 @@ function _drm_gaussian_fit(f::DrmFormula, fam::Gaussian; data, K = nothing, A = 
         throw(ArgumentError("drm: a structured slope-only effect cannot be combined with `temporal(...)`."))
     fixed_sigma, sigma_re, _, structured_sigma = _split_ranef(rhs[:sigma])  # (1|g)→GHQ; structured_sigma = phylo(1|g) on σ
     prior_ri = priors !== nothing && length(re) == 1 && _re_kind(first(re)[1])[1] === :intercept
-    if priors !== nothing && !((isempty(re) || prior_ri) && isempty(sigma_re) && metav === nothing && structured === nothing && structured_sigma === nothing && temporal_term === nothing && structured_slope === nothing && structured_sd_slope === nothing && isempty(_sd_parts(f)) && isempty(_sdphylo_parts(f)))
+    prior_two_ri = priors !== nothing && length(re) == 2 && all(r -> _re_kind(r[1])[1] === :intercept, re) && length(unique(last.(re))) == 2
+    if priors !== nothing && !((isempty(re) || prior_ri || prior_two_ri) && isempty(sigma_re) && metav === nothing && structured === nothing && structured_sigma === nothing && temporal_term === nothing && structured_slope === nothing && structured_sd_slope === nothing && isempty(_sd_parts(f)) && isempty(_sdphylo_parts(f)))
         if has_sd_prior
-            throw(ArgumentError("SD priors currently support only one iid mean random intercept without other random or structured effects or SD submodels"))
+            throw(ArgumentError("SD priors currently support at most two distinct iid mean random intercepts without other random or structured effects or SD submodels"))
         end
-        throw(ArgumentError("fixed-effect priors currently do not support random or structured effects"))
+        throw(ArgumentError("fixed-effect priors currently support at most two distinct iid mean random intercepts and no other random or structured effects"))
     end
     if has_sd_prior && any(ismissing, _table_column(data, f.response))
         throw(ArgumentError("SD priors require complete responses"))
@@ -1310,6 +1337,18 @@ function _drm_gaussian_fit(f::DrmFormula, fam::Gaussian; data, K = nothing, A = 
         priors isa AbstractVector && all(p -> p isa Union{FixedPrior,SDGammaPrior}, priors) || throw(ArgumentError("priors must be created by drm_priors"))
         fixed = FixedPrior[p for p in priors if p isa FixedPrior]
         rows = _resolve_fixed_priors(fixed, names, intercepts)
+        if prior_two_ri
+            groups = last.(re)
+            sdrows = _resolve_sd_priors(priors, groups, length(nmμ) + length(nmσ) + 1)
+            comps = map(groups) do grp
+                gidx, G = _group_index(getproperty(data, grp); col=grp)
+                (ones(length(y)), gidx, G, String(grp))
+            end
+            comps[1][2] == comps[2][2] && throw(ArgumentError("two random-intercept groups have identical partitions and their SDs cannot be identified separately"))
+            fit = _fit_multi_ranef_gaussian(fam, y, Xμ, Xσ, comps, nmμ, nmσ, g_tol;
+                                            prior_rows=rows, sd_priors=sdrows, prior_specs=priors)
+            return _withformula(fit, f)
+        end
         sdrow = _resolve_sd_prior(priors, prior_ri ? only(re)[2] : nothing, length(nmμ) + length(nmσ) + 1)
         if prior_ri
             (_, grp) = only(re)
