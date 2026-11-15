@@ -1,4 +1,4 @@
-# Owner answer P15 = b: the group covariance of the bivariate ordinary `(1 | p | g)` route is
+# Maintainer decision: the group covariance of the bivariate ordinary `(1 | p | g)` route is
 # reported in a block named `_BIV_RE_GROUP_BLOCK` (`:groupcov`), not `:phylocov`. The truly
 # phylogenetic bivariate routes keep `:phylocov`. Numbers are unchanged on both routes: the
 # reference values below were produced by the commit before the rename (24b094726).
@@ -9,14 +9,14 @@ include("biv_ordinary_re_helpers.jl")
 
 # From the commit before the rename (24b094726): interior_bal.csv, ML. (The phylogenetic fixture draws different data on Julia 1.10 and 1.13, so its numbers
 # were compared against the old commit by a side-by-side run, not pinned here.)
-const P15_REF_LL = -926.32736589695389
-const P15_REF_THETA = [0.21367143612936837, 0.41118575196663942, -0.26076347480572376, 0.39637596654108809,
+const GROUPCOV_REF_LL = -926.32736589695389
+const GROUPCOV_REF_THETA = [0.21367143612936837, 0.41118575196663942, -0.26076347480572376, 0.39637596654108809,
                        0.080990566737647998, -0.10734089153920659, 0.38838823233940678,
                        -0.46723255056092838, 0.040625883655253013, -0.80916777869774115]
 
-_p15_hasname(s, nm) = occursin(string(nm), s)
+_groupcov_hasname(s, nm) = occursin(string(nm), s)
 
-@testset "bivariate ordinary (1|p|g): group covariance block is :groupcov, not :phylocov (P15)" begin
+@testset "bivariate ordinary (1|p|g): group covariance block is :groupcov, not :phylocov" begin
     @test DRModels._BIV_RE_GROUP_BLOCK === :groupcov
     d = _bre_data("interior_bal.csv")
     for method in (:ML, :REML)
@@ -30,19 +30,19 @@ _p15_hasname(s, nm) = occursin(string(nm), s)
         @test DRModels._variance_component_blocks(fit) == [blk]
 
         shown = sprint(show, MIME"text/plain"(), fit)
-        @test !_p15_hasname(shown, :phylocov) && !occursin("Σ_a", shown)
+        @test !_groupcov_hasname(shown, :phylocov) && !occursin("Σ_a", shown)
         @test occursin("Group-level covariance Σ_g", shown)
         @test !occursin("uncalibrated", shown)         # that wording is the q4 phylogenetic finding
         short = sprint(show, fit)
-        @test _p15_hasname(short, blk) && !_p15_hasname(short, :phylocov)
+        @test _groupcov_hasname(short, blk) && !_groupcov_hasname(short, :phylocov)
         sm = sprint(show, MIME"text/plain"(), summary(fit))
-        @test _p15_hasname(sm, blk) && !_p15_hasname(sm, :phylocov)
+        @test _groupcov_hasname(sm, blk) && !_groupcov_hasname(sm, :phylocov)
         ct = coeftable(fit)
         @test "$(blk): Sigma_g:L11" in ct.rownms
         @test !any(occursin("phylocov", r) for r in ct.rownms)
         ci = confint(fit)
         ctxt = sprint(show, ci)
-        @test !_p15_hasname(ctxt, :phylocov)
+        @test !_groupcov_hasname(ctxt, :phylocov)
         @test count(r -> r.param === blk, ci) == 3
         # a block selector by the new name works; the old name is refused
         cg = confint(fit; parm = blk)
@@ -59,11 +59,11 @@ _p15_hasname(s, nm) = occursin(string(nm), s)
 
     # numbers unchanged against the commit before the rename (ML, interior_bal)
     fit = drm(_BRE_F0, Gaussian(); data = d)
-    @test fit.loglik ≈ P15_REF_LL rtol = 1e-9
-    @test fit.theta ≈ P15_REF_THETA rtol = 1e-7 atol = 1e-9
+    @test fit.loglik ≈ GROUPCOV_REF_LL rtol = 1e-9
+    @test fit.theta ≈ GROUPCOV_REF_THETA rtol = 1e-7 atol = 1e-9
 end
 
-@testset "bivariate phylogenetic q=2 keeps :phylocov (P15)" begin
+@testset "bivariate phylogenetic q=2 keeps :phylocov" begin
     rng = MersenneTwister(20260625)
     phy = DRModels.random_balanced_tree(14; branch_length = 0.2)
     beta = [0.20 -0.15; 0.25 0.10]

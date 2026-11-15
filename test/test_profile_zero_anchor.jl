@@ -2,7 +2,7 @@
 # lower limit exactly 0, upper limit from the profile deviance crossing at the
 # chi-square(1) quantile (the cut-off `confint(...; method = :profile)` already uses).
 using DRModels, Test, Random, Logging
-import Distributions as D
+import Distributions as Dist
 
 # Hand-written profile deviance for y = X beta + b_g + e, balanced groups, one random
 # intercept SD sb and residual SD se: beta by GLS, se by golden-section search.
@@ -39,7 +39,7 @@ function _hand_profile(y, X, G, m, sb)
 end
 
 function _hand_upper(y, X, G, m, llhat; level = 0.95)
-    cut = D.quantile(D.Chisq(1), level)
+    cut = Dist.quantile(Dist.Chisq(1), level)
     lo, hi = 1e-6, 3.0
     for _ in 1:80
         mid = (lo + hi) / 2

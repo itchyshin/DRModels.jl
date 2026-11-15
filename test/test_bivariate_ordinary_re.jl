@@ -16,10 +16,10 @@
 using DRModels
 using Test, DelimitedFiles, LinearAlgebra, Logging
 
-const _FIX = joinpath(@__DIR__, "fixtures", "biv_ordinary_re")
+const _BRE_FIXDIR = joinpath(@__DIR__, "fixtures", "biv_ordinary_re")
 
 function _re_data()
-    m, h = readdlm(joinpath(_FIX, "data_biv_re.csv"), ',', Any; header = true)
+    m, h = readdlm(joinpath(_BRE_FIXDIR, "data_biv_re.csv"), ',', Any; header = true)
     cols = Pair{Symbol,Any}[]
     for (j, n) in enumerate(String.(vec(h)))
         c = m[:, j]
@@ -31,7 +31,7 @@ function _re_data()
 end
 
 function _re_ref()
-    m, _ = readdlm(joinpath(_FIX, "reference.tsv"), '\t', Any; header = true)
+    m, _ = readdlm(joinpath(_BRE_FIXDIR, "reference.tsv"), '\t', Any; header = true)
     ref = Dict{String,Vector{Tuple{String,Float64,Float64}}}()
     for r in eachrow(m)
         push!(get!(ref, String(r[1]), Tuple{String,Float64,Float64}[]),
@@ -43,7 +43,7 @@ end
 _rows(ref, cell, prefixes...) = [r for r in ref[cell] if any(p -> startswith(r[1], p), prefixes)]
 _one(ref, cell, name) = only(r for r in ref[cell] if r[1] == name)
 
-const _D = _re_data()
+const _BRE_DATA = _re_data()
 const _REF = _re_ref()
 const _F1 = bf(mu1 = @formula(y1 ~ x1 + (1 | p | g)), mu2 = @formula(y2 ~ x2 + (1 | p | g)),
                sigma1 = @formula(sigma1 ~ 1), sigma2 = @formula(sigma2 ~ 1), rho12 = @formula(rho12 ~ 1))
@@ -74,26 +74,26 @@ end
 @testset "bivariate ordinary (1 | p | g), pinned to drmTMB" begin
     with_logger(NullLogger()) do
         @testset "ML, rho12 ~ 1" begin
-            _check("ml_rho1", drm(_F1, Gaussian(); data = _D), 7)
+            _check("ml_rho1", drm(_F1, Gaussian(); data = _BRE_DATA), 7)
         end
         @testset "ML, rho12 ~ x1" begin
             f = bf(mu1 = @formula(y1 ~ x1 + (1 | p | g)), mu2 = @formula(y2 ~ x2 + (1 | p | g)),
                    sigma1 = @formula(sigma1 ~ 1), sigma2 = @formula(sigma2 ~ 1), rho12 = @formula(rho12 ~ x1))
-            _check("ml_rhox1", drm(f, Gaussian(); data = _D), 8)
+            _check("ml_rhox1", drm(f, Gaussian(); data = _BRE_DATA), 8)
         end
         @testset "ML, sigma1 ~ x1" begin
             f = bf(mu1 = @formula(y1 ~ x1 + (1 | p | g)), mu2 = @formula(y2 ~ x2 + (1 | p | g)),
                    sigma1 = @formula(sigma1 ~ x1), sigma2 = @formula(sigma2 ~ 1), rho12 = @formula(rho12 ~ 1))
-            _check("ml_sig1x1", drm(f, Gaussian(); data = _D), 8)
+            _check("ml_sig1x1", drm(f, Gaussian(); data = _BRE_DATA), 8)
         end
         @testset "REML" begin
-            fit = drm(_F1, Gaussian(); data = _D, method = :REML)
+            fit = drm(_F1, Gaussian(); data = _BRE_DATA, method = :REML)
             _check("reml_rho1", fit, 7)
         end
         @testset "missing responses: default drops incomplete rows, as drmTMB does" begin
             f = bf(mu1 = @formula(y1m ~ x1 + (1 | p | g)), mu2 = @formula(y2m ~ x2 + (1 | p | g)),
                    sigma1 = @formula(sigma1 ~ 1), sigma2 = @formula(sigma2 ~ 1), rho12 = @formula(rho12 ~ 1))
-            _check("miss_drop", drm(f, Gaussian(); data = _D), 7)
+            _check("miss_drop", drm(f, Gaussian(); data = _BRE_DATA), 7)
         end
     end
 
@@ -103,14 +103,14 @@ end
         # a random effect on the means together with one on sigma1 and sigma2 (the sigma-only pair now
         # fits: test_biv_sigma_re.jl)
         @test_throws ArgumentError drm(mk(@formula(y1 ~ x1 + (1 | p | g)), @formula(y2 ~ x2 + (1 | p | g)),
-            @formula(sigma1 ~ 1 + (1 | p | g)), @formula(sigma2 ~ 1 + (1 | p | g))), Gaussian(); data = _D)
+            @formula(sigma1 ~ 1 + (1 | p | g)), @formula(sigma2 ~ 1 + (1 | p | g))), Gaussian(); data = _BRE_DATA)
         # one-sided and unlabelled terms
-        @test_throws ArgumentError drm(mk(@formula(y1 ~ x1 + (1 | p | g)), @formula(y2 ~ x2)), Gaussian(); data = _D)
-        @test_throws ArgumentError drm(mk(@formula(y1 ~ x1 + (1 | g)), @formula(y2 ~ x2 + (1 | g))), Gaussian(); data = _D)
+        @test_throws ArgumentError drm(mk(@formula(y1 ~ x1 + (1 | p | g)), @formula(y2 ~ x2)), Gaussian(); data = _BRE_DATA)
+        @test_throws ArgumentError drm(mk(@formula(y1 ~ x1 + (1 | g)), @formula(y2 ~ x2 + (1 | g))), Gaussian(); data = _BRE_DATA)
         # different labels or groups on the two axes
-        @test_throws ArgumentError drm(mk(@formula(y1 ~ x1 + (1 | p | g)), @formula(y2 ~ x2 + (1 | q | g))), Gaussian(); data = _D)
+        @test_throws ArgumentError drm(mk(@formula(y1 ~ x1 + (1 | p | g)), @formula(y2 ~ x2 + (1 | q | g))), Gaussian(); data = _BRE_DATA)
         # partly observed rows (missing = include) are supported since the include route (test_biv_re_include.jl)
         # row weights are supported (test_biv_re_weights.jl); invalid ones are still refused
-        @test_throws ArgumentError drm(_F1, Gaussian(); data = _D, weights = fill(-1.0, length(_D.y1)))
+        @test_throws ArgumentError drm(_F1, Gaussian(); data = _BRE_DATA, weights = fill(-1.0, length(_BRE_DATA.y1)))
     end
 end
