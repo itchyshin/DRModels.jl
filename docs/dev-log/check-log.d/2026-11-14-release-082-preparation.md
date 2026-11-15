@@ -19,3 +19,5 @@ A Tweedie structured-mode timing and estimate comparison was removed because the
 Bootstrap coverage and width figures, SkewNormal timing ratios, and a crossed-Tweedie speed ratio were omitted because supporting source-pinned runs were not located during review.
 
 The SkewNormal guide and release note now state that only an accepted replacement must pass the restart checks. The original fit can remain unconverged or degenerate. The unpinned runtime ratios were removed from the guide.
+
+A separately authored reference builder was added at `test/fixtures/struct_sd_counts/ref_struct_sd_counts_independent.R`. On Totoro it reproduced all 99 rows of the stored 14-case reference byte-for-byte using an identified drmTMB 0.8.1 installation. The installed build's source commit and execution-time hashes of all inputs were not recorded. An independent review compared the replacement with the previously identified GPL runner and found no substantial consecutive match. The original copied generator remains present and is a release blocker; its lane overlap and historical references still need resolution. This reproduction does not establish independent numerical correctness.

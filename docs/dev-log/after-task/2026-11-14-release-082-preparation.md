@@ -19,3 +19,5 @@ A Tweedie structured-mode timing and estimate comparison was removed because the
 Bootstrap coverage and width figures, SkewNormal timing ratios, and a crossed-Tweedie speed ratio were omitted because supporting source-pinned runs were not located during review.
 
 The SkewNormal guide and release note now state that only an accepted replacement must pass the restart checks. The original fit can remain unconverged or degenerate. The unpinned runtime ratios were removed from the guide.
+
+A separately authored builder reproduced the stored 14-case, 99-row reference byte-for-byte on an identified drmTMB 0.8.1 installation. An independent reviewer found no substantial consecutive match with the GPL runner. The original copied generator remains in the tree and blocks release; its overlapping lane and historical references need resolution. The installed build's source commit and all input hashes at execution time remain unknown.
