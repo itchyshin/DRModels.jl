@@ -58,12 +58,38 @@ group_fit = drm(group_form, Gaussian(); data = grouped, priors = group_priors)
 ```
 
 The supported routes are Gaussian `mu` and `sigma` (with up to two distinct iid
-mean random intercepts) and fixed-effect binomial-logit `mu`. Random slopes, more
-than two intercepts or structured random effects, random-effect SD formulas, REML, existing
-phylogenetic penalties, missing responses or predictors, non-unit weights, and
-other families are refused. For separated binomial data,
+mean random intercepts) and fixed-effect binomial-logit `mu`. Normal priors on
+Gaussian `mu` and `sigma` coefficients also support one phylogenetic mean
+intercept with matching phylogenetic SD regression and fixed residual-SD
+predictors. These priors do not target the phylogenetic SD-regression
+coefficients. This phylogenetic route currently uses the dense solver and
+refuses the automatically selected sparse route for more than 500 groups.
+Random slopes, other structured combinations, REML, existing phylogenetic
+penalties, missing responses or predictors, non-unit weights, and other
+families are refused. Supply the tree again when updating a phylogenetic fit.
+The R-to-Julia bridge for this route is still being checked. For separated
+binomial data,
 a finite optimum requires all separating directions to be regularized; a prior
 on just one coefficient does not guarantee this.
+
+For example, the following small data set demonstrates the phylogenetic route.
+Its four tips are too few for a reliable scientific analysis; use it to inspect
+the API, not to assess uncertainty.
+
+```julia
+using DRModels
+phy = DRModels.augmented_phy("((a:0.5,b:0.5):0.5,(c:0.5,d:0.5):0.5);")
+d = (y = [.2,.7,.35,1.1,.8,1.25,1.4,1.1,1.9,1.5,2.15,.5],
+     x = [-1.2,-.8,-.7,-.2,.1,.15,.4,.6,.8,1.,1.2,-.3],
+     sp = ["a","a","b","b","b","c","c","d","d","d","d","a"],
+     z = [-1.,-1.,-.35,-.35,-.35,.4,.4,1.,1.,1.,1.,-1.])
+f = bf(@formula(y ~ x + phylo(1 | sp)), @formula(sigma ~ x),
+       @formula(sd(sp, phylogenetic) ~ z))
+p = drm_priors(drm_prior_normal(dpar="mu", coef="x", mean=.1, sd=.7),
+               drm_prior_normal(dpar="sigma", coef="x", mean=-.2, sd=.5))
+resolve_priors(f, Gaussian(); data=d, priors=p)
+fit = drm(f, Gaussian(); data=d, tree=phy, priors=p)
+```
 
 Active prior fits are labelled `:MAP`. `loglik(fit)` is the data log-likelihood
 at the penalized estimate. The stored objective includes the prior. Its inverse
@@ -155,6 +181,6 @@ shape must exceed one. With no `group` column, `coef = "site"` selects the
 `site` intercept; a blank `coef` selects every supported random-intercept SD.
 Alternatively, specify `group = "site"` and `coef = "(Intercept)"`.
 Overlapping, unknown and unsupported selections are rejected. Random slopes,
-correlation priors, structured effects and other families remain outside this
+correlation priors, other structured effects and other families remain outside this
 slice. The original table is stored in `table_fit.penalty.input_table`; `update()`
 replays the resolved targets rather than expanding a blank selector again.

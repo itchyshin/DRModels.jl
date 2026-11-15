@@ -410,7 +410,7 @@ end
 function _drm_gaussian_lss_phylo(f::DrmFormula, fam::Gaussian, sdpp, re, structured,
                                  structured_sigma, sigma_re, metav, has_missing_response,
                                  y, Xμ, Xσ, nmμ, nmσ, data, tree, g_tol, method, penalty;
-                                 algorithm::Symbol = :auto, sparse = nothing)
+                                 algorithm::Symbol = :auto, sparse = nothing, prior_rows = nothing)
     length(sdpp) == 1 ||
         throw(ArgumentError("drm: one `sd_phylo(group) ~ …` formula per model (got $(length(sdpp)))."))
     sgrp, srhs = sdpp[1]
@@ -463,6 +463,7 @@ function _drm_gaussian_lss_phylo(f::DrmFormula, fam::Gaussian, sdpp, re, structu
 
     use_sparse = (sparse === true) || (algorithm in (:sparse, :sparse_lbfgs)) || (algorithm === :auto && G > 500)
     if use_sparse
+        prior_rows === nothing || throw(ArgumentError("fixed priors with phylogenetic SD regression are not yet supported by the sparse route"))
         return _fit_phylo_gaussian_lss_sparse(fam, y, Xμ, Xσ, Zg, gidx, G, phy, nmμ, nmσ, nmsd,
                                               sgrp, g_tol; reml = method === :REML)
     else
@@ -470,7 +471,7 @@ function _drm_gaussian_lss_phylo(f::DrmFormula, fam::Gaussian, sdpp, re, structu
         size(Kmat) == (G, G) ||
             error("structured matrix must be $(G)×$(G) (the number of `$sgrp` levels)")
         return _fit_structured_gaussian_lss(fam, y, Xμ, Xσ, Zg, gidx, G, Kmat, nmμ, nmσ, nmsd,
-                                            sgrp, g_tol; reml = method === :REML)
+                                            sgrp, g_tol; reml = method === :REML, prior_rows)
     end
 end
 
@@ -496,7 +497,7 @@ end
 function _fit_structured_gaussian_lss(fam::Gaussian, y, Xμ, Xσ, Zg, gidx, G, K,
                                       nmμ, nmσ, nmsd, grp, g_tol;
                                       block::Symbol = :sd_phylo, reml::Bool = false,
-                                      loading = nothing, report_sd::Bool = false)
+                                      loading = nothing, report_sd::Bool = false, prior_rows = nothing)
     n = length(y)
     # `loading` is the per-observation weight of the structured effect: `nothing`
     # is a structured intercept (weight 1); a numeric vector `x` makes it the
@@ -560,7 +561,7 @@ function _fit_structured_gaussian_lss(fam::Gaussian, y, Xμ, Xσ, Zg, gidx, G, K
         return nll_ml_θ + 0.5 * logdet(chX) - const_pμ
     end
 
-    nll = reml ? nll_reml : nll_ml
+    nll = reml ? nll_reml : prior_rows === nothing ? nll_ml : θ -> nll_ml(θ) + _fixed_prior_value(prior_rows, θ)
 
     βμ0 = Xμ \ y; res0 = y - Xμ * βμ0
     θ0 = zeros(pμ + pσ + psd)
@@ -627,11 +628,12 @@ function _fit_structured_gaussian_lss(fam::Gaussian, y, Xμ, Xσ, Zg, gidx, G, K
     # family's mode (b ~ N(0, C), effect = sd * b).
     report_sd && !reml && _attach_conditional_structured!(
         scales, w .* blup[gidx], blup ./ exp.(Zg * θ̂[(pμ+pσ+1):end]))
-    fit = _withranef(_withnll(DrmFit(fam, blocks, names, θ̂, V, -nll(θ̂), n,
-                                     converged, means, obs, scales), nll_ml), re)
+    fit = _withranef(_withnll(DrmFit(fam, blocks, names, θ̂, V, -nll_ml(θ̂), n,
+                                     converged, means, obs, scales), prior_rows === nothing ? nll_ml : nll), re)
     if reml
         return _withreml(fit, -nll_reml(θ̂), -nll_ml(θ̂))
     end
+    prior_rows === nothing || return _with_fixed_priors(fit, prior_rows, nll_ml)
     return fit
 end
 
