@@ -20,4 +20,8 @@ Bootstrap coverage and width figures, SkewNormal timing ratios, and a crossed-Tw
 
 The SkewNormal guide and release note now state that only an accepted replacement must pass the restart checks. The original fit can remain unconverged or degenerate. The unpinned runtime ratios were removed from the guide.
 
-A separately authored builder reproduced the stored 14-case, 99-row reference byte-for-byte on an identified drmTMB 0.8.1 installation. An independent reviewer found no substantial consecutive match with the GPL runner. The original copied generator remains in the tree and blocks release; its overlapping lane and historical references need resolution. The installed build's source commit and all input hashes at execution time remain unknown.
+A separately authored builder reproduced the stored 14-case, 99-row reference byte-for-byte on an identified drmTMB 0.8.1 installation. An independent reviewer found no substantial consecutive match with the GPL runner. The original copied generator remains in the tree and blocks release; its overlapping lane and historical references need resolution. The installed build's source commit remains unknown; the first run did not record execution-time hashes of all inputs.
+
+A second 14-case run matched all 99 rows exactly and recorded the loaded package path, R and BLAS settings, and input and script hashes before and after execution. The installed drmTMB source commit remains unknown.
+
+The package DESCRIPTION and compiled-library hashes were recorded in the environment receipt and matched at review; they were not hashed before and after execution.
