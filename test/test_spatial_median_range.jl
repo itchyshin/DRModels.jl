@@ -94,3 +94,29 @@ end
     @test err isa ArgumentError
     @test !occursin("fixed at the median", sprint(showerror, err))
 end
+
+# The fixed range lives in `fit.scales` so `summary` and `coef(fit, :range)` can
+# read it. It is not a distributional parameter: `sigma()`, the bridge dpar table
+# and `simulate(newdata)` must not pick it up.
+@testset "the fixed range is not a scale, a dpar, or a simulate scale" begin
+    data, coords, _ = _smr_load()
+    fit = drm(bf(@formula(y ~ x + spatial(1 | g)), @formula(sigma ~ 1)), Gaussian();
+              data, coords)
+    s = sigma(fit)
+    @test s isa AbstractVector
+    @test length(s) == nobs(fit)
+    @test s == fit.scales[:sigma]
+    @test haskey(fit.scales, :spatial_range)
+    dpars = DRModels._bridge_dpars(fit)
+    @test !haskey(dpars, "spatial_range")
+    @test haskey(dpars, "mu")
+    @test haskey(dpars, "sigma")
+    @test dpars["sigma"] ≈ fit.scales[:sigma]
+    nd = (y = data.y[1:4], x = data.x[1:4], g = data.g[1:4])
+    sim = DRModels._fit_for_simulate_newdata(fit, nd)
+    @test !haskey(sim.scales, :spatial_range)
+    @test haskey(sim.scales, :sigma)
+    @test length(sim.scales[:sigma]) == 4
+    Y = simulate(fit; newdata = nd, nsim = 2, re = :zero)
+    @test size(Y) == (4, 2)
+end

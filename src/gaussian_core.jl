@@ -3085,8 +3085,12 @@ function residuals(fit::DrmFit; type::Symbol = :response, rng = Random.default_r
 end
 
 # `fit.scales` keys that hold fit context or bookkeeping rather than a fitted
-# distributional parameter. They never appear in `sigma()`.
-_sigma_internal_key(k::Symbol) = k in (:cond_blup_unavailable, :cond_logsd_wall) || k in _COND_FIT_KEYS
+# distributional parameter. They never appear in `sigma()`, and the bridge and
+# `simulate(newdata)` skip them too. `:spatial_range` is the fixed median
+# distance of a coordinate spatial kernel (not estimated; `coef(fit, :range)`
+# and `summary` read it). It is not a scale.
+_sigma_internal_key(k::Symbol) =
+    k === :spatial_range || k in (:cond_blup_unavailable, :cond_logsd_wall) || k in _COND_FIT_KEYS
 
 """
     sigma(fit)
@@ -4088,6 +4092,7 @@ function _fit_for_simulate_newdata(fit::DrmFit, newdata)
     for k in keys(fit.scales)
         haskey(scales, k) && continue
         startswith(String(k), "cond_") && continue   # conditional-mode record: population-level newdata has none
+        _sigma_internal_key(k) && continue           # fixed spatial range and other non-scale bookkeeping
         _simulate_newdata_bookkeeping_key(k) && continue   # per-group / training-row records; the draw never reads them
         if k === :beta_mu
             haskey(pp, :mu) || throw(ArgumentError("simulate: ZeroOneBeta `newdata` needs a :mu prediction"))

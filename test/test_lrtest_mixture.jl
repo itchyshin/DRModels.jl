@@ -137,3 +137,56 @@ end
         @test occursin("not nested or a fit did not converge", err.msg)
     end
 end
+
+# A slope on the log standard deviation is an interior null. Counting every column of
+# the sd block as a variance accepted these pairs and halved the p-value.
+@testset "a log-SD slope is not a variance component" begin
+    Random.seed!(23)
+    G = 16; m = 6; nn = G * m
+    g = repeat(1:G, inner = m)
+    z = repeat(randn(G), inner = m)
+    x = randn(nn)
+    b = exp.(-0.2 .+ 0.35 .* z[1:m:end]) .* randn(G)
+    y = 0.3 .+ 0.25 .* x .+ b[g] .+ 0.5 .* randn(nn)
+    d = (; y, x, z, g)
+    sd1 = drm(bf(@formula(y ~ x + (1 | g)), @formula(sigma ~ 1), @formula(sd(g) ~ 1)),
+              Gaussian(); data = d)
+    sdz = drm(bf(@formula(y ~ x + (1 | g)), @formula(sigma ~ 1), @formula(sd(g) ~ z)),
+              Gaussian(); data = d)
+    re = drm(bf(@formula(y ~ x + (1 | g)), @formula(sigma ~ 1)), Gaussian(); data = d)
+    @test dof(sdz) - dof(sd1) == 1
+    @test dof(sdz) - dof(re) == 1
+    for (reduced, full) in ((sd1, sdz), (re, sdz))
+        err = try lrtest(reduced, full; mixture = true); nothing catch e; e end
+        @test err isa ArgumentError
+        @test occursin("mixture = true", err.msg)
+        @test occursin("interior", err.msg)
+        @test occursin("slope", err.msg)
+        plain = lrtest(reduced, full)
+        @test plain.dof == 1
+        @test plain.pvalue ≈ Distributions.ccdf(Distributions.Chisq(1), max(plain.statistic, 0)) rtol = 1e-12
+    end
+end
+
+# Counts differ by one SD, but the labels do not: `(1 | g)` is not a component of
+# `(1 | h) + (1 | k)`. The mixture applied whenever the statistic was positive.
+@testset "swapped groupings are not one added variance" begin
+    Random.seed!(29)
+    G = 18; m = 8; nn = G * m
+    g = repeat(1:G, inner = m)
+    h = repeat(1:G, outer = m)
+    k = mod.(h .+ 5, G) .+ 1
+    y = 0.2 .+ 1.6 .* randn(G)[h] .+ 1.3 .* randn(G)[k] .+ 0.3 .* randn(nn)
+    d = (; y, g, h, k)
+    red = drm(bf(@formula(y ~ 1 + (1 | g)), @formula(sigma ~ 1)), Gaussian(); data = d)
+    full = drm(bf(@formula(y ~ 1 + (1 | h) + (1 | k)), @formula(sigma ~ 1)), Gaussian(); data = d)
+    plain = lrtest(red, full)
+    @test plain.dof == 1
+    @test plain.statistic > 1.0
+    err = try lrtest(red, full; mixture = true); nothing catch e; e end
+    @test err isa ArgumentError
+    @test occursin("mixture = true", err.msg)
+    @test occursin("label", err.msg)
+    @test occursin("g", err.msg)
+    @test occursin("h", err.msg)
+end

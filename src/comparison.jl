@@ -92,6 +92,12 @@ a random slope together with its correlation, for example `(1 + x | g)` against
 mixture), and `(1 | g) + (0 + x | g)` against `(1 + x | g)` adds only the
 correlation, whose null value is interior, so the plain `χ²(1)` is the right
 test. Use a parametric bootstrap for the first of these.
+A slope on the log standard deviation is an interior null, not a variance at
+zero, so `sd(g) ~ z` against `sd(g) ~ 1`, and `(1 | g)` against `sd(g) ~ z`,
+are refused. The one added standard deviation is matched by label, not by
+count: `(1 | g)` against `(1 | h) + (1 | k)` is refused when the statistic is
+positive. A clearly negative statistic on that pair is still reported as not
+nested, before the label check.
 `mixture = true` also refuses a clearly negative statistic, one below
 `-1e-6 * max(1, |loglik(full)|, |loglik(reduced)|)`, as "not nested or a fit did
 not converge", instead of returning `pvalue = 0.5`. A statistic within that margin
@@ -142,7 +148,10 @@ function lrtest(reduced::DrmFit, full::DrmFit; mixture::Bool = false)
         "did you pass the arguments as (reduced, full)?)"))
     statistic = 2 * (loglik(full) - loglik(reduced))
     if mixture
-        _single_variance_boundary_guard(reduced, full, Δdof)
+        # `:variance` is the one-SD count gate; `:family` is Poisson ⊂ NegBinomial2.
+        # The negative-statistic refusal stays ahead of the label check so a
+        # swapped grouping whose statistic is negative keeps that message.
+        gate = _single_variance_boundary_guard(reduced, full, Δdof)
         # A clearly negative statistic means `reduced` fits better: the pair is not
         # nested or a fit did not converge. The mixture would report p = 0.5 for it.
         scale = max(1.0, abs(loglik(full)), abs(loglik(reduced)))
@@ -151,6 +160,7 @@ function lrtest(reduced::DrmFit, full::DrmFit; mixture::Bool = false)
             "fits clearly better than `full`, so the pair is not nested or a fit did " *
             "not converge. Check both fits (`reduced` must be `full` with one " *
             "variance component removed) and refit before testing."))
+        gate === :variance && _matching_variance_labels_guard(reduced, full)
         pvalue_naive = ccdf(Chisq(Δdof), max(statistic, 0))
         return (; statistic, dof = Δdof, pvalue = chibar_pvalue(statistic, 1),
                   pvalue_naive, reference = :chibar_0_1)
@@ -165,9 +175,12 @@ end
 # parameter, and nothing else. Accept: every non-variance block has the same
 # coefficient names in both fits, `full` has one more SD parameter and the same
 # number of correlation parameters, and Δdof is 1; or the Poisson ⊂ NegBinomial2
-# nest with the same fixed effects. Refuse everything else by name. A correlation
-# is not a boundary parameter (its null 0 is interior), so a pair such as
-# `(1 | g) + (0 + x | g)` against `(1 + x | g)` is refused: the plain χ²(1) is right.
+# nest with the same fixed effects. Returns `:variance` or `:family` so the caller
+# can match SD labels only on the variance gate. Refuse everything else by name.
+# A correlation is not a boundary parameter (its null 0 is interior), so a pair
+# such as `(1 | g) + (0 + x | g)` against `(1 + x | g)` is refused: the plain
+# χ²(1) is right. A slope on an `sd` / `sd_phylo` block is an interior null too:
+# only the `(Intercept)` column of those blocks is a variance.
 function _single_variance_boundary_guard(reduced::DrmFit, full::DrmFit, Δdof::Integer)
     nonvc(f) = Dict(p => (length(r), String.(something(_block_coefnames(f, p), String[])))
                     for (p, r) in f.blocks
@@ -175,15 +188,20 @@ function _single_variance_boundary_guard(reduced::DrmFit, full::DrmFit, Δdof::I
     same_fixed = nonvc(full) == nonvc(reduced)
     if _family_boundary_nest(reduced, full) !== nothing && Δdof == 1
         fr, ff = nonvc(reduced), nonvc(full)
-        all(haskey(ff, p) && ff[p] == v for (p, v) in fr) && return nothing
+        all(haskey(ff, p) && ff[p] == v for (p, v) in fr) && return :family
     end
     sd_params, corr_params = _sd_and_correlation_counts(full)
     sd_red, corr_red = _sd_and_correlation_counts(reduced)
     Δsd, Δcorr = sd_params - sd_red, corr_params - corr_red
     if Δsd == 1 && Δcorr == 0 && Δdof == 1 && same_fixed
-        return nothing
+        return :variance
     end
-    reason = if Δsd <= 0 && Δcorr <= 0 && same_fixed
+    reason = if Δsd <= 0 && Δcorr <= 0 && same_fixed &&
+               !_same_string_multiset(_logsd_slope_names(reduced), _logsd_slope_names(full))
+        "`full` changes a slope of a log standard deviation (for example `sd(g) ~ 1` " *
+        "against `sd(g) ~ z`, or `(1 | g)` against `sd(g) ~ z`); that slope is an " *
+        "interior null, so the plain χ² reference is the right test"
+    elseif Δsd <= 0 && Δcorr <= 0 && same_fixed
         "`full` adds no variance component to `reduced` (the difference is in the " *
         "family or in a block that is not a variance), so the plain χ² reference " *
         "is the right test"
@@ -212,7 +230,9 @@ end
 
 # Number of SD parameters and of correlation parameters in the variance-component
 # blocks of `fit`. `:recov` and `:phylocov` hold the Cholesky entries of a q x q
-# covariance, q (q + 1) / 2 of them: q SDs and q (q - 1) / 2 correlations. Every
+# covariance, q (q + 1) / 2 of them: q SDs and q (q - 1) / 2 correlations. An
+# `:sd` / `:sd_phylo` block is a regression on the log standard deviation: only
+# its `(Intercept)` columns are variances (a slope is an interior null). Every
 # other variance-component block counts one SD per coefficient. A width that is
 # not triangular cannot be split, so it counts as all SD (the old behaviour).
 function _sd_and_correlation_counts(fit::DrmFit)
@@ -229,9 +249,137 @@ function _sd_and_correlation_counts(fit::DrmFit)
                 continue
             end
         end
+        if p === :sd || p === :sd_phylo
+            names = _block_coefnames(fit, p)
+            if names !== nothing && length(names) == w
+                nsd += count(n -> _is_sd_intercept_name(String(n)), names)
+                continue
+            end
+        end
         nsd += w
     end
     return nsd, ncorr
+end
+
+# `(Intercept)`, including a disambiguated `"g: (Intercept)"` column.
+_is_sd_intercept_name(name::AbstractString) =
+    name == "(Intercept)" || endswith(name, "(Intercept)")
+
+# Non-intercept columns of `:sd` / `:sd_phylo`: slopes of the log standard deviation.
+function _logsd_slope_names(fit::DrmFit)
+    out = String[]
+    for (p, r) in fit.blocks
+        (p === :sd || p === :sd_phylo) || continue
+        names = _block_coefnames(fit, p)
+        (names === nothing || length(names) != length(r)) && continue
+        for n in names
+            _is_sd_intercept_name(String(n)) || push!(out, String(n))
+        end
+    end
+    return out
+end
+
+function _string_counts(xs)
+    d = Dict{String,Int}()
+    for s in xs
+        d[s] = get(d, s, 0) + 1
+    end
+    return d
+end
+_same_string_multiset(a, b) = _string_counts(a) == _string_counts(b)
+
+# Labels present in `full` and not in `reduced`, or `nothing` when `reduced`
+# is not a submultiset of `full` (a component was swapped, not added).
+function _added_string_labels(reduced, full)
+    d = _string_counts(full)
+    for s in reduced
+        c = get(d, s, 0)
+        c == 0 && return nothing
+        d[s] = c - 1
+    end
+    extra = String[]
+    for (s, c) in d
+        for _ in 1:c
+            push!(extra, s)
+        end
+    end
+    return extra
+end
+
+# Diagonal Cholesky entry (`:L11`) is an SD; an off-diagonal (`:L21`) is a correlation.
+function _cholesky_role(name::AbstractString)
+    m = match(r":L(\d+)(\d+)$", name)
+    m !== nothing && return m.captures[1] == m.captures[2] ? :sd : :cor
+    n = lowercase(name)
+    (occursin("atanh", n) || occursin("rho", n) || occursin(":cor", n)) && return :cor
+    (occursin("log_sd", n) || occursin(":sd", n)) && return :sd
+    return :unknown
+end
+
+function _push_vc_labels!(sd::Vector{String}, cor::Vector{String}, p::Symbol, names, w::Int)
+    label(i) = length(names) == w ? string(p, ":", names[i]) : string(p, "#", i)
+    if p === :recov || p === :phylocov
+        q = (isqrt(8w + 1) - 1) ÷ 2
+        if q * (q + 1) ÷ 2 == w && length(names) == w
+            roles = [_cholesky_role(names[i]) for i in 1:w]
+            if all(r -> r !== :unknown, roles) && count(==(:sd), roles) == q
+                for i in 1:w
+                    push!(roles[i] === :sd ? sd : cor, label(i))
+                end
+                return nothing
+            end
+            for i in 1:q
+                push!(sd, label(i))
+            end
+            for i in (q + 1):w
+                push!(cor, label(i))
+            end
+            return nothing
+        end
+    end
+    if (p === :sd || p === :sd_phylo) && length(names) == w
+        for i in 1:w
+            _is_sd_intercept_name(names[i]) && push!(sd, label(i))
+        end
+        return nothing
+    end
+    for i in 1:w
+        push!(sd, label(i))
+    end
+    return nothing
+end
+
+# SD labels and correlation labels, one string per parameter the count above
+# treats as a variance or a correlation. Used to refuse a pair whose counts
+# differ by one SD but whose labels were swapped (`(1 | g)` against `(1 | h) + (1 | k)`).
+function _vc_sd_and_cor_labels(fit::DrmFit)
+    sd = String[]
+    cor = String[]
+    for (p, r) in fit.blocks
+        p in _VARIANCE_COMPONENT_BLOCKS || continue
+        w = length(r)
+        w == 0 && continue
+        raw = _block_coefnames(fit, p)
+        names = raw === nothing ? String[] : String.(raw)
+        _push_vc_labels!(sd, cor, p, names, w)
+    end
+    return sd, cor
+end
+
+function _matching_variance_labels_guard(reduced::DrmFit, full::DrmFit)
+    sd_r, cor_r = _vc_sd_and_cor_labels(reduced)
+    sd_f, cor_f = _vc_sd_and_cor_labels(full)
+    extra = _added_string_labels(sd_r, sd_f)
+    if extra !== nothing && length(extra) == 1 && _same_string_multiset(cor_r, cor_f)
+        return nothing
+    end
+    throw(ArgumentError(
+        "lrtest: `mixture = true` is only for a pair that differs by exactly one " *
+        "variance component, matched by label (the same components, plus one standard " *
+        "deviation). `reduced` has variance labels [$(join(sort(sd_r), ", "))] and " *
+        "`full` has [$(join(sort(sd_f), ", "))], so this is not that pair " *
+        "(for example `(1 | g)` against `(1 | h) + (1 | k)`). " *
+        "Call `lrtest(reduced, full)` for the plain test, or use a parametric bootstrap."))
 end
 
 # A fit stranded on the failed-objective sentinel plateau (loglik <= -1e15, see
