@@ -93,4 +93,8 @@ end
     @test isapprox(fit.nll(fit.theta), 104.69371002665; rtol=1e-8)
     @test maximum(abs.(ForwardDiff.gradient(fit.nll,fit.theta))) < 1e-5
     @test fit.converged
+    revdat = (y=reverse(dat.y), x=reverse(dat.x), sp=reverse(dat.sp), z=reverse(dat.z))
+    reordered = drm(f, Gaussian(); data=revdat, tree=phy, priors=p)
+    @test maximum(abs.(reordered.theta-expected)) < 1e-5
+    @test isapprox(reordered.nll(reordered.theta), fit.nll(fit.theta); rtol=1e-8)
 end
