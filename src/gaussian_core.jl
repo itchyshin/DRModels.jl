@@ -519,7 +519,7 @@ function _with_prior_table_input(fit, input)
         fit.nobs, fit.converged, fit.means, fit.obs, fit.scales, fit.formula,
         fit.nll, fit.nllgrad, fit.ranef, fit.estim_method, fit.reml_loglik,
         fit.ml_loglik, fit.marginal, fit.phylo_penalty, meta, fit.iterations,
-        fit.phylo_scale, fit.uncertainty, fit.geometry)
+        fit.phylo_scale, fit.control_info, fit.uncertainty, fit.geometry)
 end
 
 function _with_fixed_priors(fit::DrmFit, rows, data_nll; preserve_grad=false)
