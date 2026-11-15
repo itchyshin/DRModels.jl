@@ -64,6 +64,7 @@ intercept with matching phylogenetic SD regression and fixed residual-SD
 predictors. These priors do not target the phylogenetic SD-regression
 coefficients. This phylogenetic route currently uses the dense solver and
 refuses the automatically selected sparse route for more than 500 groups.
+Omit `weights` on this route; explicit weights are refused, including unit weights.
 Random slopes, other structured combinations, REML, existing phylogenetic
 penalties, missing responses or predictors, non-unit weights, and other
 families are refused. Supply the tree again when updating a phylogenetic fit.
