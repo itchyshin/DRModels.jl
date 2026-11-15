@@ -166,23 +166,21 @@ list(
   # as DISTRIBUTIONAL OVERLAP (TRUE), which is the only correct bootstrap test
   # since each engine draws its own resamples. Note the Julia side emits a
   # numerically-singular-Hessian warning for coordinate 5 (the nu intercept,
-  # rcond 9.1e-09); it does not touch the mu:x target measured here. There was no
-  # univariate student cell in either parity script, so the draw is taken verbatim
-  # from the committed fixture in drmTMB tests/testthat/test-student-location-scale.R
-  # (n = 600, seed 20260509, nu = 8) — the same provenance rule the fe_skew_normal
-  # cell follows.
+  # rcond 9.1e-09); it does not touch the mu:x target measured here.
+  # This independently written generator reproduces the recorded Student fixture.
   list(
     id    = "fe_student",
     label = "Student-t (mu ~ x, sigma ~ z, nu ~ 1), fixed effects",
     build = function() {
-      set.seed(20260509); n <- 600
-      dat <- data.frame(x = rnorm(n), z = rnorm(n))
-      mu <- 0.25 + 0.6 * dat$x
-      sigma <- exp(-0.3 + 0.25 * dat$z)
-      nu <- 2 + exp(log(6))
-      q <- qt((seq_len(n) - 0.5) / n, df = nu)
-      dat$y <- mu + sigma * sample(q)
-      dat
+      n <- 600L
+      set.seed(20260509L)
+      x <- rnorm(n)
+      z <- rnorm(n)
+      mu <- 0.25 + 0.6 * x
+      sigma <- exp(-0.3 + 0.25 * z)
+      quantiles <- qt((seq_len(n) - 0.5) / n, df = 8)
+      y <- mu + sigma * sample(quantiles)
+      data.frame(x = x, z = z, y = y)
     },
     formula = function() bf(y ~ x, sigma ~ z, nu ~ 1),
     family  = function() student()
