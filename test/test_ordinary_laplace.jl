@@ -477,11 +477,13 @@ const _OL_FAMS = (:poisson, :nb2, :binomial, :gamma, :beta)
             @test occursin(r"marginal = :Laplace is not available for \w+\(\) with", msg)
             @test occursin(what, msg)
         end
-        refuse(bf(@formula(y ~ x + (1 + x | g))), Poisson(), dp, r"only `\(1 \| g\)` is covered")
-        refuse(bf(@formula(y ~ x + (0 + x | g))), Poisson(), dp, r"only `\(1 \| g\)` is covered")
-        # The refused term is echoed as the user wrote it, not as a Julia Expr.
-        refuse(bf(@formula(y ~ x + (1 + x | g))), Poisson(), dp, r"with `\(1 \+ x \| g\)` \(only")
-        refuse(bf(@formula(y ~ x + (0 + x | g))), Poisson(), dp, r"with `\(0 \+ x \| g\)` \(only")
+        # A single independent slope and one correlated block `(1 + x | g)` take the Laplace objective too
+        # (laplace-parity, test_laplace_parity.jl); a block with a non-numeric slope or an unsupported
+        # family is still refused, echoing the term as the user wrote it.
+        @test drm(bf(@formula(y ~ x + (0 + x | g))), Poisson(); data = dp, marginal = :Laplace).marginal === :Laplace
+        @test drm(bf(@formula(y ~ x + (1 + x | g))), Poisson(); data = dp, marginal = :Laplace).marginal === :Laplace
+        refuse(bf(@formula(y ~ x + (1 + x | g)), @formula(sigma ~ 1)), OL.Gamma(), _ol_sim(:gamma; seed = 9),
+               r"with `\(1 \+ x \| g\)` \(only")
         refuse(bf(@formula(y ~ x + (1 | g) + (1 | h))), Poisson(), dp, r"crossed/multiple random effects")
         refuse(bf(@formula(y ~ x)), Poisson(), dp, r"no random effect")
         refuse(bf(@formula(y ~ x + (1 | g)), @formula(zi ~ 1)), Poisson(), dp, r"a `zi` formula")

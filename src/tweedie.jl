@@ -144,8 +144,12 @@ _logit12(η) = 1 + 1 / (1 + exp(-η))            # (1,2) link for the power p
 
 @drm_entry function drm(f::DrmFormula, fam::Tweedie; data, g_tol::Real = 1e-8,
                          tree = nothing, K = nothing, A = nothing,
-                         coords = nothing)
+                         coords = nothing, marginal::Symbol = :LA)
     _drm_entry_guard(f, fam, data; tree = tree, K = K, A = A, coords = coords)   # #1027 #1022
+    laplace = _scalar_laplace_requested(marginal)
+    laplace || marginal === :LA || throw(ArgumentError(
+        "drm (Tweedie): marginal = :$marginal is not available; use `:LA` (default) " *
+        "or `:Laplace` (independent `(1 | g)` / `(0 + x | g)` terms on the mean, drmTMB's integrator)."))
     f = _default_tweedie_structured_sd(f)   # bare phylo/relmat(1 | g): default `sd(g, …) ~ 1`
     if isempty(_sd_parts(f)) && isempty(_sdphylo_parts(f)) &&
        (tree !== nothing || K !== nothing || A !== nothing || coords !== nothing)
@@ -157,12 +161,13 @@ _logit12(η) = 1 + 1 / (1 + exp(-η))            # (1,2) link for the power p
     missing_fit = _fit_observed_response_rows(f, data) do data_observed
         _tweedie_validate_observed_relmat_sd_design(f, data, data_observed)
         K_observed = _tweedie_observed_relmat_K(f, data, data_observed, K)
-        drm(f, fam; data = data_observed, g_tol, tree, K = K_observed, A, coords)
+        drm(f, fam; data = data_observed, g_tol, tree, K = K_observed, A, coords, marginal)
     end
     missing_fit !== nothing &&
         return _tweedie_restore_full_relmat_sd_outputs!(missing_fit, f, data, K)
 
     if !isempty(_sd_parts(f)) || !isempty(_sdphylo_parts(f))
+        laplace && return _laplace_sd_route(f, fam, Val(:tweedie), marginal; data, g_tol)
         return _withformula(_drm_tweedie_sd_regression(
             f, fam; data, g_tol, tree, K, A, coords), f)
     end
@@ -190,6 +195,14 @@ _logit12(η) = 1 + 1 / (1 + exp(-η))            # (1,2) link for the power p
         error("Tweedie() supports a structured effect on `mu` only as one `phylo(1 | g, tree = …)` or " *
               "`relmat(1 | g, K = …)` intercept; animal and spatial terms are not implemented " *
               "(drmTMB 0.8.1 refuses them for tweedie() too)")
+    laplace && length(re) == 1 && _re_kind(re[1][1])[1] in (:intercept, :slope) &&
+        mv === nothing && st === nothing && offset_term === nothing &&
+        return _withformula(_fit_indep_re_laplace(fam, Val(:tweedie), y, Xμ, Xσ, Xν,
+                                                  _indep_term_comps(re, data, length(y)),
+                                                  nmμ, nmσ, nmν, g_tol), f)
+    laplace && length(re) <= 1 && throw(ArgumentError(
+        "drm (Tweedie): `marginal = :Laplace` needs one `(1 | g)` or `(0 + x | g)` term, or several " *
+        "independent terms, on the mean (no correlated block, structured or `meta_V` term, or offset)."))
     if !isempty(re)                    # random intercept/slope on mu → GHQ marginal (#563 S8)
         if length(re) > 1               # crossed/multiple intercepts (#737)
             # Independent intercepts + slopes `(1 | g) + (0 + x | g)`: TMB-convention Laplace with the
@@ -1208,8 +1221,40 @@ function _fit_tweedie_crossed_laplace(fam::Tweedie, y, Xμ, comps, nmμ, nmσ, n
     blocks = vcat(fit.blocks, [:nu => (nblk + 1):(nblk + 1)])
     names = vcat(fit.coefnames, [:nu => nmν])
     theta = vcat(fit.theta, [Optim.minimizer(res)])
+    # The inner fits run with `se = false` and hold the power fixed, so `fit.vcov` is all NaN
+    # and `stderror` used to report Inf for every coefficient although the fit had converged
+    # (G7). Take the SEs from one joint finite-difference Hessian of the same Laplace objective
+    # over (mu, sigma, the two log SDs, the power), each point solved cold at a tight inner-mode
+    # tolerance so the stencil sees the same mode solve everywhere.
+    nG = comps[1][3] + comps[2][3]
+    function nll_joint(θ, tol)
+        pw = _logit12(θ[end])
+        aux_from(logsigma) = (y = yv, p = pw, logsigma = logsigma)
+        val, _, ok = _crossed_mean_laplace_nuisance_fg(
+            Val(:tweedie_fixed), aux_from, n, Xμ, comps[1][2], comps[1][3], comps[2][2],
+            comps[2][3], θ[1:end-1]; grad = false, b0 = zeros(nG),
+            mode_tol = tol, mode_maxiter = _SE_MODE_MAXITER)
+        return ok ? val : 1e18
+    end
+    ctx = "sparse-Laplace Tweedie (crossed random intercepts, joint Hessian)"
+    # The other crossed routes difference the exact gradient when nothing is clamped. Here the
+    # power has no analytic gradient (it is chosen by the outer Brent search), so the joint
+    # Hessian that includes it is value-based by construction. Follow the other routes'
+    # clamp rule: when a log SD or sigma sits at its clamp, say so (the value path is known to
+    # be noisy), then hold clamped log SDs fixed below (#1190). Sigma and the power window edge
+    # have no fix-and-report-the-rest precedent on the other routes, so they are only warned
+    # about (sigma) or left alone (power).
+    _se_hessian_path(theta; disp = (pμ + 1,), sd = (pμ + 2):(pμ + 3),
+                     disp_bound = _dispersion_clamp(Val(:tweedie_fixed))) === :value &&
+        _warn_value_hessian(ctx)
     V = fill(NaN, length(theta), length(theta))
-    V[1:nblk, 1:nblk] .= fit.vcov
+    for tol in _SE_MODE_TOLS
+        H = _finite_hessian(θ -> nll_joint(θ, tol), theta; h = _fd_hessian_step(n))
+        if all(isfinite, H)
+            V = _vcov_with_clamped_logsd_fixed(H, theta, (pμ + 2):(pμ + 3); context = ctx)
+            break
+        end
+    end
     scales = merge(fit.scales, Dict(:nu => fill(p̂, n)))
     return DrmFit(fam, blocks, names, theta, V, fit.loglik, fit.nobs, fit.converged,
                  fit.means, fit.obs, scales)

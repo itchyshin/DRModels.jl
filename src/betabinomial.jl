@@ -111,6 +111,10 @@ function _drm_betabinomial_fit(f::DrmFormula, fam::BetaBinomial; data, tree = no
                           "intercepts `(1 | g) + (1 | h)` only, #761)")
     mv === nothing ||
         error("BetaBinomial() does not support meta_V markers")
+    let sigre = _drm_sigma_ranef_laplace_family(f, fam; data, g_tol, se, fixed_mu, re, mv, st,
+                                                offset_term = offset_term, isva = false, isaghq = isaghq)
+        sigre === nothing || return sigre
+    end
     for (pname, r) in f.forms          # only the mean may carry a random effect
         pname === :mu && continue
         _, re2, mv2, st2 = _split_ranef(r)

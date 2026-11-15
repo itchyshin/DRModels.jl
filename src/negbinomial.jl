@@ -212,6 +212,10 @@ function _drm_negbinomial2_fit(f::DrmFormula, fam::NegBinomial2; data, tree = no
                           "intercepts `(1 | g) + (1 | h)` only, #761)")
     mv === nothing ||
         error("NegBinomial2() does not support meta_V markers")
+    let sigre = _drm_sigma_ranef_laplace_family(f, fam; data, g_tol, se, fixed_mu, re, mv, st,
+                                                offset_term = offset_term, isva = isva, isaghq = isaghq)
+        sigre === nothing || return sigre
+    end
     for (pname, r) in f.forms          # only the mean may carry a random effect
         pname === :mu && continue
         _, re2, mv2, st2 = _split_ranef(r)
@@ -333,6 +337,8 @@ function _drm_negbin2_sd_regression(f::DrmFormula, fam::NegBinomial2; data,
                                     g_tol::Real = 1e-8,
                                     se::Bool = true, marginal::Symbol = :LA,
                                     nAGQ::Union{Nothing,Int} = nothing)
+    laplace_fit = _laplace_sd_route(f, fam, Val(:nb2), marginal; data, g_tol)
+    laplace_fit === nothing || return laplace_fit
     marginal === :LA || throw(ArgumentError(
         "NegBinomial2 `sd(group) ~ …` currently supports `marginal = :LA` only."))
     if _ss_has_sigma_structured_sd(f)
