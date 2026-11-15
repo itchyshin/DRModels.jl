@@ -14,7 +14,7 @@ human-readable changelog.
 
 - `marginal = :Laplace` supports Binomial probit and cloglog links for one mean random intercept or one correlated intercept-slope block, including `cbind` responses. Random slope alone, offsets, `sd()` formulas, VA and REML remain unsupported; the default quadrature route is unchanged.
 
-- Binomial quantile residuals now work with missing responses and with independent or crossed random-slope shapes. Missing-response rows are omitted; the slope and crossed routes use the fixed-effect distribution.
+- Binomial quantile residuals now work with missing responses, independent intercept-and-slope shapes and crossed-intercept shapes. Missing-response rows are omitted; the slope and crossed routes use the fixed-effect distribution.
 
 - Binomial bootstrap and default simulation now refuse single random slopes, correlated `(1 + x | g)` blocks and the same-group intercept-plus-slope shape when a fresh random-effect draw is unavailable. Crossed intercepts, a single random intercept and explicit `re = :zero` are unchanged.
 
@@ -24,7 +24,7 @@ human-readable changelog.
 
 - `marginal = :Laplace` supports `CumulativeLogit()` with one ordinary mean random intercept. Slopes, crossed or structured effects, offsets, `sd()` formulas, fixed-only models and `:VA` or `:AGHQ` remain refused. The default quadrature route is unchanged.
 
-- A fit whose optimizer did not converge now prints its final maximum absolute gradient, matching `check_drm(fit).max_abs_grad`; estimates, flags and tolerances do not change.
+- A fit whose optimizer did not converge now prints its final maximum absolute gradient when a finite value is available, using the same diagnostic as `check_drm(fit).max_abs_grad`; estimates, flags and tolerances do not change.
 
 - `fitted(fit)` is conditional for LogNormal fits with a `sigma` random intercept and Gaussian fits with mean and `sigma` random intercepts on different groups. `re = :zero` remains population-level; routes that keep no modes still refuse the conditional default.
 
