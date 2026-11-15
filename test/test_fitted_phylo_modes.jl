@@ -155,7 +155,7 @@ _pm_resp(fam, d, cols) = fam in (:binomial, :betabinomial) ? getproperty(d, cols
 
 const _PM_BOUND = 1e-6          # the bound used for every drmTMB comparison in test_fitted_conditional.jl
 
-@testset "fitted(): the two phylo groups keep the random-effect modes (P20a)" begin
+@testset "fitted(): the two phylo groups keep the random-effect modes" begin
     d = _pm_mr(_pm_data())
     dc = _pm_complete(d)
     ref = _pm_reference()
@@ -296,7 +296,9 @@ end
     # ZeroOneBeta with a random intercept (item 4) and a crossed AGHQ Poisson (item 8)
     zf = drm(bf(@formula(y_zoib ~ x1 + (1 | g)), @formula(sigma ~ 1), @formula(zoi ~ 1), @formula(coi ~ 1)),
              ZeroOneBeta(); data = d)
-    @test nr(zf)
+    @test !nr(zf)                                   # the ZeroOneBeta (1 | g) route keeps its modes now (conditional)
+    @test length(fitted(zf)) == nobs(zf)
+    @test maximum(abs.(fitted(zf) .- fitted(zf; re = :zero))) > 1e-3
     cf = drm(bf(@formula(y_pois ~ x1 + (1 | g2) + (1 | f2))), Poisson(); data = d, se = false, marginal = :AGHQ)
     @test nr(cf)
     # the relmat / animal / phylo routes of the other counts families (not in the two groups) are not touched:
@@ -307,7 +309,7 @@ end
 # ---------------------------------------------------------------------------------------------------
 # the stored fit is untouched: bit-identical to the commit before the change (a6b12b0be)
 # ---------------------------------------------------------------------------------------------------
-@testset "stored fit values equal those of the pre-change commit (P20a: no fitted parameter changed)" begin
+@testset "stored fit values equal those of the pre-change commit (no fitted parameter changed)" begin
     d = _pm_mr(_pm_data())
     cells = Dict(id => f for (id, f) in _PM_CELLS)
     # The values were captured with Julia 1.13.3 and 1.10.12. Other Julia versions can differ in the
@@ -350,7 +352,7 @@ end
 # ---------------------------------------------------------------------------------------------------
 # residuals(type = :quantile) and sigma(fit) return the used rows
 # ---------------------------------------------------------------------------------------------------
-@testset "residuals(type = :quantile) and sigma(fit) return used rows (P20c)" begin
+@testset "residuals(type = :quantile) and sigma(fit) return used rows" begin
     d = _pm_mr(_pm_data())
     dc = _pm_complete(d)
     cells = Dict(id => f for (id, f) in _PM_CELLS)

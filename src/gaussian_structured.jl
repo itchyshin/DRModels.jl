@@ -74,8 +74,9 @@ matrix together with `ids = [site label of each row]`, or as a `Dict` keyed by s
 label. Coordinates for sites not in the data are dropped; a level of `site` with no
 coordinates is an `ArgumentError`. A plain matrix without `ids` is taken to be in order
 of first appearance of `site` in the data, and warns on every call. The spatial correlation `K(ρ) = exp(-d / ρ)` is built
-from pairwise distances and the range `ρ` is estimated jointly. Closed-form
-Gaussian marginal (K is rebuilt each evaluation since it depends on `ρ`).
+from pairwise distances with the range `ρ` FIXED at the median positive pairwise
+distance (plus a 1e-6 diagonal ridge), as drmTMB does; the range is not estimated.
+Closed-form Gaussian marginal, ML or REML.
 """
 spatial(x) = x
 
@@ -256,7 +257,7 @@ end
 
 # Resolve one structured marker to its fixed G×G correlation/relatedness matrix
 # from the keyword args. Used by the two-component path (relmat/animal/phylo;
-# spatial estimates a range jointly and is not yet supported alongside a second
+# spatial (fixed median-distance range) is not yet supported alongside a second
 # component — tracked as a follow-up).
 function _resolve_structured_matrix(kind::Symbol, grp::Symbol, G::Int; K, A, tree, coords)
     Cmat = if kind === :relmat
@@ -270,7 +271,7 @@ function _resolve_structured_matrix(kind::Symbol, grp::Symbol, G::Int; K, A, tre
         _phylo_correlation(tree)
     else  # :spatial
         error("spatial(1 | $grp) is not yet supported as one of two structured components " *
-              "(it estimates a range jointly); use it as the only structured marker")
+              "(not yet wired for the fixed median-distance kernel); use it as the only structured marker")
     end
     size(Cmat) == (G, G) ||
         error("structured matrix for `$grp` must be $(G)×$(G) (the number of `$grp` levels)")
@@ -589,7 +590,7 @@ function _drm_gaussian_structured_plus_ranef(fam::Gaussian, structured, re, meta
             "`$(marker)` combined with an ordinary random effect; this route is the dense " *
             "closed-form marginal only (use `algorithm = :auto`)."))
     kind === :spatial &&
-        throw(ArgumentError("drm: `spatial(1 | $(sgrp))` (range estimated from `coords`) cannot " *
+        throw(ArgumentError("drm: `spatial(1 | $(sgrp))` (fixed median-distance range from `coords`) cannot " *
             "be combined with an ordinary random effect yet. Pass the fixed spatial covariance as " *
             "`relmat(1 | $(sgrp))` with `K = …` — the form drmTMB's bridge sends for native " *
             "`spatial(1 | site, coords = …)` — which this route fits together with `(1 | g)`."))
@@ -625,7 +626,8 @@ function _drm_gaussian_structured_plus_ranef(fam::Gaussian, structured, re, meta
 end
 
 # Coordinate-spatial structured intercept: K(ρ) = exp(-d/ρ) from site distances,
-# with the range ρ estimated jointly (θ gains log σ_s and log ρ). K depends on θ
+# with the range ρ estimated jointly (θ gains log σ_s and log ρ). NOT USED by `drm`
+# since the fixed median-distance range was adopted (drmTMB's kernel); kept for reference. K depends on θ
 # so it is rebuilt each evaluation; otherwise the closed-form marginal is as in
 # `_fit_structured_gaussian`.
 function _fit_spatial_gaussian(fam::Gaussian, y, Xμ, Xσ, gidx, G, coords, nmμ, nmσ, grp, g_tol)

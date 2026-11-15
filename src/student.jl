@@ -498,7 +498,7 @@ function _fit_student_corr_ranef(fam::Student, y, Xμ, Xσ, Xν, xs, gidx, G, nm
     θ0[pμ+1] = log(std(y - Xμ * βμ0) + eps())        # σ init
     θ0[pμ+pσ+1] = log(10.0)                           # ν init
     θ0[pμ+pσ+pν+1] = log(0.4); θ0[pμ+pσ+pν+2] = log(0.4); θ0[pμ+pσ+pν+3] = 0.0   # log-Cholesky init
-    res = Optim.optimize(nll, θ0, Optim.LBFGS(), Optim.Options(g_tol = g_tol); autodiff = :forward)
+    res = _optimize_corr_ranef(nll, θ0, g_tol, bcache)
     θ̂ = Optim.minimizer(res)
     # #961: a non-finite Hessian on finite data is a degenerate fit, not a crash.
     V, hess_finite = _vcov_from_hessian_checked(ForwardDiff.hessian(nll, θ̂),

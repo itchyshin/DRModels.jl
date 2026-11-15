@@ -9,10 +9,9 @@ include(joinpath(@__DIR__, "fixtures", "binomial_spatial_sd", "gen_binomial_spat
     group = ["s$j" for j in group_index]
     coords = hcat(collect(range(0.0, 1.0; length = G)),
                   sin.(collect(range(0.0, 2pi; length = G))))
-    # The Binomial spatial routes keep the legacy mean-range kernel (drmTMB has no binomial
-    # spatial counterpart); the default of the shared builder is now drmTMB's native kernel.
-    C = DRModels._spatial_covariance_from_coords(:site, G, coords, nothing;
-                                                 legacy_mean_range = true)
+    # The Binomial spatial routes use drmTMB's native fixed kernel (median positive distance,
+    # 1e-6 ridge), which is the default of the shared builder.
+    C = DRModels._spatial_covariance_from_coords(:site, G, coords, nothing)
     Lchol = Matrix(cholesky(Symmetric(C)).L)
     z_group = vcat(fill(-1.0, G ÷ 2), fill(1.0, G ÷ 2))
     z = repeat(z_group; inner = n_each)
@@ -80,10 +79,9 @@ end
     group = ["s$j" for j in group_index]
     axis = collect(range(0.0, 1.0; length = G))
     coords = hcat(axis, sin.(2pi .* axis))
-    # The Binomial spatial routes keep the legacy mean-range kernel (drmTMB has no binomial
-    # spatial counterpart); the default of the shared builder is now drmTMB's native kernel.
-    C = DRModels._spatial_covariance_from_coords(:site, G, coords, nothing;
-                                                 legacy_mean_range = true)
+    # The Binomial spatial routes use drmTMB's native fixed kernel (median positive distance,
+    # 1e-6 ridge), which is the default of the shared builder.
+    C = DRModels._spatial_covariance_from_coords(:site, G, coords, nothing)
     Lchol = Matrix(cholesky(Symmetric(C)).L)
     z_group = vcat(fill(-1.0, G ÷ 2), fill(1.0, G ÷ 2))
     alpha = [log(0.6), 0.4]

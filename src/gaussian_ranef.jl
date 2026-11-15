@@ -1332,13 +1332,18 @@ function vc(fit::DrmFit)
         throw(ArgumentError("vc: this fit models the random-effect SD with covariates " *
             "(`sd(group) ~ ...`); use `coef(fit, :sd)` for the log-SD coefficients."))
     d = Dict{Symbol,Matrix{Float64}}()
+    isd = _intercept_only_sd(fit)
+    isd === nothing || (d[isd.group] = fill(isd.sd^2, 1, 1))
     # q=4 phylogenetic coevolution: the raw 4×4 group-level Σ_a is stashed on
     # `ranef` (axes mu1,mu2,sigma1,sigma2); surface it here per #192.
     if fit.ranef isa NamedTuple && haskey(fit.ranef, :Sigma_a)
         d[Symbol(fit.ranef.group)] = Matrix{Float64}(fit.ranef.Sigma_a)
     end
     for (p, r) in fit.blocks
-        if p === :recov
+        if p === :recov && _recov_is_sd_corr(fit)
+            grp, _, _, Σ = _recov_sd_corr_decode(fit, r)
+            d[Symbol(grp)] = Σ
+        elseif p === :recov
             a, b, cc = fit.theta[r]
             l11 = exp(a); l22 = exp(b)
             Σ = [l11^2 cc*l11; cc*l11 cc^2+l22^2]
