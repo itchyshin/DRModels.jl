@@ -4277,12 +4277,14 @@ function _fit_binomial_crossed_laplace(fam, s, ntr, Xμ, comps, nmμ, g_tol; se:
     p̄ = clamp(sum(s) / max(sum(ntr), 1), 1e-4, 1 - 1e-4)
     θβ0 = zeros(size(Xμ, 2))
     θβ0[1] = log(p̄ / (1 - p̄))
-    return _fit_crossed_mean_laplace(
+    fit = _fit_crossed_mean_laplace(
         fam, Val(:binomial), aux, length(s), Xμ, comps[1][2], comps[1][3],
         comps[2][2], comps[2][3], nmμ, [comps[1][4], comps[2][4]], g_tol;
         θβ0 = θβ0, se = se, polish_iterations = polish_iterations,
         extra_scales = Dict(:trials => Float64.(nint))   # `simulate` needs the trials
     )
+    fit.scales[:trials] = Float64.(nint)    # per-row trials, as every other Binomial route
+    return fit
 end
 
 # ---------------------------------------------------------------------------

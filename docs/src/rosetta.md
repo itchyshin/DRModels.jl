@@ -95,7 +95,7 @@ fit = drm(
 | Relatedness matrix | `y ~ x + relmat(1 \| id)`, `K = K` | `@formula(y ~ x + relmat(1 \| id))`, `K = K` |
 | Animal model | `y ~ x + animal(1 \| id)`, `A = A` | `@formula(y ~ x + animal(1 \| id))`, `A = A` |
 | Phylogenetic | `y ~ x + phylo(1 \| species)`, `tree = tree` | `@formula(y ~ x + phylo(1 \| species))`, `tree = tree` |
-| Spatial | `y ~ x + spatial(1 \| site)`, `coords = xy` (range fixed at the median pairwise distance) | `@formula(y ~ x + spatial(1 \| site))`, `coords = xy` (Gaussian mean: range estimated, a different model; every non-Gaussian route fixes it as drmTMB does) |
+| Spatial | `y ~ x + spatial(1 \| site)`, `coords = xy` (range fixed at the median pairwise distance) | `@formula(y ~ x + spatial(1 \| site))`, `coords = xy` (range fixed at the median pairwise distance, as drmTMB, on every route) |
 | Meta-analysis (univariate) | `gaussian()` + `meta_V(v)` | `Gaussian()` + `meta_V(v)` |
 | Meta-analysis (bivariate, known sampling covariance) | `meta_V(V = meta_vcov_bivariate(...))` **inside** `mu1` | `meta_vcov_bivariate(...)` passed as `drm(...; V = V)` — see [meta-analysis](model-guides/meta-analysis.md) |
 
@@ -187,18 +187,26 @@ distributional parameters:
   accurate integration (adaptive quadrature), while drmTMB maximises a Laplace
   approximation, so the two packages stop at slightly different parameters. The
   drmTMB `fitted()` is the Laplace value, not an error on either side. A fit made with
-  `marginal = :Laplace` on one of those families keeps no random-effect modes, so the
-  default `fitted(fit)` refuses it: call `fitted(fit; re = :zero)`, or refit with the
-  default marginal. Pass
+  `marginal = :Laplace` on one ordinary `(1 | g)` of Poisson, NegBinomial2, Binomial, Gamma
+  or Beta keeps the inner-mode solve at the fitted parameters, so `fitted(fit)` is conditional
+  there and agrees with drmTMB's to 1e-6 on the cells checked (the Laplace fit is the same
+  objective as drmTMB's). The same holds for a Binomial `(1 + x | g)` block with a
+  `:probit` or `:cloglog` link and for a `ZeroOneBeta` `(1 | g)` (here the modes move
+  only the Beta component of the mixture mean). Pass
   `fitted(fit; re = :zero)` for the population-level value with every random
   effect at zero, which is what `predict(fit, newdata)` returns on the GLM-type
   routes (and what `fitted(fit)` returned before the default changed). The
   single `relmat(1 | g)`, `animal(1 | g)` and dense `phylo(1 | g)` Gaussian fits and the
   `phylo(1 | g)` Laplace fits of Poisson, Binomial, BetaBinomial, NB2, Gamma and Beta
-  keep their modes, so `fitted(fit)` is conditional there. A route that does not keep
+  keep their modes, so `fitted(fit)` is conditional there. So do the zero-inflated
+  Poisson, zero-inflated NB2 and zero-truncated NB2 fits with one `(1 | g)` and the
+  `CumulativeLogit` fit with `(1 | g) + (0 + x | g)`: `fitted(fit)` is
+  `(1 - zi) * mu`, `mu / (1 - P(0))` or the expected category score, with the modes
+  in `mu` or in the linear predictor, as drmTMB's `fitted()`. A route that does not keep
   the modes needed for the conditional value (for example a `relmat` or `animal` count
-  fit, `ZeroOneBeta` with a random effect, bivariate fits with random effects,
-  a random effect on `sigma` when the mean depends on `sigma`, the crossed
+  fit, `ZeroOneBeta` with a structured random effect, bivariate fits with random effects,
+  a random effect on `sigma` when the mean depends on `sigma` (except the `LogNormal`
+  `sigma ~ ... + (1 | g)` fit, which keeps its `sigma` modes), the crossed
   adaptive-quadrature opt-in routes) refuses the
   default with a message that names `re = :zero`; it never returns population
   values under the conditional default. `residuals(fit)` is `y - fitted(fit)`

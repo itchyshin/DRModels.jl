@@ -135,9 +135,8 @@ mean fixed-effect designs, and intercept-only `sigma1`, `sigma2`, and `rho12`.
 `spatial(1 | group)` supplies a covariance exactly as `relmat`/`animal` do: the
 exponential kernel `exp(-d / rho)` at a FIXED range `rho` (keyword
 `spatial_range`, else drmTMB's native kernel: the median positive pairwise
-distance with a 1e-6 diagonal ridge), the same rule the q=4 structured route uses. It does NOT estimate the range jointly the way
-the univariate spatial route (`_fit_spatial_gaussian`) does, so the two are not
-the same model and must not be compared as one. The range in force is recorded
+distance with a 1e-6 diagonal ridge), the same rule the q=4 structured route and the
+univariate spatial route use. The range is never estimated. The range in force is recorded
 as `fit.ranef.spatial_range`.
 
 Row `k` of `coords` is the `k`-th level of `group` **in the order the levels
@@ -185,6 +184,9 @@ fit = drm(
         throw(ArgumentError("drm: `method` must be :ML (default) or :REML (got :$method)"))
     rhs = Dict(f.forms)
     fixed, structured_marker = _bivariate_q4_marker(rhs)
+    (structured_marker !== nothing && structured_marker[1] in (:structured_q2, :structured_q4) &&
+     structured_marker[2] === :spatial && K !== nothing && coords !== nothing) &&
+        _refuse_spatial_k_and_coords(true)
     # A8: known bivariate sampling covariance (drmTMB's meta_vcov_bivariate) is
     # consumed by the residual route only in this slice.
     V !== nothing && structured_marker !== nothing &&
@@ -996,7 +998,7 @@ end
 # `coords` is stated exactly once. The range is `spatial_range` when supplied,
 # else drmTMB's native kernel (median positive pairwise distance, 1e-6 ridge, as
 # `_gaussian_spatial_sd_kernel`). An explicit `spatial_range`, and the retired
-# mean-distance rule behind `legacy_mean_range = true` (Binomial only), use a 1e-8
+# mean-distance rule behind `legacy_mean_range = true` (no fitting route uses it), use a 1e-8
 # ridge to keep the kernel positive definite at near-coincident sites. Row k of `coords` is the k-th
 # level of `grp` in `_group_index` order (stable FIRST-SEEN order in the data),
 # which is the same contract the q=4 route has always had.

@@ -112,7 +112,7 @@ Write them as terms in the mean formula:
 | Random intercept / slope | `(1 \| g)`, `(0 + x \| g)`, `(1 + x \| g)` | exchangeable group variation; correlated slopes |
 | Crossed / nested RE | `(1 \| g) + (1 \| h)` | multiple grouping factors |
 | [`phylo`](@ref) | `phylo(1 \| species)` | covariance from a phylogenetic tree |
-| [`spatial`](@ref) | `spatial(1 \| site)` | exponential kernel over coordinates; the Gaussian mean route estimates the range (drmTMB fixes it), and the Poisson, Gamma, Beta and bivariate routes use drmTMB's fixed median-distance kernel, see [capabilities](../capabilities.md) |
+| [`spatial`](@ref) | `spatial(1 \| site)` | exponential kernel over coordinates; every route (Gaussian, Binomial, Poisson, Gamma, Beta and bivariate) fixes the range at drmTMB's median-distance kernel, see [capabilities](../capabilities.md) |
 | [`animal`](@ref) | `animal(1 \| id)` | additive-genetic covariance from a pedigree `A` |
 | [`relmat`](@ref) | `relmat(1 \| id)` | a user-supplied relatedness matrix `K` |
 | [`meta_V`](@ref) | `meta_V(v)` | known sampling (co)variances for meta-analysis |
