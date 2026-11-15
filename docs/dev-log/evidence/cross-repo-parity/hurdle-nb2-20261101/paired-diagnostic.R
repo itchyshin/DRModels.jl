@@ -34,11 +34,16 @@ row.names(dat) <- NULL
 n <- nrow(dat)
 
 out <- callr::r(function(pkg, jl_path, dat) {
-  julia_home <- Sys.getenv("DRM_JL_JULIA_HOME", Sys.getenv("JULIA_HOME", ""))
-  if (nzchar(julia_home)) Sys.setenv(JULIA_HOME = julia_home)
-  options(drmTMB.DRM.jl.path = jl_path)
-  Sys.setenv(DRM_JL_PATH = jl_path)
-  suppressMessages(pkgload::load_all(pkg, quiet = TRUE))
+  # Configure the bridge and load the local R package. The loader argument is
+  # injectable for isolated tests; ordinary callers use pkgload::load_all.
+  configure_bridge <- function(pkg, jl_path, loader = pkgload::load_all) {
+    selected_home <- Sys.getenv("DRM_JL_JULIA_HOME", unset = Sys.getenv("JULIA_HOME", unset = ""))
+    if (nzchar(selected_home)) Sys.setenv(JULIA_HOME = selected_home)
+    options(drmTMB.DRM.jl.path = jl_path)
+    Sys.setenv(DRM_JL_PATH = jl_path)
+    suppressMessages(loader(pkg, quiet = TRUE))
+  }
+  configure_bridge(pkg, jl_path)
   fml <- drmTMB::bf(count ~ x + habitat, sigma ~ z, hu ~ w + habitat)
   fam <- drmTMB::truncated_nbinom2()
   ft <- drmTMB::drmTMB(fml, family = fam, data = dat, engine = "tmb")
