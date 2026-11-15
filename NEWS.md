@@ -6,6 +6,341 @@ human-readable changelog.
 
 ## Development
 
+## v0.8.2
+
+- **`CumulativeLogit()` refuses a skipped category (#1303).** A response coded `1, 2, …, K` whose range `1:K` is not fully observed (for example `y` in `{1, 2, 4}`) now raises an `ArgumentError` naming the missing level(s) and the observed levels, before any cutpoint is allocated. drmTMB's ordinal validator already refuses that empty category; the Julia message follows that intent. Contiguous codes, including `K = 2` when both levels occur, still fit.
+
+- **Poisson animal q2 SD restarts (#1333).** Independent `animal(1 + x | g)` fits with two covariate SD formulas (`sd(g, animal, coef(.)) ~ z`) now run the shared `_q2_boundary_restarts` helper (same acceptance rules as Binomial animal q2 and Gamma sd-z). Fixes Julia 1.10 nightly CI where the default L-BFGS start could stop with `fit.converged == false` on the committed `test_q2_sd_simulate.jl` Poisson animal cell. The outcome is recorded in `fit.scales[:q2_restarts]`.
+
+- **Bare structured intercept-plus-slope terms on Beta and Gaussian REML.**
+  `animal(1 + x | g)` and `relmat(1 + x | g)` with no `sd()` formula now fit for
+  Beta (ML) and for Gaussian with `method = :REML`, as the two-SD model with
+  constant SDs, matching drmTMB 0.8.1.
+- **Binomial `animal(1 + x | g)` versus `animal(1 + x | p | g)`.** The
+  unlabelled form is now the independent-field model (correlation fixed at 0),
+  as in drmTMB 0.8.1; before, it fitted the correlated model, which made its
+  log-likelihood differ from R's by 0.9 to 1.4. The labelled form with
+  `sd(g, animal, coef(...))` formulas is accepted and fits the correlated model.
+
+- **Binomial independent random effects with a covariate in the SD formulas (`sd(g, coef(.)) ~ z`) now restart the optimiser.** From its single default start L-BFGS could stop at a smooth, converged interior point 1 to 6 nats below a point the same objective scores higher (the 2 wave-8 cells `binomial|indep|q2|sd-z` and `q3|sd-z`: -255.2241 and -254.5596 before, -253.1450 and -253.1280 now; drmTMB 0.8.1 reports -253.5291, but the two programs score the same estimate 0.29 apart, so this is not a same-objective comparison). Such fits now run the shared `_q2_boundary_restarts` unconditionally (an alternative start is kept only on a clear objective gain, so a fit whose first optimum stands is unchanged; an alternative that does not converge replaces a converged first fit only if it gains more than 1 nat, so a restart does not turn a converged fit into an unconverged one) and record the outcome in `fit.scales[:q2_restarts]`. Intercept-only SD formulas and correlated blocks are untouched. Cost on a 400-row fit (medians over 40 generated seeds, Julia 1.10, 20 processes sharing one host): about 0.9 s instead of 0.1 s for two random terms, about 7.5 s instead of 1 s for three; the worst fits took about 1.75 s and 12.6 s. Test: `test/test_binomial_indep_sdz_restarts.jl`; evidence: `docs/dev-log/2026-11-09-binomial-indep-restarts.md`. Convergence caveat: the restarts raise the log-likelihood and, on most seeds, the converged count, but a fit can still end unconverged (on the Totoro measurement, 3 of 40 generated seeds for three random terms, and 1 of 40 for two terms before the acceptance rule was tightened), and the restarts cost about 8 times the time of a single fit. For four random terms an independent check on 20 seeds (not committed) found the restarts never worsened a fit, raised the converged count from 10 to 19, and took a median 174 s per fit against 22 s.
+
+- **A bivariate fit now drops rows with a missing response by default, as drmTMB does.** `drm(bf(mu1 = ..., mu2 = ...), Gaussian(); data)` (and the `LogNormal` and `Student` bivariate routes) removes a row when either response is missing and warns with the count. Before, Julia kept partly observed rows and fitted their marginal likelihood, so the same script gave a different logLik and different estimates from `drmTMB(..., family = biv_gaussian(), data = d)` with no warning from either side (gap map v2, six cells, logLik gaps of 15 to 30). The old behaviour is one keyword away: `missing = miss_control(response = "include")`, drmTMB's spelling. `miss_control(response = "fail")` refuses data with a missing response, and `miss_control(predictor = "model")` is refused for a bivariate response. With the three seeds in `test/fixtures/bivariate_missing/`, logLik, coefficients, rows used and `fitted()` agree with drmTMB 0.8.1 under both policies (|dLL| below 1e-10, fitted below 1e-10). drmTMB drops silently; Julia warns, which changes no number. The R bridge passes `missing = miss_control(response = "include")` itself, so rows that R kept on purpose are left alone.
+- **Bivariate `LogNormal` fits report the same `fitted()`, `residuals()` and `predict()` as drmTMB.** `fitted(fit)` is `exp(mu_k + sigma_k^2 / 2)` per response (it was the log-scale location), `residuals(fit)` is `y - fitted(fit)` on the response scale (it subtracted the log-scale location from the response), `predict(fit, data)` is the log-scale location, as for the univariate `LogNormal`, and `predict(fit, data; type = :median)` is its exponential. A bivariate `LogNormal` fit with `missing` values in a `Union{Missing,Float64}` column now fits under `missing = miss_control(response = "include")` instead of failing in a `Float64` conversion.
+
+- **Near-singular matrices no longer surface as a raw `PosDefException`.** An audit of every bare `cholesky(...)` in `src/` found two objective-side calls and a handful of post-fit / set-up calls. Inside optimiser objectives the location-only Gaussian phylogenetic likelihood now returns its existing finite penalty and the q = 4 maximum-likelihood Λ line search scores a non-positive-definite trial Λ as `-Inf`. The Gaussian BLUP step (after a converged fit) no longer aborts the fit: the fit is returned with its random-effect estimates set to `NaN` and a one-time warning. At set-up steps (structured-component square roots, a user `relmat`/`animal` matrix alongside `meta_V`, the Fisher-z q = 4 wrapper, `simulate_coevolution`, a coincident-site spatial kernel) a clear `ArgumentError` names the matrix instead of the bare "matrix is not positive definite". Results for positive-definite input are unchanged.
+
+- **CI collects Julia test coverage and uploads it to Codecov.** The existing
+  four Linux shards still run the authorised suite (`DRM_TEST_SHARD`); only the
+  current-stable Julia 1 legs write `lcov.info`. A separate non-required
+  `codecov` job merges those four files and uploads them with GitHub Actions
+  OIDC. No README badge until an accepted upload is verified.
+
+- **`fitted()`, `residuals()` and `predict()` now follow drmTMB's definitions for LogNormal, zero-inflated, hurdle and zero-truncated fits (checked against R for five of the models, see the end of this entry).** `fitted(fit)` returns the response mean `E[Y]`: `exp(μ + σ²/2)` for `LogNormal`, `(1 - π) μ` for zero-inflated Poisson / NB2, `μ / (1 - P(0))` for zero-truncated NB2 and truncated Poisson, and `(1 - π) μ / (1 - P(0))` for hurdle Poisson / NB2. It returned `exp(μ)` or the component `μ` before, so the same converged model reported a different mean from R (gap map v2, 104 cells with equal logLik). `residuals(fit)` is `y - fitted(fit)`. `predict(fit, newdata)` gains `type = :mean` (`E[Y]` at new rows, drmTMB's `type = "mean"`) and `type = :median` (LogNormal `exp(μ)`); `type = :response` stays the response scale of the location parameter (the count component mean for the count families), and for `LogNormal` it is now the log-scale `μ`, equal to `type = :link`, as in drmTMB (use `type = :median` for the old `exp(μ)`). `fit.means[:mu]`, `simulate`, `predict_parameters` and the R bridge payload are unchanged. Tests compare against drmTMB 0.8.1 reference values committed under `test/fixtures/fitted_semantics/`, which cover five models only: LogNormal, zero-inflated Poisson, zero-inflated NB2, zero-truncated NB2 and hurdle NB2. The formulas for truncated Poisson, hurdle Poisson, `ZeroOneBeta` and `CumulativeLogit` follow drmTMB's but have not been checked against an R fit.
+
+- **Student `spatial(1 | site)` and `spatial(1 + x | site)` now fit with `coords`.** The fit uses drmTMB's fixed-range kernel, `exp(-d / r) + 1e-6 I` with `r` the median positive pairwise distance, and the TMB-convention Laplace approximation; the `+ x` form is the independent intercept and slope (two SDs, correlation fixed at 0), as in drmTMB. On the two gap-map cells it agrees with drmTMB 0.8.1: log-likelihood to 1e-11, every fixed-effect coefficient (including `sigma` and `nu`) within 1e-10 R standard errors, log SDs to 5e-7 (`test/test_student_spatial_coords.jl`). Before this the call was refused with "the Student route does not accept the keyword `coords`". `sigma` or `nu` covariate formulas and `sd()` formulas on these terms are still refused.
+
+- **Tweedie crossed random intercepts now report finite standard errors.** For `(1 | g) + (1 | g2)` on `Tweedie()`, `stderror(fit)` used to return `Inf` for every coefficient on a converged fit, because the inner fits hold the power fixed and the stored covariance was all `NaN`. The route now takes the standard errors from one joint finite-difference Hessian of the same Laplace objective over the mean and sigma coefficients, both log SDs and the power. Point estimates and the log-likelihood are unchanged. On the committed data the log-likelihood agrees with drmTMB 0.8.1 to 1e-4 and the standard errors to 1e-3 relative (`test/test_tweedie_crossed_se.jl`). A log SD stuck at its floor is held fixed and reported, as on the other crossed routes. Computing the standard errors adds time: about 16 s for one fit in a loaded session.
+
+- **Multi-start for Gamma coordinate-SD (`sd-z`) q2 fits.** The Gamma two-field
+  route (`phylo`/`spatial`/`animal`/`relmat(1 + x | g)` with an SD formula that
+  has a non-intercept predictor) has a second interior mode in the SD
+  coefficients, and the single default start stopped at the lower one in 2 of 22
+  wave-9 seeds (spatial seeds 9 and 10, 0.46 and 1.41 below drmTMB). Such fits now
+  run the six alternative starts of the shared q2 restart helper and keep one only
+  on a clear objective gain. The outcome is in `fit.scales[:q2_restarts]`
+  (ran, winning start, gain, convergence flipped). Cost: a fit takes about 6 times
+  as long (median 1.5 s to 9.7 s on the 22 seeds). Gamma fits with constant SDs
+  are unchanged.
+
+* **Gamma `spatial(1 | site)` with `coords` now uses the same fixed kernel as drmTMB and the other Julia spatial routes.** The Gamma coordinate-spatial mean intercept, with or without `sd(site, spatial) ~ …`, used the bivariate-route kernel (range = mean pairwise distance, 1e-8 jitter, intercept-only route rescaled to unit diagonal) instead of the native `exp(-d / median positive distance) + 1e-6 I`. It now calls the shared `_gaussian_spatial_sd_kernel`, so a Gamma spatial fit equals the drmTMB `relmat(1 | site, K = K)` fit with the native `K`: on four simulated datasets the old kernel differed from R in log random-effect SD by up to 0.021 (0.17 R standard errors); the new one differs by at most 7e-8 in any estimate. Estimates of Gamma coordinate-spatial fits made with earlier versions change slightly.
+
+  Older Gamma coordinate-spatial results shift when refitted: log random-effect SD by up to about 0.02 and the mean intercept by 1e-3 to 5e-3 in the four datasets checked. The same change also fixes two things on these routes: a plain vector of 1-D coordinates is again accepted as an n-by-1 matrix, and `bootstrap`/marginal simulation for a Gamma `spatial(1 | g)` SD-regression fit now draws from the same fixed kernel as the fit (it previously failed looking for an estimated range).
+
+- **A bare structured `(1 + x | g)` block no longer needs an `sd()` formula, and Gamma gains phylo/spatial `(1 + x | g)`.** In drmTMB 0.8.1 `animal`, `relmat`, `phylo` and `spatial` `(1 + x | g)` with no `sd()` formula is the independent two-SD model (labelled `(1 + x | p | g)`: the correlated one), the same model as `sd(g, kind, coef(·)) ~ 1` for both coefficients. DRModels refused it with "only the intercept form is admitted". It now completes the two intercept-only SD formulas for the shapes whose explicit form is a supported route (Gaussian animal/relmat/spatial, Poisson and NegBinomial2 animal/relmat/spatial/phylo, Gamma animal/relmat/phylo/spatial, Binomial logit phylo/spatial; the labelled form for Poisson only, which is the one family where drmTMB fits it without an SD formula). Log-likelihoods equal drmTMB 0.8.1's to 1e-7 on the agreement datasets. REML, other families and shapes with extra random terms are refused as before. `fit.formula` carries the completed SD formulas. Gamma `phylo(1 + x | g)` (independent and labelled) and `spatial(1 + x | g)` (independent; drmTMB refuses the labelled form) with one SD formula per coefficient run on the existing Gamma two-field Laplace engine with the phylo tip-correlation / coordinate kernel; marginal simulation and bootstrap work for them. Tests: `test/test_gap_close_q2.jl` (dense oracles at the fitted parameters).
+
+- **Twelve gap-map v2 crash cells (six kinds of input) that raised a bare `MethodError`, `DomainError` or `DimensionMismatch` now fit or are refused with a message.**
+  A factor as a random slope, `(f | g)`, `(1 + f | g)` or `(0 + f | g)`, on any univariate family, and a random effect inside the `zi` or `hu` formula (`zi ~ 1 + (1 | g)`) are refused with an `ArgumentError` that says what to do (drmTMB refuses both). A cross-family pair that contains `LogNormal()` is refused the same way, with the list of supported families. Three inputs now fit and agree with drmTMB 0.8.1: Gaussian `method = :REML` with `y ~ f * x1` and `sigma ~ x1 + f` (a line-search step with a huge `sigma` coefficient made `logdet` fail; it now reports an infinite objective and the search backs off), `CumulativeLogit()` with a string or symbol response (coded 1..K in sorted label order; an `@info` names the order. drmTMB itself refuses a character response and an unordered factor, so this is a Julia convenience and the agreement is with an ordered factor in the same level order), and prior `weights` together with a missing response (the weights follow their rows, as in R). All six are pinned in `test/test_gap_v2_crashes.jl` against `test/fixtures/gap_v2_crashes/r_reference.csv`.
+- **Ten gap-map v2 crash cells are not Julia-side fixes.** `@formula` cannot parse the R double bar `(1 + x1 || g)` and has no `poly()`; the error is raised when the formula is written, before `drm` runs. Write `(1 | g) + (0 + x1 | g)` for the double bar (same log-likelihood as drmTMB) and an explicit quadratic function term for `poly(x1, 2)` (same ML log-likelihood); the string route `engine = "julia"` already accepts `poly` and reproduces R's orthogonal basis.
+
+- **`method = :REML` now fits eight more Gaussian mean-side designs that drmTMB 0.8.1 fits with `REML = TRUE`.** Slope-only `(0 + x | g)`; several independent scalar terms (`(1 | g) + (0 + x1 | g) + ...`, and crossed `(1 | g) + (1 | g2)`); one `relmat(1 | g)` or `animal(1 | g)`; and `phylo(1 + x | g)` with two SDs, each with a constant residual scale. The objective is the exact restricted likelihood (ML plus half the log-determinant of `X'V^-1X`, minus half `p log(2 pi)`), the same one the existing `(1 | g)` route uses. On three simulated datasets per group the REML logLik agrees with R to 1e-4 or better (see `docs/dev-log/2026-11-09-gaussian-reml-routes.md`). `spatial(1 | g)` and a correlated `(1 + x | g)` block beside another term stay refused, each with its own message. The Gaussian shapes added to maximum likelihood in the same release (unstructured q3/q4 block, labelled q3/q4 block, a correlated block beside intercepts, independent intercept and slope with `sd()`) refuse `method = :REML` with a message saying so. A single labelled q2 block `(1 + x | p | g)` is the ordinary correlated block and fits under REML (no R comparison was run for it). Each of these routes needs a constant `sigma`, no `sigma` random effect and no `meta_V()`; rows with a missing response are dropped first (with a warning), so REML is computed on the complete cases.
+
+- **Gaussian `method = :REML` on more routes.** REML now fits a correlated block of
+  3 or 4 coefficients `(1 + x1 + x2 [+ x3] | g)`, a correlated block of 2 to 4
+  coefficients beside crossed intercepts `(1 + x1 | g) + (1 | g2)` (labelled or
+  not), `relmat` / `animal` / `spatial(1 | g)` with its own `sd(g, <level>) ~ 1` or
+  `~ z`, and the bare unlabelled `relmat` / `animal` / `spatial(1 + x | g)`. The
+  ordinary, crossed and `sd(g, <level>)` shapes agree with drmTMB 0.8.1
+  `REML = TRUE` on the datasets where R converged (REML logLik to 1e-4, mean
+  coefficients within 0.02 R standard errors, SDs and correlations within 1e-2);
+  on ordinary q = 4 that is two datasets of three, because neither fit converges
+  on the third. The bare `relmat` / `animal` / `spatial(1 + x | g)` cells have no
+  R reference of their own: they are completed to the explicit `sd() ~ 1` form,
+  and the tests only check that the two forms give the same fit. The labelled
+  forms were compared with R on one shape (ordinary q = 3). The evidence is in
+  `docs/dev-log/2026-11-09-gaussian-reml-routes2.md`. These shapes keep a constant
+  `sigma` and no `sd()` formula on the correlated blocks (drmTMB refuses REML there
+  too). The bare `spatial(1 | g)` stays ML only: it estimates the exponential range
+  where drmTMB fixes it, so the maximum likelihoods differ by design; the refusal now
+  says so and points to `sd(g, spatial) ~ 1`, which supports REML.
+
+- **Gaussian ordinary and crossed random-effect shapes that R fits.** Four
+  shapes that the Gaussian mean route refused now fit by exact dense maximum
+  likelihood (ML only; `method = :REML` is refused with a message that says so, except that a single labelled q2 block `(1 + x | p | g)` is the ordinary correlated block and fits under REML):
+  an unstructured block of three or four coefficients with no `sd()` formula,
+  `(1 + x + z | g)`; a block label `(1 + x | p | g)` when only one term carries
+  the label and `sigma` has no random effect; a correlated block beside random
+  intercepts on other groupings, `(1 + x | g) + (1 | h)`, with optional
+  `sd(g, coef(·)) ~ …` per block coefficient and `sd(h) ~ …`; and independent
+  intercept and slope terms with `sd(g, coef(·)) ~ …`,
+  `(1 | g) + (0 + x | g)`. Agreement with drmTMB 0.8.1 on three committed
+  datasets is in `docs/dev-log/2026-11-09-gaussian-sd-gaps.md`. Still refused:
+  a mean `sd(g) ~ …` formula together with a `sigma` random effect, and any
+  correlated block beside a slope term.
+
+- **More Gaussian random-effect shapes that R fits.** Two further groups fit by
+  ML and agree with drmTMB 0.8.1 at the optimum on committed datasets (log-likelihood
+  within 5e-9 on 30 fits over three datasets; evidence and refusals in
+  `docs/dev-log/2026-11-09-gaussian-sd-groupf.md`). First, a correlated
+  `(1 + x | g)` block beside random slope terms: `(1 + x | g) + (0 + z | h)`,
+  two blocks `(1 + x | g) + (1 + z | h)`, and a block beside
+  `(1 | h) + (0 + z | h)` or `(0 + z | g)`, with optional
+  `sd(·, coef(·)) ~ …` formulas (dense exact likelihood, 5,000-row cap). Second, a mean
+  `sd(g) ~ …` formula together with a `sigma` random intercept, independent
+  or as the labelled pair `(1 | p | g)` in `mu` and `sigma` (dense Laplace).
+  Still refused, by name: an `sd()` formula on a grouping that carries a block and
+  another term (drmTMB refuses it too), a 3- or 4-coefficient block beside a slope
+  (drmTMB's own fit does not converge), a label shared by two terms (the message now
+  says drmTMB ignores such a label), and REML on all of these.
+
+- **Gaussian `sd(g, sigma) ~ …` with a sigma random effect (dense Laplace).** A
+  mean random intercept `(1 | id)` with `sd(id) ~ w` can now sit beside a sigma
+  random intercept `(1 | site)` or slope `(0 + z | site)` with
+  `sd(site, sigma[, coef(z)]) ~ v`, on different (even crossed) groups, and a
+  sigma-only `sd(g, sigma) ~ …` fits. `sigma ~ 1 + animal(1 | id)` /
+  `relmat(1 | id)` also fits with `sd(id, animal|relmat, sigma) ~ z`. Both use
+  the TMB-convention Laplace marginal (twins of drmTMB's
+  `test-gaussian-mu-sigma-joint-sd.R` and `test-gaussian-sigma-structured-sd.R`),
+  checked against an independent dense Laplace at the fitted parameters
+  (|logLik| difference below 1e-4). Maximum likelihood only, at most 600 latent
+  coordinates; phylo and spatial sigma effects are refused. Design and risks:
+  `DESIGN-joint-sigma.md`.
+
+- **REML for Gaussian structured intercept-and-slope SD-regression routes.** `method = :REML` now fits `KIND(1 + x | id)` with `sd(id, LEVEL, coef(intercept)) ~ z0` and `sd(id, LEVEL, coef(x)) ~ z1` for the shapes native drmTMB 0.8.1 accepts under REML: `phylo` labelled or unlabelled, and unlabelled `animal`, `relmat` and `spatial` with `sigma ~ 1`. The ordinary route, the joint mean + `sigma` route, labelled non-phylo blocks, and a structured `sigma` random effect combined with the intercept-and-slope block are still refused. A structured `sigma` intercept with its own SD formula (`sigma ~ 1 + KIND(1 | g)`, `sd(g, KIND, sigma) ~ z`, fixed-effect mean) is a separate route that does fit under REML (see the structured-sigma REML entry in `NEWS.md`). `reml_loglik(fit)` matches a dense restricted log-likelihood written without package code (tolerance 1e-6, `test/test_gaussian_structured_q2_reml.jl`). The comparison with native drmTMB is on the R side (itchyshin/drmTMB PR 1684, folder `wave4-reml`); no R numbers are stored in this repository.
+
+- **Julia 1.12.6 and 1.12.7: a wrong "observed rows" mask for integer responses is fixed, and a check now stops the fit if it happens again.** On one computer, an AMD EPYC 9655 (Zen 5), `drm` read the response column wrongly on Julia 1.12.6 and 1.12.7. The column had to be a `Vector{Union{Missing,T}}` with `T` equal to `Int`, `Int32` or `UInt64`, with about 31 or more rows. About half of the rows were marked missing, and the fit ran on the rest with no error: a Poisson fit on 160 rows with 3 missing counts used about 20 rows. Complete data is not safe by itself: the fault also hit a column whose type allows `missing` but which holds none. A plain `Vector{Int}` and `Float64`, `Float32`, `Bool` and `UInt8` columns were not affected in our checks. Julia 1.10.12 and 1.13.3 were not affected. Other CPUs are untested: the same code is generated for the Zen 4 target (`-C znver4`), but we did not run on real Zen 4 hardware or on Intel chips. The cause appears to be a code generation fault in Julia 1.12; it was confirmed by reading one assembly dump only. `drm` now reads the response with a loop that does not trigger it, and checks the result against the data in a separate read-only pass (one pass over the column), so a wrong mask stops the fit with a clear error that names ways to continue (Julia 1.10 or 1.13, `-C generic`, or a `Float64` column). This does not make Julia 1.12 safe in general: a separate Julia 1.12.7 failure in `profile_sigma_a` remains. Results on Julia 1.10 and 1.13 are unchanged bit for bit. A response vector with a non-1-based index now raises a `BoundsError` where the old unchecked loop could crash Julia. Test: `test/test_response_mask_j112.jl`.
+
+Bivariate q4 REML no longer accepts line-search trial points whose joint (u, beta) solve did not reach a stationary point: they return an infinite objective and do not overwrite the warm-start caches, so the fit stops at a certified optimum (found on Julia 1.12 with one missing-cell pattern, where REML stopped about 5.6 log-likelihood units short and reported `converged = false`). Two tests no longer depend on the Julia version's `Random` streams.
+
+- **Ordinary correlated intercept-and-slope with coefficient SD formulas
+  (Poisson, NegBinomial2).** `(1 + x | p | g)` (both families) and `(1 + x | g)`
+  (Poisson; NB2 already fit it on the two-field route) now fit with
+  `sd(g, coef(intercept)) ~ z0` and `sd(g, coef(x)) ~ z1` plus one free
+  correlation (`rho = 0.999999 tanh(eta)`, block `:recov`, `"g:atanh_rho"`). It is
+  the animal/relmat q2 model with the identity kernel, reusing its Laplace
+  helpers. Prediction, the bridge and the marginal simulator accept the form.
+  Native drmTMB 0.8.1 refuses the labelled ordinary form and fits only the
+  unlabelled `(1 + x | g)` (the same model).
+  Validated here against a dense Laplace oracle only; the native 0.8.1 behaviour
+  quoted above is from the R side (itchyshin/drmTMB PR 1684, folder
+  `wave3-labelled-ordinary`), not stored in this repository.
+
+- **Labelled (correlated) phylogenetic and spatial intercept-and-slope with SD
+  formulas.** `phylo(1 + x | p | g)` and `spatial(1 + x | p | g)` now fit on the
+  Poisson, NegBinomial2 (`sigma ~ 1`) and Gaussian (`sigma ~ 1`) routes with
+  `sd(g, phylogenetic|spatial, coef(intercept)) ~ z0` and `sd(g, ..., coef(x))
+  ~ z1`, adding one free correlation (`rho = 0.999999 tanh(eta)`, block
+  `:recov`, `"g:atanh_rho"`) to the unlabelled q2 routes. Kernels are the
+  native ones (`ape::vcv(tree, corr = TRUE)`; `exp(-d / median d) + 1e-6 I`).
+  Prediction, the bridge and the marginal simulator accept the labelled form.
+  Checked in this repository against dense Laplace / MvNormal oracles. Where
+  native drmTMB 0.8.1 fits the same shape, the comparison at the optimum was
+  run on the R side and its numbers are not stored here; the evidence is in
+  itchyshin/drmTMB PR 1684, folder `wave3-labelled-phylo-spatial`. Native
+  drmTMB 0.8.1 refuses SD formulas on labelled Poisson phylo and any labelled
+  NB2 spatial term; those two cells are validated against the oracle only.
+
+- **Labelled (correlated) structured intercept-and-slope with SD formulas.**
+  `animal(1 + x | p | g)` and `relmat(1 + x | p | g)` now fit on the Poisson,
+  NegBinomial2 (`sigma ~ 1`) and Gaussian (`sigma ~ 1`) routes with
+  `sd(g, animal|relmat, coef(intercept)) ~ z0` and `sd(g, animal|relmat,
+  coef(x)) ~ z1`. The label adds one free correlation between the two
+  unit-scale structured fields, `rho = 0.999999 tanh(eta)`, reported as block
+  `:recov` (`"g:atanh_rho"`); this is drmTMB's `eta_cor_phylo` contract
+  (`Cov(b0_g, b1_h) = rho s0_g s1_h C[g, h]`, `C` raw). The unlabelled form is
+  unchanged (rho fixed at 0). Prediction, the bridge and the marginal
+  simulator accept the labelled formula; the simulator draws correlated
+  fields. Checked against independent dense Laplace / MvNormal oracles and
+  against native drmTMB 0.8.1 at the optimum (one dataset per route). Other
+  families (Gamma, Binomial) and labelled intercept-only structured terms
+  still refuse.
+
+- **`marginal = :Laplace` now reaches the routes that default to adaptive quadrature, so a fit can report the same log-likelihood as drmTMB.** It is accepted for one `(1 | g)` or `(0 + x | g)` with or without `sd(g, coef(.)) ~ ...` formulas on Poisson, NegBinomial2, Binomial (logit), Beta, Gamma, Student and Tweedie, for independent terms with `sd()` formulas on Binomial, and for one correlated block `(1 + x | g)` on Poisson and NegBinomial2 (two coefficients) and Binomial (two to four, with or without `sd()` formulas); these were refused with "supports `marginal = :LA` only". No default changes: without the keyword every fit is bit-identical to before. Quadrature is the more accurate integral; Laplace is what drmTMB reports, and the two log-likelihoods differ by 0.03 to 0.5 units on the gap-map data, so do not compare a `:Laplace` fit with a default fit by `lrtest` or AIC. Against drmTMB 0.8.1 (committed references in `test/fixtures/laplace_parity/`), the pre-registered rule is logLik 1e-4, fixed effects 1e-3 of R's standard error and log SD 5e-3; the result per cell is in `docs/dev-log/2026-11-09-laplace-parity.md`. Test: `test/test_laplace_parity.jl`.
+
+Fix: `DRModels.lrtest` is now the same function as `StatsModels.lrtest` (DRModels adds a method for `DrmFit` pairs and still exports the name). Before, `using DRModels, StatsModels` followed by an unqualified `lrtest(...)` was an ambiguous binding and failed with `UndefVarError` on Julia 1.12 and later. The result type, p-value and printed output of `lrtest(reduced, full)` on DRModels fits are unchanged; `lrtest` on other StatsModels models still works as in StatsModels.
+
+- **The cross-family fitter scores the NB2 count density correctly at tiny sigma.** The
+  mixed-family NB2 log-density (`fit_mixed_family`) formed `loggamma(y + θ) - loggamma(θ)`
+  directly, with size θ = 1/σ². Once σ fell below about 0.03 the two terms (each of size
+  θ·log θ, up to 1e13 at the σ clamp) cancelled, and the density was off by up to 0.046 nats
+  per observation at the clamp, so the Poisson limit was scored higher than the truth (a
+  spurious gain of about 3.5 nats on a 150-row fixture). For θ at or above 1e3 the density
+  now uses the Stirling-stable form already used by the ordinary Laplace route, written with
+  `log1p(μ/θ)`; below that the old expression is kept as it was, so fits with
+  log σ ≥ -3 are unchanged. Fits that sit on the near-Poisson plateau keep the same
+  log-likelihood but can report a different σ̂ along the flat direction.
+
+**Cross-family profile CI no longer drops a resolvable arm when the extreme point fails.** `fit_mixed_family(...; profile = true)` decided whether a rho profile arm crosses the chi-square cutoff from one inner solve at rho0 = +-0.999; if that single solve stalled, the whole arm was returned `NaN` without bisecting (NB2 x Gaussian, n = 150: `(0.4699741, NaN)`, now `(0.4699741, 0.7991)`). The arm now walks inward through nearer points (0.95, 0.9, 0.8) and uses the first trusted solve, a stalled inner solve is retried from the stall point and from the nearest trusted profile point, and an inner solve counts as trusted only if it is stationary to 1e-6 (Optim's `converged` flag alone was set with gradient residuals of 0.05 to 2 and pointed the bisection the wrong way). A throw from an inner solve is now an unresolved point instead of aborting the fit. The 1e10 sentinel guard is unchanged, and an arm with no trusted point is still `NaN`. The Gaussian x Poisson and Gamma x Poisson profile intervals are unchanged to 1e-6.
+
+* **NB2 and Gamma now fit structured sigma random effects (dense Laplace, at most 600 latent coordinates, ML only).** Two shapes, kept apart because native drmTMB 0.8.1 treats them differently. (A) NB2 `sigma ~ 1 + animal|relmat|phylo|spatial(1 + x | id)` with no SD formula: native drmTMB fits it (independent intercept and slope fields, one constant SD each) and R-versus-Julia agreement at the optimum was recorded on the R side for four providers and five seeds (see itchyshin/drmTMB PR 1684; not stored in this repository) (log-likelihood differences below 7e-9). (B) NB2 and Gamma `sigma ~ 1 + animal|relmat|phylo|spatial(1 | id)` with `sd(id, level, sigma) ~ z`: **Julia-only**, because native drmTMB 0.8.1 refuses it for both families; its only evidence is an independent dense ForwardDiff Laplace oracle at the fitted parameters (all eight family-by-provider fits agree to 1e-5). Gamma structured sigma without an SD formula, a sigma random slope with an SD formula, a mean random effect alongside, and REML stay refused. An animal precision `Ainv` is accepted on both shapes and gives exactly the fit `A = inv(Ainv)` gives. `predict`, `predict_parameters`, `ranef`, `simulate` (marginal and `re = :zero`) and `drm_bridge` work on both shapes. Design note and the verbatim native refusals: `DESIGN-structured-sigma.md`.
+
+- **A compound random-effect grouping now gets a named refusal.** `(1 | g / h)`, `(1 | g & h)`, `(1 | h %in% g)`, `(1 | g:h)` and a function call after the bar (`(1 | f(g))`) used to fail with internal errors such as `type FunctionTerm has no field sym` (or a `MethodError` for `g:h`). `drm` now throws an `ArgumentError` that names the term, says drmTMB refuses it too ("Random-effect grouping terms must be simple variables"), and gives the spelling that works: a plain column holding the combination, for example `gh = string.(g, ":", h)` with `(1 | g) + (1 | gh)`. That spelling agrees with drmTMB 0.8.1 on 6 datasets. `/` itself is still not supported. This covers the univariate, bivariate and mixed-family routes.
+
+- **Three of the five non-converged cells of the wave-10 gap map now converge; the other two are documented.** Gamma phylo `sd-z` (q = 1): the Fminbox L-BFGS stopped with a zero step at mean |gradient| 1.01e-6 per observation, just outside the 1e-6 reporting limit, at drmTMB 0.8.1's log-likelihood to 1e-10; the fit now takes up to two Newton steps on the finite-difference Hessian when that test fails and no bound is active (the test itself is unchanged), and reports converged at -621.45197493. Gamma `(1 | g) + (0 + x | g)`: the inner Newton solve stalled at the rounding floor (step 1.4e-8, gradient 2.6e-7), was reported as failed, and BFGS stopped 9.25 log-likelihood units below drmTMB at a point with gradient norm 92; the solve now stops when its Newton decrement is below what the objective can resolve, and the fit reaches drmTMB's optimum (-546.34273213, estimates within 1e-3). The same inner solve serves `Student()` independent terms. Poisson coordinate spatial: the warm-start buffer of the inner mode was never reset after an extreme first line-search trial, so every later evaluation returned the 1e18 sentinel and the fit stopped at its start with NaN; a failed inner solve now retries from zero. The fit converges at -674.46; drmTMB 0.8.1 fixes the range at the median pairwise distance (5 parameters, -675.69469), and Julia's objective with the range fixed there reproduces that value to 1e-5. NB2 animal q = 2 `sd-z` and Binomial ordinary q = 3 `sd-z` still report `converged = false`, as drmTMB does for both (`pdHess = FALSE`): the fits run to a ridge with a runaway coefficient and a correlation at the boundary, and are left as fit-and-flag. Test: `test/test_nonconv_triage_wave10.jl`; evidence: `docs/dev-log/2026-11-09-nonconv-triage.md`.
+
+- **Non-Gaussian correlated-block shapes that drmTMB 0.8.1 fits now fit.**
+  (1) Poisson and NB2 `(1 + x | g)` with an `sd(g, coef(·)) ~ …` formula on only
+  one coefficient: the other coefficient keeps a constant SD, as in drmTMB.
+  (2) LogNormal `(1 + x | g)` with SD formulas on one or both coefficients (the
+  Gaussian correlated-block fit on `log(y)` plus the Jacobian; q = 2 only, as
+  drmTMB). (3) Binomial (logit) `(1 + x + z [+ w] | g)` with no SD formula.
+  Log-likelihoods agree with drmTMB 0.8.1 to 1e-9 for (1) and (2). For (3) Julia's
+  default adaptive Gauss-Hermite log-likelihood is 0.57 (q = 3) above R's Laplace
+  value; with `nq = 1` (the Laplace rule) a one-off run gave -253.57472, equal to R's value to 1e-5, but that fit reports `converged = false` and no test calls `nq = 1`, so the claim that the gap is the integrator is not guarded by a test. The q = 4 R fit
+  does not converge, so there is no agreement claim there. The post-fit bootstrap
+  simulator for the one-target Poisson/NB2 block is not wired.
+
+- **Independent intercept-plus-slope random effects, `(1 | g) + (0 + x | g) [+ (0 + x2 | g) ...]`, now fit on the Poisson, NegBinomial2, Binomial, Beta, LogNormal and Tweedie mean routes, and `sd(g, coef(.)) ~ ...` formulas on those terms now fit on Poisson, NegBinomial2, Binomial (when some term has no formula) and Gamma.** These shapes were refused with "supports multiple random effects only as crossed/nested intercepts" (Gamma and Student already took the shape without formulas). The fits use the dense TMB-convention Laplace route of Gamma and Student, tagged `marginal = :Laplace`; `:AGHQ`, `:VA` and REML stay refused, and a correlated `(1 + x | g)` beside another term stays refused. LogNormal uses the exact Gaussian marginal of `log(y)`. Slope-only `(0 + x | g)` also reaches the same route on the families that refused it. Against drmTMB 0.8.1 (ML, committed gap-map data and reference values in `test/fixtures/nongauss_indep/`), 75 of the 96 cells drmTMB fits agree to logLik 1e-4, fixed effects 1e-3 and log SD 5e-3 (the 74 away from the Binomial q4 boundary to logLik 8e-9, fixed effects 2e-6, log SD 4e-7; these maxima come from `tools/nongauss_indep_compare.jl`, whose table is not committed, and the test asserts only the limits). The 21 that do not are in four groups, none changed here. Binomial `sd-first` q2 and q4 stop on a flat ridge 0.44 logLik below drmTMB's boundary value (drmTMB flags those fits non-converged; a restart from four alternative starts did not reach it). The older per-group-quadrature SD routes (single slope with `sd()`, Binomial with a formula on every term) differ from drmTMB's Laplace logLik by 0.03 to 0.99, and the Tweedie slope-only GHQ route by 0.03 to 0.07. drmTMB 0.8.1 errors on 40 further cells (`sd()` formulas on independent terms of Beta, Tweedie, LogNormal, Student, and Gamma with three or more terms): Beta and Tweedie stay refused as in R, the others fit with no reference. `sd(g) ~ ...` on crossed intercepts `(1 | g) + (1 | g2)` also fits now on Poisson, LogNormal and Student; those crossed cells, and the slope-only cells of Binomial, Gamma, Student and LogNormal, are compared with drmTMB only by `tools/nongauss_indep_compare.jl`, not by a test. The agreement rule has a boundary exemption added after it was written: a log SD below -6 in either fit skips the SD criterion for that cell only. In the 3008-cell gap map this flips 49 cells to agreement with drmTMB 0.8.1, adds 16 fits where drmTMB errors, and regresses none. Test: `test/test_nongauss_indep_routes.jl`; design, pre-registered agreement rule and per-cell verdicts: `docs/dev-log/2026-11-09-nongauss-indep-design.md`.
+
+Fix: the error text for `marginal = :Laplace` on a route that has no Laplace option now lists every family that does accept it for an ordinary `(1 | g)`: Poisson, Binomial, NegBinomial2, Gamma, Beta, Tweedie, Student and LogNormal. The old text left out Tweedie, Student and LogNormal, which already accepted `marginal = :Laplace`; only the text (and the `Laplace` docstring) was wrong. No fit changes.
+
+Updated the developer crosswalk with current main SHAs and selected PR checks for drmTMB and DRModels.jl. The snapshot identifies stale bases, failed checks, and the owner follow-up for #1222.
+
+- **`residuals(fit; type = :quantile)` on the random-effect SD-regression routes now conditions on the Laplace modes, as drmTMB's does; `Ainv` works on Gamma and Gaussian animal q2.** The ordinary q2 / q3 / q4, relmat / animal / phylo / spatial q2, labelled `(1 + x | p | g)`, Gamma / NB2 two-field and joint mean + `sigma` routes were judged with the random effects set to 0 (SD of the residuals 1.07-3.27 on the test fixtures at the population level, against 0.80-0.99 with the modes, as measured); each route now records the per-row mode contribution at `theta_hat` (`scales[:cond_eta_re]`, also exported by the R bridge) and the residual uses it, so the SD is 0.80-0.99. `fitted(fit)` is unchanged (population level). Checked in this repository against an independent dense computation of the modes and the residuals (agreement 1e-8 or better). The comparison with native drmTMB 0.8.1 (labelled animal q2 for Poisson, NB2, Gamma and Gaussian; ordinary q2 for Poisson and NB2; conditional mean, PIT bounds and deterministic residuals) was run on the R side and its numbers are not stored here; the evidence is in itchyshin/drmTMB PR 1684, folders wave3-labelled-phylo-spatial, wave3-labelled-ordinary, wave4-postfit and wave4-reml. Only the dense-oracle agreement is reproducible from this repository. `drm(...; Ainv = …)` on `animal(1 + x | g)` and `animal(1 + x | p | g)` with SD formulas was a `MethodError` for Gamma and Gaussian although drmTMB accepts it and Poisson / NB2 already did; it now fits exactly the model `A = inv(Ainv)` gives. The precision-input forms `relmat(…, Q = Q)` and the `simulate`/`bootstrap_result` keyword `Ainv` for Gamma / Gaussian are not added.
+
+- **`predict` on an ordinal fit whose response is a label now works (gap-map cells `I|cumul|response=label` `predict` and `predict_new`).** `CumulativeLogit()` fits a string or symbol response, but `predict(fit, newdata)` threw `Float64(::String)` when `newdata` still carried that label column. `predict` now ignores a label response column, as drmTMB does with its ordered factor; predictions equal drmTMB 0.8.1 to 1e-8 on every row. Calls that already worked are unchanged. The five "predict with a missing predictor" cells need no change: drmTMB also refuses `predict(fit, newdata)` when a predictor the mean formula uses is missing ("New prediction data contains missing value for required predictor"), so Julia's refusal is the parity behaviour; the gap-map harness compared it with R's `predict(fit)` (no newdata), a different call. Test: `test/test_predict_missing_predictor.jl`; fixtures and the R script that regenerates them: `test/fixtures/predict_miss/`.
+
+- **`predict(fit, newdata)` and `predict_parameters` now work when `newdata` holds only some of a factor's levels, for every family.** Gap map v2 found 69 cells where Poisson, Binomial, Gamma, NB2, Student, LogNormal, Beta, cumulative logit, zero-inflated Poisson and others threw ("the design built from newdata has columns ..." for a subset of levels, "only one level found" for a single row); Gaussian was fine. Cause: those fitters build their designs without the formula's schema cache, so `predict` rebuilt the factor contrasts from the rows of `newdata`. `drm` now records the training levels of every factor in the formula, and `predict` codes the factor with them: a single row, a subset or a reordered set of levels gives the same value as the matching row of a full-level prediction (compared once with drmTMB 0.8.1 for Poisson, Gamma and Beta, maximum relative difference 1.8e-11; that comparison is a committed output file, not a test). A level the model never saw is still an `ArgumentError` naming the column, the level and the fitted levels, matching drmTMB's "unknown factor level" error. Test: `test/test_predict_newdata_factor_levels.jl`; evidence: `docs/dev-log/2026-11-09-predict-newdata-factor-levels.md`.
+
+- **Optional Gamma prior on a Gaussian random-intercept SD.** A single named iid mean random intercept can use a Gamma density on its natural SD scale, with explicit shape and rate. It can be combined with existing fixed-coefficient priors; the fit reports the data log likelihood separately from the penalties. This experimental route requires complete observations, unit weights and ML, and active-prior inference restrictions apply.
+
+- **Input-validation fixes from the adversarial-data red team.** `sd(g) ~ …` with a grouping variable that has fewer than two levels is now refused up front for every family (the Gaussian ordinary route used to fit it, returning boundary SD estimates). The Binomial structured SD routes accept `ids = …` for `A` and `coords`, and the Binomial `spatial(1 | g)` SD route accepts a label => coordinate `Dict` (both ended in an unsupported-keyword `MethodError` or a "neither" `ErrorException`). The Binomial `(1 + x | g)` slope check refuses only when the slope predictor is constant in every group, as drmTMB does; one singleton group among varying ones was refused. Two refusal messages now say what to try: a tree with tips that have no data rows (prune the tree), and a singular relatedness matrix (merge duplicated individuals); the Poisson animal route no longer calls its matrix `relmat`.
+
+- **Bare structured terms without an `sd()` formula.** Binomial `animal(1 | g)`,
+  `relmat(1 | g)` and `spatial(1 | g)`, Beta `spatial(1 | g)` and
+  `spatial(1 + x | g)`, and Beta `phylo(1 + x | g)` now fit as the model with
+  constant SDs, the same fit as the explicit `sd(g, level) ~ 1` form and the
+  one drmTMB 0.8.1 fits. The labelled NegBinomial2 `phylo(1 + x | p | g)` with no
+  SD formula fits as well. drmTMB flags its Binomial spatial and Beta spatial
+  q = 2 fits as not converged on the gap-map data; the log-likelihoods agree.
+
+- **An unsupported keyword is a readable refusal, not a `MethodError`.** `method = :REML` on `LogNormal()`, `Student()` or `Tweedie()`, and `tree` / `K` / `A` / `ids` / `coords` on a route with no matching structured provider, used to fail dispatch with `no method matching drm(...; method = ...)`. Every public `drm` method now raises an `ArgumentError` that names the keyword, the family route, what to try, the keywords the route accepts, and (for the families checked against drmTMB 0.8.1) whether R fits the model. The refusal comes before any fitting. A call that works is unchanged: the 11 fits probed before and after are bit-identical.
+- **NB2 `sigma ~ 1 + animal(1 | id)` with `sd(id, animal, sigma) ~ w` no longer throws `PosDefException`.** A non-positive-definite Hessian in the one Newton step of the structured-sigma Laplace objective now applies the same non-PD penalty as the line below it, so `drm()` returns a fit with `converged = false`. The same unguarded `cholesky` remains in the Gaussian sigma-SD Laplace route (`gaussian_sigma_sd_laplace.jl`) and is not changed here.
+- **No failed-objective sentinel reaches the user.** `loglik(fit)` / `loglikelihood(fit)` returns `NaN` with a warning when the stored log-likelihood is non-finite, `≤ -1e15` (the `-1e18` sentinel) or, on a non-converged fit, `≥ 1e15` in magnitude (Gaussian q2 with a covariate scaled by 1e6 stored `+3.6e76`). `show` and `summary` print `NaN` for such a fit. The raw stored number stays in `fit.loglik`, and the R bridge payload still carries it. `aic`, `bic` and `deviance` follow.
+- **The "`A` has no labels" and "`coords` has no labels" warnings fire on every call.** They fired once per session, so a second call with a wrongly ordered bare matrix was silent. Pass `ids = …` or a labelled table / `Dict` to silence them.
+
+- **`ml_loglik(fit)` and `reml_loglik(fit)` no longer return a failed-objective sentinel.** They follow `loglik(fit)`: for a fit with `converged = false` and a non-finite, `≤ -1e15` or `≥ 1e15` stored value they return `NaN` with a warning. Converged fits, and the documented `NaN` of `reml_loglik` on an ML fit (silent), are unchanged. The raw numbers stay in `fit.ml_loglik` / `fit.reml_loglik` and the R bridge payload still carries them.
+- **Gaussian / NB2 / Gamma sigma-SD Laplace (`gaussian_sigma_sd_laplace.jl`): the Newton-step `cholesky` is guarded.** A non-positive-definite Hessian there now applies the non-PD penalty (fit with `converged = false`) instead of raising `PosDefException`, the same guard already applied to the structured-sigma Laplace route. Reproducer: a Gamma fit `y ~ x + (1 | id)`, `sigma ~ 1 + (1 | site)`, `sd(id) ~ 1`, `sd(site, sigma) ~ v` on 5 sites with one outlier among values near 1e-3 (fixture `gamma_sigma_sd_nonpd_data.csv`). Fits that already ran are unchanged.
+
+- **Test files no longer need to be listed for the time-balanced shard driver.** `test/shard_by_time.jl` now runs a `test_*.jl` file that is not in the assignment file on shard `fnv1a32(name) % N + 1`, so adding a test no longer needs an edit to `test/shard_assign_N16.txt` and no longer conflicts with other pull requests. A listed file that is missing on disk is now an error. The new `test/test_shard_layouts.jl` checks that every test file runs in exactly one shard in the CI layout and in the 8 and 16 shard layouts.
+
+- **Random effects on `sigma` beyond a Gaussian single intercept.** Eight shapes now fit and match drmTMB 0.8.1
+  (log-likelihood within 1e-4): `sigma ~ x1 + (1 | g)` for LogNormal, Gamma, NegBinomial2 and BetaBinomial (fixed-effect
+  mean); Gaussian `sigma ~ x1 + (0 + x1 | g)`, `sigma ~ x1 + (1 + x1 | g)` (one correlation parameter),
+  `sigma ~ x1 + (1 | g) + (1 | h)`, and a mean `(1 | g)` with a sigma `(1 | h)` on a different group. All use the
+  Laplace approximation with constant SDs (no `sd()` formula). `simulate`, `bootstrap_result`, `update`, `predict`,
+  `re_sd` and `ranef` work on them. Other combinations (a mean random effect with a sigma one for the count and
+  positive families, sigma slopes outside Gaussian, offsets) still refuse by name.
+- **Fix: quantile residuals and `repeatability` on a sigma random slope.** A Gaussian `sigma ~ x + (0 + x | g)` fit stores
+  its SD as `g_x_logsigma`, which was not read as a scale-axis effect. `residuals(fit; type = :quantile)` then
+  integrated out a random intercept on the mean that the model does not have, and `repeatability` and the variance
+  boundary diagnostic counted the sigma slope as a mean variance component. All three now treat it as a scale-axis effect;
+  quantile residuals on these fits use the stored population mean and sigma.
+
+- **`simulate` and `bootstrap` on a Binomial fit with two crossed random intercepts.**
+  `drm(bf(y ~ x + (1 | g) + (1 | g2)), Binomial())` did not keep the number of trials
+  on the fit, so `simulate(fit; data)` (and `simulate(fit; re = :zero)`) stopped with
+  "does not carry `trials`". The fit now stores the trials (both the 0/1 and the
+  `cbind(successes, failures)` form, Laplace and `marginal = :AGHQ`), and the draws match the
+  fitted model's own marginal mean and variance. A fit made before this change (which
+  stored no trials) still simulates: the trials are rebuilt from the response columns of `data`.
+
+- **`simulate(fit; data)` for several random intercepts.** A fit with
+  `(1 | g) + (1 | g2) [+ ...]` on the mean (distinct groups, any family except
+  ZeroOneBeta) now draws a fresh independent effect per term, as drmTMB 0.8.1
+  does, instead of refusing. Slope terms, repeated groups, correlated blocks
+  and `meta_V` plus two fields stay refusals. `simulate(fit)` without `data=`
+  still refuses, because the fit does not keep the grouping columns. The error
+  now prints the call to use: `simulate(fit; data = <the data frame you fitted with>)`.
+- **Behaviour change in `bootstrap`: results change for fits with several
+  ordinary random intercepts.** Before, the random effects were held at zero and
+  the random-effect SD intervals were useless. Now every field gets a fresh
+  draw, so rerun old bootstraps of such fits. The bootstrap previously fell back, without a warning, to the
+  conditional draw (random effects held at zero; #997). It now redraws every
+  field. Measured on simulated Gaussian and Poisson data with two crossed
+  intercepts (12 datasets, B = 60): the 95% interval for the log random-effect
+  SDs was about 14 to 27 log units wide and covered the truth 0 of 12 times;
+  it is now 0.7 to 2.0 wide and covers 9 to 12 of 12. Fixed-effect intervals
+  changed little (slope width 0.27 to 0.28 Gaussian, 0.26 to 0.24 Poisson).
+
+- **SkewNormal fixed-effect fits restart on the slant.** The skew-normal likelihood can have two or three local optima in the slant `nu`, and the single default start could stop at a worse one than drmTMB 0.8.1. A fit now also runs from four fixed extra starts (slant sign reversed, the first optimum mirrored, slant intercepts +8 and -8). An extra start replaces the fit so far only if Optim reports convergence, its log-likelihood is higher by more than 1e-5, and its estimate is an interior optimum (positive definite Hessian, finite and not inflated standard errors). A restart therefore never gives a lower log-likelihood, an unconverged fit or a degenerate one, and a fit whose default start was already best is unchanged. It changes the returned fit on some data sets, always to a higher log-likelihood (`fit.scales[:q2_restarts]` records the outcome). It multiplies the run time of the fit by about 8 at n = 100 and n = 1000 and by 6 to 10 at n = 10000. It is a multi-start, not a global search. A large slant estimate with a large standard error means a flat likelihood and occurs with or without the restarts. Restarts are skipped when `DRMControl` sets `start`, `multi_start`, `maxit` or `optimizer`.
+
+- **Spatial parity with drmTMB 0.8.1: Poisson coordinate spatial now fixes the range, and NB2 spatial `sd-z` finds the better optimum.** Poisson `spatial(1 | g)` with `coords` used to estimate the spatial range (a sixth parameter, a `:range` block) and reached a log-likelihood 1.23 above drmTMB's, a different model. It now uses drmTMB's kernel, `exp(-d / r) + 1e-6 I` with `r` the median positive pairwise distance, the same helper as the Gamma route, on the sparse Laplace spine (so `method = :REML` is no longer refused for it). On the wave-10 cell the fit has 5 parameters and agrees with drmTMB 0.8.1: log-likelihood -675.6946875 (difference 2e-9), fixed effects within 1e-5 R standard errors, log SD within 2e-7. The estimated-range fitter and its marginal are removed; the bootstrap simulator draws from the native kernel when a fit has no `:range` block. NB2 `spatial(1 + x1 | p | g)` (the labelled, correlated form, which drmTMB 0.8.1 refuses) with `sd-z` formulas for both coefficients stopped at a lower interior mode (-554.2127; the better mode, -554.0242, differs mainly in the sign of the z coefficient of the intercept SD). The fit now also starts from four tilts of both SD blocks and keeps the best optimum under the existing acceptance rule (never worse than the first fit, an unconverged restart replaces a converged fit only for a gain above 1e-3). It reaches -554.024198; on 20 simulated seeds two improve (by 0.667 and 0.232), none gets worse, and the total run time is 2.4 times the single-start time. The independent form `spatial(1 + x1 | g)` is unchanged: it agrees with drmTMB today, and drmTMB's default start stops at the same lower mode as the single Julia start on seeds where a tilted start would gain 0.3 to 0.5. The same check found Poisson q = 2 gains of 0.08 to 0.14 on three of 40 seeds; they are not applied because drmTMB's default fit equals the unchanged Julia value. Tests that asserted the estimated range (`test_spatial_coord_poisson.jl`, `test_relmat_counts.jl`, the Poisson block of `test_nonconv_triage_wave10.jl`) are rewritten for the fixed range; new test `test/test_spatial_parity_wave10.jl`; evidence and the pre-registered rule: `docs/dev-log/2026-11-09-spatial-parity.md`.
+
+- **Structured and positive-family SD formulas: six more shapes (12 gap-map cells) now fit and agree with drmTMB 0.8.1.** Poisson and NegBinomial2 `spatial(1 | g)` with `sd(g, spatial) ~ …` (fixed native kernel from `coords`), NegBinomial2 `phylo(1 | g)` with `sd(g, phylogenetic) ~ …`, Gamma `(1 | g) + (0 + x | g)` with a single `sd(g, coef(.)) ~ …` formula (the other coefficient keeps a constant SD), LogNormal crossed `(1 | g) + (1 | h)` with `sd(g)` and `sd(h)`, and Student crossed `(1 | g) + (1 | h)` with `sd(g)` and `sd(h)`. On the 400-row gap-map datasets the log-likelihoods agree to 2e-9 and every coefficient to 2e-7 (SE ratios within 1e-5 of 1). Binomial `relmat(1 + x | g)` SD cells stay refused (R does not converge on them). Test: `test/test_struct_sd_counts.jl`; evidence: `docs/dev-log/2026-11-09-struct-sd-counts.md`.
+
+<!-- slop-ok: repository NEWS fragment convention requires a bold lead. -->
+- **Targeted SD priors for two Gaussian random intercepts.** A Gamma prior can target either or both distinct iid mean random-intercept SDs. Fixed-effect priors can be combined with them. These fits use penalized ML and retain the data likelihood separately.
+
+- **Prior tables.**
+  Supported Gaussian and binomial prior fits can use a table with fixed-effect normal or ridge penalties and Gamma penalties on named Gaussian mean random-intercept SDs. The table accepts a defined subset of glmmTMB-style syntax.
+
+- **Post-fit methods on the wave-2 SD-regression fits.** `predict`,
+  `predict_parameters`, `simulate` (default `re = :marginal`),
+  `bootstrap_result` and `drm_bridge` now work on the Gamma/NegBinomial2
+  two-field SD fits (same-group `(1 | g) + (0 + x | g)`, crossed
+  `(1 | g) + (1 | h)`, ordinary + `relmat`/`animal(1 | p)`, Gamma
+  `relmat(1 + x | g)`, labelled `animal`/`relmat(1 + x | p | g)`, NB2
+  `(1 + x | g)`) and on the phylo / coordinate-spatial `(1 + x | g)` q2 fits
+  (Gaussian, Poisson, NegBinomial2). Population-level prediction is
+  `g^{-1}(X beta)`; the label `p` in `kind(1 + x | p | g)` is a pure label and
+  is never read as a data column. The marginal simulator draws fresh latent
+  fields from the fitted SD formulas and kernel (correlated when the fit has
+  `rho`); phylo/spatial simulation needs the fitting `tree` / `coords`.
+  The two-field correlation is now named `"g:atanh_rho"` like the other
+  labelled q2 routes.
+- `ranef(fit)` now refuses (as it already did for `:sd`, `:resd` and `:recov`
+  blocks, #759) on any SD-regression fit (`sdtarget_*` blocks) that stores no
+  conditional modes, instead of returning an empty `Dict`.
+- Known limitation: `residuals(fit; type = :quantile)` on SD-regression fits
+  uses the fixed-effect-only reference and does not integrate the random
+  effects out, so the residuals are over-dispersed when the random-effect SDs
+  are non-negligible. This matches the earlier Poisson/NB2/Gaussian q2 routes;
+  use `simulate(fit; data, …)` for calibration checks.
+
+- **Fixes after review of the wave-4 branch.** (1) A failed or non-finite conditional-mode export no longer throws a `MethodError` that discarded a converged fit: the `:cond_failed` flag is stored as `[1.0]` (`DrmFit.scales` holds vectors), so the fit is returned and the R bridge reports the failed export. (2) NB2 structured `sigma ~ 1 + KIND(1 + x | id)` refuses `marginal` other than `:LA`, as shape B and Gamma do. (3) `simulate(fit; newdata = …)` now works for the NB2/Gamma structured-sigma fits and the labelled ordinary Poisson/NB2 q2 fits; the draw is population level (no random effects), as for other newdata simulation. (4) The Gamma two-field and structured-sigma bootstrap simulators accept the animal `Ainv` that the fit accepted. (5) Animal `Ainv` is accepted on NB2 and Gamma structured sigma (shapes A and B) and gives exactly the fit `A = inv(Ainv)` gives; the earlier note that `Ainv` stays refused there is withdrawn.
+
+- **Binomial phylo / spatial `(1 + x | g)` q2 SD regression (logit, 0/1).**
+  `sigma ~ 1 + phylo(1 + x | g)` and the coordinate-spatial form fit with a
+  Laplace likelihood, with `predict`, bootstrap simulation and the R bridge.
+  The labelled form `phylo(1 + x | p | g)` is accepted with a free correlation
+  `rho` (as R 0.8.1 does) and is fitted by the Binomial animal q2 Laplace
+  route. The labelled spatial form stays refused, with a message that matches
+  R. `marginal` other than `:LA` is refused on this route, and
+  `simulate(data = more rows than the fit)` or `tree1`/`tree2`/`K`/`A`/`Ainv`
+  on it raise a clear error instead of a `BoundsError` or a silent ignore.
+  Standard errors use a finite-difference step of 3e-3, which agrees with
+  drmTMB to about 0.4% on weakly identified slope SDs.
+- **Boundary restarts on the structured q2 Laplace fitters.** When the first
+  L-BFGS fit ends with a fitted group SD below 0.05 or fails the outer
+  gradient test, the NB2 and Binomial (animal, phylo, spatial) q2 fitters
+  re-run from alternative starts (constant and heterogeneous slope SD) and
+  keep one only on a clear objective gain; a kept first fit is returned
+  unchanged. The Binomial animal q2 inner solve treats a failed line search at
+  a negligible Newton decrement as convergence at the noise floor.
+- **Test-suite speed.** A capped first L-BFGS step makes the crossed Tweedie fit
+  about 200 times faster, and `test/shard_by_time.jl` runs a time-balanced
+  shard assignment (`test/shard_assign_N8.txt`, `test/shard_assign_N16.txt`).
+
 - **A non-positive-definite V at the post-fit BLUP step now returns NaN BLUPs instead of throwing.** On the dense structured Gaussian routes (two structured components, structured intercept plus slope, structured plus ordinary random effects) the fit has already converged when the BLUPs are computed, so a singular or non-finite fitted V no longer aborts it. The fit is returned, `ranef(fit)` holds NaN, a warning is printed once per session (silenced under the internal quiet-boundary flag used by bootstrap refits), and `fit.scales[:cond_blup_unavailable] == [1.0]` records the fallback on that fit, so later fits in a loop stay detectable after the warning has fired. The key is not sent as a dpar over the R bridge and `sigma(fit)` ignores it.
 
 - **Fix: NB2 `sigma ~ 1 + (1 | g)` / `(0 + x | g)` with `sd(g, sigma)` no longer throws `AssertionError: B > A`.** The default HagerZhang line search asserted on the near-flat plateau created by the hard shape clamp on a few percent of extreme draws (3 of 160 fuzz seeds on Julia 1.12). The fit now retries with BackTracking, as the Binomial/BetaBinomial/Gaussian routes already do; `converged` stays honest. Test: `test/test_nb2_sigma_sd_line_search.jl` (three committed datasets).

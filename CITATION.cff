@@ -16,8 +16,7 @@ authors:
 license: MIT
 repository-code: "https://github.com/itchyshin/DRModels.jl"
 url: "https://itchyshin.github.io/DRModels.jl/"
-version: 0.7.1
-date-released: 2026-09-06
+version: 0.8.2
 keywords:
   - distributional regression
   - location-scale models
