@@ -21,6 +21,8 @@ using Test, DRModels, LinearAlgebra, ForwardDiff, DelimitedFiles
              class=["fixef", "fixef"], coef=["x", "x"], dpar=["mu", "sigma"])
     @test [(r.dpar,r.coef) for r in resolve_priors(f, Gaussian(); data=dat, priors=table)] ==
           [(:mu,"x"),(:sigma,"x")]
+    @test_throws ArgumentError resolve_priors(f, Gaussian(); data=nan_z, priors=table)
+    @test_throws ArgumentError drm(f, Gaussian(); data=nan_z, tree=phy, priors=table)
     fit = drm(f, Gaussian(); data=dat, tree=phy, priors=p)
     double = merge(dat, (other=copy(dat.sp),))
     bad = bf(@formula(y ~ x + phylo(1 | sp) + phylo(1 | other)),
