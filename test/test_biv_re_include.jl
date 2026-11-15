@@ -191,7 +191,7 @@ end
         msg = err isa ArgumentError ? err.msg : sprint(showerror, err)
         for s in ("method = :REML", "full-rank fixed-effect design among the observed rows", "`mu1` has rank 3 for 4 columns",
                   "fz: c", "rows with a missing `y1m` stay in the fit", "miss_control(response = \"include\")",
-                  "method = :ML", "out of `data`", "fresh formula object", "keeps that data's factor levels")
+                  "method = :ML", "out of `data`", "the default `miss_control(response = \"drop\")`", "the level is then removed")
             @test occursin(s, msg)
         end
         @test !occursin("already rank deficient", msg)           # the cause is the kept rows, not the full data
@@ -201,23 +201,20 @@ end
         # taking those rows out of `data` removes the level, and the fit works
         keep = findall(!, miss1)
         dsub = NamedTuple{keys(d)}(map(c -> c[keep], values(d)))
-        fsub = mk(@formula(y1m ~ x1 + fz + (1 | p | g)))          # a new formula: a formula object caches the levels of its first data
+        fsub = mk(@formula(y1m ~ x1 + fz + (1 | p | g)))          # a new formula; a reused one gives the same fit, see below
         fit = drm(fsub, Gaussian(); data = dsub, missing = inc, method = :REML)
         @test fit.converged && isfinite(loglikelihood(fit))
-        # `miss_control(response = "drop")` with a FRESH formula removes the level, so REML fits;
-        # the same formula object reused after a fit on the full data keeps the level and is refused
-        # (a level without rows is an all-zero column), and the message says to build the formula afresh.
+        # `miss_control(response = "drop")` removes the level, so REML fits. A formula object reused after a
+        # fit on the same data has no stale levels either: each fit works on its own copy of the formula, so
+        # the reused object gives the same fit as a fresh one.
         fdrop = drm(mk(@formula(y1m ~ x1 + fz + (1 | p | g))), Gaussian(); data = d, method = :REML)
         @test fdrop.converged && length(coef(fdrop, :mu1)) == 3
         freuse = mk(@formula(y1m ~ x1 + fz + (1 | p | g)))
-        drm(freuse, Gaussian(); data = d, method = :ML, missing = inc)            # caches the three levels
-        errr = refused(freuse, d)
-        @test errr isa ArgumentError
-        msgr = errr isa ArgumentError ? errr.msg : sprint(showerror, errr)
-        @test occursin("fz: c", msgr) && occursin("Build the formula afresh", msgr)
-        # the cause is an empty level, so the text must not blame a duplicate or aliased column
-        @test occursin("is zero on every row", msgr) && occursin("a level with no rows", msgr)
-        @test !occursin("duplicate", msgr) && !occursin("aliased column", msgr) && !occursin("equals a combination", msgr)
+        drm(freuse, Gaussian(); data = d, method = :ML, missing = inc)            # first fit, three levels
+        freused = drm(freuse, Gaussian(); data = d, method = :REML)
+        @test freused.converged
+        @test abs(loglikelihood(freused) - loglikelihood(fdrop)) < 1e-10
+        @test maximum(abs.(coef(freused) .- coef(fdrop))) < 1e-10
         # ML is not refused by this check
         errml = try drm(f, Gaussian(); data = d, method = :ML, missing = inc); nothing catch e e end
         @test errml === nothing || !occursin("full-rank", sprint(showerror, errml))
@@ -300,6 +297,53 @@ end
         err4 = refused(mk(@formula(y1m ~ x1 + fz + (1 | p | g))), merge(d0, (; fz = fzw)); weights = w, missing = inc)
         msg4 = err4 isa ArgumentError ? err4.msg : sprint(showerror, err4)
         @test err4 isa ArgumentError && occursin("weight 0", msg4) && !occursin("already rank deficient", msg4) && !occursin("stay in the fit", msg4)
+    end
+
+    @testset "(g) the cause text for a column of zeros, and for two causes at once" begin
+        # a numeric covariate that is 0 on every row: named as a column of zeros, no advice about factor levels
+        zall = zeros(n)
+        errz = refused(mk(@formula(y1m ~ x1 + zall + (1 | p | g))), merge(d0, (; zall)); missing = inc)
+        msgz = errz isa ArgumentError ? errz.msg : sprint(showerror, errz)
+        @test errz isa ArgumentError && occursin("`zall` is zero on every row (a column of zeros", msgz)
+        @test occursin("Remove or recode the term that is zero on every row, or use method = :ML.", msgz)
+        @test !occursin("afresh", msgz) && !occursin("factor level", msgz) && !occursin("level", msgz)
+        # the advice works: drop the term (REML) or use ML
+        @test isfinite(loglikelihood(drm(mk(@formula(y1m ~ x1 + (1 | p | g))), Gaussian(); data = merge(d0, (; zall)), missing = inc, method = :REML)))
+        @test isfinite(loglikelihood(drm(mk(@formula(y1m ~ x1 + zall + (1 | p | g))), Gaussian(); data = merge(d0, (; zall)), missing = inc, method = :ML)))
+
+        # an interaction between two factors with an empty cell is a column of zeros too
+        fa = [iseven(i) ? "a" : "b" for i in 1:n]
+        fb = [(i % 3 == 0) ? "u" : "v" for i in 1:n]
+        for i in 1:n
+            fa[i] == "b" && fb[i] == "v" && (fb[i] = "u")             # no row with fa = b and fb = v
+        end
+        dcell = merge(d0, (; fa, fb))
+        errc = refused(mk(@formula(y1m ~ x1 + fa * fb + (1 | p | g))), dcell; missing = inc)
+        msgc = errc isa ArgumentError ? errc.msg : sprint(showerror, errc)
+        @test errc isa ArgumentError && occursin("is zero on every row (a column of zeros", msgc) && !occursin("afresh", msgc)
+        @test occursin("an interaction between factors with an empty cell", msgc)
+        # the advice works: drop the empty interaction, or use ML
+        @test isfinite(loglikelihood(drm(mk(@formula(y1m ~ x1 + fa + fb + (1 | p | g))), Gaussian(); data = dcell, missing = inc, method = :REML)))
+        @test isfinite(loglikelihood(drm(mk(@formula(y1m ~ x1 + fa * fb + (1 | p | g))), Gaussian(); data = dcell, missing = inc, method = :ML)))
+
+        # a level seen only in rows with a missing response (fz: c) next to a level whose rows all have weight 0 (fz: b):
+        # each is named with its own cause and its own advice
+        fzm = [miss1[i] ? "c" : (iseven(i) ? "a" : "b") for i in 1:n]
+        dm = merge(d0, (; fz = fzm))
+        wm = [fzm[i] == "b" ? 0.0 : 1.0 for i in 1:n]
+        fm() = mk(@formula(y1m ~ x1 + fz + (1 | p | g)))
+        errm = refused(fm(), dm; weights = wm, missing = inc)
+        msgm = errm isa ArgumentError ? errm.msg : sprint(showerror, errm)
+        @test errm isa ArgumentError && occursin("`fz: c` (a factor level seen only in rows with a missing response), take the rows", msgm)
+        @test occursin("`fz: b` (lost only because rows with weight 0 are not used), give those rows a positive weight", msgm)
+        @test !occursin("`fz: b` (a factor level seen only", msgm) && !occursin("`fz: c` (lost only because", msgm)
+        # following only one of the two pieces of advice is refused again; following both fits
+        keep = findall(!, miss1)
+        dk = NamedTuple{keys(dm)}(map(c -> c[keep], values(dm)))
+        @test refused(fm(), dm; weights = ones(n), missing = inc) isa ArgumentError             # weights fixed, level c still lost
+        @test refused(fm(), dk; weights = wm[keep], missing = inc) isa ArgumentError            # rows out, level b still weight 0
+        fixed = drm(fm(), Gaussian(); data = dk, weights = ones(length(keep)), missing = inc, method = :REML)
+        @test fixed.converged && isfinite(loglikelihood(fixed))
     end
 
     @testset "(f) the rank check is scale-aware: columns on scales 1e9 and 1e-9 fit and agree with the rescaled fit" begin

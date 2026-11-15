@@ -65,10 +65,10 @@ Three safeguards apply:
   observed (a factor level seen only in rows with a missing response, a covariate that is constant there,
   a level whose rows all have weight 0) is refused by name. The message names `REML`, the
   response, the aliased columns and the options, which depend on the cause. Remove or recode the term,
-  or use `method = :ML`, always works. Taking the rows with a missing response out of `data` (with a freshly
-  built formula) helps only for a factor level seen in those rows alone; a covariate that is constant on the
-  observed rows stays constant after the rows are removed. A formula object reused after a fit on other
-  data keeps that data's factor levels, so build it afresh. A response with fewer observed
+  or use `method = :ML`, always works. Taking the rows with a missing response out of `data` (the default
+  `miss_control(response = "drop")` does this) helps only for a factor level seen in those rows alone; a
+  covariate that is constant on the observed rows stays constant after the rows are removed. A level lost
+  only because its rows have weight 0 needs a positive weight for those rows. A response with fewer observed
   entries than columns is refused with its own message, also under ML.
 - A REML log-likelihood is comparable only between fits with the same fixed-effect design and the
   same used entries. A fit that keeps partly observed rows is not comparable with a complete-case fit

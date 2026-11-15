@@ -32,8 +32,8 @@
 # The block is named by `_BIV_RE_GROUP_BLOCK` (below), not `:phylocov`: nothing here is
 # phylogenetic, and `:phylocov` stays the name on the truly phylogenetic bivariate routes.
 
-# THE ONE PLACE that names the group-covariance coefficient block of this route (owner answer P15 = b,
-# 10 Nov 2026: rename on this route only; the name was left to the lane). To rename, edit this line.
+# THE ONE PLACE that names the group-covariance coefficient block of this route (maintainer decision:
+# rename on this route only; the name itself was left open). To rename, edit this line.
 # `:recov` was not reused: on the univariate routes it holds [logL11, logL22, L21] named "g:L11" and
 # the shared extractors (vc, ranef, profile, simulate) parse it in that layout, not this one.
 const _BIV_RE_GROUP_BLOCK = :groupcov
@@ -211,13 +211,13 @@ function _check_reml_observed_design(X::AbstractMatrix, names, obs, pw, resp::Sy
         const_ = [names[j] for j in lostj if !allzero(j, :) && allequal(@view X[:, j])]
         alias = [names[j] for j in lostj if !allzero(j, :) && !allequal(@view X[:, j])]
         parts = String[]
-        isempty(empty) || push!(parts, "$(_join_names(empty)) is zero on every row (for a factor, a level with no rows: " *
-                                       "a formula object reused after a fit on other data keeps that data's factor levels)")
+        isempty(empty) || push!(parts, "$(_join_names(empty)) is zero on every row (a column of zeros, for example a " *
+                                       "covariate that is 0 everywhere or an interaction between factors with an empty cell)")
         isempty(const_) || push!(parts, "$(_join_names(const_)) is constant on every row, so it repeats the intercept " *
                                         "or another constant column")
         isempty(alias) || push!(parts, "$(_join_names(alias)) equals a combination of other columns on every row")
         adv = String[]
-        isempty(empty) || push!(adv, "build the formula afresh (a fresh formula drops a level without rows)")
+        isempty(empty) || push!(adv, "remove or recode the term that is zero on every row")
         isempty(const_) && isempty(alias) || push!(adv, "remove or recode the constant or aliased term")
         push!(adv, "or use method = :ML")
         (" The design of `$resp` is already rank deficient on all $(size(X, 1)) rows used in the fit, " *
@@ -225,18 +225,22 @@ function _check_reml_observed_design(X::AbstractMatrix, names, obs, pw, resp::Sy
          uppercasefirst(join(adv, ", ")) * ".")
     elseif obs_deficient && kept > 0
         # Lost only among the observed rows. A factor level whose rows all have a missing response disappears
-        # when those rows are taken out and the formula is fresh; any other column stays constant or aliased there.
-        isfac(j) = occursin(": ", names[j]) && allzero(j, used) && !allzero(j, :) && all(v -> v == 0 || v == 1, @view X[:, j])
+        # when those rows are taken out; any other column stays constant or aliased there. A column that is
+        # independent on the observed rows and lost only because rows with weight 0 are not used is a third cause.
+        lost_obs = Set(_lost_index(X[obs, :]))
+        w0 = [j for j in lostj if zero_w > 0 && !(j in lost_obs)]
+        isfac(j) = !(j in w0) && occursin(": ", names[j]) && allzero(j, obs) && !allzero(j, :) && all(v -> v == 0 || v == 1, @view X[:, j])
         fac = [names[j] for j in lostj if isfac(j)]
-        oth = [names[j] for j in lostj if !isfac(j)]
+        oth = [names[j] for j in lostj if !(j in w0) && !isfac(j)]
         adv = String[]
         isempty(fac) || push!(adv, "for $(_join_names(fac)) (a factor level seen only in rows with a missing response), " *
-             "take the rows with a missing response out of `data` and fit with a fresh formula object (a formula object " *
-             "reused after a fit on the full data keeps that data's factor levels, so the level would stay a column; " *
-             "with a fresh formula the default `miss_control(response = \"drop\")` removes it), or recode the level")
+             "take the rows with a missing response out of `data` (the default `miss_control(response = \"drop\")` " *
+             "does this, and the level is then removed), or recode the level")
         isempty(oth) || push!(adv, "for $(_join_names(oth)) (constant or aliased on the rows that carry a `$yname` value), " *
              "taking the rows with a missing response out of `data` does not help because the column stays constant or " *
              "aliased on the rows that remain, so remove or recode the term")
+        isempty(w0) || push!(adv, "for $(_join_names(names[w0])) (lost only because rows with weight 0 are not used), " *
+             "give those rows a positive weight, or remove or recode the term")
         push!(adv, "or use method = :ML")
         (" The $kept rows with a missing `$yname` stay in the fit under " *
          "`miss_control(response = \"include\")` but add no row to the design of `$resp`, so a column " *
