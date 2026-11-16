@@ -51,9 +51,15 @@ end
 # non-PD boundary direction from poisoning the whole SE vector with NaN.
 _boundary_se(v::Real) = (isfinite(v) && v > 0) ? sqrt(v) : Inf
 
+# `scale` names the scale of `estimate`, `lower` and `upper`: `:log_sd` for a random-effect SD
+# row on the log SD scale, `:sd` for one on the SD scale, `:link` for every other row (a
+# coefficient on its own link scale).
 const _CIRow = NamedTuple{
-    (:param, :coef, :estimate, :lower, :upper),Tuple{Symbol,String,Float64,Float64,Float64}
+    (:param, :coef, :estimate, :lower, :upper, :scale),
+    Tuple{Symbol,String,Float64,Float64,Float64,Symbol},
 }
+
+_ci_row_scale(param::Symbol) = _is_log_sd_profile_param(param) ? :log_sd : :link
 
 const _BootstrapSummaryRow = NamedTuple{
     (:param, :coef, :estimate, :std_error, :lower, :upper),
@@ -175,7 +181,7 @@ end
     confint(fit; level = 0.95, method = :wald, threads = false, parm = nothing)
 
 Confidence intervals for every coefficient, as a vector of
-`(param, coef, estimate, lower, upper)` rows on each parameter's working scale
+`(param, coef, estimate, lower, upper, scale)` rows on each parameter's working scale
 (μ on the response scale; σ on `log σ`; ρ12 on `atanh ρ12`; random-effect SDs on
 `log σ_b`).
 
@@ -217,13 +223,23 @@ Confidence intervals for every coefficient, as a vector of
   A random-effect SD (`:resd`) whose lower arm reaches the numerical floor
   without an LR crossing is reported on the SD scale as `[0, u]` (drmTMB
   `profile.boundary`), not as a thrown error and not as `(-Inf, Inf)`.
+  The upper limit `u` is where the profile deviance reaches the `χ²₁` quantile at
+  `level` (3.84 at 0.95). When the SD estimate is at or near zero (about 1e-4 or
+  less) the upper-limit search starts one log unit above the estimate, because the
+  Wald standard error there is not a usable scale; interior SDs are unchanged.
+
+Every row also carries a `scale` field that names the scale of `estimate`, `lower`
+and `upper`: `:log_sd` for a random-effect SD row on the log SD scale (the scale of
+`coef(fit, :resd)` and of the Wald row), `:sd` for a row on the SD scale (the `[0, u]`
+boundary row above), and `:link` for every other row. The numbers of a row do not
+depend on this field.
 
 Mirrors drmTMB's `confint(fit, method = "wald" | "profile")`.
 """
 function confint(
     fit::DrmFit; level::Real=0.95, method::Symbol=:wald, threads::Bool=false, parm=nothing
 )
-    _is_fixed_prior_fit(fit) && fit.estim_method === :MAP && throw(ArgumentError("confint: intervals are not qualified for fixed-prior MAP fits; covariance is local penalized curvature"))
+    _is_fixed_prior_fit(fit) && fit.estim_method === :MAP && throw(ArgumentError("confint: intervals are not qualified for $(_prior_kind_label(fit)) MAP fits; covariance is local penalized curvature"))
     level = _validate_ci_level(level; what="confint")
     method === :wald && _wald_withheld(fit) && throw(ArgumentError("confint: Homogeneous Toeplitz " *
         "mean-coefficient Wald intervals are not yet qualified; mean-coefficient likelihood " *
@@ -294,7 +310,7 @@ function _glsp_stored_profile_rows(fit::DrmFit)
         lo, hi = fit.scales[sdkey]
         est = exp(coef(fit, param)[1])                 # SD-scale point estimate
         push!(rows, (param=param, coef=namemap[param][1], estimate=Float64(est),
-                     lower=Float64(lo), upper=Float64(hi)))
+                     lower=Float64(lo), upper=Float64(hi), scale=:sd))
     end
     return rows
 end
@@ -329,7 +345,7 @@ mutable shared warm-start state; ordinary independent Binomial quadrature routes
 are not subject to that restriction.
 """
 function profile_result(fit::DrmFit; level::Real=0.95, threads::Bool=false, parm=nothing)
-    _is_fixed_prior_fit(fit) && fit.estim_method === :MAP && throw(ArgumentError("profile_result: likelihood profiles are not qualified for fixed-prior fits"))
+    _is_fixed_prior_fit(fit) && fit.estim_method === :MAP && throw(ArgumentError("profile_result: likelihood profiles are not qualified for $(_prior_kind_label(fit)) fits"))
     level = _validate_ci_level(level; what="profile_result")
     _refuse_selected_optimizer_refit(fit, "profile_result")
     threads && _binomial_sd_threaded_profile_unsupported(fit) &&
@@ -526,7 +542,8 @@ function _wald_ci(fit::DrmFit, level::Real, parm)
             s = se[idx]
             push!(
                 rows,
-                (param=p, coef=nms[j], estimate=est, lower=est - z * s, upper=est + z * s),
+                (param=p, coef=nms[j], estimate=est, lower=est - z * s, upper=est + z * s,
+                 scale=_ci_row_scale(p)),
             )
         end
     end
@@ -593,6 +610,7 @@ function _ls_profile_result(fit::DrmFit; level::Real=0.95, threads::Bool=false, 
                 estimate=fit.theta[job.k],
                 lower=ci.lower,
                 upper=ci.upper,
+                scale=_ci_row_scale(job.param),
             )
             lower_status = ci.lower_status
             upper_status = ci.upper_status
@@ -743,7 +761,8 @@ function _loconly_profile_row_result(
     end
     rewritten = _rewrite_log_sd_boundary_ci(job, est, lo, hi, lstats, rstats)
     rewritten === nothing || return rewritten
-    row = (param=job.param, coef=job.coef, estimate=est, lower=lo, upper=hi)
+    row = (param=job.param, coef=job.coef, estimate=est, lower=lo, upper=hi,
+           scale=_ci_row_scale(job.param))
     stats = (
         param=job.param,
         coef=job.coef,
@@ -954,6 +973,10 @@ const _PROFILE_MIN_STEP = 1e-6
 
 _is_log_sd_profile_param(param::Symbol) =
     param === :resd || param === :resd_mu || param === :resd_sigma
+
+# A log SD at or below this value is an SD of about 1e-4 or less: effectively zero, where
+# the pseudo-inverse Wald SE is not a scale for the search (it can be 1e7 on the log scale).
+const _PROFILE_SD_ZERO_LOG = log(1e-4)
 
 function _profile_usable_step(se_k::Real, est::Real)
     (isfinite(se_k) && se_k > _PROFILE_MIN_STEP) && return Float64(se_k)
@@ -1488,6 +1511,12 @@ function _profile_row_result(
     est = θ̂[k]
     allow_lower = _is_log_sd_profile_param(job.param)
     s = _profile_usable_step(se[k], est)
+    # Zero-anchored SD: a variance at (or numerically at) zero has no usable Wald scale. A
+    # starting step of 1e7 on the log scale never brackets the crossing within the
+    # root-finder's iteration budget, so the upper arm was reported as failed. Start from one
+    # log unit instead; the bracket then grows by 1.6 per step up to the crossing. Interior
+    # SDs (above 1e-4) keep the Wald step unchanged.
+    allow_lower && est <= _PROFILE_SD_ZERO_LOG && (s = 1.0)
     u0 = θ̂[[i for i in 1:length(θ̂) if i != k]]
     if endpoint_threads && Threads.nthreads() > 1
         left = Threads.@spawn _profile_endpoint_result(
@@ -1510,7 +1539,8 @@ function _profile_row_result(
     end
     rewritten = _rewrite_log_sd_boundary_ci(job, est, lo, hi, lstats, rstats)
     rewritten === nothing || return rewritten
-    row = (param=job.param, coef=job.coef, estimate=est, lower=lo, upper=hi)
+    row = (param=job.param, coef=job.coef, estimate=est, lower=lo, upper=hi,
+           scale=_ci_row_scale(job.param))
     stats = (
         param=job.param,
         coef=job.coef,
@@ -1543,7 +1573,7 @@ function _rewrite_log_sd_boundary_ci(job, log_est, lo, hi, lstats, rstats)
     sd_est = log_est <= _PROFILE_SD_LOG_FLOOR ? 0.0 : exp(log_est)
     upper_ok = isfinite(hi) && !rstats.endpoint_failed && !rstats.unbounded
     sd_hi = upper_ok ? exp(hi) : Inf
-    row = (param=job.param, coef=job.coef, estimate=sd_est, lower=0.0, upper=sd_hi)
+    row = (param=job.param, coef=job.coef, estimate=sd_est, lower=0.0, upper=sd_hi, scale=:sd)
     stats = (
         param=job.param,
         coef=job.coef,
@@ -1956,9 +1986,10 @@ rather than refitting with default settings.
     from the CONDITIONAL `simulate(fit)` (random effects held at `b = 0`), which
     collapses variance-component intervals (#459), and it does so **without a
     warning**. Known cases, kept as `@test_broken` in
-    `test/test_marginal_simulator_fallback_997.jl`: crossed ordinary bars
-    `(1 | g1) + (1 | g2)` on the mean, a mean grouping column missing from `data`,
-    and a correlated slope `(1 + x | g)`. Only a `meta_V(...)` + random-effect fit
+    `test/test_marginal_simulator_fallback_997.jl`: a mean grouping column missing
+    from `data`, a correlated slope `(1 + x | g)`, and several ordinary bars that
+    repeat a group or mix intercepts with slopes. (Crossed ordinary intercepts on
+    distinct groups, `(1 | g1) + (1 | g2)`, now get a proper marginal draw.) Only a `meta_V(...)` + random-effect fit
     throws. Pass the same `data` (and `tree` / `K` / `A`) used to fit, and treat
     variance-component intervals from these fits as unreliable.
 """
@@ -2241,7 +2272,7 @@ end
 # repeated by forwarding the stored `penalty` (the fitter does not take
 # `method = :MAP`).
 function _bootstrap_refit_kwargs(fit::DrmFit)
-    _is_fixed_prior_fit(fit) && fit.estim_method === :MAP && throw(ArgumentError("bootstrap: fixed-prior refits are not yet qualified"))
+    _is_fixed_prior_fit(fit) && fit.estim_method === :MAP && throw(ArgumentError("bootstrap: $(_prior_kind_label(fit)) refits are not yet qualified"))
     kw = Pair{Symbol,Any}[]
     if _is_gaussian_lss(fit)
         method = estimation_method(fit)
@@ -2301,10 +2332,15 @@ _bootstrap_estimator(fit::DrmFit) = (estimation_method(fit), fit.marginal)
 _bootstrap_estimator(fit) = (:unknown, :unknown)
 
 # Keywords the bivariate Gaussian bootstrap refit may pass to `drm`.
-# `method` is included only when the seed kwargs contain it. `marginal` is
+# `method` and `weights` are included only when the seed kwargs contain them. `marginal` is
 # left off, because that method does not accept it.
 function _bootstrap_bivariate_refit_kwargs(refit_options)
-    haskey(refit_options, :method) ? (; method = refit_options.method) : NamedTuple()
+    kw = Pair{Symbol,Any}[]
+    haskey(refit_options, :method) && push!(kw, :method => refit_options.method)
+    # Prior weights are part of the likelihood: every replicate refit uses them, as the
+    # univariate path does (`_bootstrap_refit_kwargs`).
+    haskey(refit_options, :weights) && push!(kw, :weights => refit_options.weights)
+    return NamedTuple(kw)
 end
 
 _is_gaussian_lss(fit::DrmFit) = fit.family isa Gaussian &&
@@ -2420,6 +2456,7 @@ function _marginal_simulator(fit::DrmFit, data; K=nothing, A=nothing, tree=nothi
                              tree1=nothing, tree2=nothing,
                              Ainv=nothing, coords=nothing)
     sim = _marginal_simulator_build(fit, data; K, A, Ainv, tree, tree1, tree2, coords)
+    sim === nothing && _refuse_multi_re_laplace(fit, "a simulation or bootstrap with fresh random effects")
     # `nothing` sends `bootstrap` to the CONDITIONAL `simulate`. On the Gaussian
     # `meta_V(...)` + random-effect route (`_fit_meta_gaussian_re`) that fallback
     # is a different model: `means[:mu]` is Xβ and `scales[:sigma]` is √(v + σ²),
@@ -2429,7 +2466,82 @@ function _marginal_simulator(fit::DrmFit, data; K=nothing, A=nothing, tree=nothi
             "`meta_V(...)` + random-effect fit (pass the same `data` and `tree` / `K` / `A` " *
             "used to fit it); the conditional fallback would drop the random effect"))
     end
+    # Gamma, Beta, Student, LogNormal and Binomial fits whose random effects have no fresh-draw simulator
+    # (every Binomial shape except one `(1 | g)`; two or more ordinary terms, or one `(0 + x | g)` /
+    # `(1 + x | g)`, on the other four) would fall back to the conditional draw (random effects at zero).
+    # That collapses the variance-component interval without a message, so refuse, naming the fitted terms.
+    # The check does not depend on whether the fit stores its trial counts.
+    if sim === nothing && _is_no_fresh_draw_slope_fit(fit)
+        throw(ArgumentError(_no_fresh_draw_message(fit)))
+    end
     return sim
+end
+
+# The ordinary random-effect bars of a fit that has no fresh-draw simulator, or `nothing` when the fit has
+# none, has a structured or `meta_V` term (other routes own those), or keeps its fresh draw.
+# Binomial: every shape except a single `(1 | g)` and several intercept-only terms. Gamma, Beta, Student, LogNormal: two or more ordinary
+# terms, or a single `(0 + x | g)` / `(1 + x | g)`.
+function _no_fresh_draw_bars(fit::DrmFit)
+    fit.family isa Union{Gamma,Binomial,Beta,Student,LogNormal} && fit.formula isa DrmFormula || return nothing
+    rhs = Dict(fit.formula.forms)
+    haskey(rhs, :mu) || return nothing
+    _, re, metav, structured, _ = _split_ranef(rhs[:mu]; allow_phylo_slope = true)
+    metav === nothing && structured === nothing && !isempty(re) || return nothing
+    if length(re) >= 2
+        # several intercept-only Binomial terms have a fresh draw (the simulator for several random intercepts)
+        fit.family isa Binomial &&
+            all(r -> first(try _re_kind(r[1]) catch; (:other, nothing) end) === :intercept, re) && return nothing
+        return re
+    end
+    if fit.family isa Binomial
+        k, _ = try _re_kind(re[1][1]) catch; (:other, nothing) end
+        return k === :intercept ? nothing : re
+    end
+    return _laplace_lhs_kind(re[1][1]) in (:slope, :corr) ? re : nothing
+end
+
+_is_no_fresh_draw_slope_fit(fit::DrmFit) = _no_fresh_draw_bars(fit) !== nothing
+
+# The refusal text names the terms the user fitted and the kind of shape. For Binomial the several-term
+# shapes are reported as "several random-effect terms"; the other families name the shape.
+function _no_fresh_draw_message(fit::DrmFit)
+    re = _no_fresh_draw_bars(fit)
+    rk = [try _re_kind(lhs) catch; (:other, nothing) end for (lhs, _) in re]
+    kinds = first.(rk)
+    bar(k, v, lhs, grp) = k === :intercept ? "(1 | $grp)" : k === :slope ? "(0 + $v | $grp)" :
+                          k === :corr ? "(1 + $v | $grp)" : "($lhs | $grp)"
+    terms = join((bar(k, v, lhs, grp) for ((k, v), (lhs, grp)) in zip(rk, re)), " + ")
+    groups = [grp for (_, grp) in re]
+    shape = if length(re) == 1 && kinds[1] === :slope
+        "a random slope without an intercept"
+    elseif length(re) == 1 && kinds[1] === :corr
+        "a correlated random intercept and slope"
+    elseif length(re) == 1
+        "a random-slope term"
+    elseif fit.family isa Binomial
+        "several random-effect terms"
+    elseif all(==(:intercept), kinds)
+        "crossed or nested random intercepts"
+    elseif length(unique(groups)) == 1 && all(in((:intercept, :slope)), kinds) && :intercept in kinds
+        "an independent random slope with an intercept"
+    elseif length(unique(groups)) == 1 && all(==(:slope), kinds)
+        "independent random slopes without an intercept"
+    elseif all(==(:slope), kinds)
+        "random slopes on different groups"
+    elseif all(in((:intercept, :slope)), kinds)
+        "a mix of random intercepts and slopes"
+    else
+        "a mix of random-effect terms"
+    end
+    fam = string(nameof(typeof(fit.family)), "()")
+    keep = fit.family isa Binomial ? " A single `(1 | g)` keeps its fresh draw." : ""
+    return "no fresh random-effect draw is implemented for $fam with $shape ($terms), so " *
+        "`bootstrap_summary` / `bootstrap_result` / `bootstrap_ci` and the default " *
+        "`simulate(fit; data = data)` are refused: the fallback would draw responses with the random " *
+        "effects set to zero, which collapses the variance-component interval without a message. " *
+        "To draw responses with the random effects set to zero (a conditional draw, not a fresh draw), " *
+        "call `simulate(fit; data = data, re = :zero)` where the fitted object supports it; " *
+        "the bootstrap has no such option." * keep
 end
 
 function _is_meta_gaussian_re(fit::DrmFit)
@@ -2648,7 +2760,7 @@ function _binomial_sd_marginal_simulator(fit::DrmFit, data, re;
             "bootstrap: data are missing structured grouping column `$group`"))
         gidx, G = _group_index(getproperty(data, group))
         provider === :spatial && (matrix = _spatial_covariance_from_coords(
-            group, G, coords, nothing))
+            group, G, coords, nothing))   # mirrors the binomial fit: drmTMB's fixed median-distance kernel
         matrix === nothing && throw(ArgumentError(
             "bootstrap: supply the same structured covariance `$matrix_name` used to fit the Binomial $provider SD model"))
         C = Matrix{Float64}(matrix)
@@ -2902,14 +3014,13 @@ function _binomial_sd_marginal_simulator(fit::DrmFit, data, re;
             q = length(effects)
             u = randn(rng, q, G)
             if q == 2
-                rho = tanh(only(correlation_eta))
-                innovation = _binomial_stable_sech(only(correlation_eta))
+                rho, innovation = _binomial_bounded_partial(only(correlation_eta))
                 b0 = group_sds[1] .* u[1, :]
                 b1 = group_sds[2] .* (rho .* u[1, :] .+ innovation .* u[2, :])
                 eta .+= b0[gidx] .+ loadings[2] .* b1[gidx]
             else
-                partials = tanh.(correlation_eta)
-                innovations = _binomial_stable_sech.(correlation_eta)
+                pairs = _binomial_bounded_partial.(correlation_eta)
+                partials, innovations = first.(pairs), last.(pairs)
                 p21, p31, p32 = partials
                 s21, s31, s32 = innovations
                 b0 = group_sds[1] .* u[1, :]
@@ -3108,13 +3219,14 @@ function _gamma_structured_sd_marginal_simulator(fit::DrmFit, data, matrix;
         "bootstrap: Gamma structured SD simulation requires one structured SD target"))
     target = only(targets)
     descriptor = target.target
-    descriptor.level === provider && provider in (:relmat, :animal) &&
+    descriptor.level === provider && provider in (:relmat, :animal, :spatial) &&
         descriptor.dpar === :mu && descriptor.block === nothing ||
         throw(ArgumentError(
             "bootstrap: Gamma structured SD simulation requires one mean structured target"))
     rhs = Dict(f.forms)
     _, re, metav, structured, _, _, fitted_animal_slope = _split_ranef(
-        rhs[:mu]; allow_animal_slope = provider === :animal)
+        rhs[:mu]; allow_animal_slope = provider === :animal,
+        allow_spatial_slope = provider === :spatial)
     expected_member = fitted_animal_slope === nothing ? :intercept : fitted_animal_slope
     descriptor.member in (nothing, expected_member) ||
         throw(ArgumentError(
@@ -3215,6 +3327,75 @@ function _gamma_animal_intercept_slope_sd_marginal_simulator(fit::DrmFit,
         mu_star = _mean_response(fit.family,
             eta_fixed .+ b0[gidx] .+ Float64.(x) .* b1[gidx])
         _simulate_once(fit, rng; mu = mu_star)
+    end
+end
+
+# Independent two-field structured intercept-plus-slope (`animal(1 + x | g)`,
+# `relmat(1 + x | g)`, `phylo(1 + x | g)` or `spatial(1 + x | g)`) with one SD
+# formula per coefficient, on the Poisson, NB2 and Gaussian routes. Draws
+# b0, b1 ~ N(0, C) independently (C = A or K, RAW as in the fit; for phylo and
+# spatial the fit's own kernel and row-to-level map, passed as `kernel =
+# (C, gidx, G)`), then eta = eta_fixed + sd0[g] * b0[g] + x * sd1[g] * b1[g]
+# and y from the family at the fitted dispersion (Gaussian: fitted sigma).
+function _structured_q2_sd_marginal_simulator(fit::DrmFit, data, matrix;
+                                              provider::Symbol, block,
+                                              kernel = nothing)
+    f = fit.formula
+    label = String(provider)
+    level = _q2_target_level(provider)
+    targets = filter(item -> item.target.level === level, _sd_target_parts(f))
+    length(targets) == 2 || throw(ArgumentError(
+        "bootstrap: $(label) intercept-and-slope simulation needs two SD targets"))
+    group, slope = block.group, block.slope
+    ordered = [only(filter(item -> item.target.member === member, targets))
+               for member in (:intercept, slope)]
+    kernel === nothing && matrix === nothing && throw(ArgumentError(
+        "bootstrap: supply the same covariance matrix (`" *
+        (provider === :animal ? "A` or `Ainv" : "K") *
+        "`) used to fit the $(label) intercept-and-slope model"))
+    hasproperty(data, group) && hasproperty(data, slope) || throw(ArgumentError(
+        "bootstrap: data are missing the $(label) grouping or slope column"))
+    gidx, G = kernel === nothing ? _group_index(getproperty(data, group)) :
+        (kernel[2], kernel[3])
+    C = Matrix{Float64}(kernel === nothing ? matrix : kernel[1])
+    size(C) == (G, G) || throw(ArgumentError(
+        "bootstrap: $(label) covariance matrix must match first-seen group order"))
+    all(x -> isfinite(x) && x > 0, diag(C)) || throw(ArgumentError(
+        "bootstrap: $(label) covariance matrix must have a positive finite diagonal"))
+    factor = cholesky(Symmetric(C); check = false)
+    issuccess(factor) || throw(ArgumentError(
+        "bootstrap: $(label) covariance matrix must be positive definite"))
+    scales = Vector{Vector{Float64}}(undef, 2)
+    for j in 1:2
+        target = ordered[j]
+        blk = _sd_target_block(target.target; disambiguate = true)
+        Zg, names = _sd_group_design(f.response, target.rhs, data, gidx, G, group;
+            schema_cache = f.schema_cache, schema_key = target.key,
+            store_schema = false)
+        names == _block_coefnames(fit, blk) || throw(ArgumentError(
+            "bootstrap: $(label) SD design does not match fitted block `$(blk)`"))
+        scales[j] = exp.(Zg * coef(fit, blk))
+    end
+    x = getproperty(data, slope)
+    x isa AbstractVector{<:Real} && all(isfinite, x) || throw(ArgumentError(
+        "bootstrap: $(label) slope must be finite numeric values with one value per response"))
+    eta_fixed = Vector{Float64}(predict(fit, data; type = :link))
+    length(eta_fixed) == length(gidx) == length(x) || throw(ArgumentError(
+        "bootstrap: $(label) prediction, grouping and slope lengths do not match"))
+    xf = Float64.(x)
+    # Labelled `(1 + x | p | g)`: unit fields correlated with the fitted rho.
+    rho = hasproperty(block, :label) && block.label !== nothing ?
+        _Q2_RHO_BOUND * tanh(only(coef(fit, :recov))) : 0.0
+    return function (rng)
+        z0 = factor.L * randn(rng, G)
+        z1 = factor.L * randn(rng, G)
+        b0 = scales[1] .* z0
+        b1 = scales[2] .* (rho .* z0 .+ sqrt(1 - rho^2) .* z1)
+        eta = eta_fixed .+ b0[gidx] .+ xf .* b1[gidx]
+        if fit.family isa Gaussian
+            return eta .+ fit.scales[:sigma] .* randn(rng, length(eta))
+        end
+        return _simulate_once(fit, rng; mu = _mean_response(fit.family, eta))
     end
 end
 
@@ -3551,14 +3732,192 @@ function _sigma_only_marginal_simulator(fit::DrmFit, data)
     end
 end
 
+# `Ainv` -> covariance `A` for the simulators of routes whose fitter converts the
+# precision at entry (same helper, so the simulated kernel is the fitted one).
+function _simulate_ainv_to_A(fit::DrmFit, data, A, Ainv)
+    Ainv === nothing && return A
+    A === nothing || throw(ArgumentError(
+        "bootstrap: supply only one of `A` and `Ainv`"))
+    Acov, _ = _ainv_as_labelled_A(fit.formula, data, nothing, Ainv, nothing)
+    return Acov
+end
+
+# Several ORDINARY random intercepts on the mean, `(1 | g) + (1 | g2) [+ ...]`: the
+# fields are independent, so a fresh draw is one `N(0, sd_k^2)` vector per grouping
+# factor, summed on the linear-predictor scale (response scale for Gaussian). `re_sd`
+# is keyed by group, so only intercepts on DISTINCT groups are covered; a slope term, a
+# repeated group, an `sd(g) ~ ...` part or a ZeroOneBeta mean is not, and returns
+# `nothing` (the caller then refuses, as before).
+# Binomial / BetaBinomial draws need the trials per row. A fit from a route that did not
+# store them (`fit.scales[:trials]`, for example a fit saved by an earlier version) gets
+# them from the response columns of `data`
+# (0/1 response: all ones; `cbind(successes, failures)`: their sum). Returns the fit
+# unchanged for other families or when the trials are stored, and `nothing` when the
+# trials cannot be rebuilt from `data` (the caller then refuses, naming `data =`).
+function _fit_with_simulate_trials(fit::DrmFit, data)
+    (fit.family isa Binomial || fit.family isa BetaBinomial) || return fit
+    haskey(fit.scales, :trials) && return fit
+    fit.formula isa DrmFormula || return nothing
+    # The fitter's own parse of the response (`_binomial_response`), so the rebuild accepts
+    # exactly what the fit accepted: non-negative integer successes and failures (rows with
+    # zero trials included) or a 0/1 vector, and refuses everything else.
+    tr = try
+        Vector{Float64}(last(_binomial_response(fit.formula, data)))
+    catch err
+        err isa InterruptException && rethrow(err)
+        return nothing
+    end
+    (length(tr) == fit.nobs && all(isfinite, tr)) || return nothing
+    scales = merge(fit.scales, Dict{Symbol,Vector{Float64}}(:trials => tr))
+    return DrmFit(
+        fit.family, fit.blocks, fit.coefnames, fit.theta, fit.vcov,
+        fit.loglik, fit.nobs, fit.converged, fit.means, fit.obs, scales,
+        fit.formula, fit.nll, fit.nllgrad, fit.ranef,
+        fit.estim_method, fit.reml_loglik, fit.ml_loglik, fit.marginal,
+        fit.phylo_penalty, fit.penalty, fit.iterations, fit.phylo_scale,
+        fit.uncertainty, fit.geometry,
+    )
+end
+
+function _ordinary_multi_marginal_simulator(fit::DrmFit, data, re)
+    isempty(_sd_parts(fit.formula)) && isempty(_sdphylo_parts(fit.formula)) || return nothing
+    fit.family isa ZeroOneBeta && return nothing
+    fit = _fit_with_simulate_trials(fit, data)
+    fit === nothing && return nothing
+    groups = Symbol[g for (_, g) in re]
+    length(unique(groups)) == length(groups) || return nothing
+    all(t -> first(_re_kind(t[1])) === :intercept, re) || return nothing
+    sds = re_sd(fit)
+    sds isa AbstractDict || return nothing
+    comps = Tuple{Vector{Int},Int,Float64}[]
+    for g in groups
+        (hasproperty(data, g) && haskey(sds, g)) || return nothing
+        labels = getproperty(data, g)
+        any(ismissing, labels) && return nothing
+        gidx, G = _group_index(labels; col = g)
+        length(gidx) == fit.nobs || return nothing
+        sd = Float64(sds[g])
+        isfinite(sd) || return nothing
+        push!(comps, (gidx, G, sd))
+    end
+    draw_re(rng) = sum(sd .* randn(rng, G)[gidx] for (gidx, G, sd) in comps)
+    if fit.family isa Gaussian
+        mu_fixed = try
+            v = Vector{Float64}(predict(fit, data))
+            length(v) == length(fit.means[:mu]) ? v : nothing
+        catch e
+            e isa InterruptException && rethrow()
+            nothing
+        end
+        mu_fixed === nothing && return nothing
+        sigma = Vector{Float64}(_scale_vector(fit, :sigma))
+        sig = _sigma_ranef_components(fit, data)
+        n = length(mu_fixed)
+        return function (rng)
+            σ = sig === nothing ? sigma : sigma .* exp.(sig.τ .* randn(rng, sig.G)[sig.gidx])
+            return mu_fixed .+ draw_re(rng) .+ σ .* randn(rng, n)
+        end
+    end
+    eta_fixed = try
+        Vector{Float64}(predict(fit, data; type = :link))
+    catch e
+        e isa InterruptException && rethrow()
+        nothing
+    end
+    (eta_fixed === nothing || length(eta_fixed) != fit.nobs) && return nothing
+    return function (rng)
+        mu_star = _mean_response(fit.family, eta_fixed .+ draw_re(rng))
+        return _simulate_once(fit, rng; mu = mu_star)
+    end
+end
+
 function _marginal_simulator_build(fit::DrmFit, data; K=nothing, A=nothing,
                                    Ainv=nothing, tree=nothing, tree1=nothing,
                                    tree2=nothing, coords=nothing)
     # temporal(): `simulate` already draws the full marginal model (a fresh chain
     # per series and a fresh `(1 | id)` intercept), so it IS the marginal simulator.
     _is_temporal_fit(fit) && return rng -> _temporal_simulate(fit, rng)
+    # sigma random effects with constant SDs (src/sigma_ranef_blocks_laplace.jl)
+    let sim = _sigma_blocks_marginal_simulator(fit, data)
+        sim === nothing || return sim
+    end
     fit.nll isa LocScaleObjective &&
         return _ls_marginal_simulator(fit, data; K, A, tree, coords)
+    # NB2/Gamma structured sigma fields (src/sigma_structured_laplace.jl)
+    if fit isa DrmFit && fit.formula isa DrmFormula && fit.family isa Union{NegBinomial2,Gamma} &&
+       (haskey(fit.scales, :sigma_random_effect_slope) || _ss_has_sigma_structured_sd(fit.formula))
+        # Gamma and NB2 take an animal precision `Ainv` at fit time by converting it to
+        # the labelled covariance `A = inv(Ainv)`; the simulator needs that same `A`.
+        A = _simulate_ainv_to_A(fit, data, A, Ainv)
+        return _sigma_struct_marginal_simulator(fit, data; K, A, tree, coords)
+    end
+    if fit isa DrmFit && fit.formula isa DrmFormula &&
+       fit.family isa Union{Poisson,NegBinomial2,Gaussian} &&
+       haskey(Dict(fit.formula.forms), :mu) &&
+       length(_sd_target_parts(fit.formula)) == 2
+        for (provider, block) in ((:animal, _animal_intercept_slope(Dict(fit.formula.forms)[:mu];
+                                                                    allow_label = true)),
+                                  (:relmat, _relmat_intercept_slope(Dict(fit.formula.forms)[:mu];
+                                                                    allow_label = true)))
+            block === nothing && continue
+            matrix = if provider === :relmat
+                K
+            elseif Ainv !== nothing
+                A === nothing || throw(ArgumentError(
+                    "bootstrap: supply only one of `A` and `Ainv` for animal intercept-and-slope simulation"))
+                labels = _table_column(data, block.group)
+                Q, _ = fit.family isa NegBinomial2 ?
+                    _nb2_animal_precision_setup(Ainv, labels, block.group) :
+                    _poisson_animal_precision_setup(Ainv, labels, block.group)
+                Matrix(inv(Symmetric(Matrix(Q))))
+            else
+                A
+            end
+            return _structured_q2_sd_marginal_simulator(
+                fit, data, matrix; provider, block)
+        end
+        # phylo / coordinate-spatial q2: rebuild the fit's kernel and row map.
+        q2ps = _phylo_spatial_q2_block(fit.formula)
+        if q2ps !== nothing
+            kind, block = q2ps
+            hasproperty(data, block.group) || throw(ArgumentError(
+                "bootstrap: data are missing the $(kind) grouping column `$(block.group)`"))
+            # Same label resolution as `drm()` (#957): a Dict `coords` is
+            # matched to the site levels by name.
+            kcoords = kind === :spatial ?
+                _resolve_coords_labels(fit.formula, data, coords, nothing) : nothing
+            kernel = _structured_q2_kernel(kind, block.group, getproperty(data, block.group);
+                tree, K = nothing, A = nothing, coords = kcoords,
+                who = "bootstrap: `$(kind)(1 + $(block.slope) | $(block.group))` simulation")
+            return _structured_q2_sd_marginal_simulator(
+                fit, data, nothing; provider = kind, block, kernel)
+        end
+    end
+    # Ordinary correlated `(1 + x | g)` / labelled `(1 + x | p | g)` q2 (Poisson, NB2):
+    # the structured q2 simulator with the identity kernel and the fitted rho.
+    if fit isa DrmFit && fit.formula isa DrmFormula && fit.family isa Union{Poisson,NegBinomial2} &&
+       length(_sd_target_parts(fit.formula)) == 2
+        ob = _ordinary_q2_sd_block(fit.formula, fit.family)
+        if ob !== nothing
+            hasproperty(data, ob.group) || throw(ArgumentError(
+                "bootstrap: data are missing the grouping column `$(ob.group)`"))
+            gidx, G = _group_index(getproperty(data, ob.group))
+            return _structured_q2_sd_marginal_simulator(fit, data, nothing;
+                provider = :iid, block = (; group = ob.group, slope = ob.slope,
+                    label = something(ob.label, :correlated)),
+                kernel = (Matrix{Float64}(I, G, G), gidx, G))
+        end
+    end
+    if fit isa DrmFit && fit.formula isa DrmFormula &&
+       fit.family isa Union{Gamma,NegBinomial2,Beta} &&
+       count(item -> item.target.dpar === :mu, _sd_target_parts(fit.formula)) == 2 &&
+       length(_sd_target_parts(fit.formula)) == 2
+        A = _simulate_ainv_to_A(fit, data, A, Ainv)   # Gamma fit-time `Ainv` -> `A`
+        kc = fit.family isa Union{Gamma,Beta} && any(item -> item.target.level === :spatial, _sd_target_parts(fit.formula)) ?
+            _resolve_coords_labels(fit.formula, data, coords, nothing) : coords
+        sim = _twofield_sd_marginal_simulator(fit, data; K, A, tree, coords = kc)
+        sim === nothing || return sim
+    end
     _is_gaussian_lss(fit) && return _lss_marginal_simulator(fit, data; tree)
     fit.formula isa DrmFormula || return nothing
     # Gaussian needs a residual scale; other families carry their dispersion in the
@@ -3586,7 +3945,7 @@ function _marginal_simulator_build(fit::DrmFit, data; K=nothing, A=nothing,
         !isempty(_sdphylo_parts(fit.formula))
     allow_binomial_relmat_slope = fit.family isa Union{Binomial,Poisson} &&
         any(item.target.level === :relmat for item in _sd_target_parts(fit.formula))
-    allow_binomial_spatial_slope = fit.family isa Binomial &&
+    allow_binomial_spatial_slope = fit.family isa Union{Binomial,Gamma} &&
         any(item.target.level === :spatial for item in _sd_target_parts(fit.formula))
     allow_gamma_animal_slope = fit.family isa Gamma &&
         !isempty(_sd_target_parts(fit.formula))
@@ -3694,6 +4053,22 @@ function _marginal_simulator_build(fit::DrmFit, data; K=nothing, A=nothing,
             animal_slope = animal_slope)
     end
     if fit.family isa Gamma && any(
+        item -> item.target.level === :spatial, _sd_target_parts(fit.formula))
+        length(_sd_target_parts(fit.formula)) == 1 || throw(ArgumentError(
+            "bootstrap: Gamma structured SD simulation requires exactly one structured target"))
+        group = only(_sd_target_parts(fit.formula)).target.group
+        hasproperty(data, group) || throw(ArgumentError(
+            "bootstrap: data are missing Gamma structured grouping column `$group`"))
+        coords === nothing && throw(ArgumentError(
+            "bootstrap: supply the same `coords` used to fit the Gamma spatial SD model"))
+        # Same label resolution and the same shared kernel as the fit (`_drm_gamma_sd_regression`).
+        kcoords = _gamma_coords_matrix(_resolve_coords_labels(fit.formula, data, coords, nothing))
+        _, G = _group_index(getproperty(data, group))
+        return _gamma_structured_sd_marginal_simulator(
+            fit, data, _gaussian_spatial_sd_kernel(kcoords, G, group);
+            provider = :spatial, animal_slope)
+    end
+    if fit.family isa Gamma && any(
         item -> item.target.level in (:relmat, :animal), _sd_target_parts(fit.formula))
         matching = filter(
             item -> item.target.level in (:relmat, :animal),
@@ -3763,15 +4138,21 @@ function _marginal_simulator_build(fit::DrmFit, data; K=nothing, A=nothing,
                 throw(ArgumentError("spatial bootstrap coords must have one row per `$g` level (G = $G0)"))
             size(cmat, 2) >= 1 ||
                 throw(ArgumentError("spatial bootstrap coords need at least one coordinate column"))
-            ρ = exp(only(coef(fit, :range)))
-            isfinite(ρ) && ρ > 0 ||
-                throw(ArgumentError("spatial bootstrap requires a positive finite fitted range"))
-            D = [sqrt(sum(abs2, @view(cmat[k, :]) .- @view(cmat[l, :])))
-                 for k in 1:G0, l in 1:G0]
-            # Match the coordinate-spatial fitting routes exactly: the random
-            # effect SD is defined against exp(-distance / fitted range), with
-            # the same numerical diagonal jitter used during fitting.
-            (g, exp.(-D ./ ρ) + 1e-8I)
+            if any(b -> first(b) === :range, fit.blocks)
+                ρ = exp(only(coef(fit, :range)))
+                isfinite(ρ) && ρ > 0 ||
+                    throw(ArgumentError("spatial bootstrap requires a positive finite fitted range"))
+                D = [sqrt(sum(abs2, @view(cmat[k, :]) .- @view(cmat[l, :])))
+                     for k in 1:G0, l in 1:G0]
+                # Match the coordinate-spatial fitting routes exactly: the random
+                # effect SD is defined against exp(-distance / fitted range), with
+                # the same numerical diagonal jitter used during fitting.
+                (g, exp.(-D ./ ρ) + 1e-8I)
+            else
+                # Fits with no `:range` block (Poisson, Gamma and the other count routes)
+                # were fitted with drmTMB's fixed native kernel; draw from that one.
+                (g, _gaussian_spatial_sd_kernel(cmat, G0, g))
+            end
         else
             (g, _resolve_structured_matrix(structured[1], g, G0;
                                            K=K, A=A, tree=tree, coords=coords))
@@ -3779,6 +4160,7 @@ function _marginal_simulator_build(fit::DrmFit, data; K=nothing, A=nothing,
     else
         # Ordinary independent scalar effect. A slope uses the supplied numeric
         # covariate as its observation-level loading on the group coefficient.
+        length(re) > 1 && return _ordinary_multi_marginal_simulator(fit, data, re)
         length(re) == 1 || return nothing
         re_kind, re_slope = _re_kind(re[1][1])
         re_kind in (:intercept, :slope) || return nothing
@@ -4143,7 +4525,8 @@ end
 
 function _bootstrap_ci_rows(rows)
     return _CIRow[
-        (param=r.param, coef=r.coef, estimate=r.estimate, lower=r.lower, upper=r.upper) for
+        (param=r.param, coef=r.coef, estimate=r.estimate, lower=r.lower, upper=r.upper,
+         scale=_ci_row_scale(r.param)) for
         r in rows
     ]
 end
@@ -4456,7 +4839,7 @@ function check_drm(fit::DrmFit; grad_tol::Real=1e-3)
     (snw === nothing || !snw.near_zero) || @warn "check_drm: " * _skew_normal_nu_wald_message(snw)
     frd === nothing || @warn "check_drm: " * _design_rank_message(frd.blocks)
     # drmTMB emits the equivalent advisory from `check_penalized_fit()`.
-    fixed_prior && @warn "check_drm: fixed-prior MAP fit — standard errors describe local penalized curvature; data log-likelihood and prior contribution are separate."
+    fixed_prior && @warn "check_drm: $(_prior_kind_label(fit)) MAP fit — standard errors describe local penalized curvature; data log-likelihood and prior contribution are separate."
     penalized && !fixed_prior && @warn "check_drm: penalized (MAP) fit — standard errors come from the penalized " *
         "curvature and are credible-interval-shaped, not frequentist. `loglik` is the UNPENALIZED " *
         "data log-likelihood; the penalty is `fit.phylo_penalty`. `lrtest`/`anova` across " *

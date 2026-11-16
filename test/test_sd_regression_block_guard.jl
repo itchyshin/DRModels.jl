@@ -17,4 +17,13 @@ using DRModels, Test
     @test !guard(blk(:mu, :resd))
     @test !guard(blk(:mu, :sigma, :resd, :recov))
     @test !guard(blk(:mu))
+
+    # An `:sd` block whose only coefficient is the intercept is one SD per grouping (the plain
+    # `animal(1 | g)` SD on the Binomial and Beta routes), not an SD regression.
+    named(names...) = (; blocks = [first(n) => (1:1) for n in names],
+                       coefnames = [first(n) => last(n) for n in names])
+    @test !guard(named(:mu => ["(Intercept)", "x"], :sd => ["(Intercept)"]))
+    @test guard(named(:mu => ["(Intercept)", "x"], :sd => ["(Intercept)", "z"]))
+    @test guard(named(:mu => ["(Intercept)"], :sd => ["(Intercept)"], :sd_phylo => ["(Intercept)"]))
+    @test guard(named(:mu => ["(Intercept)"], :sd => ["z"]))
 end

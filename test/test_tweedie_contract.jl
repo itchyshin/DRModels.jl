@@ -52,18 +52,23 @@ end
             @test_throws r"not implemented for `sigma`/`nu`" drm(f, Tweedie(); data = data)
         end
 
+        # a bare phylo/relmat intercept is supported; without its tree / K it is refused by name
+        @test_throws r"phylo\(1 \| species\) needs `tree" drm(
+            bf(@formula(y ~ x + phylo(1 | species))), Tweedie(); data = data)
+        @test_throws r"relmat\(1 \| id\) with predictor-dependent SD requires `K" drm(
+            bf(@formula(y ~ x + relmat(1 | id))), Tweedie(); data = data)
         for (lab, f) in (
-                "phylo" => bf(@formula(y ~ x + phylo(1 | species))),
-                "relmat" => bf(@formula(y ~ x + relmat(1 | id))),
                 "animal" => bf(@formula(y ~ x + animal(1 | id))),
                 "spatial" => bf(@formula(y ~ x + spatial(1 | site))))
-            @test_throws r"structured \(phylo/relmat/animal/spatial\) random effects on `mu` are not implemented" drm(
+            @test_throws r"animal and spatial terms are not implemented" drm(
                 f, Tweedie(); data = data)
         end
 
-        # unsupported multiple / non-intercept random-effect shapes
-        @test_throws r"multiple random effects only as crossed/nested intercepts" drm(
-            bf(@formula(y ~ x + (1 | g) + (0 + x | h))), Tweedie(); data = data)
+        # unsupported multiple / non-intercept random-effect shapes. Independent intercepts and
+        # slopes `(1 | g) + (0 + x | h)` now fit (see test_nongauss_indep_routes.jl); a correlated
+        # block beside another term is still refused.
+        @test_throws r"a correlated `\(1 \+ x \| g\)` must be the only random-effect term" drm(
+            bf(@formula(y ~ x + (1 | g) + (1 + x | h))), Tweedie(); data = data)
         @test_throws r"require a constant `sigma` formula" drm(
             bf(@formula(y ~ x + (1 | g) + (1 | h)), @formula(sigma ~ x)), Tweedie(); data = data)
         @test_throws r"require a constant `nu` formula" drm(

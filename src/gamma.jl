@@ -69,8 +69,10 @@ struct Gamma end
 end
 
 function _drm_gamma_fit(f::DrmFormula, fam::Gamma; data, tree = nothing, K = nothing,
-             A = nothing, coords = nothing, g_tol::Real = 1e-8, se::Bool = true,
+             A = nothing, Ainv = nothing, coords = nothing, g_tol::Real = 1e-8, se::Bool = true,
              marginal::Symbol = :LA, method = nothing, ids = nothing)
+    f = _default_structured_q2_sd(f, fam)   # bare structured (1 + x | g): default `sd(…, coef(·)) ~ 1`
+    A, ids = _ainv_as_labelled_A(f, data, A, Ainv, ids)   # `Ainv` (precision) -> labelled covariance `A`
     _drm_entry_guard(f, fam, data; tree = tree, K = K, A = A, coords = coords)   # #1027 #1022 #1010
     _reject_method_as_marginal(fam, method)
     if !isempty(_sd_parts(f)) || !isempty(_sdphylo_parts(f))
@@ -120,6 +122,10 @@ function _drm_gamma_fit(f::DrmFormula, fam::Gamma; data, tree = nothing, K = not
                           "intercepts `(1 | g) + (1 | h)` only, #761)")
     mv === nothing ||
         error("Gamma() does not support meta_V markers")
+    let sigre = _drm_sigma_ranef_laplace_family(f, fam; data, g_tol, se, fixed_mu, re, mv, st,
+                                                offset_term = offset_term, isva = isva, isaghq = isaghq)
+        sigre === nothing || return sigre
+    end
     for (pname, r) in f.forms          # only the mean may carry a random effect
         pname === :mu && continue
         _, re2, mv2, st2 = _split_ranef(r)
@@ -162,7 +168,7 @@ function _drm_gamma_fit(f::DrmFormula, fam::Gamma; data, tree = nothing, K = not
                 (K === nothing && A === nothing) || throw(ArgumentError(
                     "Gamma spatial effects use either `coords = …` or a precomputed `K = …`, not both."))
                 _, G = _group_index(labels)
-                _spatial_covariance_from_coords(grp, G, coords, nothing)
+                _spatial_covariance_from_coords(grp, G, coords, nothing)   # shared coords validation + native kernel (default range)
             else
                 _poisson_structured_cov(kind, grp, K, A, coords)
             end
@@ -206,8 +212,14 @@ function _drm_gamma_fit(f::DrmFormula, fam::Gamma; data, tree = nothing, K = not
             isva && _va_reject(fam, "a correlated random slope `(1 + x | g)`")
             _require_finite_data_column(data, var)
             return _withformula(_fit_gamma_corr_ranef(fam, y, Xμ, Xσ, Float64.(getproperty(data, var)), gidx, G, nmμ, nmσ, grp, g_tol), f)
+        elseif rk === :slope           # (0 + x | g) → TMB-convention Laplace (independent route)
+            isva && _va_reject(fam, "an independent random slope `(0 + x | g)`")
+            _require_finite_data_column(data, var)
+            return _withformula(_fit_indep_re_laplace(fam, Val(:gamma), y, Xμ, Xσ, nothing,
+                                                      _indep_slope_comps(re, data, length(y)),
+                                                      nmμ, nmσ, String[], g_tol), f)
         else
-            error("Gamma() supports `(1 | g)` or `(1 + x | g)` on the mean")
+            error("Gamma() supports `(1 | g)`, `(0 + x | g)` or `(1 + x | g)` on the mean")
         end
     end
     isva && _va_reject(fam, "no random intercept (fixed-effects-only)")
@@ -457,19 +469,35 @@ function _fit_gamma_animal_intercept_slope_laplace(fam, y, Xmu, Xsigma,
     return _withiterations(_withnll(fit, _nll_pinned(nll, theta, nll_hat)), Optim.iterations(result))
 end
 
+# A 1-D transect may be given as a plain vector; the shared kernel wants an n-by-1 matrix.
+_gamma_coords_matrix(coords) = coords isa AbstractVector{<:Real} ? reshape(Float64.(coords), :, 1) : coords
+
 function _drm_gamma_sd_regression(f::DrmFormula, fam::Gamma; data,
                                  tree = nothing, K = nothing, A = nothing,
                                  coords = nothing, g_tol::Real = 1e-8,
                                  se::Bool = true, marginal::Symbol = :LA,
                                  nAGQ::Int = _SD_IID_AGHQ_K)
+    laplace_fit = _laplace_sd_route(f, fam, Val(:gamma), marginal; data, g_tol)
+    laplace_fit === nothing || return laplace_fit
     marginal === :LA || throw(ArgumentError(
         "Gamma `sd(group) ~ …` currently supports `marginal = :LA` only."))
     nAGQ >= 1 || throw(ArgumentError("nAGQ must be ≥ 1; got $nAGQ"))
+    _ss_has_sigma_structured_sd(f) &&
+        return _drm_structured_sigma_sd_laplace(f, fam; data, tree, K, A, coords, g_tol, se)
     targets = _gamma_sd_targets(f)
+    twofield = _drm_twofield_sd_route(f, fam; data, tree, K, A, coords, g_tol, se)
+    twofield === nothing || return twofield
     if any(item -> item.target.level in (:relmat, :animal, :phylogenetic, :spatial), targets)
         return _drm_gamma_structured_sd_regression(f, fam; data, tree, K, A,
                                                 coords, g_tol, se)
     end
+    if length(targets) == 2 && count(item -> item.target.dpar === :sigma, targets) == 1
+        # Joint mean + sigma ordinary intercepts, each with an SD formula (dense Laplace).
+        return _drm_joint_sigma_sd_laplace(f, fam; data, tree, K, A, coords, g_tol, se)
+    end
+    indep_shape = _indep_sd_shape(f)
+    indep_shape === nothing ||
+        return _drm_indep_sd_laplace(f, fam, Val(:gamma), indep_shape; data, g_tol)
     length(targets) == 1 || throw(ArgumentError(
         "Gamma random-effect SD regression requires exactly one SD target."))
     target = only(targets)
@@ -653,14 +681,16 @@ function _drm_gamma_structured_sd_regression(f::DrmFormula, fam::Gamma; data,
             K === nothing || throw(ArgumentError(
                 "Gamma spatial slope SD regression uses `coords = …` only, not a precomputed `K = …`."))
             _, Gs = _group_index(getproperty(data, descriptor.group))
-            matrix = _gaussian_spatial_sd_kernel(coords, Gs, descriptor.group)
+            matrix = _gaussian_spatial_sd_kernel(_gamma_coords_matrix(coords), Gs, descriptor.group)
         elseif coords === nothing
             matrix = _poisson_structured_cov(:spatial, descriptor.group, K, A, nothing)
         else
             K === nothing || throw(ArgumentError(
                 "Gamma spatial SD regression uses either `coords = …` or a precomputed `K = …`, not both."))
+            # Same fixed native kernel as the slope branch and the q2 routes
+            # (`_structured_q2_kernel`): exp(-d / median positive distance) + 1e-6 I.
             _, G = _group_index(getproperty(data, descriptor.group))
-            matrix = _spatial_covariance_from_coords(descriptor.group, G, coords, nothing)
+            matrix = _gaussian_spatial_sd_kernel(_gamma_coords_matrix(coords), G, descriptor.group)
         end
     else
         tree === nothing && coords === nothing &&
@@ -881,6 +911,28 @@ function _fit_gamma_structured_sd_laplace(fam, y, Xmu, Xsigma, Zobs, Zg, gidx,
     gfinal = zeros(length(theta_hat)); grad!(gfinal, theta_hat)
     sigma_index = pmu + 1
     sigma_bound_tol = 1e-6
+    # Polish. The Fminbox L-BFGS can stop with a zero step (line search unable to move on
+    # the finite-difference gradient) just outside the reporting test of
+    # `_laplace_outer_converged`: Gamma phylo `sd-z` of the wave-10 gap map sat at R's
+    # log-likelihood to 1e-10 with |grad|/n = 1.01e-6 against the 1e-6 limit. When the test
+    # fails and no bound is active, take up to two Newton steps on the finite-difference
+    # Hessian and keep each only if the objective does not rise. The test is unchanged.
+    if !_laplace_outer_converged(result, nll_hat, gfinal, theta_hat, length(y), g_tol) &&
+       isfinite(nll_hat) && nll_hat < 1e17 &&
+       abs(theta_hat[sigma_index]) < 4 - 1e-3
+        for _ in 1:2
+            Hn = _finite_hessian(nll, theta_hat; h = _fd_hessian_step(length(y)))
+            chn = cholesky(Symmetric(Matrix(Hn)); check = false)
+            issuccess(chn) || break
+            trial = theta_hat .- (chn \ gfinal)
+            abs(trial[sigma_index]) < 4 - 1e-3 || break
+            f_trial = nll(trial)
+            (isfinite(f_trial) && f_trial <= nll_hat) || break
+            theta_hat, nll_hat = trial, f_trial
+            grad!(gfinal, theta_hat)
+            _laplace_outer_converged(result, nll_hat, gfinal, theta_hat, length(y), g_tol) && break
+        end
+    end
     at_lower_sigma_bound = theta_hat[sigma_index] <= -4 + sigma_bound_tol
     at_upper_sigma_bound = theta_hat[sigma_index] >= 4 - sigma_bound_tol
     gcheck = copy(gfinal)
@@ -922,7 +974,7 @@ function _fit_gamma_structured_sd_laplace(fam, y, Xmu, Xsigma, Zobs, Zg, gidx,
             _attach_conditional_structured!(
                 scales, loading_hat .* b_hat[gidx], b_hat)
         else
-            scales[:cond_failed] = 1.0
+            _mark_cond_failed!(scales)
         end
     end
     fit = DrmFit(fam, blocks, names, theta_hat, Matrix(V), -nll_hat, length(y),
@@ -1124,6 +1176,7 @@ function _fit_gamma_ranef(fam::Gamma, y, Xμ, Xσ, gidx, G, nmμ, nmσ, grp, g_t
     names = [:mu => nmμ, :sigma => nmσ, :resd => [String(grp)]]
     means = Dict(:mu => exp.(Xμ * θ̂[1:pμ])); obs = Dict(:mu => Vector{Float64}(y))
     scales = Dict(:sigma => _reported_sigma(Xσ * θ̂[(pμ+1):(pμ+pσ)], -15.0, 15.0))
+    _record_cond_fit_aghq!(scales, nll, θ̂, bcache, gidx, Zre)   # fitted-row modes for `fitted(fit)`
     return _withiterations(
         _withnll(DrmFit(fam, blocks, names, θ̂, V, -nll(θ̂), n, Optim.converged(res), means, obs, scales), nll),
         Optim.iterations(res))
@@ -1155,12 +1208,13 @@ function _fit_gamma_corr_ranef(fam::Gamma, y, Xμ, Xσ, xs, gidx, G, nmμ, nmσ,
     θ0 = zeros(pμ + pσ + 3)
     θ0[1] = log(ȳ + eps()); θ0[pμ+1] = -0.5 * log(α0)
     θ0[pμ+pσ+1] = log(0.4); θ0[pμ+pσ+2] = log(0.4); θ0[pμ+pσ+3] = 0.0
-    res = Optim.optimize(nll, θ0, Optim.LBFGS(), Optim.Options(g_tol = g_tol); autodiff = :forward)
+    res = _optimize_corr_ranef(nll, θ0, g_tol, bcache)
     θ̂ = Optim.minimizer(res); V = _vcov_from_hessian(ForwardDiff.hessian(nll, θ̂))
     blocks = [:mu => 1:pμ, :sigma => (pμ+1):(pμ+pσ), :recov => (pμ+pσ+1):(pμ+pσ+3)]
     names = [:mu => nmμ, :sigma => nmσ, :recov => ["$(grp):L11", "$(grp):L22", "$(grp):L21"]]
     means = Dict(:mu => exp.(Xμ * θ̂[1:pμ])); obs = Dict(:mu => Vector{Float64}(y))
     scales = Dict(:sigma => _reported_sigma(Xσ * θ̂[(pμ+1):(pμ+pσ)], -15.0, 15.0))
+    _record_cond_fit_aghq!(scales, nll, θ̂, bcache, gidx, Zre)   # fitted-row modes for `fitted(fit)`
     return _withiterations(
         _withnll(DrmFit(fam, blocks, names, θ̂, V, -nll(θ̂), n, Optim.converged(res), means, obs, scales), nll),
         Optim.iterations(res))

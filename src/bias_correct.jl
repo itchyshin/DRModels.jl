@@ -95,7 +95,7 @@ bc.estimate, bc.corrected, bc.se, bc.ci
 ```
 """
 function bias_correct(fit::DrmFit, g::Function; level::Real = 0.95)
-    _is_fixed_prior_fit(fit) && fit.estim_method === :MAP && throw(ArgumentError("bias_correct: intervals are not qualified for fixed-prior MAP fits"))
+    _is_fixed_prior_fit(fit) && fit.estim_method === :MAP && throw(ArgumentError("bias_correct: intervals are not qualified for $(_prior_kind_label(fit)) MAP fits"))
     θ̂ = coef(fit)
     V = vcov(fit)
     return _bias_correct(g, θ̂, V; level = level)

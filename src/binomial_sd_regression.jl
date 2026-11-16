@@ -68,6 +68,25 @@ end
 _binomial_sd_scale(eta) = exp.(_softclamp.(eta, -12.0, 12.0, 3.0))
 _binomial_structured_sd_group_scale(Zg, alpha) = _binomial_sd_scale(Zg * alpha)
 
+# Partial correlation and innovation scale of one correlation parameter `eta` (atanh scale).
+# `eta` is soft-clamped with `_softclamp` at +-atanh(0.999999) = +-7.2543 and margin 3: the
+# identity (bit for bit) for |eta| <= 7.2543, then a smooth, monotone saturation at
+# +-10.254 (|rho| up to about 1 - 2.5e-9). The only purpose is to cut off the region where
+# the Laplace / AGHQ objective is rounding noise: once |eta| exceeds about 12 the group prior
+# precision is ~1/(1 - rho^2) ~ 1e10 and the objective carries noise of order 1e-4, which the
+# optimiser can accept as progress (Julia 1.13.3, cell `binomial|corr|lab0|q2|sd-last`).
+# It is NOT a 0.999999 bound: the q2 Poisson / NB2 / Gaussian routes scale, rho = 0.999999 *
+# tanh(eta), and drmTMB's Binomial q2 block uses plain tanh(eta) with no bound.
+# Reporting: the coefficient table and `:recov` keep the raw `eta` the optimiser holds, while
+# `:corpars`, the correlation in the likelihood and the bootstrap simulators use the clamped
+# value. They agree for |eta| <= 7.2543 and differ beyond it (raw eta = -8.29 is effective
+# -8.25; raw -13 is -10.13), where the objective is flat in `eta` anyway. Reported on purpose
+# rather than rewriting the stored coefficient, which would make `coef` disagree with `theta`.
+function _binomial_bounded_partial(eta)
+    e = _softclamp(eta, -atanh(_Q2_RHO_BOUND), atanh(_Q2_RHO_BOUND), 3.0)
+    return tanh(e), _binomial_stable_sech(e)
+end
+
 # Lower-triangular Cholesky factor for a correlation matrix from row-major
 # partial correlations. For row i and column j<i, the partial parameter is
 # conditional on the preceding j-1 coordinates. This preserves the established
@@ -85,8 +104,9 @@ function _binomial_partial_correlation_cholesky(correlation_eta, q::Integer)
         residual = one(T)
         for j in 1:(i - 1)
             eta = correlation_eta[position]
-            L[i, j] = tanh(eta) * residual
-            residual *= _binomial_stable_sech(eta)
+            partial, innovation = _binomial_bounded_partial(eta)
+            L[i, j] = partial * residual
+            residual *= innovation
             position += 1
         end
         L[i, i] = residual
@@ -711,6 +731,8 @@ function _drm_binomial_phylo_interaction_sd_regression(f::DrmFormula,
     return _withformula(fit, f)
 end
 
+const _BINOMIAL_Q2_GAMMA_CAP = 10.0
+
 function _binomial_animal_q2_mode(aux, s, ntr, Xmu, x, gidx, Qjoint,
         load0, load1, theta; b0 = nothing, maxiter::Int = 80,
         tol::Real = 1e-10)
@@ -728,8 +750,9 @@ function _binomial_animal_q2_mode(aux, s, ntr, Xmu, x, gidx, Qjoint,
         end
         value
     end
-    for _ in 1:maxiter
-        grad = Qjoint * b
+    # Gradient and Hessian of the joint objective at `bb`.
+    function newton_parts(bb)
+        grad = Qjoint * bb
         I = Vector{Int}(undef, 4length(s))
         J = similar(I)
         V = Vector{Float64}(undef, length(I))
@@ -737,7 +760,7 @@ function _binomial_animal_q2_mode(aux, s, ntr, Xmu, x, gidx, Qjoint,
             gi = gidx[i]
             j0, j1 = 2gi - 1, 2gi
             l0, l1 = load0[gi], load1[i]
-            eta = eta0[i] + l0 * b[j0] + l1 * b[j1]
+            eta = eta0[i] + l0 * bb[j0] + l1 * bb[j1]
             _, d1, d2, _ = _laplace_v123(Val(:binomial), aux, i, eta)
             grad[j0] += l0 * d1
             grad[j1] += l1 * d1
@@ -747,12 +770,24 @@ function _binomial_animal_q2_mode(aux, s, ntr, Xmu, x, gidx, Qjoint,
             I[k+3], J[k+3], V[k+3] = j1, j0, d2 * l0 * l1
             I[k+4], J[k+4], V[k+4] = j1, j1, d2 * l1^2
         end
-        H = Qjoint + sparse(I, J, V, 2G, 2G)
+        return grad, Qjoint + sparse(I, J, V, 2G, 2G)
+    end
+    for _ in 1:maxiter
+        grad, H = newton_parts(b)
         ch = cholesky(Symmetric(H); check = false)
         issuccess(ch) || return b, ch, false
         step = ch \ grad
         norm(step) <= tol * (1 + norm(b)) && return b, ch, true
-        norm(step) <= 1e-7 * (1 + norm(b)) && return b, ch, true
+        if norm(step) <= 1e-7 * (1 + norm(b))
+            # The Laplace value is second order in the mode error but logdet(H)
+            # is first order, so returning `ch` at the un-stepped `b` left an
+            # error of about 1e-7 in the objective. Take the Newton step (its
+            # error is quadratic) and refactor at the stepped mode.
+            b = b .- step
+            _, H = newton_parts(b)
+            ch = cholesky(Symmetric(H); check = false)
+            return b, ch, issuccess(ch)
+        end
         f0 = joint(b)
         amount, accepted = 1.0, false
         while amount >= 1e-5
@@ -764,19 +799,38 @@ function _binomial_animal_q2_mode(aux, s, ntr, Xmu, x, gidx, Qjoint,
             end
             amount *= 0.5
         end
-        accepted || return b, ch, false
+        if !accepted
+            # Noise floor: with a near-singular joint precision (correlation near
+            # +-1 once the slope SD has collapsed) the Newton step is only accurate
+            # to roughly cond * eps, so no trial can lower `joint` although the
+            # mode is already pinned down. The predicted gain of the full step,
+            # 0.5 * grad' * step, bounds the remaining objective error; when it is
+            # at the rounding level the mode is converged. Before this the solve
+            # returned failure here and the 1e18 sentinel leaked into the
+            # finite-difference gradient (weak-optimum case c). Changes the inner
+            # solve itself (not only restarts): Binomial "weak" coefficients moved
+            # by up to 0.28 on fits that never restart.
+            0.5 * dot(grad, step) <= 1e-9 * (1 + abs(f0)) && return b, ch, true
+            return b, ch, false
+        end
     end
     return b, nothing, false
 end
 
 function _binomial_animal_q2_laplace(aux, s, ntr, Xmu, Xsd0, Xsd1,
-        gidx, Q, logdetQ, x, theta; b0 = nothing)
+        gidx, Q, logdetQ, x, theta; b0 = nothing, correlated::Bool = true)
     pmu = size(Xmu, 2)
     p0, p1 = size(Xsd0, 2), size(Xsd1, 2)
     r0 = (pmu + 1):(pmu + p0)
     r1 = (last(r0) + 1):(last(r0) + p1)
     rc = last(r1) + 1
-    gamma = theta[rc]
+    # `correlated = false`: two independent fields (rho fixed 0, no atanh-rho parameter).
+    # The objective is held constant beyond |gamma| = `_BINOMIAL_Q2_GAMMA_CAP`
+    # (rho = 1 - 4e-9): there the joint precision has condition number ~ e^(2|gamma|),
+    # the Laplace value is rounding noise of order 1e-3 that depends on the BLAS/LAPACK
+    # build (Julia 1.10 vs 1.12), and a finite-difference L-BFGS run exploits that noise
+    # and reports a spuriously lower objective (weak-optimum case c on Julia 1.12).
+    gamma = correlated ? clamp(theta[rc], -_BINOMIAL_Q2_GAMMA_CAP, _BINOMIAL_Q2_GAMMA_CAP) : 0.0
     rho = tanh(gamma)
     sech = _binomial_stable_sech(gamma)
     den = sech^2
@@ -806,7 +860,8 @@ end
 
 function _fit_binomial_animal_q2_laplace(fam, s, ntr, Xmu, Xsd0,
         Xsd1, gidx, Q, x, nmμ, nmsd0, nmsd1, blocks, group, g_tol;
-        se::Bool = true, maxiter::Int = 250)
+        se::Bool = true, maxiter::Int = 250, correlated::Bool = true,
+        second_start::Bool = false, hessian_step::Union{Nothing,Real} = nothing)
     G = size(Q, 1)
     qchol = cholesky(Symmetric(Q); check = false)
     issuccess(qchol) || throw(ArgumentError(
@@ -821,7 +876,7 @@ function _fit_binomial_animal_q2_laplace(fam, s, ntr, Xmu, Xsd0,
     pmu, p0, p1 = size(Xmu, 2), size(Xsd0, 2), size(Xsd1, 2)
     ranges = (pmu + 1):(pmu + p0), (pmu + p0 + 1):(pmu + p0 + p1)
     rc = pmu + p0 + p1 + 1
-    theta0 = zeros(rc)
+    theta0 = zeros(correlated ? rc : rc - 1)
     pbar = clamp(sum(s) / max(sum(ntr), 1), 1e-4, 1 - 1e-4)
     theta0[1] = _binomial_start(fam, pbar)
     theta0[ranges[1]] .= Xsd0 \ fill(log(0.4), G)
@@ -829,10 +884,10 @@ function _fit_binomial_animal_q2_laplace(fam, s, ntr, Xmu, Xsd0,
     last_b = zeros(2G)
     function nll(theta)
         value, b, ok = _binomial_animal_q2_laplace(aux, s, ntr, Xmu,
-            Xsd0, Xsd1, gidx, Q, logdetQ, x, theta; b0 = last_b)
+            Xsd0, Xsd1, gidx, Q, logdetQ, x, theta; b0 = last_b, correlated)
         if !ok
             value, b, ok = _binomial_animal_q2_laplace(aux, s, ntr, Xmu,
-                Xsd0, Xsd1, gidx, Q, logdetQ, x, theta; b0 = zeros(2G))
+                Xsd0, Xsd1, gidx, Q, logdetQ, x, theta; b0 = zeros(2G), correlated)
         end
         ok || return 1e18
         last_b .= b
@@ -846,25 +901,61 @@ function _fit_binomial_animal_q2_laplace(fam, s, ntr, Xmu, Xsd0,
         end
         g
     end
-    od = Optim.OnceDifferentiable(nll, grad!, theta0)
-    result = Optim.optimize(od, theta0,
+    run_from(th0) = Optim.optimize(Optim.OnceDifferentiable(nll, grad!, th0), th0,
         Optim.LBFGS(linesearch = Optim.LineSearches.BackTracking()),
         Optim.Options(g_tol = g_tol, iterations = maxiter))
+    result = run_from(theta0)
+    if second_start
+        # Opt-in second start (SD coefficients log 0.7), kept only if it improves the
+        # objective by more than 1e-6; same device as the Poisson spatial q2 route.
+        nll_first = nll(Optim.minimizer(result))
+        b_first = copy(last_b)
+        theta1 = copy(theta0)
+        theta1[ranges[1]] .= Xsd0 \ fill(log(0.7), G)
+        theta1[ranges[2]] .= Xsd1 \ fill(log(0.7), G)
+        result2 = run_from(theta1)
+        if nll(Optim.minimizer(result2)) < nll_first - 1e-6
+            result = result2
+        else
+            last_b .= b_first
+        end
+    end
+    # Boundary restarts (see `_q2_boundary_restarts`): a fit that ends with a
+    # collapsed slope SD (and rho running to +-1) sits on a flat, noisy ridge, and
+    # the default start can stop there unconverged or short of the interior optimum.
+    restart_info = Ref{Any}((ran = false, winner = 0, gain = 0.0, flipped = false))
+    result = _q2_boundary_restarts(run_from, last_b, result,
+        (sd0, sd1, het) -> _q2_alt_theta(theta0, ranges, (Xsd0, Xsd1), sd0, sd1, het),
+        th -> min(minimum(_binomial_sd_scale(Xsd0 * th[ranges[1]])),
+                  minimum(_binomial_sd_scale(Xsd1 * th[ranges[2]]))),
+        r -> begin
+            th = Optim.minimizer(r); g = zeros(length(th)); grad!(g, th)
+            _laplace_outer_converged(r, Optim.minimum(r), g, th, length(s), g_tol)
+        end; info = restart_info)
+    ri = restart_info[]
+    (ri.gain > _Q2_RESTART_GAIN || ri.flipped) &&
+        @info "drm: Binomial animal q2 boundary restart changed the accepted optimum " *
+              "(objective gain $(round(ri.gain; sigdigits = 3)), converged flipped = $(ri.flipped), " *
+              "winning start $(ri.winner) of $(length(_Q2_ALT_STARTS)); 0 = default start). " *
+              "See `fit.scales[:q2_restarts]`."
     theta = Optim.minimizer(result)
     nll_hat = nll(theta)
     gf = zeros(length(theta)); grad!(gf, theta)
     converged = _laplace_outer_converged(result, nll_hat, gf, theta,
         length(s), g_tol)
     V = se ? _vcov_from_fd_hessian(
-        _finite_hessian(nll, theta; h = _fd_hessian_step(length(s)));
+        _finite_hessian(nll, theta;
+            h = hessian_step === nothing ? _fd_hessian_step(length(s)) : hessian_step);
         context = "sparse-Laplace Binomial animal q2 SD regression") :
         fill(NaN, length(theta), length(theta))
     block_list = Pair{Symbol,UnitRange{Int}}[
-        :mu => 1:pmu, blocks[1] => ranges[1], blocks[2] => ranges[2],
-        :recov => rc:rc]
+        :mu => 1:pmu, blocks[1] => ranges[1], blocks[2] => ranges[2]]
     name_list = Pair{Symbol,Vector{String}}[
-        :mu => nmμ, blocks[1] => nmsd0, blocks[2] => nmsd1,
-        :recov => ["$(group):atanh_rho"]]
+        :mu => nmμ, blocks[1] => nmsd0, blocks[2] => nmsd1]
+    if correlated
+        push!(block_list, :recov => rc:rc)
+        push!(name_list, :recov => ["$(group):atanh_rho"])
+    end
     sd0 = _binomial_sd_scale(Xsd0 * theta[ranges[1]])
     sd1 = _binomial_sd_scale(Xsd1 * theta[ranges[2]])
     scales = Dict{Symbol,Vector{Float64}}(
@@ -872,19 +963,23 @@ function _fit_binomial_animal_q2_laplace(fam, s, ntr, Xmu, Xsd0,
         blocks[1] => sd0[gidx], blocks[2] => sd1[gidx],
         Symbol(string(blocks[1]), "_group") => sd0,
         Symbol(string(blocks[2]), "_group") => sd1,
-        :correlation => [tanh(theta[rc])],
     )
+    correlated && (scales[:correlation] = [tanh(theta[rc])])
+    # Restart bookkeeping (skipped by simulate/predict/the bridge, like the other
+    # bookkeeping keys): [ran restarts (0/1), winning start (0 = default start, k = k-th
+    # alternative of `_Q2_ALT_STARTS`), objective gain over the first run, converged flipped (0/1)].
+    scales[:q2_restarts] = [ri.ran ? 1.0 : 0.0, Float64(ri.winner), Float64(ri.gain), ri.flipped ? 1.0 : 0.0]
     # b34: record the conditional correlated field at theta-hat (fresh inner
     # solve; `last_b` was moved by the finite-difference stencils above). The
     # joint mode interleaves the intercept and slope blocks per group.
     _, b_hat, ok_hat = _binomial_animal_q2_laplace(aux, s, ntr, Xmu, Xsd0, Xsd1,
-        gidx, Q, logdetQ, x, theta; b0 = zeros(2G))
+        gidx, Q, logdetQ, x, theta; b0 = zeros(2G), correlated)
     if ok_hat
         _attach_conditional_structured!(scales,
             sd0[gidx] .* b_hat[2 .* gidx .- 1] .+ x .* sd1[gidx] .* b_hat[2 .* gidx],
             b_hat[1:2:end], b_hat[2:2:end])
     else
-        scales[:cond_failed] = 1.0
+        _mark_cond_failed!(scales)
     end
     fit = DrmFit(fam, block_list, name_list, theta, Matrix(V), -nll_hat,
         length(s), converged,
@@ -900,8 +995,14 @@ function _drm_binomial_animal_q2_sd_regression(f::DrmFormula, fam::Binomial;
     length(targets) == 2 || throw(ArgumentError(
         "Binomial animal q2 SD regression requires one intercept and one slope SD formula."))
     rhs = Dict(f.forms)
+    # Unlabelled `animal(1 + x | g)`: two independent fields (rho fixed 0). Labelled
+    # `animal(1 + x | p | g)`: one free cross-coefficient correlation. Native drmTMB
+    # 0.8.1 fits the two as different models (logLik differs by 1.4 on the wave-8 data).
+    correlated = something(_animal_intercept_slope(rhs[:mu]; allow_label = true),
+                           (; label = nothing)).label !== nothing
     fixed_mu, re, mv, structured, _, _, slope = _split_ranef(
-        rhs[:mu]; allow_animal_intercept_slope = true)
+        rhs[:mu]; allow_animal_intercept_slope = true,
+        allow_labelled_intercept_slope = correlated)
     slope === nothing && throw(ArgumentError(
         "Binomial animal q2 SD regression requires `animal(1 + x | group)`."))
     group = first(targets).target.group
@@ -965,7 +1066,119 @@ function _drm_binomial_animal_q2_sd_regression(f::DrmFormula, fam::Binomial;
               for item in ordered]
     fit = _fit_binomial_animal_q2_laplace(fam, s, ntr, Xmu, Zgs[1],
         Zgs[2], gidx, Q, Float64.(x), nmμ, nmsds[1], nmsds[2],
-        blocks, group, g_tol; se)
+        blocks, group, g_tol; se, correlated,
+        # Same finite-difference step as the phylo/spatial q2 route (see the comment there):
+        # the inner-solve noise is amplified by the default step in the weak correlation SE.
+        hessian_step = 3e-3)
+    return _withformula(fit, f)
+end
+
+# Binomial phylo / coordinate-spatial intercept-plus-slope q2:
+#   y ~ x + phylo(1 + x | g)   with sd(g, phylogenetic, coef(intercept)) ~ z0,
+#                                   sd(g, phylogenetic, coef(x)) ~ z1
+# (and the `spatial(1 + x | g)` analogue). Unlabelled: two independent fields, rho fixed 0.
+# Labelled `phylo(1 + x | p | g)`: one free cross-coefficient correlation (stored as the
+# `:recov` block, `atanh_rho`), as the Poisson/NB2 labelled route. Same kernels as the
+# Poisson/NB2 route (`_structured_q2_kernel`) and the animal q2 Laplace code above.
+# Scope matches native drmTMB 0.8.1 (R/binomial-q2-sd.R): logit link and an unweighted
+# 0/1 response; probit, cloglog, cbind() trials, the labelled SPATIAL form and `mesh` are
+# refused (native admits labelled Binomial for animal and for logit phylo only).
+function _drm_binomial_phylo_spatial_q2_sd(f::DrmFormula, fam::Binomial,
+        kind::Symbol, block; data, tree, K, A, Ainv, coords, mesh, g_tol, se)
+    level = _q2_target_level(kind)
+    group, slope = block.group, block.slope
+    correlated = block.label !== nothing
+    term = correlated ? "$kind(1 + $slope | $(block.label) | $group)" : "$kind(1 + $slope | $group)"
+    who = "Binomial `$term` SD regression"
+    correlated && kind === :spatial && throw(ArgumentError(
+        "$who: the labelled correlated spatial form is not supported " *
+        "(native drmTMB 0.8.1 admits labelled Binomial intercept-and-slope blocks only for " *
+        "`animal` and for logit `phylo`); use the unlabelled independent-field " *
+        "`spatial(1 + $slope | $group)` form."))
+    fam.link === :logit || throw(ArgumentError(
+        "$who supports the logit link only (native drmTMB 0.8.1 refuses `probit` and " *
+        "`cloglog` for structured intercept-and-slope Binomial models)."))
+    f.response2 === nothing || throw(ArgumentError(
+        "$who requires an unweighted 0/1 Bernoulli response, as native drmTMB 0.8.1 does; " *
+        "`cbind(successes, failures)` trial counts are not supported on this route."))
+    mesh === nothing || throw(ArgumentError(
+        "$who uses `tree = …` / `coords = …`; the mesh/SPDE route is not covered."))
+    targets = _sd_target_parts(f)
+    length(targets) == 2 || throw(ArgumentError(
+        "$who needs one SD formula for the intercept and one for the slope " *
+        "(`sd($group, $level, coef(intercept)) ~ …` and `sd($group, $level, coef($slope)) ~ …`)."))
+    all(item -> item.target.level === level && item.target.group === group &&
+        item.target.dpar === :mu && item.target.block === nothing, targets) ||
+        throw(ArgumentError("$who requires two matching `$level` mean targets."))
+    Set(item.target.member for item in targets) == Set((:intercept, slope)) ||
+        throw(ArgumentError("$who: SD formulas must select `coef(intercept)` and `coef($slope)` exactly once."))
+    isempty(_sdphylo_parts(f)) || throw(ArgumentError(
+        "$who cannot be combined with an intercept-only `sd($group, phylogenetic) ~ …` formula."))
+    Ainv === nothing || throw(ArgumentError("$who does not use `Ainv`."))
+    rhs = Dict(f.forms)
+    fixed_mu, re, metav, structured, phylo_slope, _, other_slope = _split_ranef(rhs[:mu];
+        allow_phylo_slope = kind === :phylo,
+        allow_spatial_intercept_slope = kind === :spatial,
+        allow_labelled_intercept_slope = correlated)
+    parsed_slope = kind === :phylo ? phylo_slope : other_slope
+    metav === nothing && isempty(re) && structured == (kind, group) &&
+        parsed_slope === slope || throw(ArgumentError(
+        "$who requires one matching `$term` term and no ordinary random effects or `meta_V`."))
+    _collect_structured(rhs[:mu]) == [(kind, group)] || throw(ArgumentError(
+        "$who requires exactly one structured term, with no additional structured effects."))
+    allowed = Set(vcat([:mu], [item.key for item in targets]))
+    for (pname, form) in f.forms
+        pname in allowed && continue
+        pname === :sigma && form == ConstantTerm(1) && continue
+        throw(ArgumentError("$who supports only `mu` and its two SD formulas."))
+    end
+    all(_formula_response_observed_mask(f, data)) || throw(ArgumentError(
+        "$who requires observed responses; remove incomplete rows before fitting."))
+    fixed_mu, offset_term = _extract_offset(fixed_mu)
+    offset_term === nothing || throw(ArgumentError(
+        "$who does not yet support `offset(...)`."))
+    s, ntr = _binomial_response(f, data)
+    _, Xmu, nmmu = _design(f.response, fixed_mu, data)
+    kind === :spatial && (coords = _resolve_coords_labels(f, data, coords, nothing))   # #957
+    C, gidx, G = _structured_q2_kernel(kind, group, getproperty(data, group);
+                                       tree, K, A, coords, who)
+    Cchol = cholesky(Symmetric(C); check = false)
+    issuccess(Cchol) || throw(ArgumentError("$who: the $kind kernel is not positive definite."))
+    Q = sparse(Symmetric(inv(Cchol)))
+    ordered = map((:intercept, slope)) do member
+        only(filter(item -> item.target.member === member, targets))
+    end
+    Zgs = Matrix{Float64}[]
+    nmsds = Vector{String}[]
+    for item in ordered
+        Zg, names = _sd_group_design(f.response, item.rhs, data, gidx, G, group;
+            schema_cache = f.schema_cache, schema_key = item.key)
+        size(Zg, 2) <= G && rank(Zg) == size(Zg, 2) || throw(ArgumentError(
+            "$who: SD target `coef($(item.target.member))` has a rank-deficient group-level design."))
+        push!(Zgs, Matrix{Float64}(Zg))
+        push!(nmsds, names)
+    end
+    hasproperty(data, slope) || throw(ArgumentError(
+        "$who: random-slope predictor `$slope` is absent from data."))
+    x = getproperty(data, slope)
+    x isa AbstractVector{<:Real} && length(x) == length(s) && all(isfinite, x) ||
+        throw(ArgumentError("$who: random-slope predictor `$slope` must be numeric, finite, and have one value per response."))
+    any(!iszero, x) || throw(ArgumentError(
+        "$who: random-slope predictor `$slope` is all zero, so its SD is not identifiable."))
+    if all(==(first(x)), x) && isequal(Zgs[1], Zgs[2])
+        throw(ArgumentError("$who cannot separate the intercept and slope variances when " *
+            "`$slope` is constant and both SD formulas have identical group-level designs."))
+    end
+    blocks = Symbol[_sd_target_block(item.target; disambiguate = true) for item in ordered]
+    fit = _fit_binomial_animal_q2_laplace(fam, s, ntr, Xmu, Zgs[1], Zgs[2], gidx, Q,
+        Float64.(x), nmmu, nmsds[1], nmsds[2], blocks, group, g_tol; se,
+        correlated, second_start = kind === :spatial,
+        # The inner Newton solve stops at a relative step of 1e-7 (it cannot go lower: the
+        # line search then stalls at the floating-point floor), so the Laplace objective
+        # carries noise that the default finite-difference step (~5e-4) amplifies in the
+        # weakly identified slope-SD coefficients (SEs up to 19% below native drmTMB in
+        # the wave-6 study). Steps of 3e-3 to 3e-2 reproduce R's SEs to 3 digits.
+        hessian_step = 3e-3)
     return _withformula(fit, f)
 end
 
@@ -1031,6 +1244,8 @@ function _drm_binomial_related_sd_regression(f::DrmFormula, fam::Binomial;
     labels = getproperty(data, descriptor.group)
     gidx, G = _group_index(labels)
     C = if level === :spatial
+        coords isa AbstractDict && (coords = _resolve_coords_labels(f, data, coords, nothing))   # red team: label => coordinate Dict, as on the other families
+        # drmTMB's fixed kernel: exp(-d / median positive distance) + 1e-6 I (the range is fixed, not estimated)
         _spatial_covariance_from_coords(descriptor.group, G, coords, nothing)
     else
         covariance === nothing ? nothing : Matrix{Float64}(covariance)
@@ -1103,7 +1318,7 @@ function _binomial_animal_q2_sd_marginal_simulator(fit::DrmFit{Binomial}, data,
         "bootstrap: Binomial animal q2 simulation is missing its intercept SD target"))
     rhs = Dict(f.forms)[:mu]
     fixed_mu, re, mv, structured, _, _, slope = _split_ranef(
-        rhs; allow_animal_intercept_slope = true)
+        rhs; allow_animal_intercept_slope = true, allow_labelled_intercept_slope = true)
     group = first(targets).target.group
     slope !== nothing && isempty(re) && mv === nothing &&
         structured == (:animal, group) || throw(ArgumentError(
@@ -1150,7 +1365,7 @@ function _binomial_animal_q2_sd_marginal_simulator(fit::DrmFit{Binomial}, data,
         throw(ArgumentError(
             "bootstrap: animal slope predictor `$slope` must be finite and have one value per response"))
     loading = Float64.(raw_loading)
-    rho = tanh(only(coef(fit, :recov)))
+    rho = haskey(fit.scales, :correlation) ? only(fit.scales[:correlation]) : 0.0   # unlabelled: independent fields
     eta_fixed = Vector{Float64}(predict(fit, data; type = :link))
     length(eta_fixed) == fit.nobs || throw(ArgumentError(
         "bootstrap: Binomial fixed predictions do not match fitted response rows"))
@@ -1195,6 +1410,31 @@ function _marginal_simulator_build(fit::DrmFit{Binomial}, data; K = nothing,
     if length(targets) == 2 && length(animal_targets) == 2
         return _binomial_animal_q2_sd_marginal_simulator(fit, data, A, Ainv)
     end
+    # phylo / coordinate-spatial q2: rebuild the fit's kernel and row map (as the
+    # Poisson/NB2 bootstrap does) and draw the two independent fields.
+    q2ps = fit.formula isa DrmFormula ? _phylo_spatial_q2_block(fit.formula) : nothing
+    if q2ps !== nothing
+        kind, block = q2ps
+        tree1 === nothing && tree2 === nothing && K === nothing && A === nothing &&
+            Ainv === nothing || throw(ArgumentError(
+            "bootstrap/simulate: the Binomial `$(kind)(1 + $(block.slope) | $(block.group))` " *
+            "route uses `tree = …` (phylo) or `coords = …` (spatial) only; " *
+            "`tree1`, `tree2`, `K`, `A` and `Ainv` are not used and are refused rather than ignored."))
+        hasproperty(data, block.group) || throw(ArgumentError(
+            "bootstrap: data are missing the $(kind) grouping column `$(block.group)`"))
+        length(getproperty(data, block.group)) == fit.nobs || throw(ArgumentError(
+            "bootstrap/simulate: the Binomial `$(kind)(1 + $(block.slope) | $(block.group))` " *
+            "marginal simulator redraws the fitted rows (its 0/1 trials vector is tied to the " *
+            "$(fit.nobs) training rows); `data` has $(length(getproperty(data, block.group))) " *
+            "rows. Pass the fitting data, or use `newdata = …` with `re = :zero`."))
+        kcoords = kind === :spatial ?
+            _resolve_coords_labels(fit.formula, data, coords, nothing) : nothing
+        kernel = _structured_q2_kernel(kind, block.group, getproperty(data, block.group);
+            tree, K = nothing, A = nothing, coords = kcoords,
+            who = "bootstrap: `$(kind)(1 + $(block.slope) | $(block.group))` simulation")
+        return _structured_q2_sd_marginal_simulator(
+            fit, data, nothing; provider = kind, block, kernel)
+    end
     return invoke(_marginal_simulator_build, Tuple{DrmFit,Any}, fit, data;
         K, A, Ainv, tree, tree1, tree2, coords)
 end
@@ -1211,7 +1451,7 @@ function _binomial_animal_q2_prediction_fit(fit::DrmFit{Binomial})
     length(targets) == 2 || return fit
     rhs = Dict(f.forms)[:mu]
     fixed_mu, re, mv, structured, _, _, slope = _split_ranef(
-        rhs; allow_animal_intercept_slope = true)
+        rhs; allow_animal_intercept_slope = true, allow_labelled_intercept_slope = true)
     slope === nothing && return fit
     group = first(targets).target.group
     structured == (:animal, group) && isempty(re) && mv === nothing ||
@@ -1835,6 +2075,26 @@ function _drm_binomial_phylo_ordinary_sd_regression(f::DrmFormula, fam::Binomial
     return _withformula(_withiterations(_withnll(fit, nll), Optim.iterations(res)), f)
 end
 
+# One ordinary correlated block `(1 + x | g)` on the mean (no structured term) whose `sd()` targets
+# are all ordinary mean coefficients: the shape `marginal = :Laplace` takes as a one-node group integral.
+function _binomial_ordinary_corr_sd(f::DrmFormula)
+    rhs = Dict(f.forms)
+    haskey(rhs, :mu) || return false
+    split = try
+        _split_ranef(rhs[:mu])
+    catch err
+        err isa ArgumentError || rethrow()
+        return false
+    end
+    _, re, mv, st = split
+    (mv === nothing && st === nothing && length(re) == 1) || return false
+    _laplace_lhs_kind(re[1][1]) === :corr || return false
+    isempty(_sdphylo_parts(f)) || return false
+    targets = _sd_target_parts(f)
+    return !isempty(targets) && all(item -> item.target.level === :iid && item.target.dpar === :mu &&
+                                            item.target.block === nothing, targets)
+end
+
 function _drm_binomial_sd_regression(f::DrmFormula, fam::Binomial; data,
                                      tree = nothing, tree1 = nothing,
                                      tree2 = nothing, K = nothing, A = nothing,
@@ -1844,6 +2104,24 @@ function _drm_binomial_sd_regression(f::DrmFormula, fam::Binomial; data,
                                      se::Bool = true, marginal::Symbol = :LA,
                                      method = nothing, nq::Int = _BINOMIAL_RANEF_AGHQ_K)
     _reject_method_as_marginal(fam, method)
+    if _scalar_laplace_requested(marginal)
+        # Independent terms: the dense TMB-convention Laplace. One ordinary correlated block
+        # `(1 + x | g)` with SD formulas: the same group integral with a single adaptive node,
+        # which is the Laplace approximation (the node count is the only difference to the default).
+        laplace_fit = _laplace_sd_route(f, fam, Val(:binomial), marginal; data, g_tol,
+                                        fallback = _binomial_ordinary_corr_sd(f))
+        laplace_fit === nothing || return laplace_fit
+        return _withmarginal(_drm_binomial_sd_regression(f, fam; data, tree, tree1, tree2, K, A, Ainv,
+                                                         coords, mesh, g_tol, se, marginal = :LA,
+                                                         method, nq = 1), :Laplace)
+    end
+    marginal === :LA || throw(ArgumentError(
+        "Binomial `sd(group) ~ …` currently supports `marginal = :LA` " *
+            "only: one ordinary grouping variable uses adaptive Gauss-Hermite quadrature, " *
+            "while crossed independent intercepts or numeric slopes use a Laplace approximation."))
+    q2ps = _phylo_spatial_q2_block(f)
+    q2ps === nothing || return _drm_binomial_phylo_spatial_q2_sd(f, fam, q2ps...;
+        data, tree, K, A, Ainv, coords, mesh, g_tol, se)
     if fam.link !== :logit
         has_phylogenetic_sd = !isempty(_sdphylo_parts(f))
         targets = _sd_target_parts(f)
@@ -1885,10 +2163,6 @@ function _drm_binomial_sd_regression(f::DrmFormula, fam::Binomial; data,
                 "and :probit and :cloglog are additionally supported for one phylogenetic SD target or one mixed ordinary-intercept and phylogenetic-intercept target; :probit and " *
                 ":cloglog also support one animal, related-matrix, or spatial SD target and the animal q2 SD block."))
     end
-    marginal === :LA || throw(ArgumentError(
-        "Binomial `sd(group) ~ …` currently supports `marginal = :LA` " *
-            "only: one ordinary grouping variable uses adaptive Gauss-Hermite quadrature, " *
-            "while crossed independent intercepts or numeric slopes use a Laplace approximation."))
     targets = _sd_target_parts(f)
     if any(item -> item.target.level === :phylogenetic_interaction, targets)
         return _drm_binomial_phylo_interaction_sd_regression(
@@ -1951,7 +2225,8 @@ function _drm_binomial_sd_regression(f::DrmFormula, fam::Binomial; data,
             "structured covariance inputs are not used."))
     isempty(_sdphylo_parts(f)) || throw(ArgumentError(
         "Binomial `sd(group, phylogenetic) ~ …` is not implemented by the ordinary random-effect route."))
-    isempty(targets) && throw(ArgumentError("Binomial SD regression needs at least one ordinary SD formula."))
+    bare_corr = isempty(targets) && _binomial_bare_corr_block(f, fam)
+    isempty(targets) && !bare_corr && throw(ArgumentError("Binomial SD regression needs at least one ordinary SD formula."))
     all(item -> item.target.level === :iid && item.target.dpar === :mu &&
                 item.target.block === nothing, targets) || throw(ArgumentError(
         "Binomial ordinary SD regression targets IID mean random-effect coefficients only."))
@@ -1968,11 +2243,17 @@ function _drm_binomial_sd_regression(f::DrmFormula, fam::Binomial; data,
     end
     correlated = length(re) == 1 && corr_members(re[1][1]) !== nothing
     if correlated
-        1 <= length(targets) <= length(corr_members(re[1][1])) || throw(ArgumentError(
+        (bare_corr ? 0 : 1) <= length(targets) <= length(corr_members(re[1][1])) || throw(ArgumentError(
             "Binomial correlated-block SD regression needs one SD formula per selected coefficient."))
     else
-        length(re) == length(targets) || throw(ArgumentError(
-            "Binomial SD regression requires one SD formula for each independent random-effect coefficient."))
+        if length(re) != length(targets)
+            # Some terms without a formula (constant SD): the shared independent-term Laplace route.
+            indep_shape = _indep_sd_shape(f)
+            indep_shape === nothing ||
+                return _drm_indep_sd_laplace(f, fam, Val(:binomial), indep_shape; data, g_tol)
+            throw(ArgumentError(
+                "Binomial SD regression requires one SD formula for each independent random-effect coefficient."))
+        end
     end
     all(_formula_response_observed_mask(f, data)) || throw(ArgumentError(
         "Binomial random-effect SD regression does not yet support missing responses; " *
@@ -2146,6 +2427,9 @@ function _drm_binomial_sd_regression(f::DrmFormula, fam::Binomial; data,
     ), f)
 end
 
+# Nats an unconverged restart must gain over a converged first fit to replace it (independent terms).
+const _BINOMIAL_INDEP_BIG_GAIN = 1.0
+
 function _fit_binomial_sd_regression(fam::Binomial, s, ntr, Xmu, Zgs, nmsds,
                                       gidx, G, nmmu, group, g_tol, target_blocks;
                                       nq::Int = _BINOMIAL_RANEF_AGHQ_K,
@@ -2184,12 +2468,13 @@ function _fit_binomial_sd_regression(fam::Binomial, s, ntr, Xmu, Zgs, nmsds,
     ncor = correlated ? q * (q - 1) ÷ 2 : 0
     corr_range = offset + 1:offset + ncor
     offset += ncor
-    function nll(theta)
+    # `nll_modes(theta, bcache)` is the objective with the per-group modes written into `bcache`
+    # (cold start: the caller passes zeros). `nll` is the same objective with a fresh cache.
+    function nll_modes(theta, bcache)
         betamu = @view theta[1:pmu]
         eta0 = Xmu * betamu
         sdgroup = hcat((_binomial_sd_scale(Zgs[j] * @view(theta[sd_ranges[j]])) for j in 1:q)...)
         ll = (i, eta) -> _binomial_link_ll(fam, nint[i], sint[i], eta, lc[i])
-        bcache = zeros(eltype(theta), q, G)
         total = zero(eltype(theta))
         correlation_eta = correlated ? @view(theta[corr_range]) : eltype(theta)[]
         Lcorr = correlated ? _binomial_partial_correlation_cholesky(correlation_eta, q) : nothing
@@ -2201,23 +2486,58 @@ function _fit_binomial_sd_regression(fam::Binomial, s, ntr, Xmu, Zgs, nmsds,
             end
             value, bhat = _aghq_group_logint(ll, members[gi], eta0, Zre, Lg,
                                                rule, @view(bcache[:, gi]))
+            all(isfinite, bhat) || Threads.atomic_add!(_AGHQ_MODE_RESETS, 1)   # `fitted()` must not read a reset mode
             bcache[:, gi] .= ifelse.(isfinite.(bhat), bhat, zero(eltype(theta)))
             total += value
         end
         return -total
     end
+    nll(theta) = nll_modes(theta, zeros(eltype(theta), q, G))
     theta0 = zeros(offset)
     pbar = clamp(sum(s) / max(sum(ntr), 1), 1e-3, 1 - 1e-3)
     theta0[1] = _binomial_start(fam, pbar)
     for j in 1:q
-        if is_constant[j]
+        # An intercept-only SD design (`sd(g, coef(x)) ~ 1`) starts at exactly the constant-SD
+        # value: `ones \ fill(log(0.5), G)` is one ulp off `log(0.5)`, and that ulp alone sent the
+        # q = 3 correlated fit down a different path from the bare `(1 + x1 + x2 | g)` spelling.
+        if is_constant[j] || (size(Zgs[j], 2) == 1 && all(isone, Zgs[j]))
             theta0[sd_ranges[j]] .= log(0.5)
         else
             theta0[sd_ranges[j]] .= Zgs[j] \ fill(log(0.5), G)
         end
     end
     correlated && (theta0[corr_range] .= 0.0)
-    res = _optimize_with_fallback(nll, theta0, g_tol)
+    run_from(th0) = _optimize_with_fallback(nll, th0, g_tol)
+    res = run_from(theta0)
+    # Restarts for independent random effects (see `_q2_boundary_restarts`). With a
+    # covariate in an SD formula (`sd(g, coef(.)) ~ z`) the objective is a ridge in the
+    # SD coefficients: the single default start can stop at a smooth interior point,
+    # converged and with every SD well above the boundary, that lies 1 to 6 nats below
+    # a point the same objective scores higher (G12 of the wave-8 disagreement map;
+    # drmTMB reports a higher value, on an objective that differs by about 0.3 nats there). The boundary trigger never fires there, so such
+    # fits restart unconditionally, as the Gamma sd-z two-field route does; intercept-only
+    # SD formulas keep the usual trigger (fit near the boundary or not converged).
+    # An alternative is accepted only on a clear objective gain, so a fit whose first
+    # optimum stands is unchanged. An UNCONVERGED alternative replaces a CONVERGED first
+    # fit only when it gains more than `_BINOMIAL_INDEP_BIG_GAIN` nats: with the generic
+    # 1e-3 rule a restart turned converged fits into unconverged ones (q = 2 seed 11, gain
+    # 0.18; q = 3 seeds 6 and 27, gains 0.29 and 0.98), leaving a non-stationary point for
+    # the Hessian. Correlated blocks are not touched.
+    restart_info = Ref{Any}((ran = false, winner = 0, gain = 0.0, flipped = false))
+    if !correlated && q >= 2
+        res = _q2_boundary_restarts(run_from, Float64[], res,
+            (sd0, sd1, het) -> begin
+                th = copy(theta0)
+                for j in 2:q
+                    th = _q2_alt_theta(th, sd_ranges[[1, j]], (Zgs[1], Zgs[j]), sd0, sd1, het)
+                end
+                th
+            end,
+            th -> minimum(minimum(_binomial_sd_scale(Zgs[j] * th[sd_ranges[j]])) for j in 1:q),
+            drm_optim_converged; info = restart_info,
+            force = any(>(1), psd), big_gain = _BINOMIAL_INDEP_BIG_GAIN)
+    end
+    ri = restart_info[]
     thetahat = Optim.minimizer(res)
     V = _vcov_or_nan(ForwardDiff.hessian(nll, thetahat))
     blocks = Pair{Symbol,UnitRange{Int}}[:mu => 1:pmu]
@@ -2240,6 +2560,7 @@ function _fit_binomial_sd_regression(fam::Binomial, s, ntr, Xmu, Zgs, nmsds,
     scales = Dict(:trials => Float64.(nint),
                   :sd_group_index => Float64.(gidx),
                   :aghq_nodes => [Float64(nq)])
+    (correlated || q < 2) || (scales[:q2_restarts] = [ri.ran ? 1.0 : 0.0, Float64(ri.winner), Float64(ri.gain), ri.flipped ? 1.0 : 0.0])
     if correlated
         eta_corr = @view thetahat[corr_range]
         pairwise_corr = _binomial_pairwise_correlations(eta_corr, q)
@@ -2259,6 +2580,8 @@ function _fit_binomial_sd_regression(fam::Binomial, s, ntr, Xmu, Zgs, nmsds,
     for j in 1:q
         is_constant[j] || (scales[target_blocks[j]] = sdobs[j])
     end
+    bcache_fit = zeros(q, G)
+    _record_cond_fit_aghq!(scales, th -> nll_modes(th, bcache_fit), thetahat, bcache_fit, gidx, Zre)   # fitted-row modes for `fitted(fit)`
     fit = DrmFit(fam, blocks, names, thetahat, V, -nll(thetahat), n,
         drm_optim_converged(res), means, obs, scales)
     return _withiterations(_withnll(fit, nll), Optim.iterations(res))

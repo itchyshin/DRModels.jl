@@ -1,0 +1,21 @@
+# Laplace-switch check: the 19 random-effect cells with logLik differing at the merged tip (before this PR). Julia refit with marginal = :Laplace; cells whose route refuses it show the refusal.
+id	R_ll	Julia_default_ll	Julia_Laplace_ll	status
+C|poisson|(1|g)+offset	-258.1530556056	-258.1593174772	-258.1530556056	FITS
+C|nb2|(1|g)+offset	-275.1978235112	-275.1606971964	-275.1978235118	FITS
+D|binomial01|(1|g)|link=probit	-95.1199823574	-95.0936596638		ERROR ArgumentError: ArgumentError: Binomial links other than :logit are not available with `marginal = :Laplac
+D|binomial-cbind|(1+x1|g)|link=probit	-312.8207362115	-312.8130188027		ERROR ArgumentError: ArgumentError: Binomial links other than :logit are not available with `marginal = :Laplac
+D|binomial01|(1|g)|link=cloglog	-95.1625354399	-95.1418057154		ERROR ArgumentError: ArgumentError: Binomial links other than :logit are not available with `marginal = :Laplac
+D|binomial-cbind|(1+x1|g)|link=cloglog	-315.2822466750	-315.2612393137		ERROR ArgumentError: ArgumentError: Binomial links other than :logit are not available with `marginal = :Laplac
+I|cumul|mu=x1+(1|g)	-209.4879246195	-209.4803306049		ERROR ArgumentError: ArgumentError: drm: the CumulativeLogit route does not accept the keyword `marginal`. It w
+J|gamma|mu=(1|g)|sigma=x1	-259.6422392106	-259.6308904562		ERROR ArgumentError: ArgumentError: marginal = :Laplace is not available for Gamma() with a non-constant `sigma
+J|beta|mu=(1|g)|sigma=x1	60.0802178363	60.1418960663		ERROR ArgumentError: ArgumentError: marginal = :Laplace is not available for Beta() with a non-constant `sigma`
+J|nb2|mu=(1|g)|sigma=x1	-281.7128239580	-281.6675805997		ERROR ArgumentError: ArgumentError: marginal = :Laplace is not available for NegBinomial2() with a non-constant
+J|zob|mu=(1|g)|sigma=x1	-49.5630164531	-49.5111255389		ERROR ArgumentError: ArgumentError: drm: the ZeroOneBeta route does not accept the keyword `marginal`. It was r
+J|poisson|group=numeric code gn	-268.6889611125	-268.6947956303	-268.6889611125	FITS
+J|poisson|group=unbalanced with singletons gu	-268.9385735851	-268.9517507327	-268.9385735851	FITS
+J|binomial|group=numeric code gn	-95.3367774187	-95.2250892423	-95.3367774187	FITS
+J|binomial|group=unbalanced with singletons gu	-94.7469164398	-94.5562336187	-94.7469164398	FITS
+K|poisson|NA in both + (1|g)	-207.0051158530	-207.0097019621	-207.0051158530	FITS
+M|poisson|mu=x1+(1|g)|entry-points	-268.6889611125	-268.6947956303	-268.6889611125	FITS
+M|binomial|mu=x1+(1|g)|entry-points	-95.3367774187	-95.2250892423	-95.3367774187	FITS
+M|cumul|mu=x1+(1|g)|entry-points	-209.4879246195	-209.4803306049		ERROR ArgumentError: ArgumentError: drm: the CumulativeLogit route does not accept the keyword `marginal`. It w

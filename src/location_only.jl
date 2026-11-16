@@ -318,7 +318,14 @@ function _loconly_marginal_nll(
         return _LOCONLY_PENALTY
     σ²_phy = exp(2 * Float64(lσ_phy))
     σ² = exp(2 * Float64(lσ))
-    ll = marginal_loglik(prob, β, σ²_phy, σ²)
+    # `build_M`'s last-resort ridge retry is a bare `cholesky`: at an extreme probe it
+    # throws PosDefException. Inside the optimiser objective that is a penalty, not a crash.
+    ll = try
+        marginal_loglik(prob, β, σ²_phy, σ²)
+    catch err
+        err isa PosDefException || rethrow()
+        return _LOCONLY_PENALTY
+    end
     return isfinite(ll) ? -ll : _LOCONLY_PENALTY
 end
 

@@ -79,6 +79,9 @@ likelihood-ratio test:
 lrtest(fit_sigma_constant, fit_sigma_x)   # (; statistic, dof, pvalue)
 ```
 
+`lrtest` is the StatsModels.jl function with a method added for DRModels fits, so it
+works the same whether you load only DRModels or also `using StatsModels`.
+
 A small p-value supports the moving-scale term within these nested, checked
 candidate models; it is not proof of a biological mechanism. Interpret the selected
 σ-coefficient on the **ratio** scale — a one-unit increase in `x` multiplies the

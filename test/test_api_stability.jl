@@ -58,6 +58,8 @@ const API_EXPERIMENTAL = [
     # what drm(...; control, weights) did (#994 per-start logLiks). The names
     # are this PR's proposal, not an owner decision, so not promised yet.
     "control_info", "DRMControlReport",
+    # `poly(x, d)` formula term (R's orthogonal basis); new, tier proposed by the author, not decided
+    "poly",
     # r2_constant_sigma (2026-09-06): EXPERIMENTAL on purpose. The value it
     # returns is settled -- it is the ordinary lm() R2 -- but its REFUSAL
     # BOUNDARIES are what a caller actually programs against, and those may widen:
@@ -73,7 +75,8 @@ const API_EXPERIMENTAL = [
     "associate_pairs", "latent_normal", "association", "PairAssociation",
     "integration_diagnostics",
     # penalized MAP (A4c)
-    "drm_priors", "drm_prior_normal", "drm_prior_ridge", "resolve_priors",
+    "AbstractDrmPrior", "drm_priors", "drm_prior_normal", "drm_prior_ridge",
+    "drm_prior_sd_gamma", "resolve_priors",
     "drm_phylo_penalty", "drm_phylo_penalty_sweep",
     "PhyloPenalty", "PhyloCorPenaltyNeedsTwoSD",
     # bivariate meta
