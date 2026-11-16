@@ -55,16 +55,15 @@ import Distributions
     @test bd["vcov_complete"] == d.vcov_complete
     @test bd["penalized_map"] == d.penalized_map
     @test bd["boundary"] == d.boundary
-    # Top-level `grad_source` attributes the `"gradient"` vector drmTMB reads,
-    # not the nested scalar `max_abs_grad`. A producer source may be echoed
-    # only when that vector is present; `:none` / `:unavailable` may travel
-    # without one. Otherwise the key is omitted (#1402).
-    if haskey(bridged, "gradient")
+    # Top-level `grad_source` is `"stored"` exactly when `"gradient"` is
+    # shipped. That vector's only producer is `fit.nllgrad`. The nested
+    # diagnostic above keeps the scalar producer. `:none` / `:unavailable`
+    # may be echoed with no vector; every other scalar source omits the key
+    # (#1402).
+    @test haskey(bridged, "gradient") == (get(bridged, "grad_source", nothing) == "stored")
+    if !haskey(bridged, "gradient") && d.grad_source in (:none, :unavailable)
         @test bridged["grad_source"] == String(d.grad_source)
-        @test !(d.grad_source in (:none, :unavailable))
-    elseif d.grad_source in (:none, :unavailable)
-        @test bridged["grad_source"] == String(d.grad_source)
-    else
+    elseif !haskey(bridged, "gradient")
         @test !haskey(bridged, "grad_source")
     end
 
@@ -144,13 +143,12 @@ import Distributions
     @test ismissing(bd_cr["iterations"])
     @test ismissing(bd_cr["optimizer"])
     @test bd_cr["converged"] == d_cr.converged
-    # Same vector/source agreement as the closed-form route above (#1402).
-    if haskey(cr_bridged, "gradient")
+    # Same stored-iff-vector rule as the closed-form route above (#1402).
+    @test haskey(cr_bridged, "gradient") ==
+          (get(cr_bridged, "grad_source", nothing) == "stored")
+    if !haskey(cr_bridged, "gradient") && d_cr.grad_source in (:none, :unavailable)
         @test cr_bridged["grad_source"] == String(d_cr.grad_source)
-        @test !(d_cr.grad_source in (:none, :unavailable))
-    elseif d_cr.grad_source in (:none, :unavailable)
-        @test cr_bridged["grad_source"] == String(d_cr.grad_source)
-    else
+    elseif !haskey(cr_bridged, "gradient")
         @test !haskey(cr_bridged, "grad_source")
     end
 end

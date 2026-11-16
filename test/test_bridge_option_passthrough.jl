@@ -96,11 +96,12 @@ using Test, Random, LinearAlgebra
     native_g = zeros(length(coef(native_multi)))
     native_multi.nllgrad(native_g, coef(native_multi))
     @test g ≈ native_g atol=1e-10
-    # A shipped vector keeps a producer `grad_source`, the same one the nested
-    # scalar diagnostic reports. Omitting the key is only for the no-vector route.
-    @test haskey(bridged_multi, "grad_source")
-    @test bridged_multi["grad_source"] == bridged_multi["diagnostics"]["grad_source"]
-    @test bridged_multi["grad_source"] in ("locscale", "stored", "forward", "finite")
+    # The vector's only producer is `fit.nllgrad`, so the top-level label is
+    # `"stored"` exactly when the vector is present. The nested diagnostic
+    # keeps the scalar `max_abs_grad` producer and is not that label (#1402).
+    @test haskey(bridged_multi, "gradient") ==
+          (get(bridged_multi, "grad_source", nothing) == "stored")
+    @test bridged_multi["grad_source"] == "stored"
 
     # --- (4) gradient key absent on a route with no stored gradient ------------
     # Closed-form Gaussian location-scale stores an objective and no `nllgrad`
@@ -125,6 +126,26 @@ using Test, Random, LinearAlgebra
     else
         @test plain_src === nothing
         @test plain_diag in ("locscale", "stored", "forward", "finite")
+    end
+    @test haskey(plain_bridged, "gradient") == (plain_src == "stored")
+
+    # A callback that writes NaN is not a finite gradient. The vector is
+    # withheld, and the top-level label is not `"stored"`. The nested
+    # diagnostic still names the scalar fallback (`:finite` or `:unavailable`).
+    nan_fit = DRModels._withnll(plain, plain.nll, (g, θ) -> fill!(g, NaN))
+    nan_bridged = DRModels._bridge_flatten(nan_fit; family = "gaussian")
+    @test !haskey(nan_bridged, "gradient")
+    @test !haskey(nan_bridged, "gradient_names")
+    nan_src = get(nan_bridged, "grad_source", nothing)
+    nan_diag = nan_bridged["diagnostics"]["grad_source"]
+    @test nan_src != "stored"
+    @test haskey(nan_bridged, "gradient") == (nan_src == "stored")
+    @test nan_diag == String(bridge_diagnostics(nan_fit).grad_source)
+    @test nan_diag != "stored"
+    if nan_diag in ("none", "unavailable")
+        @test nan_src == nan_diag
+    else
+        @test nan_src === nothing
     end
 end
 

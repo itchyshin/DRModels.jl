@@ -1,6 +1,2 @@
-- **A bridge fit that sends no gradient vector no longer claims `grad_source = "forward"` (#1402).**
-  The top-level `grad_source` is the provenance of the `"gradient"` vector drmTMB reads.
-  Routes with no stored gradient callback still omit that vector. They now omit the
-  top-level source as well, unless it is already `"none"` or `"unavailable"`.
-  The nested diagnostics keep the scalar `max_abs_grad` and its real producer
-  (often `"forward"`). `check_drm` in Julia is unchanged.
+- **A bridge `"gradient"` is shipped only when `nllgrad` is finite, and its top-level `grad_source` is `"stored"` (#1402).**
+  That vector has one producer, the stored callback, so the label is `"stored"` exactly when the vector is sent. A non-finite callback result omits the vector. With no vector, the top-level key echoes `"none"` or `"unavailable"` when the scalar diagnostic says so, and is omitted otherwise (drmTMB reads a missing key as `unknown`). The nested diagnostics keep the scalar producer (`"locscale"`, `"forward"`, `"finite"`, and the rest). `check_drm` is unchanged.
