@@ -206,6 +206,18 @@ function _aghq_grad_neghess(ll, idx, η0, Zre, Sinv, b, clip::Bool)
     return g, H
 end
 
+# A lazy two-column product prevents an n-row design from being copied once
+# per group when only that group's observations are visited by quadrature.
+struct _AGHQWhitenedDesign{T,A<:AbstractMatrix,B<:AbstractMatrix} <: AbstractMatrix{T}
+    design::A
+    factor::B
+end
+_AGHQWhitenedDesign(Z::A, L::B) where {A<:AbstractMatrix,B<:AbstractMatrix} =
+    _AGHQWhitenedDesign{promote_type(eltype(Z), eltype(L)),A,B}(Z, L)
+Base.size(Z::_AGHQWhitenedDesign) = (size(Z.design, 1), 2)
+@inline Base.getindex(Z::_AGHQWhitenedDesign, i::Int, j::Int) =
+    Z.design[i, 1] * Z.factor[1, j] + Z.design[i, 2] * Z.factor[2, j]
+
 """
     _aghq_group_logint(ll, idx, η0, Zre, L, rule, bstart; maxiter = 100, tol = 1e-10)
 
@@ -217,6 +229,27 @@ observation `i`, and `bstart` a Float64 warm start for the mode. Returns
 """
 function _aghq_group_logint(ll, idx, η0, Zre, L::AbstractMatrix, rule::_AGHQRule,
                             bstart::AbstractVector{<:Real}; maxiter::Int = 100, tol::Real = 1e-10)
+    q = rule.q
+    size(L) == (q, q) || throw(DimensionMismatch("L must be $(q)×$(q)"))
+    q == 2 || return _aghq_group_logint_standard(ll, idx, η0, Zre, L, rule, bstart; maxiter=maxiter, tol=tol)
+    # Preserve the existing impossible-point handling when a diagonal
+    # underflows to zero or becomes non-finite during an optimizer probe.
+    if any(d -> !isfinite(_aghq_primal(L[d, d])) || _aghq_primal(L[d, d]) <= 0, 1:q)
+        return _aghq_group_logint_standard(ll, idx, η0, Zre, L, rule, bstart; maxiter=maxiter, tol=tol)
+    end
+    # Integrate b = Lz with z ~ N(0, I), avoiding the ill-conditioned
+    # precision L⁻ᵀL⁻¹ as a covariance component approaches the boundary.
+    # Warm starts and returned modes remain on the caller's original b scale.
+    T = promote_type(eltype(η0), eltype(Zre), eltype(L))
+    zstart = LowerTriangular(L) \ T.(bstart)
+    value, zhat = _aghq_group_logint_standard(ll, idx, η0, _AGHQWhitenedDesign(Zre, L),
+        Matrix{T}(I, q, q), rule, zstart; maxiter=maxiter, tol=tol, orientation_L=L)
+    return value, _aghq_primal.(L * zhat)
+end
+
+function _aghq_group_logint_standard(ll, idx, η0, Zre, L::AbstractMatrix, rule::_AGHQRule,
+                                     bstart::AbstractVector{<:Real}; maxiter::Int = 100, tol::Real = 1e-10,
+                                     orientation_L=nothing)
     q = rule.q
     size(L) == (q, q) || throw(DimensionMismatch("L must be $(q)×$(q)"))
     i1 = first(idx)
@@ -283,6 +316,18 @@ function _aghq_group_logint(ll, idx, η0, Zre, L::AbstractMatrix, rule::_AGHQRul
     ok || return convert(T, -Inf), _aghq_primal.(b)
     # C = Hc⁻ᵀ satisfies C Cᵀ = H⁻¹; log|C| = −Σ log diag(Hc).
     logdetC = -sum(log(Hc[d, d]) for d in 1:q)
+    rotation = orientation_L === nothing ? nothing : Matrix{T}(I, q, q)
+    if orientation_L !== nothing
+        # Align the transformed rule with the original upper-triangular
+        # covariance factor. Tensor-product quadrature is rotation-sensitive.
+        Cz = UpperTriangular(transpose(Hc)) \ Matrix{T}(I, q, q)
+        B = orientation_L * Cz
+        r = sqrt(B[2, 1]^2 + B[2, 2]^2)
+        rotation[1, 1] = B[2, 2] / r
+        rotation[2, 1] = -B[2, 1] / r
+        rotation[1, 2] = B[2, 1] / r
+        rotation[2, 2] = B[2, 2] / r
+    end
     N = size(rule.Z, 2)
     terms = Vector{T}(undef, N)
     rt2 = sqrt(2.0)
@@ -290,7 +335,8 @@ function _aghq_group_logint(ll, idx, η0, Zre, L::AbstractMatrix, rule::_AGHQRul
     for j in 1:N
         # u = Hc⁻ᵀ z (back-substitution with the upper-triangular Hcᵀ)
         for r in q:-1:1
-            s = rule.Z[r, j] + zero(T)
+            s = orientation_L === nothing ? rule.Z[r, j] + zero(T) :
+                sum(rotation[r, k] * rule.Z[k, j] for k in 1:q) + zero(T)
             for k in (r+1):q
                 s -= Hc[k, r] * bn[k]
             end

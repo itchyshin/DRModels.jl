@@ -1,0 +1,1 @@
+- Two-effect adaptive quadrature now uses standardized random-effect coordinates near singular covariance matrices while preserving the existing quadrature orientation. This prevents loss of numerical precision in a reproduced Gamma correlated-slope boundary case. Inspect convergence and uncertainty diagnostics as before.
