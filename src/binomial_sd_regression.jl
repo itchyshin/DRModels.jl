@@ -2509,6 +2509,35 @@ function _fit_binomial_sd_regression(fam::Binomial, s, ntr, Xmu, Zgs, nmsds,
     correlated && (theta0[corr_range] .= 0.0)
     run_from(th0) = _optimize_with_fallback(nll, th0, g_tol)
     res = run_from(theta0)
+    corr_retry = zeros(3) # attempted, accepted, objective difference in nats
+    if correlated && q == 2 && isfinite(Optim.minimum(res)) &&
+       all(isfinite, Optim.minimizer(res)) && any(abs.(Optim.minimizer(res)[corr_range]) .>= 12)
+        # The soft correlation guard has a nearly flat tail.  A line search can
+        # jump far into that tail, where the raw parameter is poorly identified.
+        # Retry the unchanged objective from a finite near-boundary point; use
+        # it only if the full gradient converges and the objective is equivalent
+        # to within 1e-8 nats. Otherwise retain the original optimization result.
+        corr_retry[1] = 1.0
+        start = copy(Optim.minimizer(res))
+        start[corr_range] .= clamp.(start[corr_range], -8.3, 8.3)
+        trial = try
+            Optim.optimize(_safe_objective(nll), start, Optim.BFGS(),
+                           Optim.Options(g_tol = g_tol); autodiff = :forward)
+        catch err
+            err isa AssertionError || rethrow()
+            nothing
+        end
+        if trial !== nothing && drm_optim_converged(trial) &&
+           isfinite(Optim.minimum(trial)) && all(isfinite, Optim.minimizer(trial)) &&
+           all(abs.(Optim.minimizer(trial)[corr_range]) .< 12)
+            loss = Optim.minimum(trial) - Optim.minimum(res)
+            grad = ForwardDiff.gradient(nll, Optim.minimizer(trial))
+            if abs(loss) <= 1e-8 && all(isfinite, grad) && maximum(abs, grad) <= g_tol
+                corr_retry[2:3] .= (1.0, loss)
+                res = trial
+            end
+        end
+    end
     # Restarts for independent random effects (see `_q2_boundary_restarts`). With a
     # covariate in an SD formula (`sd(g, coef(.)) ~ z`) the objective is a ridge in the
     # SD coefficients: the single default start can stop at a smooth interior point,
@@ -2560,6 +2589,7 @@ function _fit_binomial_sd_regression(fam::Binomial, s, ntr, Xmu, Zgs, nmsds,
     scales = Dict(:trials => Float64.(nint),
                   :sd_group_index => Float64.(gidx),
                   :aghq_nodes => [Float64(nq)])
+    corr_retry[1] == 1.0 && (scales[:corr_boundary_retry] = corr_retry)
     (correlated || q < 2) || (scales[:q2_restarts] = [ri.ran ? 1.0 : 0.0, Float64(ri.winner), Float64(ri.gain), ri.flipped ? 1.0 : 0.0])
     if correlated
         eta_corr = @view thetahat[corr_range]

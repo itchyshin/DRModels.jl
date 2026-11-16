@@ -4656,6 +4656,13 @@ end
 function _check_max_abs_grad(fit::DrmFit)
     nll = fit.nll
     nll === nothing && return (magnitude = NaN, source = :none)
+    if nll isa _AGHQDiagnosticObjective && fit.nllgrad === nothing
+        snapshot = copy(nll.bcache)
+        isolated = θ -> nll.diagnostic(θ, copy(snapshot))
+        m = _check_grad_attempt(() -> maximum(abs, ForwardDiff.gradient(isolated, fit.theta)))
+        isnan(m) || return (magnitude = m, source = :forward)
+        return _check_grad_fallback(isolated, fit.theta)
+    end
     if nll isa LocScaleObjective
         base = size(nll.Xμ, 2) + size(nll.Xψ, 2)
         perm = vcat(collect(1:base), [base + 1, base + 3, base + 2])  # recov->engine

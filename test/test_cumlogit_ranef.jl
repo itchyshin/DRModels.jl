@@ -21,12 +21,10 @@
 #
 # R oracle fixtures: test/parity/fixtures/cumlogit-mu-ranef/ (intercept) and
 # test/parity/fixtures/cumlogit-mu-slope-ranef/ (independent slope), each
-# generated and fit by that directory's own gen_data.R —
+# originally generated and fitted with drmTMB. The retained data can be refit
+# using tools/refit-parity-fixtures.R; that tool does not regenerate the data.
 #
-#   Rscript test/parity/fixtures/cumlogit-mu-ranef/gen_data.R
-#   Rscript test/parity/fixtures/cumlogit-mu-slope-ranef/gen_data.R
-#
-# with drmTMB 0.7.0 (`packageVersion("drmTMB")`), giving:
+# The original fits used drmTMB 0.7.0 (`packageVersion("drmTMB")`), giving:
 #
 # intercept `(1 | id)` cell (DGP copied from drmTMB's own Arc 2a sentinel,
 # seed 9, n_id=45, n_each=18, K=4, cutpoints c(-1,0,1), sd_id=0.7):
