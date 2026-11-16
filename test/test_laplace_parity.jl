@@ -1,4 +1,5 @@
 using DRModels, Test
+import ForwardDiff
 include(joinpath(@__DIR__, "laplace_parity_helpers.jl"))
 
 # `marginal = :Laplace` on routes whose default integrator is adaptive quadrature: one independent term
@@ -65,6 +66,9 @@ end
     @test abs(loglik(fit) - _LP_REF[id].loglik) <= 1e-4
     @test abs(only(fit.scales[:corpars])) > 0.99999          # at the boundary, as in drmTMB
     @test abs(coef(fit, :recov)[end]) < 12                   # the optimiser did not run into the noise region
+    retry = get(fit.scales, :corr_boundary_retry, zeros(3))
+    @test retry[1] == 0.0 || (retry[2] == 1.0 && abs(retry[3]) <= 1e-8)
+    @test maximum(abs, ForwardDiff.gradient(fit.nll, fit.theta)) <= 1e-8
 end
 
 @testset "Poisson correlated block with a mean offset, c ~ x + offset(logb) + (1 + x | g)" begin
