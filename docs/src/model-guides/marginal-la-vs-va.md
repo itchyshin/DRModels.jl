@@ -64,6 +64,12 @@ comparisons, the adaptive default was closer to the 61-node reference. This
 does not establish a general accuracy ranking. Use `:Laplace` when matching
 drmTMB's integration rule.
 
+`Binomial(link = :probit)` and `Binomial(link = :cloglog)` accept `marginal = :Laplace` for one `(1 | g)` or one
+correlated block `(1 + x | g)`; the default `:LA` log-likelihood sits 0.008 to 0.03 above drmTMB's there.
+
+`:Laplace` also accepts one `(1 | g)` on the mean of Gamma, Beta, NegBinomial2 and ZeroOneBeta when `sigma` has fixed-effect
+covariates (`sigma ~ x1`); there the default `:LA` log-likelihood sits 0.01 to 0.06 above drmTMB's on the test data.
+
 The gap used to be larger. Before version 0.7.2, `:LA` integrated an ordinary
 `(1 | g)` on a fixed 32-node grid on the prior scale. On ten test datasets with a
 moderate family `sigma` (0.3 to 0.5) and a random-intercept SD of 0.6, that
@@ -88,7 +94,10 @@ fit.marginal   # :Laplace
 
 On these five families (Poisson, Binomial, NegBinomial2, Gamma and Beta),
 `:Laplace` covers one ordinary `(1 | g)` on the mean (`sigma ~ 1` for the scale
-families), by maximum likelihood. `Student()` accepts it too for one ordinary
+families), by maximum likelihood. `CumulativeLogit()` accepts it for one
+ordinary `(1 | g)` (no slope, no other term); its default is 41-node adaptive
+quadrature, which sits 0.01 to 0.15 above drmTMB's log-likelihood on the test
+data, and `:Laplace` reproduces drmTMB's value. `Student()` accepts it too for one ordinary
 `(1 | g)` on the mean (`sigma` and `nu` may carry fixed-effect formulas). A
 Gaussian random intercept on `sigma`, `sigma ~ 1 + (1 | g)`, with a fixed-effect
 mean also accepts it. `LogNormal()` accepts the selector for one ordinary mean

@@ -1,4 +1,4 @@
-# One bf(...) object reused for a second fit equals a fresh one (P31).
+# One bf(...) object reused for a second fit equals a fresh one.
 #
 # A formula object used to keep the training schema of its first fit. Reusing it
 # then failed in two ways on the plain Gaussian route: a response that is

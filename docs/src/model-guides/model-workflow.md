@@ -90,7 +90,7 @@ bootstrap_ci(bf(@formula(y ~ x), @formula(sigma ~ x)), Gaussian();
              data = dat, B = 500, level = 0.95)
 ```
 
-Returns the same `(param, coef, estimate, lower, upper)` rows as `confint`. Use
+Returns the same `(param, coef, estimate, lower, upper, scale)` rows as `confint`. Use
 Wald (`confint`) for speed; use a bootstrap to see how interval estimates vary
 when data are repeatedly simulated and refitted under the fitted model. A
 parametric bootstrap therefore still depends on that model's assumptions.

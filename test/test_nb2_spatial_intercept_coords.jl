@@ -1,6 +1,6 @@
 # NB2 `spatial(1 | g)` with site `coords` (no SD formula): the coordinate route uses drmTMB's
 # fixed-range kernel, exp(-d / r) + 1e-6 I with r the median positive pairwise distance, like the
-# Poisson and Gamma routes. Before this slice Julia refused the cell (gap map cell
+# Poisson and Gamma routes. Before this change Julia refused the cell (gap map cell
 # `nb2|spatial|lab0|q1|sd-none|cm0|ML`, R-only).
 # Reference: drmTMB 0.8.1, ML (test/fixtures/nb2_spatial_intercept/reference_drmtmb.csv; script
 # ref_nb2_spatial_intercept.R, same folder). Rule fixed before the Julia run:
@@ -62,8 +62,8 @@ end
             e
         end
         @test err isa ArgumentError
-        @test err isa ArgumentError && occursin("one structured random effect", err.msg)
-        @test err isa ArgumentError && occursin("$k1(1 | g)", err.msg) && occursin("$k2(1 | h)", err.msg)
+        @test err isa ArgumentError && occursin("one structured term per formula", err.msg)
+        @test err isa ArgumentError && occursin("$k1(… | g)", err.msg) && occursin("$k2(… | h)", err.msg)
         npairs += 1
     end
     @test npairs == 16
@@ -100,8 +100,8 @@ end
             e
         end
         @test err isa ArgumentError
-        @test err isa ArgumentError && occursin("one structured random effect", err.msg)
-        @test err isa ArgumentError && occursin(second_term, err.msg)
+        @test err isa ArgumentError && occursin("one structured term per formula", err.msg)
+        @test err isa ArgumentError && occursin(replace(second_term, r"\(.* \|" => "(… |"), err.msg)
     end
     # the one-term fits on this route still work
     for rhs in ("spatial(1 | g)", "spatial(0 + x | g)")

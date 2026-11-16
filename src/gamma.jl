@@ -1195,20 +1195,22 @@ function _fit_gamma_corr_ranef(fam::Gamma, y, Xμ, Xσ, xs, gidx, G, nmμ, nmσ,
         push!(members[gidx[i]], i)
     end
     rule = _AGHQRule(2, nq); Zre = hcat(ones(n), Float64.(xs)); bcache = zeros(2, G)   # #834: per-group AGHQ
-    function nll(θ)
+    function nll_with_cache(θ, cache; count_resets::Bool=true)
         βμ = θ[1:pμ]; βσ = θ[pμ+1:pμ+pσ]
         L = _corr_ranef_L(θ[pμ+pσ+1], θ[pμ+pσ+2], θ[pμ+pσ+3])
         η0 = Xμ * βμ; ησ = clamp.(Xσ * βσ, -15.0, 15.0)
         ll = (i, η) -> (μ = exp(clamp(η, -30.0, 30.0)); α = exp(-2 * ησ[i]);
                         Distributions.logpdf(Distributions.Gamma(α, μ / α), y[i]))
-        return -_aghq_marginal_loglik(ll, members, η0, Zre, L, rule, bcache)
+        return -_aghq_marginal_loglik(ll, members, η0, Zre, L, rule, cache; count_resets=count_resets)
     end
+    nll(θ) = nll_with_cache(θ, bcache)
+    diagnostic_nll(θ, cache) = nll_with_cache(θ, cache; count_resets=false)
     ȳ = sum(y) / n; v = sum(abs2, y .- ȳ) / max(n - 1, 1)
     α0 = max(ȳ^2 / max(v, eps()), 0.5)
     θ0 = zeros(pμ + pσ + 3)
     θ0[1] = log(ȳ + eps()); θ0[pμ+1] = -0.5 * log(α0)
     θ0[pμ+pσ+1] = log(0.4); θ0[pμ+pσ+2] = log(0.4); θ0[pμ+pσ+3] = 0.0
-    res = Optim.optimize(nll, θ0, Optim.LBFGS(), Optim.Options(g_tol = g_tol); autodiff = :forward)
+    res = _optimize_corr_ranef(nll, θ0, g_tol, bcache)
     θ̂ = Optim.minimizer(res); V = _vcov_from_hessian(ForwardDiff.hessian(nll, θ̂))
     blocks = [:mu => 1:pμ, :sigma => (pμ+1):(pμ+pσ), :recov => (pμ+pσ+1):(pμ+pσ+3)]
     names = [:mu => nmμ, :sigma => nmσ, :recov => ["$(grp):L11", "$(grp):L22", "$(grp):L21"]]
@@ -1216,7 +1218,8 @@ function _fit_gamma_corr_ranef(fam::Gamma, y, Xμ, Xσ, xs, gidx, G, nmμ, nmσ,
     scales = Dict(:sigma => _reported_sigma(Xσ * θ̂[(pμ+1):(pμ+pσ)], -15.0, 15.0))
     _record_cond_fit_aghq!(scales, nll, θ̂, bcache, gidx, Zre)   # fitted-row modes for `fitted(fit)`
     return _withiterations(
-        _withnll(DrmFit(fam, blocks, names, θ̂, V, -nll(θ̂), n, Optim.converged(res), means, obs, scales), nll),
+        _withnll(DrmFit(fam, blocks, names, θ̂, V, -nll(θ̂), n, Optim.converged(res), means, obs, scales),
+                 _AGHQDiagnosticObjective(nll, diagnostic_nll, bcache)),
         Optim.iterations(res))
 end
 

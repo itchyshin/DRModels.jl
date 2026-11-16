@@ -492,12 +492,30 @@ function _drm_run_controlled_inner(body::Function, f, fam, control, weights)
     return _ctl_finish(fit, scope, fam)
 end
 
+# The fixed spatial range (median positive pairwise distance between sites) is not a
+# parameter. The kernel builder leaves it in task-local storage under this key; the entry
+# wrapper below moves it onto the fit it returns.
+const _SPATIAL_RANGE_KEY = :drm_spatial_fixed_range
+
 function _drm_run_controlled(body::Function, f, fam, control, weights)
+    tls = task_local_storage()
+    old = get(tls, _SPATIAL_RANGE_KEY, nothing)
+    tls[_SPATIAL_RANGE_KEY] = nothing
     try
-        return _drm_run_controlled_inner(body, f, fam, control, weights)
+        fit = _drm_run_controlled_inner(body, f, fam, control, weights)
+        rng = tls[_SPATIAL_RANGE_KEY]
+        if fit isa DrmFit && rng !== nothing && !haskey(fit.scales, :spatial_range)
+            fit.scales[:spatial_range] = [rng]
+        end
+        return fit
     catch e
         e isa MethodError && _refuse_kwarg_methoderror(e, f, fam)
         rethrow()
+    finally
+        # An enclosing `drm` call (the missing-response wrappers re-enter `drm`) keeps what this
+        # call recorded; otherwise the earlier value is restored.
+        seen = get(tls, _SPATIAL_RANGE_KEY, nothing)
+        tls[_SPATIAL_RANGE_KEY] = seen === nothing ? old : seen
     end
 end
 
@@ -743,6 +761,16 @@ macro drm_entry(fdef)
         # the extra-keyword splat added above is named `_drm_extra_kw`
         :(haskey(_drm_extra_kw, :data) && _record_factor_levels!($fname, _drm_extra_kw[:data]))
     end
+    # The fixed-effect design rank check (#1110) for every route but the Gaussian one, which
+    # makes its own call; `_apply_design_rank` flags the finished fit when the check found an alias.
+    precheck = if :data in names
+        :(_precheck_design_rank($fname, $famname, data))
+    elseif splat !== nothing
+        kwsplat2 = params.args[findfirst(a -> a isa Expr && a.head === :..., params.args)].args[1]
+        :(haskey($kwsplat2, :data) && _precheck_design_rank($fname, $famname, $kwsplat2[:data]))
+    else
+        :(haskey(_drm_extra_kw, :data) && _precheck_design_rank($fname, $famname, _drm_extra_kw[:data]))
+    end
     # Each fit works on its own copy of the formula bundle (`_fit_formula`): the schema cache, the
     # factor levels and the `poly` bases written at fit time belong to the fit, never to the
     # user's `bf(...)` object, so a formula reused on other data (a second fit, a cross-validation
@@ -752,11 +780,12 @@ macro drm_entry(fdef)
         $pre
         let $fname = _fit_formula($fname)
             $record
-            return task_local_storage(_FIT_FORMULA_KEY, $fname) do
+            $precheck
+            return _apply_design_rank(task_local_storage(_FIT_FORMULA_KEY, $fname) do
                 _drm_run_controlled($fname, $famname, control, weights) do
                     $body
                 end
-            end
+            end)
         end
     end
     return esc(:(Base.@__doc__ $fdef))

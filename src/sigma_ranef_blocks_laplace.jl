@@ -266,6 +266,17 @@ function _fit_sigma_blocks_laplace(fam, y, Xμ, Xσ, blocks, nmμ, nmσ, g_tol, 
         scales[:sd_group] = sdg
         scales[:sd] = sdg[b.gidx]
     end
+    # Fitted-row modes for `fitted(fit)` (conditional default): the per-row link-scale contribution
+    # of the mean random effects, and for LogNormal (whose mean exp(mu + sigma^2 / 2) depends on
+    # sigma) the conditional sigma. Recorded at theta-hat only; no estimate, logLik or vcov changes.
+    let LDh = loadings(θ̂)
+        contrib(t) = [sum((LDh[i, s] * vhat[IDX[i, s]] for s in 1:nf if TG[s] == t); init = 0.0) for i in 1:n]
+        any(==(1), TG) && _record_cond_fit!(scales, contrib(1))
+        if fam isa LogNormal && any(==(2), TG)
+            csig = exp.(eta_fixed .+ contrib(2))
+            all(isfinite, csig) ? (scales[:cond_fit_sigma] = csig) : (scales[:cond_fit_failed] = [1.0])
+        end
+    end
     start.extra_scales !== nothing && merge!(scales, start.extra_scales)
     fblocks = Pair{Symbol,UnitRange{Int}}[:mu => 1:pμ, :sigma => (pμ+1):(pμ+pσ),
                                           :resd => (pμ+pσ+1):(pμ+pσ+nsd)]

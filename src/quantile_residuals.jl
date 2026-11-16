@@ -219,9 +219,28 @@ function _ordinary_resd_block(fit::DrmFit)
         # apply to a slope. Those fits keep their stored population mean and sigma.
         axis === :sigma && fit.formula isa DrmFormula &&
             _sigma_blocks_shape(fit.formula, fit.family) !== nothing && return nothing
+        # A lone mean random SLOPE `(0 + x | g)` stores the same single `:resd` block as
+        # `(1 | g)`, but it is not an intercept: its variance on row i is `x_i^2 sd^2`, and
+        # the fit does not keep `x`. Treating it as an intercept gave residuals that were
+        # silently wrong, so it keeps the stored population mean (random effect set to 0).
+        axis === :mu && _mean_re_has_slope(fit) && return nothing
         return (range = r, axis = axis)
     end
     return nothing
+end
+
+# Does the retained mean formula carry a random slope (`(0 + x | g)`, `(1 + x | g)`)?
+# A fit without a parseable formula is treated as an intercept, the old rule.
+function _mean_re_has_slope(fit::DrmFit)
+    f = fit.formula
+    f isa DrmFormula || return false
+    return try
+        re = _split_ranef(Dict(f.forms)[:mu]; allow_phylo_slope = true, allow_temporal = true)[2]
+        any(t -> first(_re_kind(t[1])) !== :intercept, re)
+    catch e
+        e isa InterruptException && rethrow()
+        false
+    end
 end
 
 # Is the lone mean `:resd` block a STRUCTURED random effect (phylo / relmat /
@@ -581,6 +600,14 @@ function _quantile_residuals(fit::DrmFit, rng)
         end
     else
         @inbounds for i in 1:n
+            if isnan(y[i])
+                # A row dropped for a missing response: NaN, as the other
+                # discrete families give. The draw is still taken so the
+                # stream matches the Poisson and NegBinomial2 routes.
+                rand(rng)
+                u[i] = NaN
+                continue
+            end
             yi = _pit_obs(fam, i; obs = fit.obs, scales = fit.scales)
             a = _cdf_value(fam, i, yi - 1; μ = μ, scales = fit.scales, obs = fit.obs, gsis = gsis, mix = mix)
             b = _cdf_value(fam, i, yi; μ = μ, scales = fit.scales, obs = fit.obs, gsis = gsis, mix = mix)
@@ -588,6 +615,41 @@ function _quantile_residuals(fit::DrmFit, rng)
         end
     end
     return Distributions.quantile.(std_normal, u)
+end
+
+# Pearson residuals `(y - E[Y]) / sqrt(Var[Y])` from the fitted per-observation distribution
+# (`_conditional_dist`), for fixed-effect fits of the families whose drmTMB Pearson residual
+# is the same quantity. Everything else is refused by name.
+const _PEARSON_FAMILIES = (Gaussian, Poisson, NegBinomial2, Gamma, Beta)
+
+function _pearson_residuals(fit::DrmFit)
+    fam = fit.family
+    fname = string(nameof(typeof(fam)), "()")
+    haskey(fit.means, :mu) && !haskey(fit.scales, :sigma1) ||
+        throw(ArgumentError("residuals(type = :pearson) is univariate only; $fname with a " *
+            "bivariate response is not supported"))
+    any(fam isa F for F in _PEARSON_FAMILIES) ||
+        throw(ArgumentError("residuals(type = :pearson) is not implemented for $fname " *
+            "(supported: Gaussian, Poisson, NegBinomial2, Gamma, Beta, fixed-effect fits). " *
+            "drmTMB defines its Pearson residual differently for some other families, " *
+            "so no number is returned. Use type = :quantile or type = :response."))
+    (any(cn -> first(cn) === :resd, fit.coefnames) || any(p -> first(p) in
+        (:range, :temporal_phi, :temporal_decay, :temporal_pac), fit.blocks) ||
+        haskey(fit.scales, :zi) || haskey(fit.scales, :hu) || haskey(fit.scales, :nu) ||
+        fit.ranef !== nothing || _wald_withheld(fit) || _is_temporal_fit(fit)) &&
+        throw(ArgumentError("residuals(type = :pearson) is implemented for fixed-effect fits " *
+            "only; this $fname fit has a random effect, a structured or temporal term, a " *
+            "zero-inflation or hurdle part, or a dense known sampling covariance or `meta_V` with a " *
+            "random effect. " *
+            "Use type = :quantile or type = :response."))
+    y = fit.obs[:mu]
+    μ = fit.means[:mu]
+    gsis = _gamma_sigma_is_shape(fit)
+    return map(eachindex(y)) do i
+        d = _conditional_dist(fam, i; μ = μ, scales = fit.scales, obs = fit.obs,
+                              gamma_sigma_is_shape = gsis)
+        (y[i] - Distributions.mean(d)) / sqrt(Distributions.var(d))
+    end
 end
 
 # ZeroOneBeta atomic driver. Mixture: P(0) = zoi(1−coi) at the atom 0, P(1) = zoi·coi
