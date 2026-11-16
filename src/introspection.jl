@@ -172,6 +172,10 @@ end
 # counted LBFGS is labelled only after excluding Beta (unrecorded Newton polish)
 # and the BFGS-first counted routes above — not from a nonnegative count alone.
 function _bridge_optimizer_label(fit::DrmFit)
+    # The correlated Binomial boundary retry explicitly keeps a BFGS result;
+    # its selected method is known even when there is no control report.
+    retry = get(fit.scales, :corr_boundary_retry, nothing)
+    retry !== nothing && length(retry) >= 2 && retry[2] == 1.0 && return "Optim.BFGS"
     info = fit.control_info
     if info isa DRMControlReport
         actual = info.actual_optimizer

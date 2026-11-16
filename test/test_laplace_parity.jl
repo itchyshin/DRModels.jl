@@ -69,6 +69,7 @@ end
     retry = get(fit.scales, :corr_boundary_retry, zeros(3))
     @test retry[1] == 0.0 || (retry[2] == 1.0 && abs(retry[3]) <= 1e-8)
     @test maximum(abs, ForwardDiff.gradient(fit.nll, fit.theta)) <= 1e-8
+    retry[2] == 1.0 && @test bridge_diagnostics(fit).optimizer == "Optim.BFGS"
 end
 
 @testset "Poisson correlated block with a mean offset, c ~ x + offset(logb) + (1 + x | g)" begin
