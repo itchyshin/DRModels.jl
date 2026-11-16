@@ -8,6 +8,11 @@ human-readable changelog.
 
 ## v0.8.2
 
+- **`bridge_diagnostics` no longer labels every counted fit `Optim.LBFGS` (#1260).** The optimizer field follows the **kept** selected-stage method (`actual_optimizer`, not the last `optimizer_runs` entry): `Optim.LBFGS` / `Optim.BFGS` / `Optim.Newton` when recorded. A nonnegative `niterations` count is the accepted final stage, not total work, and is not itself evidence of LBFGS. Unrecorded counted BFGS-first Laplace routes (Gamma/Student independent slopes; Gaussian random-slope mean plus sigma random intercept) stay `missing`, as does an unrecorded Beta Newton polish. Default LBFGS is labelled only on known-LBFGS unrecorded fingerprints (including `Fminbox(LBFGS)`, reported as `Optim.LBFGS`). Fitted values, likelihoods, and solver defaults are unchanged.
+
+- Two-effect adaptive quadrature now uses standardized random-effect coordinates near singular covariance matrices while preserving the existing quadrature orientation. This prevents loss of numerical precision in a reproduced Gamma correlated-slope boundary case. Inspect convergence and uncertainty diagnostics as before.
+- Correlated Binomial SD-regression fits retry saturated correlation estimates from a finite starting point, retaining a retry only when the full gradient converges and the objective is effectively unchanged. Boundary correlations can remain weakly identified.
+
 - `check_drm`, bridge diagnostics and the nonconverged fit report now evaluate Gamma and Student correlated-slope gradients using an isolated copy of the fitted warm-start cache. Repeated diagnostics from the same cache state no longer change that cache. Other objective calls can still warm it, and near-boundary gradient accuracy is not established by repeatability. For these routes, `bridge_diagnostics(fit).route` now names the stored diagnostic wrapper.
 
 - `lrtest(...; mixture = true)` identifies an iid random-intercept SD by its covariance structure and group across its different stored labels. Structured and iid components remain distinct, and swapped groups are refused.
