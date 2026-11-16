@@ -2279,8 +2279,13 @@ function _bridge_flatten(fit; family::AbstractString, newdata = nothing,
         length(g) == length(cnames) || error(
             "drm_bridge: internal error — gradient length $(length(g)) does not match " *
             "the $(length(cnames)) named coefficients; refusing to mislabel gradient entries.")
-        out["gradient"] = g
-        out["gradient_names"] = cnames
+        # A non-finite callback result is not a gradient (#1402). Omit the
+        # vector (and its names) rather than ship NaN/Inf. The length check
+        # above still refuses a mis-sized callback, finite or not.
+        if all(isfinite, g)
+            out["gradient"] = g
+            out["gradient_names"] = cnames
+        end
     end
     # Route-aware convergence diagnostics (#569): the Julia twin of `check_drm`,
     # reshaped for the R bridge. Kept as a nested "diagnostics" dict (rather
@@ -2288,12 +2293,30 @@ function _bridge_flatten(fit; family::AbstractString, newdata = nothing,
     # (see `bridge_diagnostics`'s docstring) stay self-contained and cannot be
     # confused with the top-level `"converged"`/`"iterations"` keys above,
     # which predate this and stay unchanged for backward compatibility.
-    # `grad_source` is ALSO echoed at the top level: it is the one field
-    # `R/julia-diagnostics.R`'s `drm_julia_gradient_source()` already reads off
-    # `object$bridge[["grad_source"]]` (the raw, un-nested payload) to attribute
-    # the "gradient"/"gradient_names" pair above to a producer.
+    #
+    # Top-level `"grad_source"` is the provenance of the `"gradient"` vector
+    # above, which drmTMB's `drm_julia_gradient_source()` reads off
+    # `object$bridge[["grad_source"]]`. That vector has one producer,
+    # `fit.nllgrad`, so the label is `"stored"` exactly when the vector is
+    # shipped. The nested `diagnostics["grad_source"]` is a different claim:
+    # which producer supplied the scalar `max_abs_grad` (`_check_max_abs_grad`).
+    # That scalar is `:locscale` when `nll` is a `LocScaleObjective` (checked
+    # first; analytic gradient in permuted order), and `:finite` or
+    # `:unavailable` when the stored callback's magnitude is non-finite and the
+    # finite-difference fallback runs — even if a non-finite `nllgrad` vector
+    # was evaluated above and then withheld. Copying the scalar label onto the
+    # vector is the contradiction this key must not make (#1402).
+    #
+    # With no finite vector: echo `"none"` or `"unavailable"` when the scalar
+    # source already says no gradient was produced; omit the key otherwise.
+    # A missing key is what drmTMB reports as `"unknown"`. `"forward"` (or
+    # `"locscale"` / `"finite"`) with no vector is the abort.
     bdiag = bridge_diagnostics(fit)
-    out["grad_source"] = String(bdiag.grad_source)
+    if haskey(out, "gradient")
+        out["grad_source"] = "stored"
+    elseif bdiag.grad_source in (:none, :unavailable)
+        out["grad_source"] = String(bdiag.grad_source)
+    end
     out["diagnostics"] = Dict{String,Any}(
         "route" => bdiag.route,
         "integrator" => String(bdiag.integrator),
