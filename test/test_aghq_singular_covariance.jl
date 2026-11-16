@@ -93,3 +93,10 @@ end
     bytes=@allocated f()
     @test bytes < 500_000
 end
+
+@testset "positive tiny scale retains a finite Gaussian integral" begin
+    ll=(i,z)->-0.5*z^2
+    L=[1.0 0.0;0.0 1e-200]
+    value,_=DRModels._aghq_group_logint(ll,[1],zeros(1),ones(1,2),L,DRModels._AGHQRule(2,5),zeros(2))
+    @test isapprox(value,-0.5*log(2);atol=1e-10,rtol=0)
+end

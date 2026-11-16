@@ -322,7 +322,7 @@ function _aghq_group_logint_standard(ll, idx, η0, Zre, L::AbstractMatrix, rule:
         # covariance factor. Tensor-product quadrature is rotation-sensitive.
         Cz = UpperTriangular(transpose(Hc)) \ Matrix{T}(I, q, q)
         B = orientation_L * Cz
-        r = sqrt(B[2, 1]^2 + B[2, 2]^2)
+        r = hypot(B[2, 1], B[2, 2])
         rotation[1, 1] = B[2, 2] / r
         rotation[2, 1] = -B[2, 1] / r
         rotation[1, 2] = B[2, 1] / r
