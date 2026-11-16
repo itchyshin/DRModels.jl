@@ -96,12 +96,36 @@ using Test, Random, LinearAlgebra
     native_g = zeros(length(coef(native_multi)))
     native_multi.nllgrad(native_g, coef(native_multi))
     @test g ≈ native_g atol=1e-10
+    # A shipped vector keeps a producer `grad_source`, the same one the nested
+    # scalar diagnostic reports. Omitting the key is only for the no-vector route.
+    @test haskey(bridged_multi, "grad_source")
+    @test bridged_multi["grad_source"] == bridged_multi["diagnostics"]["grad_source"]
+    @test bridged_multi["grad_source"] in ("locscale", "stored", "forward", "finite")
 
     # --- (4) gradient key absent on a route with no stored gradient ------------
+    # Closed-form Gaussian location-scale stores an objective and no `nllgrad`
+    # (`_fit_fixed_gaussian`). `bridge_diagnostics` may still report a scalar
+    # `max_abs_grad` from ForwardDiff (`grad_source = :forward`). That scalar
+    # must not be labelled as a bridge gradient vector (#1402): drmTMB's
+    # `drm_julia_gradient_source()` aborts when a producer source arrives
+    # without `"gradient"`. With the vector omitted, the top-level key is
+    # omitted too (R reports `"unknown"`), unless the scalar source is already
+    # `:none` or `:unavailable`.
+    plain = drm(bf(@formula(y ~ x), @formula(sigma ~ x)), Gaussian(); data = data)
+    @test plain.nllgrad === nothing
     plain_bridged = drm_bridge(; formula = "y ~ x; sigma ~ x", family = "gaussian",
                                data = data)
     @test !haskey(plain_bridged, "gradient")
     @test !haskey(plain_bridged, "gradient_names")
+    plain_src = get(plain_bridged, "grad_source", nothing)
+    plain_diag = plain_bridged["diagnostics"]["grad_source"]
+    @test plain_diag == String(bridge_diagnostics(plain).grad_source)
+    if plain_diag in ("none", "unavailable")
+        @test plain_src == plain_diag
+    else
+        @test plain_src === nothing
+        @test plain_diag in ("locscale", "stored", "forward", "finite")
+    end
 end
 
 @testset "drm_bridge names an option the target fitter does not accept" begin

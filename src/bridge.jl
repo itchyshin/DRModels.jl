@@ -2288,12 +2288,24 @@ function _bridge_flatten(fit; family::AbstractString, newdata = nothing,
     # (see `bridge_diagnostics`'s docstring) stay self-contained and cannot be
     # confused with the top-level `"converged"`/`"iterations"` keys above,
     # which predate this and stay unchanged for backward compatibility.
-    # `grad_source` is ALSO echoed at the top level: it is the one field
-    # `R/julia-diagnostics.R`'s `drm_julia_gradient_source()` already reads off
-    # `object$bridge[["grad_source"]]` (the raw, un-nested payload) to attribute
-    # the "gradient"/"gradient_names" pair above to a producer.
+    #
+    # Top-level `"grad_source"` is a different claim from the nested one.
+    # drmTMB's `drm_julia_gradient_source()` reads `object$bridge[["grad_source"]]`
+    # (this un-nested key) as the provenance of the `"gradient"` vector above.
+    # `"none"` and `"unavailable"` are the only declared sources that may travel
+    # without that vector; every other source means a vector was sent; a missing
+    # key is reported as `"unknown"`. The nested `diagnostics["grad_source"]`
+    # instead names the producer of the scalar `max_abs_grad`. On a route with
+    # no `fit.nllgrad` that producer is often `:forward`: ForwardDiff of the
+    # stored objective, magnitude only, vector not retained (#1402). Echoing
+    # that producer at the top level while omitting `"gradient"` is the
+    # contradiction drmTMB aborts on. Echo the diagnostic source at the top
+    # level only when it agrees with the vector: a vector was sent, or the
+    # source already means no gradient was produced. Otherwise omit the key.
     bdiag = bridge_diagnostics(fit)
-    out["grad_source"] = String(bdiag.grad_source)
+    if haskey(out, "gradient") || bdiag.grad_source in (:none, :unavailable)
+        out["grad_source"] = String(bdiag.grad_source)
+    end
     out["diagnostics"] = Dict{String,Any}(
         "route" => bdiag.route,
         "integrator" => String(bdiag.integrator),
