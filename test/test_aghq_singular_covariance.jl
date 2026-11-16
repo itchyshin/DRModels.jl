@@ -56,7 +56,8 @@ end
 end
 
 @testset "correlated Gamma quadrature retains its interior orientation" begin
-    using DelimitedFiles, Distributions
+    using DelimitedFiles
+    import Distributions
     raw, _ = readdlm(joinpath(@__DIR__, "fixtures", "corr_slope_retry", "data.csv"), ','; header=true)
     raw = raw[String.(raw[:, 1]) .== "gamma3", :]
     y, x, g = Float64.(raw[:, 2]), Float64.(raw[:, 3]), String.(raw[:, 4])
@@ -64,7 +65,7 @@ end
     Z = hcat(ones(length(x)), x)
     η = 0.8260536407198629 .+ 0.2926324303589577 .* x
     shape = exp(-2 * -0.7438908025861597)
-    ll = (i, z) -> logpdf(Distributions.Gamma(shape, exp(z) / shape), y[i])
+    ll = (i, z) -> Distributions.logpdf(Distributions.Gamma(shape, exp(z) / shape), y[i])
     rule = DRModels._AGHQRule(2, 5)
     # Baseline values from cbd870be; tensor-product GH rules are sensitive to rotation.
     for (d, expected) in ((-1.0, -183.82153308561422), (-2.0, -178.26242187487054),
