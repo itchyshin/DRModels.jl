@@ -59,5 +59,5 @@ environment).
 
 The claim is: a shipped `"gradient"` is finite and labelled `"stored"`, and a
 missing vector is not labelled with a scalar producer other than `"none"` or
-`"unavailable"`. The Julia tests below are the evidence. No drmTMB source was
+`"unavailable"`. The Julia tests above are the evidence. No drmTMB source was
 vendored. No `drm()` or `check_drm` default changed.
