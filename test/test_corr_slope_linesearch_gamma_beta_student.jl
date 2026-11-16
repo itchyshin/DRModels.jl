@@ -40,6 +40,9 @@ end
         @test !(fit isa AssertionError)
         @test fit isa DRModels.DrmFit
         if fit isa DRModels.DrmFit   # a failed fit is reported by the line above, not rethrown here
+            println("DIAGNOSTIC_FAMILY=", ds, " LOGLIK=", loglikelihood(fit), " REFERENCE=", ll13,
+                    " CONVERGED=", fit.converged, " THETA=", fit.theta)
+            flush(stdout)
             @test isfinite(loglikelihood(fit))
             @test abs(loglikelihood(fit) - ll13) <= 1e-5
             @test fit.converged isa Bool
