@@ -8,6 +8,8 @@ human-readable changelog.
 
 ## v0.8.2
 
+- `check_drm`, bridge diagnostics and the nonconverged fit report now evaluate Gamma and Student correlated-slope gradients using an isolated copy of the fitted warm-start cache. Repeated diagnostics from the same cache state no longer change that cache. Other objective calls can still warm it, and near-boundary gradient accuracy is not established by repeatability. For these routes, `bridge_diagnostics(fit).route` now names the stored diagnostic wrapper.
+
 - `lrtest(...; mixture = true)` identifies an iid random-intercept SD by its covariance structure and group across its different stored labels. Structured and iid components remain distinct, and swapped groups are refused.
 
 - Univariate fits now warn about an aliased fixed-effect design, mark the fit nonconverged and set the aliased coefficient's standard error to `NaN`. Printed tables can report all SEs as `NaN`, bootstrap refits fail and the aliased coefficient's interval is infinite. Bivariate and mixed-family fits are not covered; unreadable inputs and responses with missing values are left to the fitting route.

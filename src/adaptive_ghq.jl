@@ -312,28 +312,43 @@ end
     _aghq_marginal_loglik(ll, members, η0, Zre, L, rule, bcache)
 
 Sum over groups of `_aghq_group_logint`. `bcache` (`q × G`, Float64) holds each
-group's last mode and is updated in place as a warm start; it affects only the
-iteration count, not the converged value (mode tolerance 1e-10).
+group's last mode and is updated in place as a warm start (mode tolerance
+1e-10). Near a degenerate covariance, finite solver tolerances can make
+repeated evaluations depend on that starting state.
 """
 # Number of group modes reset to 0 because they were not finite. `_record_cond_fit_aghq!` reads
 # it around one objective evaluation: a reset group would silently get its population value.
 const _AGHQ_MODE_RESETS = Threads.Atomic{Int}(0)
 
-function _aghq_marginal_loglik(ll, members, η0, Zre, L, rule::_AGHQRule, bcache::AbstractMatrix{Float64})
+function _aghq_update_cache!(bcache, gi, bhat; count_resets::Bool=true)
+    if all(isfinite, bhat)
+        bcache[:, gi] .= bhat
+    else
+        bcache[:, gi] .= 0.0
+        count_resets && Threads.atomic_add!(_AGHQ_MODE_RESETS, 1)
+    end
+    return nothing
+end
+
+function _aghq_marginal_loglik(ll, members, η0, Zre, L, rule::_AGHQRule, bcache::AbstractMatrix{Float64}; count_resets::Bool=true)
     tot = nothing
     for (gi, idx) in enumerate(members)
         isempty(idx) && continue
         v, bhat = _aghq_group_logint(ll, idx, η0, Zre, L, rule, @view(bcache[:, gi]))
-        if all(isfinite, bhat)
-            bcache[:, gi] .= bhat
-        else
-            bcache[:, gi] .= 0.0
-            Threads.atomic_add!(_AGHQ_MODE_RESETS, 1)   # `fitted()` must not read this group's mode as a fit
-        end
+        _aghq_update_cache!(bcache, gi, bhat; count_resets=count_resets)
         tot = tot === nothing ? v : tot + v
     end
     return tot === nothing ? zero(eltype(η0)) : tot
 end
+
+# The fitting objective retains its warm-start cache. Diagnostics use a
+# separate cache so asking for a report cannot warm the fitted objective.
+struct _AGHQDiagnosticObjective{F,G} <: Function
+    objective::F
+    diagnostic::G
+    bcache::Matrix{Float64}
+end
+(obj::_AGHQDiagnosticObjective)(θ) = obj.objective(θ)
 
 # Lower Cholesky factor of the (1 + x | g) covariance in the `vc` log-Cholesky
 # convention L = [exp(a) 0; cc exp(b)].
