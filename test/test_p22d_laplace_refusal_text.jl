@@ -8,7 +8,7 @@ using DRModels
 using Test, Random
 import Distributions
 
-const _P22D_LIST = "Poisson/Binomial/NegBinomial2/Gamma/Beta/Tweedie/Student/LogNormal"
+const _P22D_LIST = "Poisson/Binomial/NegBinomial2/Gamma/Beta/Tweedie/Student/LogNormal/SkewNormal/TruncatedNegBinomial2/ZeroOneBeta"
 
 @testset "marginal = :Laplace refusal text lists exactly the accepting families (P22d)" begin
     Random.seed!(1122)

@@ -1048,6 +1048,7 @@ function _fit_tweedie_ranef(fam::Tweedie, y, Xμ, Xσ, Xν, gidx, G, nmμ, nmσ,
                   :nu => _logit12.(Xν * θ̂[(i1+1):i2]))
     _warn_at_clamp("Tweedie", ["log sigma" => (Xσ * θ̂[(pμ+1):i1], -15.0, 15.0),   # #959
                                "power (logit scale)" => (Xν * θ̂[(i1+1):i2], -12.0, 12.0)])
+    _record_cond_fit_aghq!(scales, nll, θ̂, bcache, gidx, Zre)   # fitted-row modes for `fitted(fit)`
     return _withiterations(
         _withnll(DrmFit(fam, blocks, names, θ̂, V, -nll(θ̂), n, drm_optim_converged(res), means, obs, scales), nll),
         Optim.iterations(res))
@@ -1094,6 +1095,7 @@ function _fit_tweedie_slope_ranef(fam::Tweedie, y, Xμ, Xσ, Xν, xs, gidx, G, n
                   :nu => _logit12.(Xν * θ̂[(i1+1):i2]))
     _warn_at_clamp("Tweedie", ["log sigma" => (Xσ * θ̂[(pμ+1):i1], -15.0, 15.0),   # #959
                                "power (logit scale)" => (Xν * θ̂[(i1+1):i2], -12.0, 12.0)])
+    _record_cond_fit_aghq!(scales, nll, θ̂, bcache, gidx, Zre)   # fitted-row modes for `fitted(fit)`
     return _withiterations(
         _withnll(DrmFit(fam, blocks, names, θ̂, V, -nll(θ̂), n, drm_optim_converged(res), means, obs, scales), nll),
         Optim.iterations(res))
@@ -1184,6 +1186,35 @@ _laplace_nuisance_d2(::Val{:tweedie_fixed}, aux, i, η) =
     ForwardDiff.derivative(ls -> _laplace_d2(Val(:tweedie_fixed), (y = aux.y, p = aux.p, logsigma = ls), i, η),
                            aux.logsigma)
 
+# The crossed route searches the power on the logit-(1,2) scale inside [-6, 6], that is p inside
+# (_logit12(-6), _logit12(6)). A fitted power within `_TWEEDIE_POWER_EDGE_TOL` of either end,
+# measured in p itself, is the end of the window, not an interior optimum. The tolerance is the one
+# the sister R package uses for the same warning (1e-5 in p). Such a fit is flagged
+# (`geometry = :power_at_bound`, which `convergence_status` reads as `:degenerate`, as it does for
+# every crossed Tweedie fit, whose `nu` variance is NaN) and warned about once.
+# The window, the search and the estimate are not changed.
+const _TWEEDIE_POWER_SEARCH_BOUND = 6.0
+const _TWEEDIE_POWER_EDGE_TOL = 1e-5
+function _tweedie_power_at_bound(p̂::Real)
+    lo = _logit12(-_TWEEDIE_POWER_SEARCH_BOUND); hi = _logit12(_TWEEDIE_POWER_SEARCH_BOUND)
+    return p̂ - lo <= _TWEEDIE_POWER_EDGE_TOL || hi - p̂ <= _TWEEDIE_POWER_EDGE_TOL
+end
+
+function _flag_tweedie_power_bound(fit::DrmFit, p̂::Real)
+    if get(task_local_storage(), :drm_quiet_boundary, false) !== true
+        lo = _logit12(-_TWEEDIE_POWER_SEARCH_BOUND); hi = _logit12(_TWEEDIE_POWER_SEARCH_BOUND)
+        @warn "drm (Tweedie, crossed random effects): the estimated power p = " * string(round(p̂; digits = 5)) *
+              " is within " * string(_TWEEDIE_POWER_EDGE_TOL) * " of an end of its search interval (" *
+              string(round(lo; digits = 5)) * ", " * string(round(hi; digits = 5)) *
+              "), so it is a bound, not an interior estimate. " *
+              "The other estimates are conditional on that power. `fit.geometry` is :power_at_bound. " *
+              "`drm` has no option to fix the power or to widen the interval. A power near the lower " *
+              "end means the response behaves like scaled Poisson counts; near the upper end, like a " *
+              "Gamma response. If that fits your data, refit with `Poisson()` or `Gamma()` instead."
+    end
+    return _withgeometry(fit, :power_at_bound)
+end
+
 function _fit_tweedie_crossed_laplace(fam::Tweedie, y, Xμ, comps, nmμ, nmσ, nmν, g_tol)
     length(comps) == 2 || error("_fit_tweedie_crossed_laplace requires two random-intercept components")
     yv = Float64.(y)
@@ -1223,7 +1254,7 @@ function _fit_tweedie_crossed_laplace(fam::Tweedie, y, Xμ, comps, nmμ, nmσ, n
     theta = vcat(fit.theta, [Optim.minimizer(res)])
     # The inner fits run with `se = false` and hold the power fixed, so `fit.vcov` is all NaN
     # and `stderror` used to report Inf for every coefficient although the fit had converged
-    # (G7). Take the SEs from one joint finite-difference Hessian of the same Laplace objective
+    # (fixed here). Take the SEs from one joint finite-difference Hessian of the same Laplace objective
     # over (mu, sigma, the two log SDs, the power), each point solved cold at a tight inner-mode
     # tolerance so the stencil sees the same mode solve everywhere.
     nG = comps[1][3] + comps[2][3]
@@ -1256,6 +1287,7 @@ function _fit_tweedie_crossed_laplace(fam::Tweedie, y, Xμ, comps, nmμ, nmσ, n
         end
     end
     scales = merge(fit.scales, Dict(:nu => fill(p̂, n)))
-    return DrmFit(fam, blocks, names, theta, V, fit.loglik, fit.nobs, fit.converged,
+    out = DrmFit(fam, blocks, names, theta, V, fit.loglik, fit.nobs, fit.converged,
                  fit.means, fit.obs, scales)
+    return _tweedie_power_at_bound(p̂) ? _flag_tweedie_power_bound(out, p̂) : out
 end

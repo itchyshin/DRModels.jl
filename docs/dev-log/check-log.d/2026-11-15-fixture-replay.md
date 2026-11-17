@@ -1,0 +1,5 @@
+# Check log: data-only parity fixture replay
+
+An independent four-case replay used drmTMB 0.7.1, TMB 1.9.21 and R 4.6.0 with one thread. Each run exited successfully, reported convergence and had no warnings. The fitted log likelihoods for cumulative-logit intercept and slope and Tweedie intercept and slope were -1026.092399906542, -775.376800790298, -572.259373483446 and -591.824466795683. They agree with the historical drmTMB 0.7.0 values in the Julia tests to the precision those values report. The exact historical package build and full fitted outputs were not independently reproduced.
+
+The four replay input hashes match the committed data at release candidate `8f5b7b1b4ee9803ae8dad34b766d4df9e57b8791`. An independent review found no exact three-substantive-line match of at least 80 characters between the new runner and the screened drmTMB R snapshot or four excluded generators. This finite screen does not prove origin or rights. The runner reads existing CSVs; it does not regenerate the original DGP, seeds or random draws. Full package checks and the release-wide license audit remain open.

@@ -161,8 +161,11 @@ end
 # Bivariate lognormal: the stored `means` are the log-scale locations (the fit is the
 # bivariate Gaussian on `log y`), but drmTMB's `fitted()` is `E[Y_k] = exp(mu_k + sigma_k^2 / 2)`
 # per response, the same rule as the univariate `LogNormal` row above.
-function fitted(fit::DrmFit{LogNormal})
-    haskey(fit.means, :mu1) && haskey(fit.scales, :sigma1) || return invoke(fitted, Tuple{DrmFit}, fit)
+function fitted(fit::DrmFit{LogNormal}; re::Symbol = :conditional)
+    haskey(fit.means, :mu1) && haskey(fit.scales, :sigma1) || return invoke(fitted, Tuple{DrmFit}, fit; re)
+    _check_fitted_re(re, :fitted)
+    re === :conditional && _fit_mean_has_random_term(fit) &&
+        throw(ArgumentError(_fitted_no_modes_message(fit, :fitted)))
     return Dict(k => exp.(fit.means[k] .+ fit.scales[s] .^ 2 ./ 2)
                 for (k, s) in ((:mu1, :sigma1), (:mu2, :sigma2)))
 end

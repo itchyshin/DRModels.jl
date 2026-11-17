@@ -206,6 +206,18 @@ function _aghq_grad_neghess(ll, idx, η0, Zre, Sinv, b, clip::Bool)
     return g, H
 end
 
+# A lazy two-column product prevents an n-row design from being copied once
+# per group when only that group's observations are visited by quadrature.
+struct _AGHQWhitenedDesign{T,A<:AbstractMatrix,B<:AbstractMatrix} <: AbstractMatrix{T}
+    design::A
+    factor::B
+end
+_AGHQWhitenedDesign(Z::A, L::B) where {A<:AbstractMatrix,B<:AbstractMatrix} =
+    _AGHQWhitenedDesign{promote_type(eltype(Z), eltype(L)),A,B}(Z, L)
+Base.size(Z::_AGHQWhitenedDesign) = (size(Z.design, 1), 2)
+@inline Base.getindex(Z::_AGHQWhitenedDesign, i::Int, j::Int) =
+    Z.design[i, 1] * Z.factor[1, j] + Z.design[i, 2] * Z.factor[2, j]
+
 """
     _aghq_group_logint(ll, idx, η0, Zre, L, rule, bstart; maxiter = 100, tol = 1e-10)
 
@@ -217,6 +229,27 @@ observation `i`, and `bstart` a Float64 warm start for the mode. Returns
 """
 function _aghq_group_logint(ll, idx, η0, Zre, L::AbstractMatrix, rule::_AGHQRule,
                             bstart::AbstractVector{<:Real}; maxiter::Int = 100, tol::Real = 1e-10)
+    q = rule.q
+    size(L) == (q, q) || throw(DimensionMismatch("L must be $(q)×$(q)"))
+    q == 2 || return _aghq_group_logint_standard(ll, idx, η0, Zre, L, rule, bstart; maxiter=maxiter, tol=tol)
+    # Preserve the existing impossible-point handling when a diagonal
+    # underflows to zero or becomes non-finite during an optimizer probe.
+    if any(d -> !isfinite(_aghq_primal(L[d, d])) || _aghq_primal(L[d, d]) <= 0, 1:q)
+        return _aghq_group_logint_standard(ll, idx, η0, Zre, L, rule, bstart; maxiter=maxiter, tol=tol)
+    end
+    # Integrate b = Lz with z ~ N(0, I), avoiding the ill-conditioned
+    # precision L⁻ᵀL⁻¹ as a covariance component approaches the boundary.
+    # Warm starts and returned modes remain on the caller's original b scale.
+    T = promote_type(eltype(η0), eltype(Zre), eltype(L))
+    zstart = LowerTriangular(L) \ T.(bstart)
+    value, zhat = _aghq_group_logint_standard(ll, idx, η0, _AGHQWhitenedDesign(Zre, L),
+        Matrix{T}(I, q, q), rule, zstart; maxiter=maxiter, tol=tol, orientation_L=L)
+    return value, _aghq_primal.(L * zhat)
+end
+
+function _aghq_group_logint_standard(ll, idx, η0, Zre, L::AbstractMatrix, rule::_AGHQRule,
+                                     bstart::AbstractVector{<:Real}; maxiter::Int = 100, tol::Real = 1e-10,
+                                     orientation_L=nothing)
     q = rule.q
     size(L) == (q, q) || throw(DimensionMismatch("L must be $(q)×$(q)"))
     i1 = first(idx)
@@ -283,6 +316,18 @@ function _aghq_group_logint(ll, idx, η0, Zre, L::AbstractMatrix, rule::_AGHQRul
     ok || return convert(T, -Inf), _aghq_primal.(b)
     # C = Hc⁻ᵀ satisfies C Cᵀ = H⁻¹; log|C| = −Σ log diag(Hc).
     logdetC = -sum(log(Hc[d, d]) for d in 1:q)
+    rotation = orientation_L === nothing ? nothing : Matrix{T}(I, q, q)
+    if orientation_L !== nothing
+        # Align the transformed rule with the original upper-triangular
+        # covariance factor. Tensor-product quadrature is rotation-sensitive.
+        Cz = UpperTriangular(transpose(Hc)) \ Matrix{T}(I, q, q)
+        B = orientation_L * Cz
+        r = hypot(B[2, 1], B[2, 2])
+        rotation[1, 1] = B[2, 2] / r
+        rotation[2, 1] = -B[2, 1] / r
+        rotation[1, 2] = B[2, 1] / r
+        rotation[2, 2] = B[2, 2] / r
+    end
     N = size(rule.Z, 2)
     terms = Vector{T}(undef, N)
     rt2 = sqrt(2.0)
@@ -290,7 +335,8 @@ function _aghq_group_logint(ll, idx, η0, Zre, L::AbstractMatrix, rule::_AGHQRul
     for j in 1:N
         # u = Hc⁻ᵀ z (back-substitution with the upper-triangular Hcᵀ)
         for r in q:-1:1
-            s = rule.Z[r, j] + zero(T)
+            s = orientation_L === nothing ? rule.Z[r, j] + zero(T) :
+                sum(rotation[r, k] * rule.Z[k, j] for k in 1:q) + zero(T)
             for k in (r+1):q
                 s -= Hc[k, r] * bn[k]
             end
@@ -312,28 +358,72 @@ end
     _aghq_marginal_loglik(ll, members, η0, Zre, L, rule, bcache)
 
 Sum over groups of `_aghq_group_logint`. `bcache` (`q × G`, Float64) holds each
-group's last mode and is updated in place as a warm start; it affects only the
-iteration count, not the converged value (mode tolerance 1e-10).
+group's last mode and is updated in place as a warm start (mode tolerance
+1e-10). Near a degenerate covariance, finite solver tolerances can make
+repeated evaluations depend on that starting state.
 """
-function _aghq_marginal_loglik(ll, members, η0, Zre, L, rule::_AGHQRule, bcache::AbstractMatrix{Float64})
+# Number of group modes reset to 0 because they were not finite. `_record_cond_fit_aghq!` reads
+# it around one objective evaluation: a reset group would silently get its population value.
+const _AGHQ_MODE_RESETS = Threads.Atomic{Int}(0)
+
+function _aghq_update_cache!(bcache, gi, bhat; count_resets::Bool=true)
+    if all(isfinite, bhat)
+        bcache[:, gi] .= bhat
+    else
+        bcache[:, gi] .= 0.0
+        count_resets && Threads.atomic_add!(_AGHQ_MODE_RESETS, 1)
+    end
+    return nothing
+end
+
+function _aghq_marginal_loglik(ll, members, η0, Zre, L, rule::_AGHQRule, bcache::AbstractMatrix{Float64}; count_resets::Bool=true)
     tot = nothing
     for (gi, idx) in enumerate(members)
         isempty(idx) && continue
         v, bhat = _aghq_group_logint(ll, idx, η0, Zre, L, rule, @view(bcache[:, gi]))
-        if all(isfinite, bhat)
-            bcache[:, gi] .= bhat
-        else
-            bcache[:, gi] .= 0.0
-        end
+        _aghq_update_cache!(bcache, gi, bhat; count_resets=count_resets)
         tot = tot === nothing ? v : tot + v
     end
     return tot === nothing ? zero(eltype(η0)) : tot
 end
 
+# The fitting objective retains its warm-start cache. Diagnostics use a
+# separate cache so asking for a report cannot warm the fitted objective.
+struct _AGHQDiagnosticObjective{F,G} <: Function
+    objective::F
+    diagnostic::G
+    bcache::Matrix{Float64}
+end
+(obj::_AGHQDiagnosticObjective)(θ) = obj.objective(θ)
+
 # Lower Cholesky factor of the (1 + x | g) covariance in the `vc` log-Cholesky
 # convention L = [exp(a) 0; cc exp(b)].
 _corr_ranef_L(a, b, cc) = (l11 = exp(a); l22 = exp(b); z = zero(promote_type(typeof(l11), typeof(cc)));
                            [l11 z; cc l22])
+
+# L-BFGS for the `(1 + x | g)` routes. The first attempt is the plain default call, so every fit
+# that worked before is bit-for-bit unchanged. Only a fit that threw an AssertionError (the default
+# HagerZhang line search met a non-finite objective) is retried from the start with a finite
+# sentinel and BackTracking, then polished from that point with the default line search; the polish
+# is kept only if it ran and did not end higher. `converged` stays honest (see `drm_optim_converged`).
+# `bcache` holds the per-group modes; it is reset so modes cached at the extreme probe are dropped.
+function _optimize_corr_ranef(nll, θ0, g_tol, bcache)
+    try
+        return Optim.optimize(nll, θ0, Optim.LBFGS(), Optim.Options(g_tol = g_tol); autodiff = :forward)
+    catch e
+        e isa AssertionError || rethrow()
+        bcache .= 0.0
+        r1 = Optim.optimize(_safe_objective(nll), θ0,
+            Optim.LBFGS(linesearch = Optim.LineSearches.BackTracking()),
+            Optim.Options(g_tol = g_tol); autodiff = :forward)
+        r2 = drm_optim_converged(r1) ? nothing : try
+            Optim.optimize(nll, Optim.minimizer(r1), Optim.LBFGS(), Optim.Options(g_tol = g_tol); autodiff = :forward)
+        catch e2
+            e2 isa AssertionError ? nothing : rethrow()
+        end
+        return r2 !== nothing && Optim.minimum(r2) <= Optim.minimum(r1) ? r2 : r1
+    end
+end
 
 # ---------------------------------------------------------------------------
 # Crossed random intercepts (1 | g) + (1 | h) with FEW h-levels (#761).

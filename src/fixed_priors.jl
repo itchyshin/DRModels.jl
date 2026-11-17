@@ -157,8 +157,11 @@ include("prior_table.jl")
 
 Preview the exact fitted columns and prior precision without optimizing. The
 route covers complete-response Gaussian models with fixed effects and up to two
-distinct mean random intercepts, and fixed-effect binomial logit models. Priors refer to
-predictor coefficients and depend on units and coding. `priors` may also be a
+distinct mean random intercepts, and fixed-effect binomial logit models. Normal
+coefficient priors also support a Gaussian phylogenetic mean intercept with a
+matching phylogenetic SD regression. Preview checks group-level SD predictors
+but tree-label matching requires fitting with a tree. Priors refer to predictor
+coefficients and depend on units and coding. `priors` may also be a
 Tables.jl-compatible prior table with `prior`, `class`, and `coef` columns;
 see the prior guide for supported distributions, selectors, and scale conventions.
 """
@@ -168,7 +171,16 @@ function resolve_priors(f, fam; data, priors)
     f isa DrmFormula && (fam isa Gaussian || (fam isa Binomial && fam.link === :logit)) ||
         throw(ArgumentError("resolve_priors supports Gaussian and fixed-effect binomial logit models"))
     _has_joint_mi(f) && throw(ArgumentError("resolve_priors does not support missing-predictor models"))
-    isempty(_sd_parts(f)) && isempty(_sdphylo_parts(f)) || throw(ArgumentError("resolve_priors does not support SD formulas"))
+    normal_only = table_rows === nothing ?
+        (priors isa AbstractVector && all(p -> p isa FixedPrior && p.kind === :normal, priors)) :
+        all(r -> r.class == "fixef" && r.kind === :normal, table_rows)
+    forms = Dict(f.forms)
+    markers = haskey(forms, :mu) ? _collect_structured(forms[:mu]) : Tuple{Symbol,Symbol}[]
+    phylo_preview = fam isa Gaussian && normal_only && length(f.forms) == 3 &&
+        isempty(_sd_parts(f)) && length(_sdphylo_parts(f)) == 1 && length(markers) == 1 &&
+        only(markers)[1] === :phylo && first(only(_sdphylo_parts(f))) === only(markers)[2]
+    (isempty(_sd_parts(f)) && isempty(_sdphylo_parts(f))) || phylo_preview ||
+        throw(ArgumentError("resolve_priors does not support SD formulas"))
     for response in _formula_responses(f)
         response === nothing && continue
         (sd_intent || (table_rows === nothing && any(p -> p isa SDGammaPrior, priors))) && any(ismissing, _table_column(data, response)) && throw(ArgumentError("SD priors require complete responses"))
@@ -185,6 +197,11 @@ function resolve_priors(f, fam; data, priors)
     dat = fam isa Gaussian ? _drop_missing_predictor_rows(f, data) : data
     length(_table_column(dat, f.response)) == length(_table_column(data, f.response)) ||
         throw(ArgumentError("resolve_priors requires complete predictors"))
+    if phylo_preview
+        grp, sd_rhs = only(_sdphylo_parts(f))
+        idx, n_groups = _group_index(_table_column(dat, grp); col=grp)
+        _sd_group_design(f.response, sd_rhs, dat, idx, n_groups, grp)
+    end
     forms = Dict(f.forms); dpars = fam isa Gaussian ? (:mu, :sigma) : (:mu,)
     names = Pair{Symbol,Vector{String}}[]; intercepts = Dict{Symbol,Union{Nothing,Int}}()
     cache = Ref(Dict{Symbol,Any}())
@@ -193,7 +210,11 @@ function resolve_priors(f, fam; data, priors)
     for d in dpars
         rhs, re, meta, structured, structured_slope, temporal_term, structured_sd_slope = _split_ranef(forms[d]; allow_temporal=true)
         allowed_re = fam isa Gaussian && d === :mu && 1 <= length(re) <= 2 && all(r -> _re_kind(r[1])[1] === :intercept, re)
-        (isempty(re) || allowed_re) && meta === nothing && structured === nothing && structured_slope === nothing && temporal_term === nothing && structured_sd_slope === nothing || throw(ArgumentError("resolve_priors supports up to two distinct Gaussian mean random intercepts"))
+        allowed_phylo = phylo_preview && d === :mu && structured == only(markers) && isempty(re)
+        (isempty(re) || allowed_re) && meta === nothing &&
+            (structured === nothing || allowed_phylo) && structured_slope === nothing &&
+            temporal_term === nothing && structured_sd_slope === nothing ||
+            throw(ArgumentError("resolve_priors supports up to two distinct Gaussian mean random intercepts or one phylogenetic SD-regression route"))
         if allowed_re
             for (_, grp) in re
                 push!(sd_groups, grp)

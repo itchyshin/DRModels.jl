@@ -110,7 +110,7 @@ end
     permuted_data = (; successes = successes[row_order], failures = failures[row_order],
                      x = x[row_order], z = z[row_order], species = species[row_order])
     @test predict_parameters(fit, permuted_data)[:sd_phylo] ≈ sd_predictions[row_order]
-    @test fitted(fit) ≈ Distributions.cdf.(
+    @test fitted(fit; re = :zero) ≈ Distributions.cdf.(
         Ref(Distributions.Normal()), hcat(ones(length(x)), x) * fit.theta[1:2],
     )
     @test length(predict(fit, data)) == length(successes)

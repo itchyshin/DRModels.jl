@@ -95,7 +95,7 @@ fit = drm(
 | Relatedness matrix | `y ~ x + relmat(1 \| id)`, `K = K` | `@formula(y ~ x + relmat(1 \| id))`, `K = K` |
 | Animal model | `y ~ x + animal(1 \| id)`, `A = A` | `@formula(y ~ x + animal(1 \| id))`, `A = A` |
 | Phylogenetic | `y ~ x + phylo(1 \| species)`, `tree = tree` | `@formula(y ~ x + phylo(1 \| species))`, `tree = tree` |
-| Spatial | `y ~ x + spatial(1 \| site)`, `coords = xy` (range fixed at the median pairwise distance) | `@formula(y ~ x + spatial(1 \| site))`, `coords = xy` (Gaussian mean: range estimated, a different model; every non-Gaussian route fixes it as drmTMB does) |
+| Spatial | `y ~ x + spatial(1 \| site)`, `coords = xy` (range fixed at the median pairwise distance) | `@formula(y ~ x + spatial(1 \| site))`, `coords = xy` (range fixed at the median pairwise distance, as drmTMB, on every route) |
 | Meta-analysis (univariate) | `gaussian()` + `meta_V(v)` | `Gaussian()` + `meta_V(v)` |
 | Meta-analysis (bivariate, known sampling covariance) | `meta_V(V = meta_vcov_bivariate(...))` **inside** `mu1` | `meta_vcov_bivariate(...)` passed as `drm(...; V = V)` — see [meta-analysis](model-guides/meta-analysis.md) |
 
@@ -125,7 +125,7 @@ fit = drm(
 | build a covariate grid for prediction | `prediction_grid(reference; predictor = values, …)` |
 | `simulate(fit)` (fresh random effects, `re.form = NA`) | `simulate(fit; data)` (fresh random effects, `re = :marginal`; `re = :zero` sets them to zero; random-effect fits need `data`, except temporal fits can simulate their full marginal chain without it) |
 | `summary(fit)` | `summary(fit)` (prints the Wald coefficient table) |
-| `weights(fit)` | `weights(fit)`: the prior weights from `drm(...; weights = w)`, or `nothing` (fixed-effect ML routes only; other routes refuse `weights =`) |
+| `weights(fit)` | `weights(fit)`: the prior weights from `drm(...; weights = w)`, or `nothing` (fixed-effect ML routes, Gaussian or Poisson with one `(1 | g)`, Gaussian `meta_V`, and the residual bivariate Gaussian; other routes refuse `weights =`) |
 | `drm_control(maxit =, start =, multi_start =, se =)` | `control = DRMControl(maxit =, start =, multi_start =, se =)`; `maxit` / `start` / `multi_start` on fixed-effect routes, `se = false` on every route (`control_info(fit)` reports what it did) |
 | `obj$gr(opt$par)` / `sdreport()$cov.fixed` | `gradient(fit)` / `hessian(fit)` (negative log-likelihood, `coef(fit)` order and scale) |
 | `family(fit)` | `family(fit)` |
@@ -175,13 +175,49 @@ distributional parameters:
   product) while holding every other predictor at its reference (mean for numeric
   columns). It is pure data, so it composes directly:
   `predict_parameters(fit, prediction_grid(...))`.
-- **Fitted values differ.** drmTMB's `fitted(fit)`, like its `predict(fit)`
-  without `newdata`, adds the fitted random-effect modes to each fitted row.
-  DRModels.jl's `fitted(fit)` is the population-level value with the random
-  effects at zero on most routes, so compare `predict(fit, newdata)` across the
-  two packages, not `fitted`. Without random effects the definitions agree:
-  for LogNormal and zero-inflated, hurdle or truncated counts both packages return
-  the unconditional response mean `E[Y]` (`exp(μ + σ²/2)`, `(1 - π) μ`,
+- **Fitted values agree by default, with one caveat.** drmTMB's `fitted(fit)` adds the fitted
+  random-effect modes to each fitted row and returns the rows used in the fit.
+  DRModels.jl's `fitted(fit)` does the same: the default is `re = :conditional`,
+  and a fit with a missing response returns the used rows only. The values agree
+  with drmTMB's to 1e-6 or better on the Gaussian, LogNormal and phylo routes. On the routes
+  that integrate the random intercept by adaptive quadrature (the default for one
+  `(1 | g)` on Poisson, NegBinomial2, Binomial, BetaBinomial, Gamma, Beta, Tweedie and
+  CumulativeLogit) they differ by about 1e-4 to 5e-3 on the cells checked (Student agreed
+  to 1e-9 on its one cell, where the group SD is at the boundary). Here the fitted modes come from the more
+  accurate integration (adaptive quadrature), while drmTMB maximises a Laplace
+  approximation, so the two packages stop at slightly different parameters. The
+  drmTMB `fitted()` is the Laplace value, not an error on either side. A fit made with
+  `marginal = :Laplace` on one ordinary `(1 | g)` of Poisson, NegBinomial2, Binomial, Gamma
+  or Beta keeps the inner-mode solve at the fitted parameters, so `fitted(fit)` is conditional
+  there and agrees with drmTMB's to 1e-6 on the cells checked (the Laplace fit is the same
+  objective as drmTMB's). The same holds for a Binomial `(1 + x | g)` block with a
+  `:probit` or `:cloglog` link and for a `ZeroOneBeta` `(1 | g)` (here the modes move
+  only the Beta component of the mixture mean). Pass
+  `fitted(fit; re = :zero)` for the population-level value with every random
+  effect at zero, which is what `predict(fit, newdata)` returns on the GLM-type
+  routes (and what `fitted(fit)` returned before the default changed). The
+  single `relmat(1 | g)`, `animal(1 | g)` and dense `phylo(1 | g)` Gaussian fits and the
+  `phylo(1 | g)` Laplace fits of Poisson, Binomial, BetaBinomial, NB2, Gamma and Beta
+  keep their modes, so `fitted(fit)` is conditional there. So do the zero-inflated
+  Poisson, zero-inflated NB2 and zero-truncated NB2 fits with one `(1 | g)` and the
+  `CumulativeLogit` fit with `(1 | g) + (0 + x | g)`: `fitted(fit)` is
+  `(1 - zi) * mu`, `mu / (1 - P(0))` or the expected category score, with the modes
+  in `mu` or in the linear predictor, as drmTMB's `fitted()`. A route that does not keep
+  the modes needed for the conditional value (for example a `relmat` or `animal` count
+  fit, `ZeroOneBeta` with a structured random effect, bivariate fits with random effects,
+  a random effect on `sigma` when the mean depends on `sigma` (except the `LogNormal`
+  `sigma ~ ... + (1 | g)` fit, which keeps its `sigma` modes), the crossed
+  adaptive-quadrature opt-in routes) refuses the
+  default with a message that names `re = :zero`; it never returns population
+  values under the conditional default. `residuals(fit)` is `y - fitted(fit)`
+  and takes the same `re` keyword. `residuals(fit; type = :quantile)` and
+  `sigma(fit)` also return the used rows only, so `fitted`, `residuals` and
+  `sigma` all have length `nobs(fit)` (`simulate(fit)` still returns one value
+  per input row). drmTMB has a second missing-data policy that returns full-length
+  values with `NA` for the unused rows; DRModels.jl matches the default (drop)
+  policy only, and the second one is a planned follow-up.
+  For LogNormal and zero-inflated, hurdle or
+  truncated counts both packages return the unconditional response mean `E[Y]` (`exp(μ + σ²/2)`, `(1 - π) μ`,
   `μ / (1 - P(0))`, `(1 - π) μ / (1 - P(0))`), and `predict(fit, newdata; type =
   :mean)` is the same quantity at new rows. A bivariate `LogNormal` fit follows the
   same rule per response (`Dict(:mu1 => …, :mu2 => …)`; drmTMB returns an `n × 2`

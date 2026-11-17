@@ -267,12 +267,53 @@ function _ctl_simple_gaussian_re(f, fam)
     end
 end
 
+# Latent-term shapes whose fitter reads prior `weights` (#1219, drmTMB row log-likelihood
+# multipliers): a Gaussian or Poisson mean with ONE ordinary random intercept `(1 | g)`, and a
+# Gaussian mean with `meta_V(v)`; every other axis fixed-effect only. Anything else keeps the
+# refusal below. Each admitted fitter calls `_ctl_weights`, and `_ctl_finish` still refuses a
+# fit that did not read them.
+function _ctl_weights_latent_ok(f, fam)
+    if f isa BivariateDrmFormula          # residual-only bivariate Gaussian: no latent term anywhere
+        fam isa Gaussian || return false
+        try
+            for (_, rhs) in f.forms
+                _, re, mv, st = _split_ranef(rhs; allow_phylo_slope = true, allow_temporal = true)
+                (isempty(re) && mv === nothing && st === nothing) || return false
+            end
+            return true
+        catch
+            return false
+        end
+    end
+    f isa DrmFormula && (fam isa Gaussian || fam isa Poisson) || return false
+    try
+        isempty(_sd_parts(f)) && isempty(_sdphylo_parts(f)) || return false
+        for (axis, rhs) in f.forms
+            _, re, mv, st = _split_ranef(rhs; allow_phylo_slope = true, allow_temporal = true)
+            st === nothing || return false
+            if axis === :mu
+                if mv !== nothing
+                    fam isa Gaussian && isempty(re) || return false
+                else
+                    length(re) == 1 && _re_kind(re[1][1])[1] === :intercept || return false
+                end
+            else
+                (isempty(re) && mv === nothing) || return false
+            end
+        end
+        return true
+    catch
+        return false
+    end
+end
+
 function _ctl_preflight(scope::_ControlScope, f, fam)
     c = scope.control
     wants_optim = _ctl_optim_requested(c)
     wants_w = scope.weights !== nothing
     (wants_optim || wants_w) || return nothing
     _ctl_has_latent_terms(f) || return nothing
+    wants_w && !wants_optim && _ctl_weights_latent_ok(f, fam) && return nothing
     if c.optimizer !== :default && !wants_w && c.maxit === nothing &&
        c.start === nothing && c.multi_start == 1 && c.seed == 1 && c.jitter == 0.5 &&
        _ctl_simple_gaussian_re(f, fam)
@@ -451,12 +492,30 @@ function _drm_run_controlled_inner(body::Function, f, fam, control, weights)
     return _ctl_finish(fit, scope, fam)
 end
 
+# The fixed spatial range (median positive pairwise distance between sites) is not a
+# parameter. The kernel builder leaves it in task-local storage under this key; the entry
+# wrapper below moves it onto the fit it returns.
+const _SPATIAL_RANGE_KEY = :drm_spatial_fixed_range
+
 function _drm_run_controlled(body::Function, f, fam, control, weights)
+    tls = task_local_storage()
+    old = get(tls, _SPATIAL_RANGE_KEY, nothing)
+    tls[_SPATIAL_RANGE_KEY] = nothing
     try
-        return _drm_run_controlled_inner(body, f, fam, control, weights)
+        fit = _drm_run_controlled_inner(body, f, fam, control, weights)
+        rng = tls[_SPATIAL_RANGE_KEY]
+        if fit isa DrmFit && rng !== nothing && !haskey(fit.scales, :spatial_range)
+            fit.scales[:spatial_range] = [rng]
+        end
+        return fit
     catch e
         e isa MethodError && _refuse_kwarg_methoderror(e, f, fam)
         rethrow()
+    finally
+        # An enclosing `drm` call (the missing-response wrappers re-enter `drm`) keeps what this
+        # call recorded; otherwise the earlier value is restored.
+        seen = get(tls, _SPATIAL_RANGE_KEY, nothing)
+        tls[_SPATIAL_RANGE_KEY] = seen === nothing ? old : seen
     end
 end
 
@@ -630,6 +689,14 @@ function _ctl_weights(n::Integer; supported::Bool = true, route::AbstractString 
     return w
 end
 
+# `_ctl_weights`, but `nothing` (not `ones(n)`) when the user gave no weights, for the
+# routes whose unweighted arithmetic must stay byte-for-byte what it was.
+function _ctl_weights_or_nothing(n::Integer)
+    s = _active_control_scope()
+    (s === nothing || s.weights === nothing) && return nothing
+    return _ctl_weights(n)
+end
+
 # ---------------------------------------------------------------------------
 # @drm_entry: add `control` / `weights` to a public `drm` method
 # ---------------------------------------------------------------------------
@@ -694,12 +761,31 @@ macro drm_entry(fdef)
         # the extra-keyword splat added above is named `_drm_extra_kw`
         :(haskey(_drm_extra_kw, :data) && _record_factor_levels!($fname, _drm_extra_kw[:data]))
     end
+    # The fixed-effect design rank check (#1110) for every route but the Gaussian one, which
+    # makes its own call; `_apply_design_rank` flags the finished fit when the check found an alias.
+    precheck = if :data in names
+        :(_precheck_design_rank($fname, $famname, data))
+    elseif splat !== nothing
+        kwsplat2 = params.args[findfirst(a -> a isa Expr && a.head === :..., params.args)].args[1]
+        :(haskey($kwsplat2, :data) && _precheck_design_rank($fname, $famname, $kwsplat2[:data]))
+    else
+        :(haskey(_drm_extra_kw, :data) && _precheck_design_rank($fname, $famname, _drm_extra_kw[:data]))
+    end
+    # Each fit works on its own copy of the formula bundle (`_fit_formula`): the schema cache, the
+    # factor levels and the `poly` bases written at fit time belong to the fit, never to the
+    # user's `bf(...)` object, so a formula reused on other data (a second fit, a cross-validation
+    # loop, two threads) behaves like a fresh one.
     fdef.args[2] = quote
         $extra_check
         $pre
-        $record
-        return _drm_run_controlled($fname, $famname, control, weights) do
-            $body
+        let $fname = _fit_formula($fname)
+            $record
+            $precheck
+            return _apply_design_rank(task_local_storage(_FIT_FORMULA_KEY, $fname) do
+                _drm_run_controlled($fname, $famname, control, weights) do
+                    $body
+                end
+            end)
         end
     end
     return esc(:(Base.@__doc__ $fdef))

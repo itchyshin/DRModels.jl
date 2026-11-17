@@ -68,6 +68,20 @@ approximation, but its likelihood-ratio calibration is still asymptotic and
 boundary likelihood-ratio limits can be nonstandard [Self and Liang
 (1987)](https://doi.org/10.1080/01621459.1987.10478472).
 
+On the independent-term Laplace route (`(1 | g) + (0 + x | g)` for the non-Gaussian
+families) the objective rejects any trial point whose log SD is below -30 or above
+30. If the best fit runs to the lower end, the SD is zero for every practical
+purpose and the likelihood is flat in that direction (drmTMB follows the same
+ridge much further out, to a log SD near -111). Such a fit is reported as
+`convergence_status(fit) === :boundary`, with a warning. The optimizer flag is
+`false` there, and the reported log-likelihood can be a little below drmTMB's.
+Do not read its Wald standard errors. To test the variance against zero use
+[`lrt_boundary`](@ref) with a reduced fit that drops the term (a 50:50
+chi-bar-square mixture, not a plain chi-square). The reduced fit must use the same
+marginal approximation as the full fit: drop the term but keep another
+independent term, as in `(0 + x | g)` alone. A profile interval,
+`confint(fit; method = :profile)`, may not converge on a fit at the wall.
+
 This advice applies to variance components estimated at zero. A Student-t
 shape parameter near its infinite-`nu` Gaussian limit is a different
 identification problem: the data may weakly distinguish large values of `nu`.
@@ -154,12 +168,12 @@ SkewNormal fixed-effect fits restart on their own. The slant can have two or thr
 local optima, so after the default start the fit also runs from four fixed starts.
 A start replaces the fit so far only if Optim reports convergence, its
 log-likelihood is higher by more than 1e-5, and the estimate is an interior optimum
-(positive definite Hessian, finite standard errors, none inflated). A restart
-therefore never gives a lower log-likelihood, an unconverged fit or a degenerate
-one, and a fit whose default start is already best is unchanged. The restarts use no
-random numbers and are skipped when `control` sets `start`, `multi_start`, `maxit`
-or `optimizer`. They multiply the run time of the fit by about 8 at n = 100 and
-n = 1000 and by 6 to 10 at n = 10000. This is a multi-start, not a global search.
+(positive definite Hessian, finite standard errors, none inflated). An accepted replacement
+has a higher log-likelihood and passes the convergence and interior checks. If no
+replacement qualifies, the original fit is retained and may itself be unconverged
+or degenerate. The restarts use no random numbers and are skipped when `control`
+sets `start`, `multi_start`, `maxit` or `optimizer`. The additional starts increase
+computation time. The multi-start procedure does not guarantee a global optimum.
 A large slant estimate (above about 20) with a standard error of similar size means
 the likelihood is flat in the slant; it occurs with or without the restarts.
 `fit.scales[:q2_restarts]` records what happened.
