@@ -81,7 +81,8 @@ covariate, or a location coefficient measured in units of the response, is not f
 because its covariate or response is in large or small units, and a log scale is not
 flagged because the spread of the data is small. A coefficient on a covariate in a log or
 logit block (for example the slope of `sigma` in a negative binomial fit) is judged per
-unit of its own covariate. `issymmetric` and `eigvals` on the full `vcov` then give
+unit of its own covariate. A random-effect log SD at or
+below -8 (an SD of about 3e-4 or less) stays flagged whenever the matrix flagged it. `issymmetric` and `eigvals` on the full `vcov` then give
 `false` or an error, so call them on the unflagged block. Use a profile or bootstrap
 interval for the flagged parameter. A fit with a flagged coordinate has a covariance that
 is not finite, so `convergence_status(fit)` is `:degenerate` (`:boundary` when the only

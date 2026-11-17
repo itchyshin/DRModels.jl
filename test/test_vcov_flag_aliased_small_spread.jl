@@ -314,4 +314,41 @@ _bnd(fit) = bridge_diagnostics(fit).boundary
         @test all(isfinite, out.vcov)
         @test out.vcov ≈ inv(H) rtol = 1e-10
     end
+    @testset "unit: a random-effect log SD at or below -8 keeps the guard's flag (P48 j)" begin
+        rng = StableRNG(2407)
+        G = 30; m = 6; n = G * m
+        gi = repeat(1:G, inner = m)
+        g = string.(gi); x = randn(rng, n)
+        u = 0.8 .* randn(rng, G)
+        # Poisson counts without and with a group effect: the SD runs to zero, or is interior.
+        y0 = [rand(rng, Distributions.Poisson(exp(0.2 + 0.3 * xi))) for xi in x]
+        y1 = [rand(rng, Distributions.Poisson(exp(0.2 + 0.3 * x[i] + u[gi[i]]))) for i in 1:n]
+        f(y) = _quiet(() -> drm(bf(@formula(y ~ x + (1 | g))), DRModels.Poisson(); data = (; y, x, g)))
+        fit0 = f(y0); fit1 = f(y1)
+        k = length(fit0.theta)
+        for fit in (fit0, fit1)
+            @test _DVF._re_logsd_coords(fit) == [k]
+        end
+        @test fit0.theta[k] <= -8
+        @test fit1.theta[k] > -8
+        # A curvature as large as the others would not be flagged by the units-free rule;
+        # the guard flagged the SD, and the floor keeps that flag for the SD at zero only.
+        H = Diagonal(fill(1e3, k))
+        mkrec(fit, flat) = (H = Matrix{Float64}(H), V = copy(fit.vcov), flat = flat, context = "test", rcond = 1.0, warn = false)
+        for (fit, kept) in ((fit0, true), (fit1, false))
+            recs = _DVF._GuardRecords()
+            push!(recs.items, mkrec(fit, [k]))
+            @test (_bnd(_DVF._reconcile_guard_flags(fit, recs)) == [k]) == kept
+        end
+        # The floor never adds a flag the guard did not set.
+        recs = _DVF._GuardRecords()
+        push!(recs.items, mkrec(fit0, Int[]))
+        @test _bnd(_DVF._reconcile_guard_flags(fit0, recs)) == _bnd(fit0)   # unchanged: nothing added
+        # A Gaussian fit has none: its SD carries the units of the response.
+        rg = StableRNG(2408)
+        yg = 1e-6 .* (0.5 .* randn(rg, G)[gi] .+ randn(rg, n))
+        fitg = _quiet(() -> drm(bf(@formula(y ~ x + (1 | g)), @formula(sigma ~ 1)), Gaussian(); data = (; y = yg, x, g)))
+        @test fitg.theta[end] <= -8
+        @test _DVF._re_logsd_coords(fitg) == Int[]
+    end
 end

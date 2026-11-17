@@ -209,6 +209,9 @@ _flagged_coords(V::AbstractMatrix) = [i for i in axes(V, 1) if isnan(V[i, i])]
 #     is of the order of the number of observations that inform it, and that does not
 #     change with the units of any design column, with the units of the response, or
 #     with the size of sigma. A flat coordinate is far below it.
+#   * A random-effect log SD (an SD block or a diagonal Cholesky entry) at or below
+#     `_RE_LOGSD_FLOOR` = -8 keeps the flag the matrix set, whatever its curvature (P48 j),
+#     except in a Gaussian, Student or skew-normal fit, whose SDs carry the response units.
 #   * The result can only remove flags the matrix alone set: it is intersected with them.
 #
 # Known limits: weights or frequencies that are very small make every curvature small
@@ -281,6 +284,37 @@ const _COEF_BLOCKS = (:mu, :mu1, :mu2, :sigma, :sigma1, :sigma2, :nu, :zi, :hu, 
 # Off-diagonal entry of a Cholesky factor of a covariance (`g:L21`): in response units.
 _is_offdiag_chol_name(nm::AbstractString) =
     (m = match(r":L(\d)(\d)$", nm)) !== nothing && m.captures[1] != m.captures[2]
+
+# Diagonal entry of a covariance Cholesky factor (`g:L11`, `Sigma_a:L22`): a log SD.
+_is_diag_chol_name(nm::AbstractString) =
+    (m = match(r":L(\d)(\d)$", nm)) !== nothing && m.captures[1] == m.captures[2]
+
+# A log SD at or below this is an SD below exp(-8) = 3.4e-4 of the scale it is judged
+# against: practically zero, whatever the curvature of the likelihood in that direction
+# (P48 j). It keeps a flag the matrix alone set; it never adds one.
+const _RE_LOGSD_FLOOR = -8.0
+
+# Coordinates of `fit.theta` that are random-effect log SDs: the SD blocks (`:resd`,
+# `:sd`, `:sd_*`) and the diagonal entries of a covariance Cholesky factor. Empty for a
+# Gaussian, Student or skew-normal fit: there the SD is in the units of the response, so
+# a log SD below -8 is a response spread of 3e-4, not a boundary, and the floor would
+# undo the unit-free flag (a response with a spread of 1e-6 has log SDs near -14).
+function _re_logsd_coords(fit)
+    out = Int[]
+    _identity_location_family(fit.family) && return out
+    for ((p, rng), (_, nms)) in zip(fit.blocks, fit.coefnames)
+        ps = String(p)
+        sdblock = p in (:resd, :sd) || startswith(ps, "sd_")
+        for (k, i) in enumerate(rng)
+            (1 <= i <= length(fit.theta)) || continue
+            nm = k <= length(nms) ? String(nms[k]) : ""
+            if sdblock || _is_diag_chol_name(nm)
+                push!(out, i)
+            end
+        end
+    end
+    return out
+end
 
 """
     _unit_bearing_coords(fit) -> BitVector
@@ -403,6 +437,9 @@ function _reconcile_guard_flags(fit, recs::_GuardRecords)
     unit = _unit_bearing_coords(fit)
     flat = intersect(_flat_units_free(rec.H, unit, fit.nobs; colnorm2 = _column_norms2(fit, recs, unit)),
                      rec.flat)
+    # P48 j: keep the matrix's flag on a random-effect log SD at or below the floor.
+    re_floor = [i for i in _re_logsd_coords(fit) if i in rec.flat && fit.theta[i] <= _RE_LOGSD_FLOOR]
+    flat = sort!(union(flat, re_floor))
     rec.warn && !isempty(flat) && _warn_singular_hessian(rec.context, flat, rec.rcond)
     V = if flat == rec.flat
         fit.vcov

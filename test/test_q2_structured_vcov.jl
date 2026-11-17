@@ -346,12 +346,11 @@ end
         @test all(isfinite, se[1:9])
         @test all(isfinite, vcov(fit)[1:9, 1:9])
         @test maximum(se[1:4]) < 0.5
-        # The tenth (Sigma_a:L22) is the flat one and is reported as flat: 26.9 on
-        # the ML arm, Inf on the REML arm, where `_finite_hessian` also finds H is
-        # not positive definite and warns. Asserted as `> 10` so the PD/non-PD
-        # split, which sits on the solver's noise floor, cannot make this brittle.
+        # The tenth (Sigma_a:L22) is the flat one and is flagged: its standard error is
+        # NaN on both arms (it was 26.9 on the ML arm and Inf on the REML arm before the
+        # guard flagged it).
         @test argmax(se) == 10
-        @test se[10] > 10.0
+        @test isnan(se[10])
     end
 end
 

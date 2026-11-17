@@ -145,7 +145,9 @@ end
     Hnew = DRModels._finite_hessian(fit.nll, θ̂; h = h)
     @test maximum(abs, Hnew .- Hold) <= 1e-12 * max(1, maximum(abs, Hold))
     Vold = DRModels._vcov_from_hessian(Hold)
-    @test maximum(abs, vcov(fit) .- Vold) <= 1e-12 * max(1, maximum(abs, Vold))
+    keep = setdiff(axes(Vold, 1), bridge_diagnostics(fit).boundary)
+    @test isnan.(diag(vcov(fit))) == isnan.(diag(Vold))
+    @test maximum(abs, vcov(fit)[keep, keep] .- Vold[keep, keep]) <= 1e-12 * max(1, maximum(abs, Vold[keep, keep]))
     bad = θ -> θ[1] < θ̂[1] - 1e-9 ? NaN : fit.nll(θ)   # old path: ridge -> SE ~ 0
     H = @test_logs (:warn, r"reporting a NaN vcov") DRModels._finite_hessian(bad, θ̂; h = h)
     @test all(isnan, H)

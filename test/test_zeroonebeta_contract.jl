@@ -4,6 +4,7 @@
 # invariance. Recovery lives in test_zeroonebeta.jl. Refs #975, #986.
 using DRModels
 using Test, Random
+using LinearAlgebra: issymmetric
 import Distributions
 
 _zob_logistic(x) = 1 / (1 + exp(-x))
@@ -124,8 +125,8 @@ const _ZOB_F = bf(@formula(y ~ x), @formula(sigma ~ 1), @formula(zoi ~ 1), @form
             _ZOB_F, ZeroOneBeta(); data = d2)
         @test fit2.converged                              # reported converged despite the degenerate coi
         @test coef(fit2, :coi)[1] < -29                   # coi runs off to the logit clamp (-30)
-        @test vcov(fit2)[end, end] == 0.0                 # SE of coi is exactly zero, not NaN or large
-        @test all(isfinite, vcov(fit2))
+        @test isnan(vcov(fit2)[end, end]) && bridge_diagnostics(fit2).boundary == [size(vcov(fit2), 1)]   # coi is flagged: NaN, not an exact 0
+        @test all(isfinite, vcov(fit2)[1:end-1, 1:end-1]) && issymmetric(vcov(fit2)[1:end-1, 1:end-1])
         @test predict_parameters(fit2, d2)[:coi][1] < 1e-10
     end
 
