@@ -2,7 +2,8 @@
 # or mis-specified fits, and `bootstrap_result` then silently uses the
 # CONDITIONAL `simulate` (random effects at 0; the #459 variance collapse).
 # Only the `meta_V` + RE route throws. These tests document the current silent
-# fallback; the desired throw/warn is @test_broken. No behaviour change.
+# fallback; the desired throw is @test_broken. The fallback now emits one @warn
+# (message only; the returned simulator and all results are unchanged).
 using DRModels
 using Test, Random
 
@@ -23,7 +24,7 @@ _threw(f) = try; f(); false catch e; e isa ArgumentError; end
         @test sd(f, data) isa Function
         # Missing grouping column -> silent `nothing` (conditional fallback).
         @test sd(f, (; y, x)) === nothing
-        @test ms(f, (; y, x)) === nothing
+        @test @test_logs((:warn, r"could not build the marginal simulator"), ms(f, (; y, x))) === nothing
         @test_broken _threw(() -> ms(f, (; y, x)))
     end
 
@@ -43,6 +44,7 @@ _threw(f) = try; f(); false catch e; e isa ArgumentError; end
     @testset "correlated slope (1 + x | g): silent nothing" begin
         f = drm(bf(@formula(y ~ x + (1 + x | g1)), @formula(sigma ~ 1)), Gaussian(); data)
         @test sd(f, data) === nothing
+        @test_logs (:warn, r"conditional `simulate`") ms(f, data)
         @test_broken _threw(() -> ms(f, data))
     end
 end
