@@ -333,7 +333,8 @@ function _ctl_preflight(scope::_ControlScope, f, fam)
     if wants_w && !wants_optim
         throw(ArgumentError("drm: `weights` is supported on fixed-effect routes of univariate " *
             "families, on a Gaussian or Poisson mean with one random intercept `(1 | g)`, and " *
-            "on a Gaussian mean with `meta_V`. This is " * kind * " of another shape " *
+            "on a Gaussian mean with `meta_V`, and on a residual-only bivariate Gaussian model " *
+            "(no random terms). This is " * kind * " of another shape " *
             "($(typeof(fam))), so the fit was refused before it started, not run with the " *
             "weights ignored."))
     end
