@@ -828,7 +828,7 @@ end
 # pair is a random-effect-free fit (exact log-likelihood) against a non-VA fit,
 # e.g. the fixed-effects model against a `marginal = :Laplace` random intercept.
 function _marginal_compare_guard(a::DrmFit, b::DrmFit, verb::AbstractString)
-    a.marginal === b.marginal && return nothing
+    a.marginal === b.marginal && a.marginal !== :VA && return nothing
     no_va = a.marginal !== :VA && b.marginal !== :VA
     no_va && (_fit_is_re_free(a) || _fit_is_re_free(b)) && return nothing
     reason = if !no_va
