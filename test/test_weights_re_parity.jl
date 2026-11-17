@@ -173,10 +173,11 @@ _wr_rep(d, w) = (idx = reduce(vcat, [fill(i, Int(w[i])) for i in eachindex(w)]);
         @test_throws ArgumentError drm(bf(@formula(y_g ~ x1 + (1 + x1 | g)), @formula(sigma ~ 1)), Gaussian();
                                        data = d, weights = d.w)
         @test_throws ArgumentError drm(f, Gaussian(); data = d, weights = d.w, control = DRMControl(multi_start = 2))
-        # bivariate with a random effect: refused (the ordinary-random-effect bivariate route is not available)
+        # bivariate with an ordinary (1 | p | g) pair: weights are supported (test_biv_re_weights.jl); the
+        # log-likelihood is drmTMB 0.8.1's (fixture row biv_re, made with the same weights)
         fb = bf(mu1 = @formula(y1 ~ x1 + (1 | p | g)), mu2 = @formula(y2 ~ x2 + (1 | p | g)),
                 sigma1 = @formula(sigma1 ~ 1), sigma2 = @formula(sigma2 ~ 1), rho12 = @formula(rho12 ~ 1))
-        @test_throws ArgumentError drm(fb, Gaussian(); data = d, weights = d.w)
+        @test loglikelihood(drm(fb, Gaussian(); data = d, weights = d.w)) ≈ _wr_get("biv_re", "ll")[1] atol = 1e-6
     end
 end
 

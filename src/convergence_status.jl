@@ -83,7 +83,13 @@ function _twin_re_sd_values(fit::DrmFit)
         err isa ArgumentError || rethrow()
         return Float64[]
     end
-    return collect(Float64, values(d))
+    vals = collect(Float64, values(d))
+    # The bivariate `(1 | p | g)` routes keep the 2 x 2 group covariance in `fit.ranef.Sigma_g`, outside
+    # the blocks `re_sd` reads. drmTMB lists the two group SDs in `sdpars`, so they count here too.
+    if fit.ranef isa NamedTuple && haskey(fit.ranef, :Sigma_g)
+        append!(vals, sqrt.(max.(diag(Matrix{Float64}(fit.ranef.Sigma_g)), 0.0)))
+    end
+    return vals
 end
 
 function _twin_rho12_values(fit::DrmFit)
@@ -111,7 +117,8 @@ numeric rules as drmTMB's `convergence_status()` (FX3b; drmTMB
    times the median of the standard errors below 50 (the smallest standard
    error when none is below 50): a near-flat, weakly identified direction.
 6. `:boundary` when a fitted residual correlation has `|rho12| > 0.98`, or a
-   fitted random-effect SD ([`re_sd`](@ref)) is below `1e-4`. A random-effect log SD
+   fitted random-effect SD ([`re_sd`](@ref), or a group SD of the
+   bivariate `(1 | p | g)` routes) is below `1e-4`. A random-effect log SD
    within `1e-3` of the sparse-Laplace floor of `-8` also counts (the floor
    `e^-8 = 3.4e-4` never falls under `1e-4`). Its standard error is `NaN` (the Hessian
    of the other coordinates is inverted, #1190), and rules 3 to 5 then read the
