@@ -20,6 +20,21 @@ const bin_full = [sin(1.9i) + 0.8x[i] > 0.2 ? 1 : 0 for i in 1:n]
 const bin_miss = Union{Missing,Int}[i in (2, 9) ? missing : bin_full[i] for i in 1:n]
 
 dat(y) = (y = y, x = x, g = grp, h = obs)
+
+# Phylogenetic SD regression with fixed-effect priors (a separate fitting route).
+const phy = DRModels.augmented_phy("((a:0.5,b:0.5):0.5,(c:0.5,d:0.5):0.5);")
+const phy_full = (y = [.2, .7, .35, 1.1, .8, 1.25, 1.4, 1.1, 1.9, 1.5, 2.15, .5],
+                  x = [-1.2, -.8, -.7, -.2, .1, .15, .4, .6, .8, 1.0, 1.2, -.3],
+                  sp = ["a", "a", "b", "b", "b", "c", "c", "d", "d", "d", "d", "a"],
+                  z = [-1.0, -1.0, -.35, -.35, -.35, .4, .4, 1.0, 1.0, 1.0, 1.0, -1.0])
+phy_data(y) = merge(phy_full, (y = y,))
+const phy_miss = phy_data(Union{Missing,Float64}[i in (2, 7) ? missing : phy_full.y[i] for i in 1:12])
+const phy_nan = phy_data([i in (2, 7) ? NaN : phy_full.y[i] for i in 1:12])
+const phy_form = bf(@formula(y ~ x + phylo(1 | sp)), @formula(sigma ~ x), @formula(sd(sp, phylogenetic) ~ z))
+const phy_table = (prior = ["normal(.1,.7)", "normal(-.2,.5)"], class = ["fixef", "fixef"],
+                   coef = ["x", "x"], dpar = ["mu", "sigma"])
+const phy_legacy = drm_priors(drm_prior_normal(dpar = "mu", coef = "x", mean = .1, sd = .7),
+                              drm_prior_normal(dpar = "sigma", coef = "x", mean = -.2, sd = .5))
 const keep = setdiff(1:n, gone)
 const complete = (y = y_full[keep], x = x[keep], g = grp[keep], h = obs[keep])
 
@@ -66,6 +81,20 @@ end
             ok, msg = refused(() -> drm(bf(@formula(k ~ x)), Binomial(); data = (k = bin_miss, x = x), priors = pri))
             @test ok
         end
+    end
+    @testset "phylogenetic SD regression with fixed-effect priors" begin
+        for pri in (phy_table, phy_legacy)
+            @test refused(() -> drm(phy_form, Gaussian(); data = phy_miss, tree = phy, priors = pri))[1]
+        end
+        @test refused(() -> drm(phy_form, Gaussian(); data = phy_nan, tree = phy, priors = phy_table))[1]
+        @test refused(() -> resolve_priors(phy_form, Gaussian(); data = phy_miss, priors = phy_table))[1]
+        fit = drm(phy_form, Gaussian(); data = phy_full, tree = phy, priors = phy_table)
+        @test refused(() -> update(fit, phy_form; data = phy_miss, tree = phy))[1]
+    end
+    @testset "response kept with miss_control(response = \"include\")" begin
+        inc = miss_control(response = "include")
+        @test refused(() -> drm(fixed_form, Gaussian(); data = dat(y_miss), priors = fixed_table, missing = inc))[1]
+        @test refused(() -> drm(phy_form, Gaussian(); data = phy_miss, tree = phy, priors = phy_table, missing = inc))[1]
     end
     @testset "update with a missing response column" begin
         fit = drm(fixed_form, Gaussian(); data = dat(y_full), priors = fixed_table)
