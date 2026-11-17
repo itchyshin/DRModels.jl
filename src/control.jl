@@ -330,6 +330,13 @@ function _ctl_preflight(scope::_ControlScope, f, fam)
     wants_w && push!(what, "`weights`")
     kind = f isa DrmFormula ? "a model with random, structured, `meta_V` or `sd()` terms" :
                               "a bivariate or multi-response model"
+    if wants_w && !wants_optim
+        throw(ArgumentError("drm: `weights` is supported on fixed-effect routes of univariate " *
+            "families, on a Gaussian or Poisson mean with one random intercept `(1 | g)`, and " *
+            "on a Gaussian mean with `meta_V`. This is " * kind * " of another shape " *
+            "($(typeof(fam))), so the fit was refused before it started, not run with the " *
+            "weights ignored."))
+    end
     throw(ArgumentError("drm: " * join(what, " and ") * " is supported only on the " *
         "fixed-effect routes of univariate families for now (#948, #994, #931). This is " *
         kind * " ($(typeof(fam))), so the fit was refused before it started, not run " *
