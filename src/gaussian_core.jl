@@ -1358,10 +1358,18 @@ function _drm_gaussian_fit(f::DrmFormula, fam::Gaussian; data, K = nothing, A = 
                      unwrap_label = !_rhs_has_bar(rhs[:sigma]))   # (1|g), meta_V(v), relmat/animal/phylo/spatial(1|g), temporal(...)
     structured_sd_slope === nothing || temporal_term === nothing ||
         throw(ArgumentError("drm: a structured slope-only effect cannot be combined with `temporal(...)`."))
-    fixed_sigma, sigma_re, _, structured_sigma = _split_ranef(rhs[:sigma])  # (1|g)→GHQ; structured_sigma = phylo(1|g) on σ
+    fixed_sigma, sigma_re, sigma_meta, structured_sigma = _split_ranef(rhs[:sigma])  # (1|g)→GHQ; structured_sigma = phylo(1|g) on σ
     prior_ri = priors !== nothing && length(re) == 1 && _re_kind(first(re)[1])[1] === :intercept
     prior_two_ri = priors !== nothing && length(re) == 2 && all(r -> _re_kind(r[1])[1] === :intercept, re) && length(unique(last.(re))) == 2
-    if priors !== nothing && !((isempty(re) || prior_ri || prior_two_ri) && isempty(sigma_re) && metav === nothing && structured === nothing && structured_sigma === nothing && temporal_term === nothing && structured_slope === nothing && structured_sd_slope === nothing && isempty(_sd_parts(f)) && isempty(_sdphylo_parts(f)))
+    prior_phylo_lss = priors !== nothing && !has_sd_prior &&
+        priors isa AbstractVector && all(p -> p isa FixedPrior && p.kind === :normal, priors) &&
+        isempty(re) && isempty(sigma_re) && metav === nothing && sigma_meta === nothing &&
+        structured !== nothing && structured[1] === :phylo && structured_sigma === nothing &&
+        _collect_structured(rhs[:mu]) == [structured] && length(f.forms) == 3 &&
+        temporal_term === nothing && structured_slope === nothing && structured_sd_slope === nothing &&
+        isempty(_sd_parts(f)) && length(_sdphylo_parts(f)) == 1 &&
+        first(only(_sdphylo_parts(f))) === structured[2]
+    if priors !== nothing && !prior_phylo_lss && !((isempty(re) || prior_ri || prior_two_ri) && isempty(sigma_re) && metav === nothing && structured === nothing && structured_sigma === nothing && temporal_term === nothing && structured_slope === nothing && structured_sd_slope === nothing && isempty(_sd_parts(f)) && isempty(_sdphylo_parts(f)))
         if has_sd_prior
             throw(ArgumentError("SD priors currently support at most two distinct iid mean random intercepts without other random or structured effects or SD submodels"))
         end
@@ -1417,6 +1425,12 @@ function _drm_gaussian_fit(f::DrmFormula, fam::Gaussian; data, K = nothing, A = 
         priors isa AbstractVector && all(p -> p isa Union{FixedPrior,SDGammaPrior}, priors) || throw(ArgumentError("priors must be created by drm_priors"))
         fixed = FixedPrior[p for p in priors if p isa FixedPrior]
         rows = _resolve_fixed_priors(fixed, names, intercepts)
+        if prior_phylo_lss
+            fit = _drm_gaussian_lss_phylo(f, fam, _sdphylo_parts(f), re, structured,
+                structured_sigma, sigma_re, metav, has_missing_response, y, Xμ, Xσ,
+                nmμ, nmσ, data, tree, g_tol, method, penalty; algorithm, sparse, prior_rows=rows)
+            return _withformula(fit, f)
+        end
         if prior_two_ri
             groups = last.(re)
             sdrows = _resolve_sd_priors(priors, groups, length(nmμ) + length(nmσ) + 1)
