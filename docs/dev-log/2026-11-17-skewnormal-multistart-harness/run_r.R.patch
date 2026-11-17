@@ -1,0 +1,15 @@
+--- a/run_r.R	2026-11-13 20:46:23.000000000 -0600
++++ b/run_r.R	2026-11-17 16:01:26.205767781 -0600
+@@ -27,7 +27,11 @@
+   t0 <- Sys.time()
+   res <- tryCatch(
+     withCallingHandlers({
+-      fit <- eval(parse(text = cl$r))
++      # P53: SkewNormal cells call R with multi_start = 5 (R single-start can stop on a local maximum)
++      rcall <- cl$r
++      if (grepl("skew_normal()", rcall, fixed = TRUE) && !grepl("control =", rcall, fixed = TRUE))
++        rcall <- sub(")$", ", control = drm_control(multi_start = 5L))", rcall)
++      fit <- eval(parse(text = rcall))
+       list(ok = TRUE, fit = fit)
+     }, warning = function(w) { warn <<- c(warn, conditionMessage(w)); invokeRestart("muffleWarning") }),
+     error = function(e) list(ok = FALSE, e = e))
