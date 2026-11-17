@@ -92,6 +92,18 @@ a random slope together with its correlation, for example `(1 + x | g)` against
 mixture), and `(1 | g) + (0 + x | g)` against `(1 + x | g)` adds only the
 correlation, whose null value is interior, so the plain `χ²(1)` is the right
 test. Use a parametric bootstrap for the first of these.
+A slope on the log standard deviation is an interior null, not a variance at
+zero, so `sd(g) ~ z` against `sd(g) ~ 1`, and `(1 | g)` against `sd(g) ~ z`,
+are refused. The one added standard deviation is matched by its covariance
+structure and its grouping, not by the raw coefficient string and not by count
+alone: a one-group `sd:(Intercept)`, a plain `resd:g`, and a two-group
+`sd:g: (Intercept)` are the same iid component on `g`, and `sd_phylo` is the
+same component as a phylogenetic intercept on that grouping. An iid intercept
+and a phylogenetic, spatial, animal, or relmat intercept on the same grouping
+are different components, so `phylo(1 | sp)` against `(1 | sp) + (1 | g)` is
+refused. `(1 | g)` against `(1 | h) + (1 | k)` is refused when the statistic
+is positive. A clearly negative statistic on that pair is still reported as
+not nested, before the label check.
 `mixture = true` also refuses a clearly negative statistic, one below
 `-1e-6 * max(1, |loglik(full)|, |loglik(reduced)|)`, as "not nested or a fit did
 not converge", instead of returning `pvalue = 0.5`. A statistic within that margin
@@ -142,7 +154,10 @@ function lrtest(reduced::DrmFit, full::DrmFit; mixture::Bool = false)
         "did you pass the arguments as (reduced, full)?)"))
     statistic = 2 * (loglik(full) - loglik(reduced))
     if mixture
-        _single_variance_boundary_guard(reduced, full, Δdof)
+        # `:variance` is the one-SD count gate; `:family` is Poisson ⊂ NegBinomial2.
+        # The negative-statistic refusal stays ahead of the label check so a
+        # swapped grouping whose statistic is negative keeps that message.
+        gate = _single_variance_boundary_guard(reduced, full, Δdof)
         # A clearly negative statistic means `reduced` fits better: the pair is not
         # nested or a fit did not converge. The mixture would report p = 0.5 for it.
         scale = max(1.0, abs(loglik(full)), abs(loglik(reduced)))
@@ -151,6 +166,7 @@ function lrtest(reduced::DrmFit, full::DrmFit; mixture::Bool = false)
             "fits clearly better than `full`, so the pair is not nested or a fit did " *
             "not converge. Check both fits (`reduced` must be `full` with one " *
             "variance component removed) and refit before testing."))
+        gate === :variance && _matching_variance_labels_guard(reduced, full)
         pvalue_naive = ccdf(Chisq(Δdof), max(statistic, 0))
         return (; statistic, dof = Δdof, pvalue = chibar_pvalue(statistic, 1),
                   pvalue_naive, reference = :chibar_0_1)
@@ -165,9 +181,12 @@ end
 # parameter, and nothing else. Accept: every non-variance block has the same
 # coefficient names in both fits, `full` has one more SD parameter and the same
 # number of correlation parameters, and Δdof is 1; or the Poisson ⊂ NegBinomial2
-# nest with the same fixed effects. Refuse everything else by name. A correlation
-# is not a boundary parameter (its null 0 is interior), so a pair such as
-# `(1 | g) + (0 + x | g)` against `(1 + x | g)` is refused: the plain χ²(1) is right.
+# nest with the same fixed effects. Returns `:variance` or `:family` so the caller
+# can match SD labels only on the variance gate. Refuse everything else by name.
+# A correlation is not a boundary parameter (its null 0 is interior), so a pair
+# such as `(1 | g) + (0 + x | g)` against `(1 + x | g)` is refused: the plain
+# χ²(1) is right. A slope on an `sd` / `sd_phylo` block is an interior null too:
+# only the `(Intercept)` column of those blocks is a variance.
 function _single_variance_boundary_guard(reduced::DrmFit, full::DrmFit, Δdof::Integer)
     nonvc(f) = Dict(p => (length(r), String.(something(_block_coefnames(f, p), String[])))
                     for (p, r) in f.blocks
@@ -175,15 +194,20 @@ function _single_variance_boundary_guard(reduced::DrmFit, full::DrmFit, Δdof::I
     same_fixed = nonvc(full) == nonvc(reduced)
     if _family_boundary_nest(reduced, full) !== nothing && Δdof == 1
         fr, ff = nonvc(reduced), nonvc(full)
-        all(haskey(ff, p) && ff[p] == v for (p, v) in fr) && return nothing
+        all(haskey(ff, p) && ff[p] == v for (p, v) in fr) && return :family
     end
     sd_params, corr_params = _sd_and_correlation_counts(full)
     sd_red, corr_red = _sd_and_correlation_counts(reduced)
     Δsd, Δcorr = sd_params - sd_red, corr_params - corr_red
     if Δsd == 1 && Δcorr == 0 && Δdof == 1 && same_fixed
-        return nothing
+        return :variance
     end
-    reason = if Δsd <= 0 && Δcorr <= 0 && same_fixed
+    reason = if Δsd <= 0 && Δcorr <= 0 && same_fixed &&
+               !_same_string_multiset(_logsd_slope_names(reduced), _logsd_slope_names(full))
+        "`full` changes a slope of a log standard deviation (for example `sd(g) ~ 1` " *
+        "against `sd(g) ~ z`, or `(1 | g)` against `sd(g) ~ z`); that slope is an " *
+        "interior null, so the plain χ² reference is the right test"
+    elseif Δsd <= 0 && Δcorr <= 0 && same_fixed
         "`full` adds no variance component to `reduced` (the difference is in the " *
         "family or in a block that is not a variance), so the plain χ² reference " *
         "is the right test"
@@ -212,7 +236,9 @@ end
 
 # Number of SD parameters and of correlation parameters in the variance-component
 # blocks of `fit`. `:recov` and `:phylocov` hold the Cholesky entries of a q x q
-# covariance, q (q + 1) / 2 of them: q SDs and q (q - 1) / 2 correlations. Every
+# covariance, q (q + 1) / 2 of them: q SDs and q (q - 1) / 2 correlations. An
+# `:sd` / `:sd_phylo` block is a regression on the log standard deviation: only
+# its `(Intercept)` columns are variances (a slope is an interior null). Every
 # other variance-component block counts one SD per coefficient. A width that is
 # not triangular cannot be split, so it counts as all SD (the old behaviour).
 function _sd_and_correlation_counts(fit::DrmFit)
@@ -229,9 +255,337 @@ function _sd_and_correlation_counts(fit::DrmFit)
                 continue
             end
         end
+        if p === :sd || p === :sd_phylo
+            names = _block_coefnames(fit, p)
+            if names !== nothing && length(names) == w
+                nsd += count(n -> _is_sd_intercept_name(String(n)), names)
+                continue
+            end
+        end
         nsd += w
     end
     return nsd, ncorr
+end
+
+# `(Intercept)`, including a disambiguated `"g: (Intercept)"` column.
+_is_sd_intercept_name(name::AbstractString) =
+    name == "(Intercept)" || endswith(name, "(Intercept)")
+
+# Non-intercept columns of `:sd` / `:sd_phylo`: slopes of the log standard deviation.
+function _logsd_slope_names(fit::DrmFit)
+    out = String[]
+    for (p, r) in fit.blocks
+        (p === :sd || p === :sd_phylo) || continue
+        names = _block_coefnames(fit, p)
+        (names === nothing || length(names) != length(r)) && continue
+        for n in names
+            _is_sd_intercept_name(String(n)) || push!(out, String(n))
+        end
+    end
+    return out
+end
+
+function _string_counts(xs)
+    d = Dict{String,Int}()
+    for s in xs
+        d[s] = get(d, s, 0) + 1
+    end
+    return d
+end
+_same_string_multiset(a, b) = _string_counts(a) == _string_counts(b)
+
+# Labels present in `full` and not in `reduced`, or `nothing` when `reduced`
+# is not a submultiset of `full` (a component was swapped, not added).
+function _added_string_labels(reduced, full)
+    d = _string_counts(full)
+    for s in reduced
+        c = get(d, s, 0)
+        c == 0 && return nothing
+        d[s] = c - 1
+    end
+    extra = String[]
+    for (s, c) in d
+        for _ in 1:c
+            push!(extra, s)
+        end
+    end
+    return extra
+end
+
+# Diagonal Cholesky entry (`:L11`) is an SD; an off-diagonal (`:L21`) is a correlation.
+function _cholesky_role(name::AbstractString)
+    m = match(r":L(\d+)(\d+)$", name)
+    m !== nothing && return m.captures[1] == m.captures[2] ? :sd : :cor
+    n = lowercase(name)
+    (occursin("atanh", n) || occursin("rho", n) || occursin(":cor", n)) && return :cor
+    (occursin("log_sd", n) || occursin(":sd", n)) && return :sd
+    return :unknown
+end
+
+function _push_vc_labels!(sd::Vector{String}, cor::Vector{String}, p::Symbol, names, w::Int)
+    label(i) = length(names) == w ? string(p, ":", names[i]) : string(p, "#", i)
+    if p === :recov || p === :phylocov
+        q = (isqrt(8w + 1) - 1) ÷ 2
+        if q * (q + 1) ÷ 2 == w && length(names) == w
+            roles = [_cholesky_role(names[i]) for i in 1:w]
+            if all(r -> r !== :unknown, roles) && count(==(:sd), roles) == q
+                for i in 1:w
+                    push!(roles[i] === :sd ? sd : cor, label(i))
+                end
+                return nothing
+            end
+            for i in 1:q
+                push!(sd, label(i))
+            end
+            for i in (q + 1):w
+                push!(cor, label(i))
+            end
+            return nothing
+        end
+    end
+    if (p === :sd || p === :sd_phylo) && length(names) == w
+        for i in 1:w
+            _is_sd_intercept_name(names[i]) && push!(sd, label(i))
+        end
+        return nothing
+    end
+    for i in 1:w
+        push!(sd, label(i))
+    end
+    return nothing
+end
+
+# SD labels and correlation labels, one string per parameter the count above
+# treats as a variance or a correlation. Used to refuse a pair whose counts
+# differ by one SD but whose labels were swapped (`(1 | g)` against `(1 | h) + (1 | k)`).
+function _vc_sd_and_cor_labels(fit::DrmFit)
+    sd = String[]
+    cor = String[]
+    for (p, r) in fit.blocks
+        p in _VARIANCE_COMPONENT_BLOCKS || continue
+        w = length(r)
+        w == 0 && continue
+        raw = _block_coefnames(fit, p)
+        names = raw === nothing ? String[] : String.(raw)
+        _push_vc_labels!(sd, cor, p, names, w)
+    end
+    return sd, cor
+end
+
+# The same random-effect SD is not stored under one spelling. A plain `(1 | g)`
+# is `resd:g`. One `sd(g) ~ 1` is `sd:(Intercept)`, with the group only on the
+# formula. Two groups in that block are `sd:g: (Intercept)` and `sd:h: (Intercept)`,
+# and a plain `(1 | h)` moves into the same block once any `sd` formula is present.
+# `sd_phylo:(Intercept)` and a phylogenetic `resd` intercept are the same kind of
+# split. The canonical key is `structure:grouping` (`iid:g`, `phylo:species`),
+# so a structured intercept does not alias an iid intercept on the same grouping.
+# The raw coefficient strings stay in the refusal message.
+#
+# Structure comes from the fitted term, not from the spelling of the coefficient.
+# An `:sd_phylo` block is phylogenetic. An `:sd` block reads `sd_targets` (so
+# `sd(g, spatial)` is `spatial`, and a plain bar pulled into that block, which
+# has no target, is `iid`). A `:resd` name is matched to the formula's ordinary
+# bars and structured markers. Where an ordinary intercept shares the marker's
+# grouping, the structured-plus-ranef route stores the ordinary one as `g_iid`
+# and the marker as `g` (`_drm_gaussian_structured_plus_ranef`); that label is
+# emitted only for a collision the formula actually contains. A temporal fit's
+# `ranef.temporal` record is used instead: its bare group is the temporal SD,
+# and the stable field is `g_iid` or `g_phylo`.
+_sd_structure_token(level::Symbol) = if level === :phylogenetic
+    "phylo"
+elseif level === :phylogenetic_interaction
+    "phylo_interaction"
+else
+    String(level)
+end
+
+_sd_key(structure::AbstractString, group::AbstractString) = string(structure, ":", group)
+
+function _canonical_sd_label(fit::DrmFit, label::AbstractString)
+    i = findfirst(':', label)
+    i === nothing && return String(label)
+    block = label[1:prevind(label, i)]
+    rest = label[nextind(label, i):end]
+    if block == "sd" || block == "sd_phylo"
+        group = _sd_intercept_group(fit, block, rest)
+        group === nothing && return String(label)
+        structure = _sd_block_structure(fit, block, group)
+        structure === nothing && return String(label)
+        return _sd_key(structure, group)
+    elseif block == "resd"
+        return _canonical_resd_name(fit, rest)
+    end
+    return String(label)
+end
+
+# `"g: (Intercept)"` carries its group. A bare `"(Intercept)"` is the only
+# component of that block, so the group comes from the formula. `nothing` when
+# this coefficient is not an intercept the formula can name.
+function _sd_intercept_group(fit::DrmFit, block::AbstractString, rest::AbstractString)
+    suffix = ": (Intercept)"
+    if endswith(rest, suffix)
+        return chop(rest; tail = length(suffix))
+    end
+    rest == "(Intercept)" || return nothing
+    return _bare_sd_intercept_group(fit, block)
+end
+
+# `:sd_phylo` is phylogenetic. A plain `:sd` column is the level of the one
+# `sd()` target on that grouping, or `iid` when the column is an ordinary bar
+# with no target of its own. `nothing` when several targets disagree.
+function _sd_block_structure(fit::DrmFit, block::AbstractString, group::AbstractString)
+    block == "sd_phylo" && return "phylo"
+    f = fit.formula
+    f isa DrmFormula || return "iid"
+    levels = Symbol[]
+    for item in _sd_target_parts(f)
+        t = item.target
+        String(t.group) == group || continue
+        push!(levels, t.level)
+    end
+    unique!(levels)
+    isempty(levels) && return "iid"
+    return length(levels) == 1 ? _sd_structure_token(only(levels)) : nothing
+end
+
+function _canonical_resd_name(fit::DrmFit, name::AbstractString)
+    temporal = _temporal_sd_keys(fit)
+    if temporal !== nothing
+        return get(temporal, String(name), String(name))
+    end
+    keyed = _formula_resd_keys(fit)
+    keyed === nothing && return String(name)
+    return get(keyed, String(name), String(name))
+end
+
+# `ranef.temporal` is the fitted temporal term. The bare group name is that
+# term's SD. A stable ordinary intercept is `g_iid`; a paired phylogenetic
+# field is `g_phylo`. The two stable fields are never both present.
+function _temporal_sd_keys(fit::DrmFit)
+    re = fit.ranef
+    (re isa NamedTuple && hasproperty(re, :temporal)) || return nothing
+    info = re.temporal
+    hasproperty(info, :group) || return nothing
+    g = String(info.group)
+    out = Dict{String,String}(g => _sd_key("temporal", g))
+    if get(info, :has_ordinary, false) === true
+        out[g * "_iid"] = _sd_key("iid", g)
+    elseif get(info, :phylo, nothing) !== nothing
+        out[g * "_phylo"] = _sd_key("phylo", g)
+    end
+    return out
+end
+
+# Coefficient name → canonical key, from the mean formula's ordinary bars and
+# structured markers (`phylo` / `spatial` / `animal` / `relmat`). A name this
+# does not predict is left out, and the caller keeps the raw string.
+function _formula_resd_keys(fit::DrmFit)
+    f = fit.formula
+    f isa DrmFormula || return nothing
+    mu = _formula_mu_rhs(f)
+    mu === nothing && return nothing
+    local split
+    try
+        split = _split_ranef(mu;
+            allow_phylo_slope = true, allow_phylo_slope_only = true,
+            allow_animal_slope = true, allow_animal_intercept_slope = true,
+            allow_relmat_slope = true, allow_relmat_intercept_slope = true,
+            allow_spatial_slope = true, allow_spatial_intercept_slope = true,
+            allow_temporal = true)
+    catch
+        return nothing
+    end
+    _, re, _, structured, structured_slope, _, animal_slope = split
+    markers = _collect_structured(mu)
+    structured_groups = Set(last(marker) for marker in markers)
+    out = Dict{String,String}()
+    for (lhs, grp) in re
+        kind_var = try
+            _re_kind(lhs)
+        catch
+            continue
+        end
+        kind, var = kind_var
+        if kind === :intercept
+            # Collision with a structured marker on this grouping: the ordinary
+            # intercept is stored as `g_iid`, the marker keeps the bare group.
+            label = grp in structured_groups ? string(grp, "_iid") : String(grp)
+            out[label] = _sd_key("iid", String(grp))
+        elseif kind === :slope && var !== nothing
+            label = string(grp, ":", var)
+            out[label] = _sd_key("iid", label)
+        end
+    end
+    for (kind, grp) in markers
+        label = String(grp)
+        haskey(out, label) || (out[label] = _sd_key(_sd_structure_token(kind), label))
+    end
+    if structured !== nothing
+        slope = structured_slope !== nothing ? structured_slope : animal_slope
+        kind, grp = structured
+        if slope !== nothing
+            label = string(grp, ":", slope)
+            haskey(out, label) || (out[label] = _sd_key(_sd_structure_token(kind), label))
+        end
+    end
+    return out
+end
+
+function _formula_mu_rhs(f::DrmFormula)
+    for (p, rhs) in f.forms
+        p === :mu && return rhs
+    end
+    return nothing
+end
+
+# Group of a one-component `:sd` or `:sd_phylo` intercept. `nothing` when the
+# formula does not name exactly one group for that block; the raw label is then
+# left as it is, so two unnamed intercepts cannot alias each other.
+function _bare_sd_intercept_group(fit::DrmFit, block::AbstractString)
+    f = fit.formula
+    f isa DrmFormula || return nothing
+    if block == "sd_phylo"
+        parts = _sdphylo_parts(f)
+        length(parts) == 1 && return String(first(parts)[1])
+    end
+    mu = _formula_mu_rhs(f)
+    mu === nothing && return nothing
+    local re, structured
+    try
+        _, re, _, structured = _split_ranef(mu)
+    catch
+        return nothing
+    end
+    if block == "sd_phylo"
+        structured !== nothing && structured[1] === :phylo && return String(structured[2])
+        return nothing
+    end
+    block == "sd" || return nothing
+    groups = unique(String(grp) for (_, grp) in re)
+    length(groups) == 1 && return only(groups)
+    # `sd(g, spatial)` (and animal / relmat) has no ordinary `(1 | g)` bar.
+    # The one `sd()` target names the grouping.
+    targets = _sd_target_parts(f)
+    return length(targets) == 1 ? String(only(targets).target.group) : nothing
+end
+
+_canonical_sd_labels(fit::DrmFit, labels) = [_canonical_sd_label(fit, s) for s in labels]
+
+function _matching_variance_labels_guard(reduced::DrmFit, full::DrmFit)
+    sd_r, cor_r = _vc_sd_and_cor_labels(reduced)
+    sd_f, cor_f = _vc_sd_and_cor_labels(full)
+    extra = _added_string_labels(_canonical_sd_labels(reduced, sd_r),
+                                 _canonical_sd_labels(full, sd_f))
+    if extra !== nothing && length(extra) == 1 && _same_string_multiset(cor_r, cor_f)
+        return nothing
+    end
+    throw(ArgumentError(
+        "lrtest: `mixture = true` is only for a pair that differs by exactly one " *
+        "variance component, matched by label (the same components, plus one standard " *
+        "deviation). `reduced` has variance labels [$(join(sort(sd_r), ", "))] and " *
+        "`full` has [$(join(sort(sd_f), ", "))], so this is not that pair " *
+        "(for example `(1 | g)` against `(1 | h) + (1 | k)`). " *
+        "Call `lrtest(reduced, full)` for the plain test, or use a parametric bootstrap."))
 end
 
 # A fit stranded on the failed-objective sentinel plateau (loglik <= -1e15, see

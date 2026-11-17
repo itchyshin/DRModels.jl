@@ -611,31 +611,45 @@ it is preferred over an approximated count.
 
 # Coverage by family
 
-Reports `Optim.iterations(res)` from the LBFGS run that produced `θ̂` for:
+Reports `Optim.iterations(res)` from the **accepted final** outer `Optim.optimize`
+result that produced `θ̂`, not the sum of earlier stages, for:
 `Gaussian` (both the plain ML fixed-effects fit and the Cox–Reid REML
 fixed-effects fit), `Student`, `SkewNormal`, `Poisson`, `NegBinomial2`,
 `TruncatedNegBinomial2`, `Beta`, `BetaBinomial`, `Binomial`, `Gamma`,
 `LogNormal`, `ZeroOneBeta`, `Tweedie`, `CumulativeLogit` — for their fixed-effects
-fit and, where the family has one, its scalar `(1 | g)` random-intercept,
-correlated `(1 + x | g)`, zero-inflated (`zi`), hurdle (`hu`), and (Poisson only)
-AGHQ / coordinate-spatial-range variants. The bivariate residual routes
-(`Gaussian`/`Gaussian`, `Student`/`Student`, `LogNormal`/`LogNormal`) report counts
-the same way; `LogNormal`'s bivariate fit borrows the Gaussian-on-log-y
-optimiser run wholesale (only the reported likelihood is Jacobian-shifted), so
-it carries that run's iteration count rather than re-deriving one.
-`fit_mixed_family`'s cross-family latent-`rho` route reports its own optimiser
-run too, but through the returned `NamedTuple`'s `iterations` field — that route
-does not produce a `DrmFit`, so `niterations` does not apply to it.
+fit and, where the family has one *and the fitter attaches a count*, its scalar
+`(1 | g)` random-intercept, correlated `(1 + x | g)`, zero-inflated (`zi`),
+hurdle (`hu`), and (Poisson only) AGHQ / coordinate-spatial-range variants.
+The default method on counted `_ctl_optimize` routes is LBFGS. It is not the
+only method: `DRMControl(optimizer = :bfgs)` selects BFGS on qualified routes
+(#1136); the fixed-effect `Beta` route may replace the initial result with an
+accepted Newton polish; and two counted Laplace fitters start at BFGS and may
+restart on LBFGS (Gamma/Student independent slopes, Gaussian random-slope mean
+plus sigma random intercept). `niterations` reports the accepted final stage
+only, which is not LBFGS-origin on those last two routes. Some structured
+Gamma/Beta/sparse-Laplace SD routes wrap LBFGS in `Fminbox`; the attached
+count is still that box-constrained run. The bivariate
+residual routes (`Gaussian`/`Gaussian`, `Student`/`Student`,
+`LogNormal`/`LogNormal`) report counts the same way; `LogNormal`'s bivariate
+fit borrows the Gaussian-on-log-y optimiser run wholesale (only the reported
+likelihood is Jacobian-shifted), so it carries that run's iteration count
+rather than re-deriving one. `fit_mixed_family`'s cross-family latent-`rho`
+route reports its own optimiser run too, but through the returned
+`NamedTuple`'s `iterations` field — that route does not produce a `DrmFit`, so
+`niterations` does not apply to it.
 
-Returns `-1` (no single outer LBFGS call to attribute the count to, or no recorded
-count): Gaussian's `meta_V`, `phylo`/`relmat`/`animal`/`spatial`, and
-multi-random-effect routes (the Cox–Reid REML *random-intercept* route, e.g.
+Returns `-1` (no single outer counted `Optim.optimize` attached, or no recorded
+count): Gaussian's `meta_V`, `phylo`/`relmat`/`animal`/`spatial`,
+multi-random-effect routes, and the Gaussian mean `(1 | g)` Woodbury route
+(that last still runs LBFGS or selected BFGS, but does not attach
+`Optim.iterations`; when `control` was supplied, `control_info(fit)` records
+the method and stages). The Cox–Reid REML *random-intercept* route, e.g.
 Poisson `(1 | g)` with `method = :REML`, also stays `-1` — its reported `θ̂`
-comes from a secondary restricted refit, not the counted LBFGS run, so
-attributing that run's count to it would be a mismatch, not a full count); the
-bivariate Gaussian `phylo`/structured (q2/q4) sparse-Laplace routes; and every
+comes from a secondary restricted refit, not the counted run, so
+attributing that run's count to it would be a mismatch, not a full count. The
+bivariate Gaussian `phylo`/structured (q2/q4) sparse-Laplace routes, and every
 family's `phylo`/`relmat`/`animal`/coordinate-spatial random-effect routes other
-than Poisson's spatial-range fit above. These share the sparse augmented-state
+than Poisson's spatial-range fit above, share the sparse augmented-state
 Laplace engine (`src/sparse_*.jl`, `src/*_phylo.jl`) rather than a single
 top-level `Optim.optimize` call, so there is no one iteration count to report
 honestly; do not infer non-iteration (e.g. "closed form") from `-1` on these
@@ -1344,10 +1358,18 @@ function _drm_gaussian_fit(f::DrmFormula, fam::Gaussian; data, K = nothing, A = 
                      unwrap_label = !_rhs_has_bar(rhs[:sigma]))   # (1|g), meta_V(v), relmat/animal/phylo/spatial(1|g), temporal(...)
     structured_sd_slope === nothing || temporal_term === nothing ||
         throw(ArgumentError("drm: a structured slope-only effect cannot be combined with `temporal(...)`."))
-    fixed_sigma, sigma_re, _, structured_sigma = _split_ranef(rhs[:sigma])  # (1|g)→GHQ; structured_sigma = phylo(1|g) on σ
+    fixed_sigma, sigma_re, sigma_meta, structured_sigma = _split_ranef(rhs[:sigma])  # (1|g)→GHQ; structured_sigma = phylo(1|g) on σ
     prior_ri = priors !== nothing && length(re) == 1 && _re_kind(first(re)[1])[1] === :intercept
     prior_two_ri = priors !== nothing && length(re) == 2 && all(r -> _re_kind(r[1])[1] === :intercept, re) && length(unique(last.(re))) == 2
-    if priors !== nothing && !((isempty(re) || prior_ri || prior_two_ri) && isempty(sigma_re) && metav === nothing && structured === nothing && structured_sigma === nothing && temporal_term === nothing && structured_slope === nothing && structured_sd_slope === nothing && isempty(_sd_parts(f)) && isempty(_sdphylo_parts(f)))
+    prior_phylo_lss = priors !== nothing && !has_sd_prior &&
+        priors isa AbstractVector && all(p -> p isa FixedPrior && p.kind === :normal, priors) &&
+        isempty(re) && isempty(sigma_re) && metav === nothing && sigma_meta === nothing &&
+        structured !== nothing && structured[1] === :phylo && structured_sigma === nothing &&
+        _collect_structured(rhs[:mu]) == [structured] && length(f.forms) == 3 &&
+        temporal_term === nothing && structured_slope === nothing && structured_sd_slope === nothing &&
+        isempty(_sd_parts(f)) && length(_sdphylo_parts(f)) == 1 &&
+        first(only(_sdphylo_parts(f))) === structured[2]
+    if priors !== nothing && !prior_phylo_lss && !((isempty(re) || prior_ri || prior_two_ri) && isempty(sigma_re) && metav === nothing && structured === nothing && structured_sigma === nothing && temporal_term === nothing && structured_slope === nothing && structured_sd_slope === nothing && isempty(_sd_parts(f)) && isempty(_sdphylo_parts(f)))
         if has_sd_prior
             throw(ArgumentError("SD priors currently support at most two distinct iid mean random intercepts without other random or structured effects or SD submodels"))
         end
@@ -1403,6 +1425,12 @@ function _drm_gaussian_fit(f::DrmFormula, fam::Gaussian; data, K = nothing, A = 
         priors isa AbstractVector && all(p -> p isa Union{FixedPrior,SDGammaPrior}, priors) || throw(ArgumentError("priors must be created by drm_priors"))
         fixed = FixedPrior[p for p in priors if p isa FixedPrior]
         rows = _resolve_fixed_priors(fixed, names, intercepts)
+        if prior_phylo_lss
+            fit = _drm_gaussian_lss_phylo(f, fam, _sdphylo_parts(f), re, structured,
+                structured_sigma, sigma_re, metav, has_missing_response, y, Xμ, Xσ,
+                nmμ, nmσ, data, tree, g_tol, method, penalty; algorithm, sparse, prior_rows=rows)
+            return _withformula(fit, f)
+        end
         if prior_two_ri
             groups = last.(re)
             sdrows = _resolve_sd_priors(priors, groups, length(nmμ) + length(nmσ) + 1)
@@ -3093,8 +3121,12 @@ function residuals(fit::DrmFit; type::Symbol = :response, rng = Random.default_r
 end
 
 # `fit.scales` keys that hold fit context or bookkeeping rather than a fitted
-# distributional parameter. They never appear in `sigma()`.
-_sigma_internal_key(k::Symbol) = k in (:cond_blup_unavailable, :cond_logsd_wall) || k in _COND_FIT_KEYS
+# distributional parameter. They never appear in `sigma()`, and the bridge and
+# `simulate(newdata)` skip them too. `:spatial_range` is the fixed median
+# distance of a coordinate spatial kernel (not estimated; `coef(fit, :range)`
+# and `summary` read it). It is not a scale.
+_sigma_internal_key(k::Symbol) =
+    k === :spatial_range || k in (:cond_blup_unavailable, :cond_logsd_wall) || k in _COND_FIT_KEYS
 
 """
     sigma(fit)
@@ -4096,6 +4128,7 @@ function _fit_for_simulate_newdata(fit::DrmFit, newdata)
     for k in keys(fit.scales)
         haskey(scales, k) && continue
         startswith(String(k), "cond_") && continue   # conditional-mode record: population-level newdata has none
+        _sigma_internal_key(k) && continue           # fixed spatial range and other non-scale bookkeeping
         _simulate_newdata_bookkeeping_key(k) && continue   # per-group / training-row records; the draw never reads them
         if k === :beta_mu
             haskey(pp, :mu) || throw(ArgumentError("simulate: ZeroOneBeta `newdata` needs a :mu prediction"))
