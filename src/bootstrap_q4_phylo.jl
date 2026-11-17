@@ -226,7 +226,7 @@ function _q4_boot_row(param::Symbol, estimate::Real, col::AbstractVector, α::Re
     v = filter(isfinite, col)
     ok = length(v) >= 2
     return (param = param, coef = String(param), estimate = Float64(estimate),
-            std_error = ok ? Statistics.std(v) : NaN,
+            std_error = ok ? (allequal(v) ? 0.0 : Statistics.std(v)) : NaN,
             lower = ok ? Statistics.quantile(v, α) : NaN,
             upper = ok ? Statistics.quantile(v, 1 - α) : NaN)
 end
