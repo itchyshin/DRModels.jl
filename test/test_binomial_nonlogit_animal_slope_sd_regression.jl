@@ -66,7 +66,7 @@ end
                 Distributions.cdf.(Ref(Distributions.Normal()), eta) :
                 -expm1.(-exp.(eta))
             @test predict(fit, fixture.data) ≈ expected_mean
-            @test fitted(fit) ≈ expected_mean
+            @test fitted(fit; re = :zero) ≈ expected_mean
 
             sim_seed = 20261032 + (link === :cloglog)
             observed_simulation = simulate(fit; re = :zero, rng = MersenneTwister(sim_seed))

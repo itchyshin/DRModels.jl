@@ -1,0 +1,5 @@
+# Check log: independent AVONET preparation helper
+
+The independently authored helper's synthetic test passes with `OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1 Rscript --vanilla tools/tests/test-prepare-avonet.R`. A separate fail-closed comparator checked 90 randomized synthetic cases and listed edge cases against the previous helper. A second comparison checked the complete returned data, tree and source-path list on one local AVONET/tree pair at 10, 50 and 100 species. Both use `all.equal`; they are not byte-identity or general-equivalence proofs. Before and after input, helper and old-script hashes matched for the retained runs.
+
+An independent screen found no exact three-substantive-line match of at least 80 characters between the helper and the screened drmTMB R snapshot or the prior Julia helper. The full benchmark and model fits were not rerun. Warnings in the synthetic comparator were suppressed, and only one ape version and one real data/tree pair were checked. This is not a general license clearance or a performance claim.

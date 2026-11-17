@@ -55,10 +55,17 @@ import Distributions
     @test bd["vcov_complete"] == d.vcov_complete
     @test bd["penalized_map"] == d.penalized_map
     @test bd["boundary"] == d.boundary
-    # `grad_source` is also echoed at the top level: R/julia-diagnostics.R's
-    # `drm_julia_gradient_source()` reads `object$bridge[["grad_source"]]` off
-    # the RAW (un-nested) payload, not off a nested "diagnostics" key.
-    @test bridged["grad_source"] == String(d.grad_source)
+    # Top-level `grad_source` is `"stored"` exactly when `"gradient"` is
+    # shipped. That vector's only producer is `fit.nllgrad`. The nested
+    # diagnostic above keeps the scalar producer. `:none` / `:unavailable`
+    # may be echoed with no vector; every other scalar source omits the key
+    # (#1402).
+    @test haskey(bridged, "gradient") == (get(bridged, "grad_source", nothing) == "stored")
+    if !haskey(bridged, "gradient") && d.grad_source in (:none, :unavailable)
+        @test bridged["grad_source"] == String(d.grad_source)
+    elseif !haskey(bridged, "gradient")
+        @test !haskey(bridged, "grad_source")
+    end
 
     # --- non-Gaussian ordinary random-intercept Laplace route -----------------
     G = 25
@@ -136,5 +143,12 @@ import Distributions
     @test ismissing(bd_cr["iterations"])
     @test ismissing(bd_cr["optimizer"])
     @test bd_cr["converged"] == d_cr.converged
-    @test cr_bridged["grad_source"] == String(d_cr.grad_source)
+    # Same stored-iff-vector rule as the closed-form route above (#1402).
+    @test haskey(cr_bridged, "gradient") ==
+          (get(cr_bridged, "grad_source", nothing) == "stored")
+    if !haskey(cr_bridged, "gradient") && d_cr.grad_source in (:none, :unavailable)
+        @test cr_bridged["grad_source"] == String(d_cr.grad_source)
+    elseif !haskey(cr_bridged, "gradient")
+        @test !haskey(cr_bridged, "grad_source")
+    end
 end

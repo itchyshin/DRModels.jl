@@ -1,0 +1,1 @@
+| 2026-11-16 | Two-effect adaptive quadrature boundary | Dense Gaussian objective, derivatives and modes; Gamma integral; focused models | Focused checks passed on the numerical prototype; full candidate suite and release checks pending | Codex |
