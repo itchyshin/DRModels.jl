@@ -1233,6 +1233,10 @@ function _gaussian_offset_shift(f::DrmFormula, fam, kwargs)
     end
     (mu_rhs !== nothing && _has_offset_term(mu_rhs)) || return f, kwargs, nothing
     haskey(kwargs, :data) || return f, kwargs, nothing     # the missing-`data` error is raised downstream
+    # #1382: narrow to complete predictors (including the offset column) before
+    # building the offset vector — same as `_drop_missing_predictor_rows` inside
+    # `_drm_gaussian_fit`, but offset shift runs earlier.
+    kwargs = merge((; kwargs...), (; data = _drop_missing_predictor_rows(f, kwargs[:data])))
     _has_joint_mi(f) && _refuse_offset_route(fam, "a joint `mi()` missing-predictor model")
     _, re, mv, st = _split_ranef(mu_rhs; allow_phylo_slope = true, allow_temporal = true)
     # `meta_V(v)` on its own is admitted: the known sampling variances do not involve
