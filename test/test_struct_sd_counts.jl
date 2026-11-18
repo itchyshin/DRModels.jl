@@ -4,8 +4,9 @@
 #   Gamma          (1 | g) + (0 + x1 | g) with ONE sd formula (the other coefficient keeps a constant SD)
 #   LogNormal      (1 | g) + (1 | g2) with sd(g) and sd(g2)     (log y is Gaussian: Gaussian route + Jacobian)
 #   Student        (1 | g) + (1 | g2) with sd(g) and sd(g2)     (crossed Laplace, log SD regression per factor)
-# Reference: test/fixtures/struct_sd_counts/reference_drmtmb.csv (script ref_struct_sd_counts.R, same folder,
-# says how to regenerate it); datasets are the committed wave-8 gap-map data (400 rows).
+# Reference: test/fixtures/struct_sd_counts/reference_drmtmb.csv; an independent builder
+# reproduced the saved rows (ref_struct_sd_counts_independent.R, same folder).
+# The datasets are the committed wave-8 gap-map data (400 rows).
 # Thresholds, fixed before the coefficient comparison (docs/dev-log/2026-11-09-struct-sd-counts.md):
 #   |loglik_julia - loglik_R| <= 1e-4;  every mu / sigma / nu / SD coefficient |diff| <= 1e-3 and <= 0.02 R-SE;
 #   |se_julia / se_R - 1| <= 1e-2 (finite R SEs).

@@ -92,8 +92,8 @@ function _variance_component_indices(fit::DrmFit)
     end
 
     isempty(comps) && !isempty(omega) && error("heritability/repeatability: this fit " *
-        "has a random intercept only on the scale (`sigma ~ (1 | g)`). Its SD lives on " *
-        "the log σ scale and is not a variance component of the response, so there is " *
+        "has random effects only on the scale (`sigma ~ (1 | g)` or a `sigma` slope). Their SDs live on " *
+        "the log σ scale and are not variance components of the response, so there is " *
         "no mean random-effect variance to put in the ratio. Add a mean random " *
         "intercept (e.g. `y ~ x + (1 | g)`), as drmTMB requires too.")
     isempty(comps) && error("heritability/repeatability: no structured variance " *
@@ -104,10 +104,11 @@ function _variance_component_indices(fit::DrmFit)
     return comps, resid_idx, omega
 end
 
-# Is the `:resd` entry `nm` a random intercept on log σ? The routes name it
-# `<group>_logsigma` (#322), but a mean grouping column could carry that suffix
-# too, so the name only counts when the `sigma` formula really has a random term
-# on `<group>`. A fit without a retained formula falls back to the suffix.
+# Is the `:resd` entry `nm` a random effect on log σ? The routes name an intercept
+# `<group>_logsigma` (#322) and a slope `<group>_<slope>_logsigma`, but a mean grouping
+# column could carry that suffix too, so the name only counts when the `sigma` formula
+# really has a random term on `<group>` (and, for a slope name, on that slope). A fit
+# without a retained formula falls back to the suffix.
 function _is_logsigma_re(fit::DrmFit, nm)
     s = String(nm)
     endswith(s, "_logsigma") || return false
@@ -115,9 +116,27 @@ function _is_logsigma_re(fit::DrmFit, nm)
     f isa DrmFormula || return true
     i = findfirst(p -> first(p) === :sigma, f.forms)
     i === nothing && return false
-    grp = s[1:end-length("_logsigma")]
+    base = s[1:end-length("_logsigma")]
     rhs = replace(string(last(f.forms[i])), r"\s+" => " ")
-    return occursin("| $grp)", rhs)
+    occursin("| $base)", rhs) && return true
+    return base in _sigma_re_stored_names(last(f.forms[i]))
+end
+
+# The SD names a `sigma` random-effect formula can store a slope under: `<group>_<slope>` for
+# `(0 + x | g)` and for the slope half of `(1 + x | g)`. Empty when the term cannot be parsed
+# (a structured or labelled term): the intercept check above is then the only rule.
+function _sigma_re_stored_names(rhs)
+    out = String[]
+    try
+        _, sre = _split_ranef(rhs)
+        for t in sre
+            kind, sym = _re_kind(t[1])
+            kind === :intercept || push!(out, string(t[2], "_", sym))
+        end
+    catch e
+        e isa InterruptException && rethrow()
+    end
+    return out
 end
 
 # Variance contributed by θ index `idx` to a ratio. A component's variance is
