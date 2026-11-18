@@ -51,7 +51,7 @@ end
     @test coef(fit, :mu)[2] ≈ β[2] atol = 0.15       # slope (independent of the RE)
     @test re_sd(fit)[:id] ≈ σphy atol = 0.15         # variance component recovered
     @test isfinite(loglik(fit))
-    @test all(fitted(fit) .> 0)
+    @test all(fitted(fit; re = :zero) .> 0)
 end
 
 @testset "Poisson relmat(1|id) — exact gradient vs finite differences (FD gate)" begin

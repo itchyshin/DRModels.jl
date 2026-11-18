@@ -664,6 +664,7 @@ This route is **experimental** — see the `cross_family_latent` capability row.
             "Beta and Gamma; $(nameof(typeof(fam)))() is not implemented here (drmTMB refuses " *
             "mixed-response pairs altogether, so there is no R reference). Fit the two responses separately, or choose one of those families."))
     end
+    _require_simple_bar_groups(f)   # nested `g / h` and other compound groupings: a named refusal
     _require_formula_column_lengths(f, data)   # #1022: no ragged columns under @inbounds
     data = _drop_missing_predictor_rows(f, data)   # #1089: R's na.omit, with a count
     fam1, fam2 = fams
