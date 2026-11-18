@@ -3325,6 +3325,12 @@ function _predict_ignore_label_response(nd::NamedTuple, response::Symbol)
     return merge(nd, NamedTuple{(response,)}((zeros(length(col)),)))
 end
 
+function predict(fit::DrmFit; type::Symbol = :response, se::Bool = false)
+    throw(ArgumentError(
+        "predict: pass the data as `predict(fit, data; type = :$type)`, or use `fitted(fit)` " *
+        "for the fitted response mean."))
+end
+
 function predict(fit::DrmFit, newdata; type::Symbol = :response, se::Bool = false)
     se && _is_fixed_prior_fit(fit) && fit.estim_method === :MAP && throw(ArgumentError("predict: standard errors are not qualified for $(_prior_kind_label(fit)) fits"))
     f = fit.formula
