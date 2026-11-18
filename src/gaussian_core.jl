@@ -3129,7 +3129,8 @@ end
 # distance of a coordinate spatial kernel (not estimated; `coef(fit, :range)`
 # and `summary` read it). It is not a scale.
 _sigma_internal_key(k::Symbol) =
-    k === :spatial_range || k in (:cond_blup_unavailable, :cond_logsd_wall) || k in _COND_FIT_KEYS
+    k === :spatial_range || k === :trials || k in (:cond_blup_unavailable, :cond_logsd_wall) ||
+    k in _COND_FIT_KEYS
 
 """
     sigma(fit)
