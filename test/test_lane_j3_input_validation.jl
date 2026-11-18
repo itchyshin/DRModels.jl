@@ -310,8 +310,10 @@ end
         # refused: every shape the Laplace route does not cover still raises, with the offset
         @test_throws ArgumentError drm(bf(@formula(c ~ x + offset(logb))), P;
                                        data = d, marginal = :Laplace, se = false)          # no (1 | g)
-        @test_throws ArgumentError drm(bf(@formula(c ~ x + offset(logb) + (1 + x | g))), P;
-                                       data = d, marginal = :Laplace, se = false)          # slope
+        # a correlated (1 + x | g) with a Poisson offset is applied (agrees with drmTMB 0.8.1; R-pinned in test_laplace_parity.jl)
+        fcorr = drm(bf(@formula(c ~ x + offset(logb) + (1 + x | g))), P; data = d, marginal = :Laplace, se = false)
+        @test length(coef(fcorr, :mu)) == 2
+        @test fcorr.marginal === :Laplace
         @test_throws ArgumentError drm(bf(@formula(c ~ x + offset(logb) + (1 | g) + (1 | h))), P;
                                        data = d, marginal = :Laplace, se = false)          # crossed
         @test_throws ArgumentError drm(bf(@formula(c ~ x + offset(logb) + relmat(1 | g))), P;

@@ -1,0 +1,1 @@
+* Gaussian models with one phylogenetic mean intercept and a matching phylogenetic SD regression can use normal priors on `mu` and `sigma` coefficients. The dense route returns penalized point estimates; the prior does not target phylogenetic SD-regression coefficients.

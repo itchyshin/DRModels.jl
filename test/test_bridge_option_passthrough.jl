@@ -96,12 +96,57 @@ using Test, Random, LinearAlgebra
     native_g = zeros(length(coef(native_multi)))
     native_multi.nllgrad(native_g, coef(native_multi))
     @test g ≈ native_g atol=1e-10
+    # The vector's only producer is `fit.nllgrad`, so the top-level label is
+    # `"stored"` exactly when the vector is present. The nested diagnostic
+    # keeps the scalar `max_abs_grad` producer and is not that label (#1402).
+    @test haskey(bridged_multi, "gradient") ==
+          (get(bridged_multi, "grad_source", nothing) == "stored")
+    @test bridged_multi["grad_source"] == "stored"
 
     # --- (4) gradient key absent on a route with no stored gradient ------------
+    # Closed-form Gaussian location-scale stores an objective and no `nllgrad`
+    # (`_fit_fixed_gaussian`). `bridge_diagnostics` may still report a scalar
+    # `max_abs_grad` from ForwardDiff (`grad_source = :forward`). That scalar
+    # must not be labelled as a bridge gradient vector (#1402): drmTMB's
+    # `drm_julia_gradient_source()` aborts when a producer source arrives
+    # without `"gradient"`. With the vector omitted, the top-level key is
+    # omitted too (R reports `"unknown"`), unless the scalar source is already
+    # `:none` or `:unavailable`.
+    plain = drm(bf(@formula(y ~ x), @formula(sigma ~ x)), Gaussian(); data = data)
+    @test plain.nllgrad === nothing
     plain_bridged = drm_bridge(; formula = "y ~ x; sigma ~ x", family = "gaussian",
                                data = data)
     @test !haskey(plain_bridged, "gradient")
     @test !haskey(plain_bridged, "gradient_names")
+    plain_src = get(plain_bridged, "grad_source", nothing)
+    plain_diag = plain_bridged["diagnostics"]["grad_source"]
+    @test plain_diag == String(bridge_diagnostics(plain).grad_source)
+    if plain_diag in ("none", "unavailable")
+        @test plain_src == plain_diag
+    else
+        @test plain_src === nothing
+        @test plain_diag in ("locscale", "stored", "forward", "finite")
+    end
+    @test haskey(plain_bridged, "gradient") == (plain_src == "stored")
+
+    # A callback that writes NaN is not a finite gradient. The vector is
+    # withheld, and the top-level label is not `"stored"`. The nested
+    # diagnostic still names the scalar fallback (`:finite` or `:unavailable`).
+    nan_fit = DRModels._withnll(plain, plain.nll, (g, θ) -> fill!(g, NaN))
+    nan_bridged = DRModels._bridge_flatten(nan_fit; family = "gaussian")
+    @test !haskey(nan_bridged, "gradient")
+    @test !haskey(nan_bridged, "gradient_names")
+    nan_src = get(nan_bridged, "grad_source", nothing)
+    nan_diag = nan_bridged["diagnostics"]["grad_source"]
+    @test nan_src != "stored"
+    @test haskey(nan_bridged, "gradient") == (nan_src == "stored")
+    @test nan_diag == String(bridge_diagnostics(nan_fit).grad_source)
+    @test nan_diag != "stored"
+    if nan_diag in ("none", "unavailable")
+        @test nan_src == nan_diag
+    else
+        @test nan_src === nothing
+    end
 end
 
 @testset "drm_bridge names an option the target fitter does not accept" begin

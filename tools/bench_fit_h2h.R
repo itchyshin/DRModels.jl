@@ -85,25 +85,37 @@ fit_info <- function(fit, engine) {
 
 # ---- cell builders ----------------------------------------------------------
 
-make_tree <- function(n_tip, seed) {
+# Isolated prototype: preserve the ambient RNG kind and set the supplied seed.
+# The phylogenetic effect uses correlation (not covariance) and R's upper
+# Cholesky factor U, for which crossprod(U) is that correlation matrix.
+make_phylo_tree <- function(n_tip, seed) {
   stopifnot(requireNamespace("ape", quietly = TRUE))
   set.seed(seed)
   tree <- ape::rcoal(n_tip)
   tree$tip.label <- paste0("sp_", seq_len(n_tip))
-  h <- max(diag(ape::vcv(tree)))
-  tree$edge.length <- tree$edge.length / h   # unit tip variance -- see
-  tree                                       # parity_phylo_nongaussian.R note 1
+  tree$edge.length <- tree$edge.length / max(diag(ape::vcv.phylo(tree)))
+  tree
+}
+make_phylo_data <- function(seed, n_tip, n_each, sd_phy) {
+  tree <- make_phylo_tree(n_tip, seed)
+  corr <- ape::vcv.phylo(tree, corr = TRUE)
+  effect <- drop(t(chol(corr)) %*% rnorm(n_tip)) * sd_phy
+  names(effect) <- tree$tip.label
+  species <- factor(rep(tree$tip.label, each = n_each), levels = tree$tip.label)
+  x <- rnorm(n_tip * n_each)
+  eta <- 0.3 + 0.4 * x + effect[as.character(species)]
+  list(tree = tree, effect = effect, species = species, x = x, eta = unname(eta))
 }
 
+make_tree <- function(n_tip, seed) make_phylo_tree(n_tip, seed)
+
 phylo_fixture <- function(n_tip, n_each, seed, sd_phy = 0.5) {
-  tree <- make_tree(n_tip, seed)
-  A <- ape::vcv(tree, corr = TRUE)
-  u <- as.vector(t(chol(A)) %*% rnorm(n_tip)) * sd_phy
-  species <- factor(rep(tree$tip.label, each = n_each), levels = tree$tip.label)
-  idx <- rep(seq_len(n_tip), each = n_each)
+  f <- make_phylo_data(seed, n_tip, n_each, sd_phy)
+  tree <- f$tree
+  species <- f$species
+  x <- f$x
+  eta <- f$eta
   n <- n_tip * n_each
-  x <- rnorm(n)
-  eta <- 0.3 + 0.4 * x + u[idx]
   list(
     data = data.frame(
       x = x, species = species,

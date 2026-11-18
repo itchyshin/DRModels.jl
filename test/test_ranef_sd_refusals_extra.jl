@@ -1,4 +1,5 @@
-using Test, DRModels, StatsModels
+using Test, DRModels
+using StatsModels: @formula
 
 @testset "Gamma SD prior rejects invalid selectors and parameters" begin
     for a in (1.0, 0.0, -1.0, NaN, Inf), b in (3.0,)
@@ -81,7 +82,7 @@ end
         e
     end
     @test err isa ArgumentError
-    @test occursin("fixed-effect priors currently do not support random or structured effects", sprint(showerror, err))
+    @test occursin("fixed-effect priors currently support at most two distinct iid mean random intercepts and no other random or structured effects", sprint(showerror, err))
 
     # Additional unsupported-route diagnostics retain fixed-only compatibility.
     x = repeat([-1.0, 0.0, 1.0], 4)

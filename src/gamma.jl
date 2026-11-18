@@ -122,6 +122,10 @@ function _drm_gamma_fit(f::DrmFormula, fam::Gamma; data, tree = nothing, K = not
                           "intercepts `(1 | g) + (1 | h)` only, #761)")
     mv === nothing ||
         error("Gamma() does not support meta_V markers")
+    let sigre = _drm_sigma_ranef_laplace_family(f, fam; data, g_tol, se, fixed_mu, re, mv, st,
+                                                offset_term = offset_term, isva = isva, isaghq = isaghq)
+        sigre === nothing || return sigre
+    end
     for (pname, r) in f.forms          # only the mean may carry a random effect
         pname === :mu && continue
         _, re2, mv2, st2 = _split_ranef(r)
@@ -473,6 +477,8 @@ function _drm_gamma_sd_regression(f::DrmFormula, fam::Gamma; data,
                                  coords = nothing, g_tol::Real = 1e-8,
                                  se::Bool = true, marginal::Symbol = :LA,
                                  nAGQ::Int = _SD_IID_AGHQ_K)
+    laplace_fit = _laplace_sd_route(f, fam, Val(:gamma), marginal; data, g_tol)
+    laplace_fit === nothing || return laplace_fit
     marginal === :LA || throw(ArgumentError(
         "Gamma `sd(group) ~ …` currently supports `marginal = :LA` only."))
     nAGQ >= 1 || throw(ArgumentError("nAGQ must be ≥ 1; got $nAGQ"))
@@ -1170,6 +1176,7 @@ function _fit_gamma_ranef(fam::Gamma, y, Xμ, Xσ, gidx, G, nmμ, nmσ, grp, g_t
     names = [:mu => nmμ, :sigma => nmσ, :resd => [String(grp)]]
     means = Dict(:mu => exp.(Xμ * θ̂[1:pμ])); obs = Dict(:mu => Vector{Float64}(y))
     scales = Dict(:sigma => _reported_sigma(Xσ * θ̂[(pμ+1):(pμ+pσ)], -15.0, 15.0))
+    _record_cond_fit_aghq!(scales, nll, θ̂, bcache, gidx, Zre)   # fitted-row modes for `fitted(fit)`
     return _withiterations(
         _withnll(DrmFit(fam, blocks, names, θ̂, V, -nll(θ̂), n, Optim.converged(res), means, obs, scales), nll),
         Optim.iterations(res))
@@ -1188,27 +1195,31 @@ function _fit_gamma_corr_ranef(fam::Gamma, y, Xμ, Xσ, xs, gidx, G, nmμ, nmσ,
         push!(members[gidx[i]], i)
     end
     rule = _AGHQRule(2, nq); Zre = hcat(ones(n), Float64.(xs)); bcache = zeros(2, G)   # #834: per-group AGHQ
-    function nll(θ)
+    function nll_with_cache(θ, cache; count_resets::Bool=true)
         βμ = θ[1:pμ]; βσ = θ[pμ+1:pμ+pσ]
         L = _corr_ranef_L(θ[pμ+pσ+1], θ[pμ+pσ+2], θ[pμ+pσ+3])
         η0 = Xμ * βμ; ησ = clamp.(Xσ * βσ, -15.0, 15.0)
         ll = (i, η) -> (μ = exp(clamp(η, -30.0, 30.0)); α = exp(-2 * ησ[i]);
                         Distributions.logpdf(Distributions.Gamma(α, μ / α), y[i]))
-        return -_aghq_marginal_loglik(ll, members, η0, Zre, L, rule, bcache)
+        return -_aghq_marginal_loglik(ll, members, η0, Zre, L, rule, cache; count_resets=count_resets)
     end
+    nll(θ) = nll_with_cache(θ, bcache)
+    diagnostic_nll(θ, cache) = nll_with_cache(θ, cache; count_resets=false)
     ȳ = sum(y) / n; v = sum(abs2, y .- ȳ) / max(n - 1, 1)
     α0 = max(ȳ^2 / max(v, eps()), 0.5)
     θ0 = zeros(pμ + pσ + 3)
     θ0[1] = log(ȳ + eps()); θ0[pμ+1] = -0.5 * log(α0)
     θ0[pμ+pσ+1] = log(0.4); θ0[pμ+pσ+2] = log(0.4); θ0[pμ+pσ+3] = 0.0
-    res = Optim.optimize(nll, θ0, Optim.LBFGS(), Optim.Options(g_tol = g_tol); autodiff = :forward)
+    res = _optimize_corr_ranef(nll, θ0, g_tol, bcache)
     θ̂ = Optim.minimizer(res); V = _vcov_from_hessian(ForwardDiff.hessian(nll, θ̂))
     blocks = [:mu => 1:pμ, :sigma => (pμ+1):(pμ+pσ), :recov => (pμ+pσ+1):(pμ+pσ+3)]
     names = [:mu => nmμ, :sigma => nmσ, :recov => ["$(grp):L11", "$(grp):L22", "$(grp):L21"]]
     means = Dict(:mu => exp.(Xμ * θ̂[1:pμ])); obs = Dict(:mu => Vector{Float64}(y))
     scales = Dict(:sigma => _reported_sigma(Xσ * θ̂[(pμ+1):(pμ+pσ)], -15.0, 15.0))
+    _record_cond_fit_aghq!(scales, nll, θ̂, bcache, gidx, Zre)   # fitted-row modes for `fitted(fit)`
     return _withiterations(
-        _withnll(DrmFit(fam, blocks, names, θ̂, V, -nll(θ̂), n, Optim.converged(res), means, obs, scales), nll),
+        _withnll(DrmFit(fam, blocks, names, θ̂, V, -nll(θ̂), n, Optim.converged(res), means, obs, scales),
+                 _AGHQDiagnosticObjective(nll, diagnostic_nll, bcache)),
         Optim.iterations(res))
 end
 
