@@ -56,6 +56,26 @@ _threw(f) = try; f(); false catch e; e isa ArgumentError; end
         @test_logs min_level = Base.CoreLogging.Warn ms(fm, (; y, x, v))
     end
 
+    @testset "random-effect shapes the mean route parses only with extra flags still warn" begin
+        # `_mu_has_random_effect` once parsed with `allow_phylo_slope` only, so these shapes threw an
+        # ArgumentError, the catch returned false, and the warning was skipped. Reuse a cheap fit and
+        # swap in the formula (the predicate reads only `fit.formula`, and it alone gates the warning).
+        base = drm(bf(@formula(y ~ x + (1 | g1)), @formula(sigma ~ 1)), Gaussian(); data)
+        with_formula(f) = DRModels.DrmFit(
+            (name === :formula ? f : getfield(base, name) for name in fieldnames(DRModels.DrmFit))...)
+        for (label, mu) in (
+                "animal slope" => @formula(y ~ x + animal(1 + x | g1)),
+                "relmat slope" => @formula(y ~ x + relmat(1 + x | g1)),
+                "spatial slope" => @formula(y ~ x + spatial(1 + x | g1)),
+                "temporal term" => @formula(y ~ x + temporal(1 | g1, g2, ar1)),
+                "labelled term" => @formula(y ~ x + phylo(1 + x | p | g1)))
+            @testset "$label" begin
+                ff = with_formula(bf(mu, @formula(sigma ~ 1)))
+                @test DRModels._mu_has_random_effect(ff) == true
+            end
+        end
+    end
+
     @testset "valid fit with a simulator is silent" begin
         f = drm(bf(@formula(y ~ x + (1 | g1)), @formula(sigma ~ 1)), Gaussian(); data)
         sim = @test_logs min_level = Base.CoreLogging.Warn ms(f, data)
