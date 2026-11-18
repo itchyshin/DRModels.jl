@@ -55,6 +55,13 @@ native-vs-native agreement, not R-vs-Julia parity in the ordinary sense.
 | `plain_binomial_nonphylo` | Fixed-effect binomial trials, no random effects | ✅ | ✅ | ✅ supported | ✅ logLik/coef `2.48e-13`, SE `1.27e-9` abs |
 | `location_scale_scale` | Location-scale-scale, `sd(group)`/`sd(group, phylogenetic)` | ✅ | ✅ | 🔨 | ✅ exact agreement across the Mizuno M2–M6q ladder (Δlogℓik = 0.000000) |
 
+!!! note "Known twin differences with no parity row"
+    Two DRModels.jl routes have no drmTMB counterpart today, so neither is
+    covered by the table above: `hu` on `Poisson()` (drmTMB's `poisson()`
+    refuses `hu`; #726) and structured/phylogenetic effects on `BetaBinomial()`
+    (drmTMB refuses structured markers on `beta_binomial`; #740). See
+    [Families](families.md). Both are documentation of current behaviour only.
+
 For these twelve selected rows, the source ledger records four R bridge routes
 as `supported` and eight as `experimental`. Ten have `claim_status = covered`;
 `cross_family_latent` is `partial`, and `engine_control_surface` is
@@ -112,7 +119,9 @@ stayed within about 5e-4 of it. A later Poisson `(1 | g)` comparison
   Poisson comparison, the dataset checked agreed to 5.6e-9 in log-likelihood
   and 1e-11 in the estimates. `:Laplace` is accepted for one ordinary `(1 | g)`
   on the mean of Poisson, Binomial, NegBinomial2, Gamma and Beta (with
-  `sigma ~ 1`) or Student, and for a Gaussian random intercept on `sigma`
+  `sigma ~ 1`), Student or CumulativeLogit (one `(1 | g)`; on four simulated
+  datasets its log-likelihood matches drmTMB 0.8.1 to 2e-12, while the
+  default quadrature sits 0.01 to 0.15 above it), and for a Gaussian random intercept on `sigma`
   (`sigma ~ 1 + (1 | g)`, fixed-effect `sigma` covariates allowed) with a
   fixed-effect mean, by maximum likelihood. `LogNormal()` also accepts
   `:Laplace` for one ordinary mean random intercept: it returns the same exact

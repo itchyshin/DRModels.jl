@@ -1,8 +1,8 @@
 using DRModels
-using Test, LinearAlgebra, Random, SparseArrays, Serialization
+using Test, LinearAlgebra, Random, SparseArrays, Serialization, StableRNGs
 
 @testset "Bernoulli animal q2 SD regression" begin
-    rng = MersenneTwister(20261028)
+    rng = StableRNG(20261028)
     G, m = 32, 28
     level_order = randperm(rng, G)
     group_index = repeat(1:G, inner = m)
@@ -28,7 +28,7 @@ using Test, LinearAlgebra, Random, SparseArrays, Serialization
     )))
     data = (; y, x, z0, z1, group)
     formula = bf(
-        @formula(y ~ x + animal(1 + x | group)),
+        @formula(y ~ x + animal(1 + x | p | group)),
         @formula(sd(group, animal, coef(intercept)) ~ z0),
         @formula(sd(group, animal, coef(x)) ~ z1),
     )
@@ -75,9 +75,9 @@ using Test, LinearAlgebra, Random, SparseArrays, Serialization
 
     # The public marginal simulator must draw the same correlated animal
     # coefficient field as the likelihood, with group-specific SDs.
-    sim_rng = MersenneTwister(901)
+    sim_rng = StableRNG(901)
     simulator = DRModels._marginal_simulator_build(fit, data; A)
-    simulated = simulator(MersenneTwister(901))
+    simulated = simulator(StableRNG(901))
     L = cholesky(Symmetric(A)).L
     z0, z1 = randn(sim_rng, G), randn(sim_rng, G)
     field0, field1 = DRModels._binomial_animal_q2_correlated_fields(
@@ -110,11 +110,11 @@ using Test, LinearAlgebra, Random, SparseArrays, Serialization
         sqrt(1 - tanh(only(coef(fit, :recov)))^2) .* z1)
     precision_simulator = DRModels._marginal_simulator_build(
         fit, data; Ainv)
-    precision_simulated = precision_simulator(MersenneTwister(902))
+    precision_simulated = precision_simulator(StableRNG(902))
     @test length(precision_simulated) == length(y)
     @test all(in((0.0, 1.0)), precision_simulated)
     boot = bootstrap_result(fit; data, A, B = 1,
-        rng = MersenneTwister(903), failures = :skip)
+        rng = StableRNG(903), failures = :skip)
     @test boot.attempted == 1
     @test boot.used == 1
     @test boot.failed == 0
@@ -156,13 +156,13 @@ end
 
 @testset "Non-logit Bernoulli animal q2 SD regression" begin
     formula = bf(
-        @formula(y ~ x + animal(1 + x | group)),
+        @formula(y ~ x + animal(1 + x | p | group)),
         @formula(sd(group, animal, coef(intercept)) ~ z0),
         @formula(sd(group, animal, coef(x)) ~ z1),
     )
     for link in (:probit, :cloglog)
         @testset "$link link" begin
-            rng = MersenneTwister(link === :probit ? 202610291 : 202610292)
+            rng = StableRNG(link === :probit ? 202610291 : 202610292)
             G, m = 80, 40
             group_index = repeat(1:G, inner = m)
             group = repeat(1:G, inner = m)
@@ -203,7 +203,7 @@ end
             @test all(isfinite, predicted[blocks[1]])
             @test all(isfinite, predicted[blocks[2]])
             simulated = DRModels._marginal_simulator_build(fit, data; A)(
-                MersenneTwister(202610293))
+                StableRNG(202610293))
             @test length(simulated) == length(y)
             @test all(in((0.0, 1.0)), simulated)
         end

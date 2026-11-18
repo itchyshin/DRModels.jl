@@ -35,9 +35,9 @@ _safe_objective(f) = θ -> _finite_or_sentinel(f(θ))
 # on pathological brackets near a runaway optimum and throws, losing the fit. Retry
 # from the start with BackTracking (no such assertions) and report whatever it
 # reaches; `converged` stays honest (false if the gradient tolerance is not met).
-function _optimize_with_fallback(nll, θ0, g_tol)
+function _optimize_with_fallback(nll, θ0, g_tol;
+                                 opts = Optim.Options(g_tol = g_tol))
     f = _safe_objective(nll)
-    opts = Optim.Options(g_tol = g_tol)
     try
         return Optim.optimize(f, θ0, Optim.LBFGS(), opts; autodiff = :forward)
     catch e
@@ -79,7 +79,7 @@ the sparse-Laplace engine. A phylogenetic random intercept on the mean,
 intercept + slope `(1 + x | g)` is fit by the same per-group adaptive
 quadrature helper, `nq` nodes per axis (the same scheme as
 [`BetaBinomial`](@ref)); it needs within-group variation in `x` — a slope
-predictor that is constant within any level of `g` leaves the slope SD and
+predictor that is constant within every level of `g` leaves the slope SD and
 group-level correlation unidentified, and is refused with an informative
 error (mirrors drmTMB's `drm_validate_q2_slope_variation`). An independent
 random slope `(0 + x | g)` and `marginal = :VA` on `(1 + x | g)` remain out of
@@ -168,7 +168,7 @@ predict_parameters(fit_sd, dat)[:sd]  # one fitted random-effect SD per row
 fit_relmat_sd = drm(bf(@formula(y ~ x + relmat(1 | id)),
                        @formula(sd(id, relmat) ~ z)),
                     Binomial(); data = dat, K = K)
-fitted(fit)        # fitted success probabilities on the response scale
+fitted(fit)        # fitted success probabilities on the response scale (adds the random-effect modes)
 
 # Experimental: Binomial random-intercept variational (ELBO) marginal.
 fit_va = drm(bf(@formula(y ~ x + (1 | g))), Binomial(); data = dat, marginal = :VA)
@@ -225,7 +225,53 @@ end
 # FX3b: `se = false` is recorded on the fit (`DrmFit.uncertainty`), so
 # `convergence_status` does not read the skipped (NaN) covariance as a failure.
 @drm_entry function drm(f::DrmFormula, fam::Binomial; se::Bool = true, kwargs...)
-    return _withuncertainty(_drm_binomial_fit(f, fam; se = se, kwargs...), se)
+    fit = _withuncertainty(_drm_binomial_fit(f, fam; se = se, kwargs...), se)
+    return _with_prior_table_input(fit, get(kwargs, :priors, nothing))
+end
+
+# `ids = …` labels the rows of `A` (animal term) or of `coords` (spatial term), as on
+# the Gaussian, Poisson, NegBinomial2 and Gamma routes. The Binomial fitter used to have
+# no `ids` keyword, so the advice in the unlabelled-`A` warning ended in a MethodError.
+# `A` is reordered to the first-seen group order the routes read; `coords` becomes a
+# label => coordinate Dict, which the spatial routes already resolve.
+function _binomial_label_inputs(f::DrmFormula, data, A, Ainv, coords, ids)
+    ids === nothing && return A, coords
+    Ainv === nothing || throw(ArgumentError("drm: `ids = …` labels the rows of `A`; the rows of " *
+        "`Ainv` follow the order of first appearance of the group in the data, so pass " *
+        "`A` with `ids`, or `Ainv` without `ids`."))
+    if _animal_group(f) !== nothing
+        return _resolve_relatedness_labels(f, data, A, ids; coords = coords), coords
+    end
+    A === nothing && coords === nothing && throw(ArgumentError(
+        "drm: `ids = …` labels the rows of the relatedness matrix `A` or of the site " *
+        "coordinates `coords`, but neither was supplied."))
+    if coords !== nothing && !(coords isa AbstractDict)
+        n = coords isa AbstractVector ? length(coords) : size(coords, 1)
+        n == length(ids) || throw(ArgumentError("drm: `coords` has $n row(s) but `ids` has " *
+            "$(length(ids)) label(s); give one label per row."))
+        coords = Dict(string(l) => (coords isa AbstractVector ? [Float64(coords[i])] :
+                                    Float64.(coords[i, :])) for (i, l) in enumerate(ids))
+    end
+    return A, coords
+end
+
+# A bare correlated block of three or four coefficients, `(1 + x + z [+ w] | g)`, with no
+# `sd()` formula. drmTMB fits it as the correlated model with one constant SD per
+# coefficient, which is the SD-regression route with every coefficient SD left at its
+# default `~ 1`; the q = 2 block `(1 + x | g)` keeps its own two-dimensional route.
+function _binomial_bare_corr_block(f::DrmFormula, fam::Binomial)
+    fam.link === :logit || return false
+    all(p -> first(p) in (:mu, :sigma), f.forms) || return false
+    mu = get(Dict(f.forms), :mu, nothing)
+    mu === nothing && return false
+    try
+        _, re, mv, st = _split_ranef(mu)
+        mv === nothing && st === nothing && length(re) == 1 || return false
+        vars = _re_multi_corr_vars(re[1][1])
+        return vars !== nothing && length(vars) >= 2
+    catch
+        return false
+    end
 end
 
 # Outside SD-regression routes, Binomial admits `phylo` alone among the
@@ -241,8 +287,12 @@ function _drm_binomial_fit(f::DrmFormula, fam::Binomial; data, tree = nothing,
              A = nothing, Ainv = nothing, coords = nothing, mesh = nothing,
              g_tol::Real = 1e-8,
              se::Bool = true, marginal::Symbol = :LA, method = nothing,
-             nq::Int = _BINOMIAL_RANEF_AGHQ_K, priors = nothing)
+             nq::Int = _BINOMIAL_RANEF_AGHQ_K, priors = nothing, ids = nothing)
+    f = _default_structured_q2_sd(f, fam)   # bare structured (1 + x | g): default `sd(…, coef(·)) ~ 1`
+    f = _default_structured_q1_sd(f, fam; method, K, coords)   # bare structured (1 | g): default `sd(g, kind) ~ 1`
+    Tables.istable(priors) && (priors = _table_priors_for_model(f, fam, data, priors))
     _drm_entry_guard(f, fam, data; tree = tree, K = K, A = A, Ainv = Ainv, coords = coords)   # #1027 #1022 #1010
+    A, coords = _binomial_label_inputs(f, data, A, Ainv, coords, ids)   # red team: `ids = …` as on the other families
     if priors !== nothing
         fam.link === :logit && marginal === :LA && method === nothing || throw(ArgumentError("fixed-effect priors require ordinary binomial logit ML"))
         isempty(_sd_parts(f)) && isempty(_sdphylo_parts(f)) || throw(ArgumentError("fixed-effect priors do not support SD formulas"))
@@ -257,7 +307,8 @@ function _drm_binomial_fit(f::DrmFormula, fam::Binomial; data, tree = nothing,
     nq >= 1 || throw(ArgumentError("Binomial `nq` must be ≥ 1; got $nq"))
     fam.link !== :logit && marginal === :VA && throw(ArgumentError(
         "Binomial links other than :logit are not available with `marginal = :VA`."))
-    if !isempty(_sd_parts(f)) || !isempty(_sdphylo_parts(f))
+    if !isempty(_sd_parts(f)) || !isempty(_sdphylo_parts(f)) ||
+       (priors === nothing && marginal === :LA && _binomial_bare_corr_block(f, fam))
         return _drm_binomial_sd_regression(f, fam; data, tree, tree1, tree2,
             K, A, Ainv, coords, mesh, g_tol, se, marginal, method, nq)
     end
@@ -267,8 +318,6 @@ function _drm_binomial_fit(f::DrmFormula, fam::Binomial; data, tree = nothing,
         "Binomial `tree1` and `tree2` are used only by `phylo_interaction()` SD models."))
     Ainv === nothing || throw(ArgumentError(
         "Binomial `Ainv` is currently supported for animal random-effect SD regression only."))
-    fam.link !== :logit && _scalar_laplace_requested(marginal) &&
-        throw(ArgumentError("Binomial links other than :logit are not available with `marginal = :Laplace`."))
     _scalar_laplace_requested(marginal) &&     # Arc 2: TMB-convention Laplace, ordinary (1 | g)
         return _drm_ordinary_laplace(f, fam; data = data, tree = tree, K = K, A = A,
                                      coords = coords, g_tol = g_tol, se = se, method = method)
@@ -324,12 +373,30 @@ function _drm_binomial_fit(f::DrmFormula, fam::Binomial; data, tree = nothing,
             isva && _va_reject(fam, "crossed/multiple random intercepts")
             fam.link === :logit || throw(ArgumentError(
                 "Binomial links other than :logit are not yet supported for crossed random intercepts."))
+            if _has_indep_slopes(re)
+                isaghq && _aghq_reject(fam, "independent random slopes `(0 + x | g)` (Laplace only)")
+                return _withformula(_fit_indep_re_laplace(fam, Val(:binomial),
+                                                          collect(zip(s, ntr)), Xμ, nothing, nothing,
+                                                          _indep_slope_comps(re, data, length(s)),
+                                                          nmμ, String[], String[], g_tol), f)
+            end
             all(_re_kind(r[1])[1] === :intercept for r in re) ||
-                error("Binomial() supports multiple random effects only as crossed/nested intercepts, e.g. `(1 | g) + (1 | h)`")
+                error("Binomial() supports multiple random effects only as crossed/nested intercepts " *
+                      "`(1 | g) + (1 | h)` or independent intercepts and slopes `(1 | g) + (0 + x | g)`; " *
+                      "a correlated `(1 + x | g)` must be the only random-effect term")
             comps = map(re) do r
                 grp = r[2]; gidx, G = _group_index(getproperty(data, grp); col = grp)
                 (ones(length(s)), gidx, G, String(grp))
             end
+            # Three or more crossed intercepts: the dense Laplace spine of the independent-term route
+            # (the two-component sparse route above is kept for exactly two, unchanged).
+            length(comps) > 2 && isaghq &&
+                _aghq_reject(fam, "three or more crossed random intercepts (AGHQ covers exactly two)")
+            length(comps) > 2 && _dense_laplace_guard(fam, sum(c[3] for c in comps))
+            length(comps) > 2 &&
+                return _withformula(_fit_indep_re_laplace(fam, Val(:binomial), collect(zip(s, ntr)),
+                                                          Xμ, nothing, nothing, comps,
+                                                          nmμ, String[], String[], g_tol), f)
             isaghq && return _withformula(_fit_binomial_crossed_aghq(fam, s, ntr, Xμ, comps, nmμ, g_tol; se = se), f)   # #761
             return _withformula(_fit_binomial_crossed_laplace(fam, s, ntr, Xμ, comps, nmμ, g_tol), f)
         end
@@ -346,9 +413,18 @@ function _drm_binomial_fit(f::DrmFormula, fam::Binomial; data, tree = nothing,
             _binomial_check_slope_identifiable(xs, gidx, G, grp)
             return _withformula(_fit_binomial_corr_ranef(
                 fam, s, ntr, Xμ, xs, gidx, G, nmμ, grp, g_tol; nq = nq), f)
-        else
+        elseif rk === :slope                              # (0 + x | g) → TMB-convention Laplace (independent route)
             isva && _va_reject(fam, "an independent random slope `(0 + x | g)`")
-            error("Binomial() supports `(1 | g)` or `(1 + x | g)` on the mean")
+            isaghq && _aghq_reject(fam, "an independent random slope `(0 + x | g)` (Laplace only)")
+            fam.link === :logit || throw(ArgumentError(
+                "Binomial links other than :logit are not yet supported for independent random slopes."))
+            _require_finite_data_column(data, var)
+            return _withformula(_fit_indep_re_laplace(fam, Val(:binomial),
+                                                      collect(zip(s, ntr)), Xμ, nothing, nothing,
+                                                      _indep_slope_comps(re, data, length(s)),
+                                                      nmμ, String[], String[], g_tol), f)
+        else
+            error("Binomial() supports `(1 | g)`, `(0 + x | g)` or `(1 + x | g)` on the mean")
         end
     end
     isva && _va_reject(fam, "no random intercept (fixed-effects-only)")
@@ -461,6 +537,7 @@ function _fit_binomial_ranef(fam::Binomial, s, ntr, Xμ, gidx, G, nmμ, grp, g_t
     names = [:mu => nmμ, :resd => [String(grp)]]
     means = Dict(:mu => _binomial_mean.(Ref(fam), Xμ * θ̂[1:pμ])); obs = Dict(:mu => s ./ ntr)
     scales = Dict(:trials => Float64.(nint))
+    _record_cond_fit_aghq!(scales, nll, θ̂, bcache, gidx, Zre)   # fitted-row modes for `fitted(fit)`
     return _withiterations(
         _withnll(DrmFit(fam, blocks, names, θ̂, V, -nll(θ̂), n, drm_optim_converged(res), means, obs, scales), nll),
         Optim.iterations(res))
@@ -468,17 +545,20 @@ end
 
 # Identifiability guard for the correlated random slope (1 + x | g) (#753): the
 # slope RE variance and the group-level (intercept, slope) correlation are
-# unidentified when `xs` is constant within any level of `grp` — mirrors
+# unidentified when `xs` is constant within EVERY level of `grp` — mirrors
 # drmTMB's `drm_validate_q2_slope_variation` (R/mspl-estimator.R), reimplemented
-# here (never vendored: drmTMB is GPL, DRModels.jl is MIT).
+# here (never vendored: drmTMB is GPL, DRModels.jl is MIT). One level with a single
+# observation (or a constant slope predictor) among others with variation is fine: the
+# other levels identify the slope SD and correlation. The check used to refuse the
+# data when ANY level was constant, which drmTMB fits (red team, 2026-11-08).
 function _binomial_check_slope_identifiable(xs, gidx, G, grp)
     seen = [Set{Float64}() for _ in 1:G]
     for i in eachindex(xs)
         push!(seen[gidx[i]], xs[i])
     end
-    all(length(s) ≥ 2 for s in seen) ||
+    any(length(s) ≥ 2 for s in seen) ||
         error("Binomial() correlated random slope `(1 + x | g)` needs within-group variation in the " *
-              "slope predictor — it is constant within at least one level of `$grp`, so the slope SD " *
+              "slope predictor — it is constant within every level of `$grp`, so the slope SD " *
               "and the group-level intercept–slope correlation are unidentified. " *
               "Use a predictor that varies within `$grp`.")
 end
@@ -519,6 +599,7 @@ function _fit_binomial_corr_ranef(fam::Binomial, s, ntr, Xμ, xs, gidx, G, nmμ,
     names = [:mu => nmμ, :recov => ["$(grp):L11", "$(grp):L22", "$(grp):L21"]]
     means = Dict(:mu => _binomial_mean.(Ref(fam), Xμ * θ̂[1:pμ])); obs = Dict(:mu => s ./ ntr)
     scales = Dict(:trials => Float64.(nint))
+    _record_cond_fit_aghq!(scales, nll, θ̂, bcache, gidx, Zre)   # fitted-row modes for `fitted(fit)`
     return _withiterations(
         _withnll(DrmFit(fam, blocks, names, θ̂, V, -nll(θ̂), n, drm_optim_converged(res), means, obs, scales), nll),
         Optim.iterations(res))

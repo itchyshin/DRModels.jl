@@ -1,0 +1,57 @@
+# fitted() full-vector comparison for the 56 cells flagged 'logLik agrees, fitted differs' at the merged tip after this PR (R: drmTMB 0.8.1 built from this repository's source; Julia: this PR). maxdiff = max abs difference over all rows and columns. The six R-include cells are rerun with the Julia keyword missing = miss_control(response = "include").
+001 G|gauss|y1~x1|y2~x2|rho=1                               maxdiff=2.45e-12
+002 G|gauss|y1~x1|y2~x2|rho=x1                              maxdiff=1.25e-07
+003 G|gauss|y1~x1+x2|y2~x2|rho=1                            maxdiff=7.86e-13
+004 G|gauss|y1~x1+x2|y2~x2|rho=x1                           maxdiff=1.48e-07
+005 G|gauss|y1~x1+f|y2~x2+f2|rho=1                          maxdiff=2.19e-11
+006 G|gauss|y1~x1+f|y2~x2+f2|rho=x1                         maxdiff=2.14e-07
+007 G|gauss|y1~x1*x2|y2~x1|rho=1                            maxdiff=1.63e-11
+008 G|gauss|y1~x1*x2|y2~x1|rho=x1                           maxdiff=6.82e-07
+009 G|gauss|y1~1|y2~1|rho=1                                 maxdiff=3.33e-16
+010 G|gauss|y1~1|y2~1|rho=x1                                maxdiff=6.09e-09
+011 G|gauss|sigma1=x1|sigma2=1|rho=1                        maxdiff=1.28e-12
+012 G|gauss|sigma1=x1|sigma2=1|rho=x1+x2                    maxdiff=8.42e-08
+013 G|gauss|sigma1=x2|sigma2=x1|rho=1                       maxdiff=3.48e-12
+014 G|gauss|sigma1=x2|sigma2=x1|rho=x1+x2                   maxdiff=9.5e-08
+015 G|gauss|sigma1=f|sigma2=1|rho=1                         maxdiff=5.71e-12
+016 G|gauss|sigma1=f|sigma2=1|rho=x1+x2                     maxdiff=8.76e-08
+017 G|gauss|sigma1=x1+x2|sigma2=x1|rho=1                    maxdiff=7.47e-12
+018 G|gauss|sigma1=x1+x2|sigma2=x1|rho=x1+x2                maxdiff=8.68e-08
+019 G|gauss|rho=f                                           maxdiff=9.21e-11
+020 G|gauss|rho=I(x1^2)                                     maxdiff=1.9e-08
+021 G|gauss|rho=x1*x2                                       maxdiff=6.31e-08
+022 G|gauss|REML|rho=1                                      maxdiff=6.51e-12
+023 G|gauss|REML|rho=x1                                     maxdiff=9.77e-08
+024 G|gauss|missing=both-partial|rho=1|R-default(drop)      maxdiff=1.3e-11
+026 G|gauss|missing=y1-partial|rho=1|R-default(drop)        maxdiff=3.56e-13
+028 G|gauss|missing=y2-partial|rho=1|R-default(drop)        maxdiff=5.64e-12
+030 G|gauss|missing=both-partial|rho=x1|R-default(drop)     maxdiff=1.32e-07
+032 G|gauss|missing=y1-partial|rho=x1|R-default(drop)       maxdiff=1.13e-07
+034 G|gauss|missing=y2-partial|rho=x1|R-default(drop)       maxdiff=1.19e-07
+036 G|biv_lognormal|base                                    maxdiff=5.08e-12
+037 G|biv_lognormal|mu=x1+x2                                maxdiff=1.73e-11
+038 G|biv_lognormal|mu=f                                    maxdiff=7.04e-12
+039 G|biv_student|base                                      maxdiff=7.75e-12
+040 G|biv_student|mu=x1+x2                                  maxdiff=5.96e-11
+041 H|meta|(1|g)                                            maxdiff=0.184
+042 H|meta|(1|g)+(1|g2)                                     maxdiff=0.184
+043 I|cumul|mu=x1+(1|g)+(1|g2)                              maxdiff=0.127
+044 J|poisson|(1|g)+(1|g2)+(1|h)                            maxdiff=1.44
+045 J|gaussian|mu=(1|g)|sigma=x1                            maxdiff=0.525
+046 J|lognormal|mu=(1|g)|sigma=x1                           maxdiff=1.53
+047 J|gaussian|group=numeric code gn                        maxdiff=0.425
+048 J|gaussian|group=unbalanced with singletons gu          maxdiff=0.6
+049 J|gaussian|group has 2 levels (1|f2)                    maxdiff=0.016
+050 J|gaussian|slopes on two different groups               maxdiff=0.937
+051 K|gaussian|NA in response                               rows R=144 J=160
+052 K|poisson|NA in response                                rows R=144 J=160
+053 K|gaussian|NA in both + (1|g)                           maxdiff=0.355
+054 K|gaussian|NA in response|REML                          rows R=144 J=160
+055 M|gaussian|mu=x1+(1|g)|entry-points                     maxdiff=0.425
+056 M|biv_gaussian|entry-points                             maxdiff=1.95e-07
+001 G|gauss|missing=both-partial|rho=1|R-include            maxdiff=1.54e-12
+002 G|gauss|missing=y1-partial|rho=1|R-include              maxdiff=5.51e-11
+003 G|gauss|missing=y2-partial|rho=1|R-include              maxdiff=1.7e-11
+004 G|gauss|missing=both-partial|rho=x1|R-include           maxdiff=1.13e-07
+005 G|gauss|missing=y1-partial|rho=x1|R-include             maxdiff=1.02e-07
+006 G|gauss|missing=y2-partial|rho=x1|R-include             maxdiff=1.18e-07

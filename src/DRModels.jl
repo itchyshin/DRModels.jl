@@ -78,6 +78,7 @@ include("control.jl")          # #942 #948 #994 #931: DRMControl, @drm_entry, pr
 include("finite_inputs.jl")    # non-finite input check + converged backstop (#1009 #1012 #1019 #1021)
 include("fixed_priors.jl")
 include("gaussian_core.jl")
+include("poly_term.jl")        # `poly(x, d)` in @formula: R's orthogonal basis as a stateful term (gap map v2)
 include("ci_args.jl")            # shared level / B checks and bootstrap completion status
 include("meta_vcov_bivariate.jl")  # A8: known bivariate sampling covariance (drmTMB meta_vcov_bivariate)
 include("gaussian_bivariate.jl")
@@ -85,6 +86,8 @@ include("gaussian_multi_re_sparse.jl")  # #977: sparse QR + selected inverse for
 include("gaussian_ranef.jl")
 include("gaussian_rs_sigma_ranef.jl")  # #960: (1 + x | g) mean + sigma (1 | g), per-group 3-D Laplace
 include("gaussian_lss.jl")   # #544: location-scale-scale sd(g) ~ x on the (1|g) SD
+include("gaussian_ordinary_q34_sd.jl")  # q3/q4 ordinary correlated block + coef-specific sd()
+include("gaussian_corr_crossed_sd.jl")  # correlated block + extra intercepts; independent slopes with sd()
 include("aghq_1d.jl")            # #448: 1-D Liu–Pierce AGHQ around `_gauss_hermite`
 include("adaptive_ghq.jl")       # #834: per-group q-dim AGHQ for the (1 + x | g) routes
 include("gaussian_meta.jl")
@@ -98,6 +101,8 @@ include("skewnormal.jl")
 include("poisson.jl")
 include("sparse_laplace_glmm.jl")
 include("negbinomial.jl")
+include("ordinary_q2_sd.jl")   # ordinary labelled (1 + x | p | g) Poisson/NB2 q2 with coef() SD formulas
+include("structured_q2_phylo_spatial.jl")   # phylo/spatial (1 + x | g) q2 with coef() SD formulas
 include("truncated_poisson.jl")   # zero-truncated Poisson + shared hurdle-Poisson spelling
 include("beta.jl")
 include("betabinomial.jl")
@@ -105,6 +110,7 @@ include("separation.jl")
 include("binomial.jl")
 include("binomial_sd_regression.jl")
 include("gamma.jl")
+include("twofield_sd_laplace.jl")  # Gamma/NB2 two mean fields, one SD formula each (same-group, crossed, ordinary+structured, relmat q2)
 include("lognormal.jl")
 include("bivariate_student.jl")  # drmTMB `biv_student()`: exact bivariate-t density,
                                  # ONE shared nu (logm2 link). Needs student.jl + gaussian_bivariate.jl.
@@ -147,8 +153,13 @@ include("profile_q4_phylo.jl")   # Ayumi #2: profile-likelihood CIs for the q=4 
 include("bootstrap_q4_phylo.jl") # Ayumi #2: parametric bootstrap of the q=4 among-axis SDs (boundary-honest CIs)
 include("variational.jl")
 include("ordinary_laplace.jl")      # Arc 2: marginal = :Laplace on ordinary (1 | g) (TMB convention)
+include("gaussian_sigma_sd_laplace.jl")  # Gaussian sd(g, sigma): joint mu+sigma ordinary RE and structured sigma intercept, dense Laplace
+include("sigma_ranef_blocks_laplace.jl")  # sigma random effects with constant SDs: LogNormal/Gamma/NB2/BetaBinomial (1|g); Gaussian slopes, two groups, mean+sigma on different groups
+include("sigma_structured_laplace.jl")  # NB2/Gamma structured sigma: SD-formula intercept (Julia-only) and NB2 intercept+slope with fixed SDs
 include("convergence_status.jl")  # FX3b: the three-valued twin status shared with drmTMB
 include("indep_slopes_laplace.jl")   # #960: Gamma/Student (1 | g) + (0 + x | g), TMB-convention Laplace
+include("student_structured.jl")   # Student spatial(1 | g) / spatial(1 + x | g) with coords, TMB-convention Laplace
+include("zi_re_laplace.jl")   # zi / hu / truncated NB2 / SkewNormal with one (1 | g): the same Laplace spine, new observation terms
 include("summary.jl")
 include("fit_derivatives.jl")  # #971 #994: gradient / hessian / control_info accessors
 include("r2.jl")             # R2 for the constant-sigma Gaussian case ONLY; refuses elsewhere
@@ -187,8 +198,8 @@ export AugProblem, make_problem,
        lc_to_cov, cov_to_lc, lc_len
 
 # Public API — the Gaussian distributional-regression front end.
-export drm_priors, drm_prior_normal, drm_prior_ridge, resolve_priors
-export @formula, bf, drm_formula, drm, Gaussian, Student, SkewNormal, Poisson, NegBinomial2, TruncatedNegBinomial2, TruncatedPoisson, Beta, BetaBinomial, Binomial, Gamma, LogNormal, ZeroOneBeta, Tweedie, CumulativeLogit, cbind, meta_V, relmat, animal, phylo, spatial, temporal, phylo_interaction, offset, sd, sd_phylo, DrmFormula, BivariateDrmFormula, DrmFit,
+export AbstractDrmPrior, drm_priors, drm_prior_normal, drm_prior_ridge, drm_prior_sd_gamma, resolve_priors
+export @formula, poly, bf, drm_formula, drm, Gaussian, Student, SkewNormal, Poisson, NegBinomial2, TruncatedNegBinomial2, TruncatedPoisson, Beta, BetaBinomial, Binomial, Gamma, LogNormal, ZeroOneBeta, Tweedie, CumulativeLogit, cbind, meta_V, relmat, animal, phylo, spatial, temporal, phylo_interaction, offset, sd, sd_phylo, DrmFormula, BivariateDrmFormula, DrmFit,
        coef, vcov, loglik, loglikelihood, nobs, dof, aic, bic, fixef, re_sd, vc, ranef, sigma, corpairs, rho12, stderror, confint, coeftable, fitted, residuals, predict, predict_parameters, marginal_parameters, prediction_grid, simulate, bootstrap_ci, bootstrap_summary, bootstrap_result, bootstrap_sigma_a, check_drm, family,
        profile_result, profile_curve, parameter_surface, corpairs_data,
        drm_figure, plot_profile, plot_parameter_surface, plot_corpairs,

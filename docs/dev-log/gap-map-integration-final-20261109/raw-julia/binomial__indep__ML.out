@@ -1,0 +1,22 @@
+S	1	binomial|indep|lab0|q2|sd-none|cm0|ML
+R	1	binomial|indep|lab0|q2|sd-none|cm0|ML	FITS				-255.7796098379	true	se_finite=true;npar=6	25.27	
+S	2	binomial|indep|lab0|q2|sd-one|cm0|ML
+R	2	binomial|indep|lab0|q2|sd-one|cm0|ML	FITS				-255.4849823856	true	se_finite=true;npar=6	18.94	
+S	3	binomial|indep|lab0|q2|sd-z|cm0|ML
+R	3	binomial|indep|lab0|q2|sd-z|cm0|ML	FITS				-253.1450487707	true	se_finite=true;npar=8	26.42	
+S	4	binomial|indep|lab0|q2|sd-first|cm0|ML
+R	4	binomial|indep|lab0|q2|sd-first|cm0|ML	NONCONVERGED				-253.9951592207	false	se_finite=true;npar=7	5.97	
+S	5	binomial|indep|lab0|q2|sd-last|cm0|ML
+R	5	binomial|indep|lab0|q2|sd-last|cm0|ML	FITS				-255.7779574849	true	se_finite=true;npar=7	0.09	
+S	6	binomial|indep|lab0|q3|sd-none|cm0|ML
+R	6	binomial|indep|lab0|q3|sd-none|cm0|ML	FITS				-255.7332245115	true	se_finite=true;npar=7	0.39	
+S	7	binomial|indep|lab0|q3|sd-z|cm0|ML
+R	7	binomial|indep|lab0|q3|sd-z|cm0|ML	FITS				-253.1280180289	true	se_finite=true;npar=10	49.49	
+S	8	binomial|indep|lab0|q3|sd-first|cm0|ML
+R	8	binomial|indep|lab0|q3|sd-first|cm0|ML	FITS				-255.4486027728	true	se_finite=true;npar=8	5.48	
+S	9	binomial|indep|lab0|q4|sd-none|cm0|ML
+R	9	binomial|indep|lab0|q4|sd-none|cm0|ML	FITS				-255.7332245115	true	se_finite=true;npar=8	1.09	Hessian is numerically singular at the optimum — using a pseudo-inverse.
+S	10	binomial|indep|lab0|q4|sd-z|cm0|ML
+R	10	binomial|indep|lab0|q4|sd-z|cm0|ML	FITS				-249.1444033443	true	se_finite=true;npar=12	233.52	
+S	11	binomial|indep|lab0|q4|sd-first|cm0|ML
+R	11	binomial|indep|lab0|q4|sd-first|cm0|ML	NONCONVERGED				-253.9941837101	false	se_finite=false;npar=9	7.14	Hessian is not positive definite at the optimum. Wald standard errors are withheld.

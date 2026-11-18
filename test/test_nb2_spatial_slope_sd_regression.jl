@@ -77,13 +77,16 @@ end
     Rn = C ./ (sqrt.(diag(C)) * sqrt.(diag(C))')
     @test abs(_nb2_spatial_slope_dense(theta, y, Xmu, loading, gidx, Rn) - oracle) < 0.05
 
-    # Refusals: precomputed K, missing coords, missing slope column, A, intercept form.
+    # Refusals: precomputed K, missing coords, missing slope column, A.
     @test_throws ArgumentError drm(formula, NegBinomial2(); data, K = C, se = false)
     @test_throws ArgumentError drm(formula, NegBinomial2(); data, se = false)
     @test_throws ArgumentError drm(formula, NegBinomial2(); data, coords, A = C, se = false)
     @test_throws ArgumentError drm(formula, NegBinomial2();
         data = (; y, z = data.z, g = gidx), coords, se = false)
-    @test_throws ArgumentError drm(
-        bf(@formula(y ~ x + spatial(1 | g)), @formula(sigma ~ 1),
-           @formula(sd(g, spatial) ~ z)), NegBinomial2(); data, coords, se = false)
+    # The intercept form is no longer refused: `spatial(1 | g)` with `sd(g, spatial) ~ z` and `coords`
+    # fits on the same native kernel (agreement with drmTMB 0.8.1: test_struct_sd_counts.jl).
+    ifit = drm(bf(@formula(y ~ x + spatial(1 | g)), @formula(sigma ~ 1),
+                  @formula(sd(g, spatial) ~ z)), NegBinomial2(); data, coords, se = false)
+    @test ifit.converged === true
+    @test isfinite(loglikelihood(ifit))
 end

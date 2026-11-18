@@ -63,8 +63,9 @@ end
         end
         m1 = msg(@formula(y ~ x + (x + z | g)))
         m2 = msg(@formula(y ~ x + (1 + x + z | g)))
-        @test !isempty(m2)          # multi-slope is unsupported ...
-        @test m1 == m2              # ... and reported identically once 1 is implicit
+        @test m1 == m2              # same outcome once 1 is implicit (the q = 3 block now fits by ML)
+        @test loglik(drm(bf(@formula(y ~ x + (x + z | g))), Gaussian(); data = dg)) ≈
+              loglik(drm(bf(@formula(y ~ x + (1 + x + z | g))), Gaussian(); data = dg)) atol = 1e-8
         r1 = DRModels._split_ranef(@formula(y ~ x + (x + z | g)).rhs)[2][1][1]
         r2 = DRModels._split_ranef(@formula(y ~ x + (1 + x + z | g)).rhs)[2][1][1]
         @test length(r1.args) == length(r2.args) == 3

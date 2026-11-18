@@ -34,8 +34,17 @@ end
 
 # Marginal as a function of Λ (β fixed), fully-converged E-step.
 # Whitened prior (#857 site q4): Λ⁻¹ is never formed; the latent is v = (I⊗L⁻¹)u.
+# Lower Cholesky factor of Λ, or `nothing` if Λ is non-finite / not numerically PD.
+function _lg_chol_L(Λ)
+    all(isfinite,Λ) || return nothing
+    C=cholesky(Symmetric(Λ);check=false)
+    return issuccess(C) ? C.L : nothing
+end
+# Objective of the Λ line search (a log-likelihood to MAXIMISE): a trial Λ that is not
+# numerically PD scores -Inf, so the search rejects it rather than throwing PosDefException.
 function L_given_Λ(prob,Q_cond,β,Λ; nit=60)
-    W=whitened_prior(Q_cond,cholesky(Symmetric(Λ)).L); v,ch,_=estep_mode(prob,W,β;n_newton=nit)
+    Lc=_lg_chol_L(Λ); Lc===nothing && return -Inf
+    W=whitened_prior(Q_cond,Lc); v,ch,_=estep_mode(prob,W,β;n_newton=nit)
     return laplace_ll(prob,W,β,v,ch)
 end
 
@@ -47,7 +56,7 @@ function lambda_ml_step(prob,Q_cond,β,Λ; h=1e-5)
         vp=copy(v);vp[k]+=h; vm=copy(v);vm[k]-=h
         g[k]=(L_given_Λ(prob,Q_cond,β,lc_to_Λ(vp)) - L_given_Λ(prob,Q_cond,β,lc_to_Λ(vm)))/(2h)
     end
-    gn=norm(g); gn<1e-8 && return Λ, L0
+    gn=norm(g); (gn<1e-8 || !isfinite(gn)) && return Λ, L0   # non-finite g: a probe hit a non-PD Λ; stay put
     bestΛ=Λ; bestL=L0
     for s in (1.0,0.3,0.1,0.03,0.01,0.003,0.001) ./ gn   # normalized step (no overshoot)
         Ls=L_given_Λ(prob,Q_cond,β,lc_to_Λ(v .+ s.*g))
@@ -58,13 +67,14 @@ end
 
 function fit_ml(prob,Q_cond,β0,Λ0; max_em=100, tol=1e-5, n_lam=3, verbose=true)
     β=β0; Λ=Matrix(Λ0)
+    _lg_chol_L(Λ)===nothing && throw(ArgumentError("fit_ml: starting Λ0 must be positive definite"))
     ll=L_given_Λ(prob,Q_cond,β,Λ); hist=[ll]
     verbose && @info "ML init" loglik=round(ll;digits=4)
     it_done=0
     for it in 1:max_em
         it_done=it; ll0=ll
         # β block: conditional Newton, accept if marginal improves
-        W=whitened_prior(Q_cond,cholesky(Symmetric(Λ)).L); v,ch,_=estep_mode(prob,W,β;n_newton=60)
+        W=whitened_prior(Q_cond,_lg_chol_L(Λ)); v,ch,_=estep_mode(prob,W,β;n_newton=60)   # Λ accepted by the line search (finite ll) is PD
         βn=mstep_beta(prob,whitened_to_u(W,v),β)
         lln=L_given_Λ(prob,Q_cond,βn,Λ)
         if lln>=ll; β,ll=βn,lln; end

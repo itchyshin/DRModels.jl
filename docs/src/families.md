@@ -180,6 +180,17 @@ that are positive by construction (litter sizes, group sizes given presence).
 part to either truncated family (or to `Poisson()` / `NegBinomial2()`) fits the
 hurdle model.
 
+!!! note "Differs from drmTMB: `hu` on `Poisson()`"
+    DRModels.jl accepts `hu` on a plain `Poisson()` and fits the hurdle Poisson.
+    drmTMB currently refuses it: `poisson()` supports only `mu` and an optional
+    `zi`, and `hu` raises "Poisson models only support `mu` and optional `zi`. Unsupported parameter" (drmTMB message, checked against its source, not run for `hu`).
+    There is therefore no drmTMB spelling for this model, and no R-parity
+    comparison is available for it (twin track, #726). For a hurdle count model
+    that exists on both sides, use `NegBinomial2()` + `hu`, which agrees
+    numerically across the two packages. Whether the two should align by drmTMB
+    adding `hu` to `poisson()` or DRModels.jl refusing it is an open design
+    decision; this note changes no behaviour.
+
 ## Proportions and binary data
 
 ### Binomial — `Binomial()`
@@ -227,6 +238,13 @@ fitbb = drm(bf(@formula(cbind(s, f) ~ x), @formula(sigma ~ 1)), BetaBinomial(); 
 (slope = coef(fitbb, :mu)[2], precision = exp(-2 * coef(fitbb, :sigma)[1]))   # φ ≈ 5
 ```
 
+!!! note "Differs from drmTMB: structured effects on `BetaBinomial()`"
+    DRModels.jl admits structured random effects (e.g. `tree=` phylogenetic
+    terms) on `BetaBinomial()`. drmTMB refuses structured markers on
+    `beta_binomial` (planned there), so a phylogenetic beta-binomial fit has no
+    drmTMB comparator and no R-parity claim (twin track, #740). Plain
+    fixed-effect beta-binomial fits are available on both sides.
+
 ### Zero-one-inflated beta — `ZeroOneBeta()`
 
 Proportions on the **closed** interval `[0,1]` (values may be exactly 0 or 1).
@@ -261,7 +279,8 @@ fitzob = drm(bf(@formula(y ~ x), @formula(sigma ~ 1), @formula(zoi ~ 1), @formul
 
 ### Cumulative-logit — `CumulativeLogit()`
 
-Ordered categories coded `1, 2, …, K` (Likert ratings, severity classes):
+Ordered categories coded `1, 2, …, K`, with every code in that range observed
+(Likert ratings, severity classes):
 `Pr(y ≤ k) = logistic(θ_k − η)` with ordered cutpoints. The single linear
 predictor comes from the `mu` formula **with its intercept dropped** (the
 cutpoints absorb the level), so `coef(fit, :mu)` is the slope.

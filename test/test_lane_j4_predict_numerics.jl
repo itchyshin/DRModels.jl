@@ -235,11 +235,14 @@ end
     # Fewer levels: the training schema keeps the fitted contrasts.
     psub = predict(bfit, (x = [0.0, 0.0], grp = ["b", "c"]); type = :link)
     @test psub[:mu1] ≈ [b1[1] + b1[3], b1[1] + b1[4]]
-    # Non-Gaussian fit (its fitter caches no training schema) gets the same guard.
+    # Non-Gaussian fit (its fitter caches no training schema): `drm` records the
+    # training levels, so a subset keeps the fitted contrasts and an unseen
+    # level is refused.
     yc = Float64.(rand.(Distributions.Poisson.(exp.(0.5 .+ 0.3 .* (grp .== "b")))))
     pfit = drm(bf(@formula(y ~ grp)), Poisson(); data = (y = yc, grp = grp))
     @test predict(pfit, (grp = ["a", "b", "c"],)) ≈ fitted(pfit)[1:3] rtol = 1e-10
-    @test_throws ArgumentError predict(pfit, (grp = ["b", "c"],))
+    @test predict(pfit, (grp = ["b", "c"],)) ≈ fitted(pfit)[2:3] rtol = 1e-10
+    @test_throws ArgumentError predict(pfit, (grp = ["b", "d"],))
 end
 
 @testset "#1016 coeftable docstring matches the z / p it returns" begin

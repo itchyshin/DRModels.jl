@@ -164,21 +164,23 @@ same maximum-likelihood optimum.
 
 ### Fitted values and conditional effects
 
-One convention differs from drmTMB. In DRModels.jl, `fitted(fit)` (and
-`predict`) is the **population-level** mean ``X\hat\beta``, as on most
-structured routes in this package (the Gaussian and LogNormal `phylo` mean
-routes are the exception; see `fitted`); drmTMB's `fitted()` adds the estimated
-site and temporal deviations. Those conditional deviations are available from
-`ranef`: `ranef(fit)[:site]` holds the temporal deviation for each row (in data
-order) and `ranef(fit)[:site_iid]` the stable intercept for each site.
+`fitted(fit)` is **conditional**, as in drmTMB: it adds the estimated site and
+temporal deviations to the population-level mean ``X\hat\beta``. The
+population-level mean alone is `fitted(fit; re = :zero)` (and `predict`). The
+deviations are available from `ranef`: `ranef(fit)[:site]` holds the temporal
+deviation for each row (in data order) and `ranef(fit)[:site_iid]` the stable
+intercept for each site, so the conditional value is the population value plus
+those two.
 
 ```@example temporal
-conditional = fitted(fit) .+ ranef(fit)[:site] .+
-              ranef(fit)[:site_iid][indexin(dat.site, unique(dat.site))]
+conditional = fitted(fit)
+by_parts = fitted(fit; re = :zero) .+ ranef(fit)[:site] .+
+           ranef(fit)[:site_iid][indexin(dat.site, unique(dat.site))]
 drmtmb_fitted = Float64.(ar1_ref["conditional"]["fitted"])   # drmTMB's fitted(fit)
 (rows = length(conditional), first_rows = first(conditional, 3),
  drmTMB_first_rows = first(drmtmb_fitted, 3),
- max_abs_diff = maximum(abs.(conditional .- drmtmb_fitted)))
+ max_abs_diff = maximum(abs.(conditional .- drmtmb_fitted)),
+ max_abs_diff_by_parts = maximum(abs.(by_parts .- conditional)))
 ```
 
 This example compares all 288 conditional fitted values and prints their
@@ -198,7 +200,7 @@ time; do not read its spread as a calibration check. Check
 `check_drm(fit).temporal_boundary` first: at the residual-SD boundary
 (`sigma_ratio`, described below) the temporal path absorbs the data, so as
 ``\hat\sigma`` goes to 0 these residuals collapse toward 0 and cannot reveal
-outliers. (`residuals(fit)` stays ``y - X\hat\beta``, matching `fitted`.)
+outliers. (`residuals(fit)` is ``y - \hat\mu^{\mathrm{cond}}``, matching `fitted`; `residuals(fit; re = :zero)` is ``y - X\hat\beta``.)
 
 ```@example temporal
 z = residuals(fit; type = :quantile)
@@ -552,16 +554,19 @@ panel (drmTMB's article mentions 8 or 16 species at these four times), the
 residual SD can run to zero while the OU term absorbs it; a fit at that
 boundary should not be read component by component.
 
-drmTMB's `fitted()` adds both conditional components. In DRModels.jl they are
-in `ranef`: `ranef(phylo_fit)[:species_phylo]` holds the stable effect of each
-species (first-seen order) and `ranef(phylo_fit)[:species]` the OU departure
-of each row.
+drmTMB's `fitted()` adds both conditional components, and so does
+`fitted(phylo_fit)`. The components are in `ranef`:
+`ranef(phylo_fit)[:species_phylo]` holds the stable effect of each species
+(first-seen order) and `ranef(phylo_fit)[:species]` the OU departure of each
+row; `fitted(phylo_fit; re = :zero)` is the population-level mean.
 
 ```@example temporal
 re = ranef(phylo_fit)
-phylo_conditional = fitted(phylo_fit) .+ re[:species] .+
+phylo_conditional = fitted(phylo_fit)
+by_parts = fitted(phylo_fit; re = :zero) .+ re[:species] .+
     re[:species_phylo][indexin(dat_phylo.species, unique(dat_phylo.species))]
-(max_abs_diff = maximum(abs.(phylo_conditional .- Float64.(phylo_ref["conditional"]["fitted"]))),)
+(max_abs_diff = maximum(abs.(phylo_conditional .- Float64.(phylo_ref["conditional"]["fitted"]))),
+ max_abs_diff_by_parts = maximum(abs.(by_parts .- phylo_conditional)))
 ```
 
 `residuals(phylo_fit; type = :quantile)` subtracts both conditional components

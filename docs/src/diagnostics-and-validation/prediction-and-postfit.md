@@ -39,6 +39,14 @@ nd = (; x = [-1.0, 0.0, 1.0])
 predict(fit, nd)                 # μ̂ at x = -1, 0, 1  (response scale)
 ```
 
+**Factors in `newdata`.** A factor is coded with the levels and contrasts of the
+data the model was fitted to, so `newdata` may hold any subset of the fitted
+levels, in any order, down to a single row. This holds for every family and for
+`predict_parameters`, as in drmTMB, whose `predict()` restores the fitted levels.
+A level the model never saw is an error that names the column, the level and the
+fitted levels (drmTMB: "unknown factor level"); it is never silently coded as the
+reference level.
+
 ### Standard errors (the delta method)
 
 Add `se = true` for delta-method standard errors — the glmmTMB `se.fit`
@@ -124,6 +132,20 @@ rq = residuals(fit; type = :quantile)
     observation against a different reference (a random intercept integrated
     out, or the fitted temporal path), so what "≈ N(0, 1)" means changes;
     [`residuals`](@ref) lists what each kind of fit returns.
+
+!!! warning "Accuracy limit when the random-effect variance is large (#1103)"
+    Where a random intercept is integrated out by the 32-node Gauss–Hermite
+    mixture (non-Gaussian `(1 | g)` on the mean, a Gaussian `sigma ~ 1 + (1 | g)`
+    intercept, and structured effects that keep the mixture), the conditional CDF
+    becomes a near-step in the node variable once σ̂_b ≫ σ̂, and 32 nodes stop
+    resolving it. Measured for a Gaussian mean intercept (max |Φ⁻¹(mixture) −
+    exact z| over |z| ≤ 4): about 1e-6 at σ_b/σ = 2, 6e-3 at 4, 0.02 at 5,
+    0.12 at 10 and 0.21 at 20. Read the residuals from those routes as
+    approximate when σ̂_b/σ̂ is above about 3. Gaussian `(1 | g)` on the mean and
+    Gaussian / LogNormal `phylo(1 | g)` already use the closed-form marginal and
+    are not affected. Separately, every continuous family computes
+    `Φ⁻¹(clamp(Φ(z), eps, 1 − eps))`, which loses upper-tail precision (error
+    about 6e-6 at z = 7 and 8e-3 at z = 8) and caps |r| at about 8.13.
 
 !!! note "Quantile residuals with a structured mean: DRModels.jl vs drmTMB"
     For a fit whose mean has a `phylo()`, `relmat()` or `animal()` random

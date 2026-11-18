@@ -72,6 +72,28 @@ function _a9c_dense_loglik(θ, y, X, Xσ, species, C)
     return Distributions.logpdf(Distributions.MvNormal(X * β, Symmetric(V)), y)
 end
 
+# Independent dense restricted log-likelihood (Patterson-Thompson) at the variance parameters in θ:
+#   -½[(n - p) log 2π + log|V| + log|X'V⁻¹X| + r'V⁻¹r],  r = y - Xβ̂_GLS(V).
+# β in θ is ignored, so this does not share the fitter's profiling.
+function _a9c_dense_reml_loglik(θ, y, X, Xσ, species, C)
+    n = length(y); p = size(X, 2); pσ = size(Xσ, 2)
+    σa = exp(θ[p+pσ+1]); σb = exp(θ[p+pσ+2]); ση = exp.(Xσ * θ[p+1:p+pσ])
+    V = zeros(n, n)
+    for i in 1:n, j in 1:n
+        cij = C[species[i], species[j]]
+        V[i, j] = σa^2 * cij + σb^2 * cij * X[i, 2] * X[j, 2]
+    end
+    for i in 1:n
+        V[i, i] += ση[i]^2
+    end
+    Vf = cholesky(Symmetric(V))
+    VX = Vf \ X
+    XtVX = Symmetric(X' * VX)
+    β = XtVX \ (X' * (Vf \ y))
+    r = y - X * β
+    return -0.5 * ((n - p) * log(2π) + logdet(Vf) + logdet(cholesky(XtVX)) + dot(r, Vf \ r))
+end
+
 @testset "Gaussian two-SD phylogenetic random slope phylo(1 + x | species) (#620)" begin
     data, phy = _a9c_fixture()
     y, x, species = data.y, data.x, data.species
@@ -166,18 +188,24 @@ end
         # and on Poisson/NegBinomial2 it fits a CORRELATED intercept-slope model
         # (`has_phylo_mu_q2_covariance`) — a different model, so DRModels.jl fails closed.
         yp = Float64.(round.(Int, exp.(0.2 .+ 0.3 .* x)))
-        err = try
-            drm(bf(@formula(yp ~ x + phylo(1 + x | species))), Poisson();
-                data = (; yp, x, species), tree = phy, se = false)
-            nothing
-        catch e
-            e
-        end
-        @test err isa ArgumentError
-        @test occursin("phylo(1 + x | species)", err.msg) && occursin("not implemented", err.msg)
-        # REML: the structured mean marker is refused on the generic route (unchanged)
-        @test_throws ArgumentError drm(bf(@formula(y ~ x + phylo(1 + x | species))), Gaussian();
-                                       data = data, tree = phy, method = :REML)
+        # Poisson bare phylo(1 + x | species) used to be refused; since the gap-close wave it completes the
+        # two default coefficient SDs (the independent two-SD model) and fits.
+        fpois = drm(bf(@formula(yp ~ x + phylo(1 + x | species))), Poisson();
+                    data = (; yp, x, species), tree = phy, se = false)
+        @test isfinite(fpois.loglik)
+        @test length(fpois.formula.sd_targets) == 2
+        # REML: `phylo(1 + x | species)` with a constant sigma fits since the Gaussian REML-routes
+        # wave (exact restricted likelihood; test_gaussian_reml_routes.jl checks it against R)
+        freml = drm(bf(@formula(y ~ x + phylo(1 + x | species))), Gaussian();
+                    data = data, tree = phy, method = :REML)
+        @test estimation_method(freml) === :REML && isfinite(reml_loglik(freml))
+        @test reml_loglik(freml) ≈ _a9c_dense_reml_loglik(freml.theta, y, [ones(n) x], ones(n, 1), species, C) atol = 1e-8
+        # ... but a sigma predictor with it is still refused under REML
+        err_ps = try
+            drm(bf(@formula(y ~ x + phylo(1 + x | species)), @formula(sigma ~ x)),
+                Gaussian(); data = data, tree = phy, method = :REML); nothing
+        catch e; e; end
+        @test err_ps isa ArgumentError && occursin("method = :REML is not implemented", err_ps.msg)
         # a second structured component, an ordinary RE, a sigma RE, sparse algorithms, missing y
         Kid = Matrix{Float64}(I, 16, 16)
         @test_throws ArgumentError drm(bf(@formula(y ~ x + phylo(1 + x | species) + relmat(1 | id))),
