@@ -7,8 +7,8 @@
 # on its working scale).
 #
 # The burn-cell CSVs of the issues (/workspace/drm-twin-grid-burn) are not
-# available here. Where the issue gives the exact simulator (#713 binary) it is
-# used verbatim; elsewhere the design (n, groups, formula, seed) is the issue's
+# available here. The #713 binary generator independently reproduces the
+# previously recorded fixture; elsewhere the design (n, groups, formula, seed) is the issue's
 # and the DGP constants (RE SD, coefficients, dispersion) are ours. Two extra
 # larger Student cells (student_big_*) probe #714 beyond the single small cell.
 #
@@ -37,11 +37,20 @@ add("beta_710", beta_family(), bf(y ~ 1 + x + (1 | g), sigma ~ 1),
     data.frame(y = rbeta(60, mu * phi, (1 - mu) * phi), x = x, g = g),
     c("mu:(Intercept)", "mu:x", "sigma:(Intercept)", "resd:g(log_sd)"))
 
-# #713 binary (exact simulator from the issue)
-set.seed(20285905L)
-g <- factor(rep(seq_len(12L), each = 8L)); b <- rnorm(12L, 0, 0.7); x <- rnorm(length(g))
-y <- rbinom(length(g), 1L, plogis(-0.2 + 0.5 * x + b[as.integer(g)]))
-add("binary_713", binomial(), bf(y ~ 1 + x + (1 | g)), data.frame(y, x, g),
+# #713 binary (independent reproduction of the recorded fixture)
+# Independent binary mixed-model data prototype; retain ambient RNG kind.
+make_binary_data <- function() {
+  set.seed(20285905L)
+  g <- factor(rep(seq_len(12L), each = 8L))
+  effects <- rnorm(12L, 0, 0.7)
+  x <- rnorm(96L)
+  probability <- plogis(-0.2 + 0.5 * x + effects[as.integer(g)])
+  y <- rbinom(96L, size = 1L, prob = probability)
+  data.frame(y = y, x = x, g = g)
+}
+
+binary_data <- make_binary_data()
+add("binary_713", binomial(), bf(y ~ 1 + x + (1 | g)), binary_data,
     c("mu:(Intercept)", "mu:x", "resd:g(log_sd)"))
 # #713 MASS::bacteria
 bac <- MASS::bacteria

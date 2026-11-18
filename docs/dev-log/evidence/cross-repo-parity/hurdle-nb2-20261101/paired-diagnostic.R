@@ -1,33 +1,49 @@
 pkg <- "/home/snakagaw/hsq_work/drmtmb-biv-lognormal-main-b535bfbc-20261028/source"
 jl_path <- "/home/snakagaw/hsq_work/DRModels-ci-64ccb2d8"
-set.seed(20260623)
-n <- 1800L
-dat <- data.frame(
-  x = stats::rnorm(n),
-  z = stats::rnorm(n),
-  w = stats::rnorm(n),
-  habitat = factor(rep(c("open", "closed"), length.out = n))
-)
-X_mu <- stats::model.matrix(~ x + habitat, dat)
-X_sigma <- stats::model.matrix(~ z, dat)
-X_hu <- stats::model.matrix(~ w + habitat, dat)
-mu <- exp(as.vector(X_mu %*% c(0.40, -0.22, 0.20)))
-sigma <- exp(as.vector(X_sigma %*% c(-0.75, 0.18)))
-hu <- stats::plogis(as.vector(X_hu %*% c(-0.85, 0.45, -0.35)))
-p0 <- stats::dnbinom(0, size = 1 / sigma^2, mu = mu)
-positive_u <- p0 + pmax(stats::runif(n), .Machine$double.eps) * (1 - p0)
-dat$count <- ifelse(
-  stats::runif(n) < hu,
-  0,
-  stats::qnbinom(positive_u, size = 1 / sigma^2, mu = mu)
-)
+
+# Standalone hurdle-NB2 data prototype; no package source is imported.
+# The caller's RNGkind is retained; the seed is set explicitly.
+# Positive and hurdle uniforms are drawn as separate vectors,
+# in that order. The positive uniform is clamped below at machine epsilon.
+# NB2 has mean mu, size 1/sigma^2 and variance mu + sigma^2 * mu^2.
+make_hurdle_data <- function(n = 1800L, seed = 20260623L) {
+  set.seed(seed)
+  x <- rnorm(n)
+  z <- rnorm(n)
+  w <- rnorm(n)
+  habitat <- factor(rep(c("open", "closed"), length.out = n))
+  X <- model.matrix(~ x + habitat)
+  S <- model.matrix(~ z)
+  H <- model.matrix(~ w + habitat)
+  mu <- exp(drop(X %*% c(0.40, -0.22, 0.20)))
+  sigma <- exp(drop(S %*% c(-0.75, 0.18)))
+  hurdle <- plogis(drop(H %*% c(-0.85, 0.45, -0.35)))
+  size <- 1 / sigma^2
+  p0 <- pnbinom(0, mu = mu, size = size)
+  u_positive <- pmax(runif(n), .Machine$double.eps)
+  u_hurdle <- runif(n)
+  positive <- qnbinom(p0 + (1 - p0) * u_positive, mu = mu, size = size)
+  y <- ifelse(u_hurdle < hurdle, 0, positive)
+  data.frame(y, x, z, w, habitat, mu, sigma, hurdle, size, p0, u_positive, u_hurdle, positive)
+}
+
+fixture <- make_hurdle_data()
+dat <- fixture[c("x", "z", "w", "habitat")]
+dat$count <- fixture$y
+row.names(dat) <- NULL
+n <- nrow(dat)
 
 out <- callr::r(function(pkg, jl_path, dat) {
-  julia_home <- Sys.getenv("DRM_JL_JULIA_HOME", Sys.getenv("JULIA_HOME", ""))
-  if (nzchar(julia_home)) Sys.setenv(JULIA_HOME = julia_home)
-  options(drmTMB.DRM.jl.path = jl_path)
-  Sys.setenv(DRM_JL_PATH = jl_path)
-  suppressMessages(pkgload::load_all(pkg, quiet = TRUE))
+  # Configure the bridge and load the local R package. The loader argument is
+  # injectable for isolated tests; ordinary callers use pkgload::load_all.
+  configure_bridge <- function(pkg, jl_path, loader = pkgload::load_all) {
+    selected_home <- Sys.getenv("DRM_JL_JULIA_HOME", unset = Sys.getenv("JULIA_HOME", unset = ""))
+    if (nzchar(selected_home)) Sys.setenv(JULIA_HOME = selected_home)
+    options(drmTMB.DRM.jl.path = jl_path)
+    Sys.setenv(DRM_JL_PATH = jl_path)
+    suppressMessages(loader(pkg, quiet = TRUE))
+  }
+  configure_bridge(pkg, jl_path)
   fml <- drmTMB::bf(count ~ x + habitat, sigma ~ z, hu ~ w + habitat)
   fam <- drmTMB::truncated_nbinom2()
   ft <- drmTMB::drmTMB(fml, family = fam, data = dat, engine = "tmb")

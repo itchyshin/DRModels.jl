@@ -123,3 +123,16 @@ end
         @test fit.scales[:sd] ≈ predict_parameters(fit, incomplete)[:sd]
     end
 end
+
+@testset "zero-truncated Poisson SD regression: a missing response fits with a fresh formula object" begin
+    # The fit used to rely on a schema left in the formula object by an earlier fit: a fresh object
+    # failed with `KeyError: key 0.0` when the response column was typed `Union{Missing,Float64}`.
+    data, _ = _truncated_poisson_sd_fixture([-0.55, 0.4]; G = 16, m = 8, seed = 20261027)
+    y_missing = Vector{Union{Missing,Float64}}(data.y); y_missing[3] = missing
+    incomplete = merge(data, (; y = y_missing))
+    fit = drm(bf(@formula(y ~ x + (1 | g)), @formula(sd(g) ~ z)), TruncatedPoisson();
+              data = incomplete, nAGQ = 19)
+    @test isnan(fit.obs[:mu][3])
+    @test length(fit.scales[:sd]) == length(data.y)
+    @test fit.scales[:sd] ≈ predict_parameters(fit, incomplete)[:sd]
+end
