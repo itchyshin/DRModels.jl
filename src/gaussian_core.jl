@@ -3128,8 +3128,13 @@ end
 # `simulate(newdata)` skip them too. `:spatial_range` is the fixed median
 # distance of a coordinate spatial kernel (not estimated; `coef(fit, :range)`
 # and `summary` read it). It is not a scale.
+# Keys in `fit.scales` that are bookkeeping / context, not fitted dispersion.
+# Shared by `sigma()`, `simulate(newdata)`, and the R bridge export.
 _sigma_internal_key(k::Symbol) =
-    k === :spatial_range || k in (:cond_blup_unavailable, :cond_logsd_wall) || k in _COND_FIT_KEYS
+    k === :spatial_range || k in (:cond_blup_unavailable, :cond_logsd_wall) || k in _COND_FIT_KEYS ||
+    k in (:q2_restarts, :sd, :sd_group, :sd_group_index, :sigma_fixed, :sigma_random_effect,
+          :sigma_random_effect_slope, :sigma_group_index, :trials, :aghq_nodes) ||
+    startswith(String(k), "sdtarget_") || startswith(String(k), "cond_")
 
 """
     sigma(fit)
@@ -4108,9 +4113,7 @@ end
 # rows, and `_simulate_once` reads none of them (it draws from `:sigma` / `:zi` / ...),
 # so newdata simulation is population level, as for every other fit.
 _simulate_newdata_bookkeeping_key(k::Symbol) =
-    k in (:q2_restarts, :sd, :sd_group, :sd_group_index, :sigma_fixed, :sigma_random_effect,
-          :sigma_random_effect_slope, :sigma_group_index) ||
-    startswith(String(k), "sdtarget_")
+    _sigma_internal_key(k) && k !== :spatial_range
 
 function _fit_for_simulate_newdata(fit::DrmFit, newdata)
     _is_temporal_fit(fit) && throw(ArgumentError(
