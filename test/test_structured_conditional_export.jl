@@ -163,7 +163,7 @@ end
     # `cond_*` scales are not response-distribution parameters
     @test !any(startswith(k, "cond_") for k in keys(out["dpars"]))
     # population-level `fitted` slot is unchanged
-    @test out["fitted"] ≈ fitted(direct) atol = 1e-8
+    @test out["fitted"] ≈ fitted(direct; re = :zero) atol = 1e-8
 
     # a fit without a structured field exports nothing
     plain = drm_bridge(; formula = "y ~ x", family = "poisson", data)

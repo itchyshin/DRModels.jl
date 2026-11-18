@@ -39,7 +39,9 @@ the expected ordered-category score `Σ_k k·Pr(y=k)`. Mirrors `drmTMB`'s
 random slope `(0 + x | g)` on `mu` integrates the group-level term out by
 per-group adaptive Gauss–Hermite quadrature (41 nodes centred on each group's
 conditional mode); `coef(fit, :resd)` is the log random-effect
-SD. An unlabelled, intercept-only phylogenetic random intercept
+SD. `marginal = :Laplace` fits one ordinary random intercept `(1 | g)` by the one-point
+Laplace approximation instead, which is what drmTMB computes (`fit.marginal === :Laplace`);
+it is refused for any other model and the default is unchanged. An unlabelled, intercept-only phylogenetic random intercept
 `phylo(1 | species)` on `mu` is fit via the sparse-Laplace GLMM route instead
 (needs `tree = …`); it cannot be combined with an ordinary random effect. For
 the `phylo` route, `re_sd(fit)[:group]` is on the RAW branch-length scale (tip
@@ -58,6 +60,7 @@ markers are not implemented.
 ```julia
 fit = drm(bf(@formula(y ~ x)), CumulativeLogit(); data = dat)          # y coded 1..K
 fit_re = drm(bf(@formula(y ~ x + (1 | g))), CumulativeLogit(); data = dat)
+fit_lap = drm(bf(@formula(y ~ x + (1 | g))), CumulativeLogit(); data = dat, marginal = :Laplace)
 fit_slope = drm(bf(@formula(y ~ x + (0 + x | g))), CumulativeLogit(); data = dat)
 fit_phylo = drm(bf(@formula(y ~ x + phylo(1 | species))), CumulativeLogit(); data = dat, tree = tr)
 fit_crossed = drm(bf(@formula(y ~ x + (1 | g) + (1 | h))), CumulativeLogit(); data = dat)
@@ -198,8 +201,31 @@ end
     return _withuncertainty(_drm_cumulative_fit(f, fam; se = se, kwargs...), se)
 end
 
+# `marginal` on `CumulativeLogit`: `:LA` (the default, any case) keeps every route as it was;
+# `:Laplace` is admitted for exactly one ordinary random intercept `(1 | g)` (checked in
+# `_drm_cumulative_fit`). Returns `:LA` or `:Laplace`; anything else is refused by name.
+function _cumulative_marginal(marginal::Symbol)
+    t = Symbol(uppercase(String(marginal)))
+    t === :LA && return :LA
+    t === :LAPLACE && return :Laplace
+    throw(ArgumentError(
+        "drm (CumulativeLogit): `marginal = :$marginal` is not available for CumulativeLogit(). " *
+        "Use the default `marginal = :LA` (adaptive Gauss-Hermite quadrature on a random " *
+        "intercept) or `marginal = :Laplace` (the Laplace approximation drmTMB uses) for a " *
+        "single random intercept `(1 | g)`."))
+end
+
+function _cumulative_laplace_reject(what)
+    throw(ArgumentError(
+        "marginal = :Laplace is not available for CumulativeLogit() with $what. This route " *
+        "covers exactly one ordinary random intercept `(1 | g)` on the mean, fitted by " *
+        "maximum likelihood. Omit `marginal` (the default `:LA`) for other models."))
+end
+
 function _drm_cumulative_fit(f::DrmFormula, fam::CumulativeLogit; data, tree = nothing, g_tol::Real = 1e-8,
-             se::Bool = true)
+             se::Bool = true, marginal::Union{Nothing,Symbol} = nothing)
+    mkind = marginal === nothing ? :LA : _cumulative_marginal(marginal)
+    laplace = mkind === :Laplace
     _drm_entry_guard(f, fam, data; tree = tree)   # #1027 #1022 #1010
     data = _cumulative_label_response(f, data)    # string/symbol labels -> codes 1..K
     # The response-mask wrapper rebuilds full-design outputs and does not yet
@@ -210,7 +236,8 @@ function _drm_cumulative_fit(f::DrmFormula, fam::CumulativeLogit; data, tree = n
         throw(ArgumentError("CumulativeLogit random-effect SD regression requires observed responses; remove incomplete rows before fitting."))
     end
     missing_fit = _fit_observed_response_rows(f, data) do data_observed
-        drm(f, fam; data = data_observed, tree = tree, g_tol = g_tol, se = se)
+        laplace ? drm(f, fam; data = data_observed, tree = tree, g_tol = g_tol, se = se, marginal = :Laplace) :
+                  drm(f, fam; data = data_observed, tree = tree, g_tol = g_tol, se = se)
     end
     missing_fit !== nothing && return missing_fit
 
@@ -219,7 +246,22 @@ function _drm_cumulative_fit(f::DrmFormula, fam::CumulativeLogit; data, tree = n
         "CumulativeLogit() does not yet support predictor-dependent `sd_phylo()` formulas."))
     rhs = Dict(f.forms)
     fixed_mu, re, mv, st = _split_ranef(rhs[:mu])
+    indep_route = laplace && length(re) > 1 && _has_indep_slopes(re) && st === nothing && mv === nothing
     fixed_mu, offset_term = _extract_offset(fixed_mu)   # #938: offset(z), coefficient fixed at 1
+    if laplace && !indep_route
+        isempty(sd_parts) || _cumulative_laplace_reject("an `sd(group) ~ ...` formula")
+        mv === nothing || _cumulative_laplace_reject("a `meta_V` marker")
+        st === nothing || _cumulative_laplace_reject("a phylogenetic/structured random effect")
+        offset_term === nothing || _cumulative_laplace_reject("an `offset(...)`")
+        isempty(re) && _cumulative_laplace_reject("no random effect (there is nothing to integrate)")
+        length(re) == 1 || _cumulative_laplace_reject("crossed or multiple random effects")
+        _re_kind(re[1][1])[1] === :intercept ||
+            _cumulative_laplace_reject("a random slope or correlated random-effect block")
+        for (pname, r) in f.forms
+            (pname === :mu || (pname === :sigma && r == ConstantTerm(1))) ||
+                _cumulative_laplace_reject("a formula for `$pname`")
+        end
+    end
     offset_term === nothing || (isempty(re) && mv === nothing && st === nothing) ||
         _refuse_offset_route(fam, "a random, structured or `meta_V` term on the mean")
     mv === nothing ||
@@ -285,6 +327,16 @@ function _drm_cumulative_fit(f::DrmFormula, fam::CumulativeLogit; data, tree = n
     end
     if !isempty(re)                    # random intercept/slope on mu → GHQ marginal (#563 S8)
         if length(re) > 1               # crossed/multiple intercepts (#738)
+            if _has_indep_slopes(re)    # `(1 | g) + (0 + x | g)`: drmTMB's Laplace objective (zi_re_laplace.jl)
+                isempty(sd_parts) || throw(ArgumentError(
+                    "CumulativeLogit() independent random intercept and slope terms do not combine with `sd(...)` formulas"))
+                for r in re
+                    kd, var = _re_kind(r[1])
+                    kd === :slope && _require_finite_data_column(data, var)
+                end
+                return _withformula(_fit_cumulative_indep_laplace(
+                    fam, yi, Xμ, K, _indep_slope_comps(re, data, length(yi)), nmμ, g_tol), f)
+            end
             all(_re_kind(r[1])[1] === :intercept for r in re) ||
                 error("CumulativeLogit() supports multiple random effects only as " *
                       "crossed/nested intercepts, e.g. `(1 | g) + (1 | h)`")
@@ -311,6 +363,8 @@ function _drm_cumulative_fit(f::DrmFormula, fam::CumulativeLogit; data, tree = n
                     fam, yi, Xμ, K, ones(length(yi), 1), Zg, gidx, G,
                     nmμ, nmsd, grp, g_tol; se = se), f)
             end
+            laplace && return _withformula(_withmarginal(
+                _fit_cumulative_ranef(fam, yi, Xμ, K, gidx, G, nmμ, grp, g_tol; nq = 1), :Laplace), f)
             return _withformula(_fit_cumulative_ranef(fam, yi, Xμ, K, gidx, G, nmμ, grp, g_tol), f)
         elseif rk === :slope
             _require_finite_data_column(data, var)
@@ -535,6 +589,7 @@ function _fit_cumulative_ranef(fam::CumulativeLogit, y::Vector{Int}, Xμ, K, gid
     score = _cumulative_score(η̂, cuts_hat, K)
     means = Dict(:mu => score); obs = Dict(:mu => Float64.(y))
     scales = Dict(:ordinal_eta => η̂, :ordinal_cuts => Float64.(cuts_hat))
+    _record_cond_fit_aghq!(scales, nll, θ̂, bcache, gidx, Zre)   # fitted-row modes for `fitted(fit)`
     return _withiterations(
         _withnll(DrmFit(fam, blocks, names, θ̂, V, -nll(θ̂), n, drm_optim_converged(res), means, obs, scales), nll),
         Optim.iterations(res))
@@ -571,6 +626,7 @@ function _fit_cumulative_slope_ranef(fam::CumulativeLogit, y::Vector{Int}, Xμ, 
     score = _cumulative_score(η̂, cuts_hat, K)
     means = Dict(:mu => score); obs = Dict(:mu => Float64.(y))
     scales = Dict(:ordinal_eta => η̂, :ordinal_cuts => Float64.(cuts_hat))
+    _record_cond_fit_aghq!(scales, nll, θ̂, bcache, gidx, Zre)   # fitted-row modes for `fitted(fit)`
     return _withiterations(
         _withnll(DrmFit(fam, blocks, names, θ̂, V, -nll(θ̂), n, drm_optim_converged(res), means, obs, scales), nll),
         Optim.iterations(res))
@@ -1000,6 +1056,10 @@ function _fit_cumulative_crossed_laplace(fam::CumulativeLogit, y::Vector{Int}, X
     means = Dict(:mu => score)
     obs = Dict(:mu => Float64.(y))
     scales = Dict(:ordinal_eta => η̂, :ordinal_cuts => Float64.(cuts_hat))
+    # fitted-row modes from the inner crossed engine at the final cutpoints (conditional `fitted`)
+    for k in (:cond_fit_eta_re, :cond_fit_failed)
+        haskey(fit.scales, k) && (scales[k] = fit.scales[k])
+    end
 
     return DrmFit(fam, blocks, names, theta, V, fit.loglik, fit.nobs, fit.converged,
                  means, obs, scales)

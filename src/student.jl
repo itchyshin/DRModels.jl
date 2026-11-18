@@ -113,9 +113,17 @@ function _warn_student_nu_boundary(fit)
     return fit
 end
 
+# The slope symbol of an independent `spatial(1 + x | g)` term on the mean, else `nothing`. The labelled
+# (correlated) form `spatial(1 + x | p | g)` is not this route and keeps its refusal.
+function _student_spatial_slope(mu)
+    block = _animal_intercept_slope(mu; kind = spatial, allow_label = true)
+    (block === nothing || block.label !== nothing) && return nothing
+    return block.slope
+end
+
 function _drm_student_fit(f::DrmFormula, fam::Student; data, g_tol::Real = 1e-8,
-             se::Bool = true, marginal::Symbol = :LA)
-    _drm_entry_guard(f, fam, data)   # #1027 #1022
+             se::Bool = true, marginal::Symbol = :LA, coords = nothing)
+    _drm_entry_guard(f, fam, data; coords = coords)   # #1027 #1022
     # `marginal = :Laplace` (opt-in, ordinary `(1 | g)` on the mean): the TMB-convention
     # Laplace integrator drmTMB uses; the default `:LA` is unchanged (adaptive GHQ).
     laplace = _scalar_laplace_requested(marginal)
@@ -123,17 +131,40 @@ function _drm_student_fit(f::DrmFormula, fam::Student; data, g_tol::Real = 1e-8,
         "drm (Student): marginal = :$marginal is not available; use `:LA` (default) " *
         "or `:Laplace` (ordinary `(1 | g)` on the mean)."))
     missing_fit = _fit_observed_response_rows(f, data) do data_observed
-        drm(f, fam; data = data_observed, g_tol = g_tol, se = se, marginal = marginal)
+        drm(f, fam; data = data_observed, g_tol = g_tol, se = se, marginal = marginal, coords = coords)
     end
     missing_fit !== nothing && return missing_fit
+    coords = _resolve_coords_labels(f, data, coords, nothing)   # #957: match `coords` by site label
 
     if !isempty(_sd_target_parts(f)) || !isempty(_sdphylo_parts(f))
         return _drm_student_sd_regression(f, fam; data, g_tol, se, marginal)
     end
     _lss_only_gaussian_guard(f, fam)   # #544: refuse, never silently drop, sd() parts
     rhs = Dict(f.forms)
-    fixed_mu, re, mv, st = _split_ranef(rhs[:mu])
+    # `spatial(1 + x | g)`: `nothing` unless that form. Only read when `coords` is given, so a forgotten `coords`
+    # keeps the refusal that `_split_ranef` raised for the slope form before this route existed.
+    sp_slope = coords === nothing ? nothing : _student_spatial_slope(rhs[:mu])
+    fixed_mu, re, mv, st = _split_ranef(rhs[:mu]; allow_spatial_intercept_slope = sp_slope !== nothing)
     fixed_mu, offset_term = _extract_offset(fixed_mu)   # #938: offset(z), coefficient fixed at 1
+    if st !== nothing && st[1] === :spatial && mv === nothing && isempty(re) && coords !== nothing &&
+       length(_collect_structured(rhs[:mu])) == 1   # a second structured marker keeps its refusal below
+        offset_term === nothing || _refuse_offset_route(fam, "a random, structured or `meta_V` term on the mean")
+        for (pname, r) in f.forms
+            pname === :mu && continue
+            _, re2, mv2, st2 = _split_ranef(r)
+            (isempty(re2) && mv2 === nothing && st2 === nothing) ||
+                error("Student(): only the mean formula may carry a random effect")
+        end
+        y, Xμ, nmμ = _design(f.response, fixed_mu, data)
+        _, Xσ, nmσ = _design(f.response, get(rhs, :sigma, ConstantTerm(1)), data)
+        _, Xν, nmν = _design(f.response, get(rhs, :nu, ConstantTerm(1)), data)
+        labels = getproperty(data, st[2])
+        _, Gsp = _group_index(labels)
+        Csp = _spatial_covariance_from_coords(st[2], Gsp, coords, nothing)
+        slope = sp_slope === nothing ? nothing : getproperty(data, sp_slope)
+        return _withformula(_fit_student_structured_laplace(fam, y, Xμ, Xσ, Xν, Csp, labels, slope, sp_slope,
+                                                             nmμ, nmσ, nmν, st[2], g_tol; se = se), f)
+    end
     offset_term === nothing || (isempty(re) && mv === nothing && st === nothing) ||
         _refuse_offset_route(fam, "a random, structured or `meta_V` term on the mean")
     (mv === nothing && st === nothing) ||
@@ -434,6 +465,7 @@ function _fit_student_ranef(fam::Student, y, Xμ, Xσ, Xν, gidx, G, nmμ, nmσ,
     means = Dict(:mu => Xμ * θ̂[1:pμ]); obs = Dict(:mu => Vector{Float64}(y))   # population μ (b=0)
     scales = Dict(:sigma => exp.(Xσ * θ̂[(pμ+1):(pμ+pσ)]),
                   :nu => 2 .+ exp.(Xν * θ̂[(pμ+pσ+1):(pμ+pσ+pν)]))
+    _record_cond_fit_aghq!(scales, nll, θ̂, bcache, gidx, Zre)   # fitted-row modes for `fitted(fit)`
     return _withiterations(
         _withnll(DrmFit(fam, blocks, names, θ̂, V, -nll(θ̂), n, drm_optim_converged(res) && hess_finite, means, obs, scales), nll),
         Optim.iterations(res))
@@ -453,20 +485,22 @@ function _fit_student_corr_ranef(fam::Student, y, Xμ, Xσ, Xν, xs, gidx, G, nm
         push!(members[gidx[i]], i)
     end
     rule = _AGHQRule(2, nq); Zre = hcat(ones(n), Float64.(xs)); bcache = zeros(2, G)   # #834: per-group AGHQ
-    function nll(θ)
+    function nll_with_cache(θ, cache; count_resets::Bool=true)
         βμ = θ[1:pμ]; βσ = θ[pμ+1:pμ+pσ]; βν = θ[pμ+pσ+1:pμ+pσ+pν]
         L = _corr_ranef_L(θ[pμ+pσ+pν+1], θ[pμ+pσ+pν+2], θ[pμ+pσ+pν+3])
         η0 = Xμ * βμ; ησ = Xσ * βσ; ην = Xν * βν
         ll = (i, η) -> (zt = (y[i] - η) * exp(-ησ[i]); _student_logpdf_std(zt, ην[i]) - ησ[i])
-        return -_aghq_marginal_loglik(ll, members, η0, Zre, L, rule, bcache)
+        return -_aghq_marginal_loglik(ll, members, η0, Zre, L, rule, cache; count_resets=count_resets)
     end
+    nll(θ) = nll_with_cache(θ, bcache)
+    diagnostic_nll(θ, cache) = nll_with_cache(θ, cache; count_resets=false)
     βμ0 = Xμ \ y
     θ0 = zeros(pμ + pσ + pν + 3)
     θ0[1:pμ] .= βμ0
     θ0[pμ+1] = log(std(y - Xμ * βμ0) + eps())        # σ init
     θ0[pμ+pσ+1] = log(10.0)                           # ν init
     θ0[pμ+pσ+pν+1] = log(0.4); θ0[pμ+pσ+pν+2] = log(0.4); θ0[pμ+pσ+pν+3] = 0.0   # log-Cholesky init
-    res = Optim.optimize(nll, θ0, Optim.LBFGS(), Optim.Options(g_tol = g_tol); autodiff = :forward)
+    res = _optimize_corr_ranef(nll, θ0, g_tol, bcache)
     θ̂ = Optim.minimizer(res)
     # #961: a non-finite Hessian on finite data is a degenerate fit, not a crash.
     V, hess_finite = _vcov_from_hessian_checked(ForwardDiff.hessian(nll, θ̂),
@@ -476,8 +510,10 @@ function _fit_student_corr_ranef(fam::Student, y, Xμ, Xσ, Xν, xs, gidx, G, nm
     means = Dict(:mu => Xμ * θ̂[1:pμ]); obs = Dict(:mu => Vector{Float64}(y))
     scales = Dict(:sigma => exp.(Xσ * θ̂[(pμ+1):(pμ+pσ)]),
                   :nu => 2 .+ exp.(Xν * θ̂[(pμ+pσ+1):(pμ+pσ+pν)]))
+    _record_cond_fit_aghq!(scales, nll, θ̂, bcache, gidx, Zre)   # fitted-row modes for `fitted(fit)`
     return _withiterations(
-        _withnll(DrmFit(fam, blocks, names, θ̂, V, -nll(θ̂), n, drm_optim_converged(res) && hess_finite, means, obs, scales), nll),
+        _withnll(DrmFit(fam, blocks, names, θ̂, V, -nll(θ̂), n, drm_optim_converged(res) && hess_finite, means, obs, scales),
+                 _AGHQDiagnosticObjective(nll, diagnostic_nll, bcache)),
         Optim.iterations(res))
 end
 

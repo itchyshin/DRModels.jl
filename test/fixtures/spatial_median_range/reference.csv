@@ -1,0 +1,14 @@
+"cell","term","estimate","loglik"
+"gaussian_ML","mu:(Intercept)",-0.221566648727324,-67.0698222135495
+"gaussian_ML","mu:x",0.502093180151436,-67.0698222135495
+"gaussian_ML","sigma:(Intercept)",-1.06863214371675,-67.0698222135495
+"gaussian_ML","sigma",0.343478024810577,-67.0698222135495
+"gaussian_ML","sd:mu:spatial(1 | g)",0.78446154470731,-67.0698222135495
+"gaussian_REML","mu:(Intercept)",-0.22145664626504,-69.3297121436742
+"gaussian_REML","mu:x",0.502135230799833,-69.3297121436742
+"gaussian_REML","sigma:(Intercept)",-1.06412559741692,-69.3297121436742
+"gaussian_REML","sigma",0.345029417518298,-69.3297121436742
+"gaussian_REML","sd:mu:spatial(1 | g)",0.810070786086859,-69.3297121436742
+"binomial_ML","mu:(Intercept)",-0.737536613509394,-191.704606499254
+"binomial_ML","mu:x",0.632591488780721,-191.704606499254
+"binomial_ML","sd:mu:spatial(1 | g)",0.647685200233935,-191.704606499254

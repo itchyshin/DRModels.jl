@@ -121,13 +121,21 @@ list(
     id    = "fe_skew_normal",
     label = "Skew-normal (mu ~ x, sigma ~ z, nu ~ 1), fixed effects",
     build = function() {
-      set.seed(20260608); n <- 500; nu <- 1.6
-      x <- rnorm(n); z <- rnorm(n)
-      mu <- 0.20 + 0.45 * x; sigma <- exp(-0.35 + 0.18 * z)
-      delta <- nu / sqrt(1 + nu^2); ms <- delta * sqrt(2 / pi)
-      omega <- sigma / sqrt(1 - ms^2); xi <- mu - omega * ms
-      data.frame(y = xi + omega * (delta * abs(rnorm(n)) + sqrt(1 - delta^2) * rnorm(n)),
-                 x = x, z = z)
+      set.seed(20260608L)
+      n <- 500L
+      slant <- 1.6
+      x <- rnorm(n)
+      z <- rnorm(n)
+      u <- rnorm(n)
+      v <- rnorm(n)
+      mu <- 0.20 + 0.45 * x
+      sigma <- exp(-0.35 + 0.18 * z)
+      delta <- slant / sqrt(1 + slant^2)
+      m <- delta * sqrt(2 / pi)
+      omega <- sigma / sqrt(1 - m^2)
+      xi <- mu - omega * m
+      y <- xi + omega * (delta * abs(u) + sqrt(1 - delta^2) * v)
+      data.frame(y = y, x = x, z = z)
     },
     formula = function() bf(y ~ x, sigma ~ z, nu ~ 1),
     family  = function() skew_normal()
@@ -166,23 +174,21 @@ list(
   # as DISTRIBUTIONAL OVERLAP (TRUE), which is the only correct bootstrap test
   # since each engine draws its own resamples. Note the Julia side emits a
   # numerically-singular-Hessian warning for coordinate 5 (the nu intercept,
-  # rcond 9.1e-09); it does not touch the mu:x target measured here. There was no
-  # univariate student cell in either parity script, so the draw is taken verbatim
-  # from the committed fixture in drmTMB tests/testthat/test-student-location-scale.R
-  # (n = 600, seed 20260509, nu = 8) — the same provenance rule the fe_skew_normal
-  # cell follows.
+  # rcond 9.1e-09); it does not touch the mu:x target measured here.
+  # This independently written generator reproduces the recorded Student fixture.
   list(
     id    = "fe_student",
     label = "Student-t (mu ~ x, sigma ~ z, nu ~ 1), fixed effects",
     build = function() {
-      set.seed(20260509); n <- 600
-      dat <- data.frame(x = rnorm(n), z = rnorm(n))
-      mu <- 0.25 + 0.6 * dat$x
-      sigma <- exp(-0.3 + 0.25 * dat$z)
-      nu <- 2 + exp(log(6))
-      q <- qt((seq_len(n) - 0.5) / n, df = nu)
-      dat$y <- mu + sigma * sample(q)
-      dat
+      n <- 600L
+      set.seed(20260509L)
+      x <- rnorm(n)
+      z <- rnorm(n)
+      mu <- 0.25 + 0.6 * x
+      sigma <- exp(-0.3 + 0.25 * z)
+      quantiles <- qt((seq_len(n) - 0.5) / n, df = 8)
+      y <- mu + sigma * sample(quantiles)
+      data.frame(x = x, z = z, y = y)
     },
     formula = function() bf(y ~ x, sigma ~ z, nu ~ 1),
     family  = function() student()

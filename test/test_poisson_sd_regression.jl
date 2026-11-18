@@ -139,7 +139,7 @@ end
     @test DRModels._bootstrap_refit_kwargs(fit).nAGQ == 3
     @test predict_parameters(fit, data)[:sd] ≈ fit.scales[:sd]
     @test predict_parameters(fit, data; type = :link)[:sd] ≈ log.(fit.scales[:sd])
-    @test length(fitted(fit)) == length(data.y)
+    @test length(fitted(fit; re = :zero)) == length(data.y)
 
     bridge = drm_bridge(; formula = "y ~ x + (1 | g); sd(g) ~ z",
                         family = "poisson", data)
@@ -235,7 +235,7 @@ end
     @test abs(coef(fit, :sd)[2] - alpha[2]) < 0.5
     expected_mean = exp.(coef(fit, :mu)[1] .+
                           coef(fit, :mu)[2] .* x .+ log_exposure)
-    @test fitted(fit) ≈ expected_mean
+    @test fitted(fit; re = :zero) ≈ expected_mean
     @test predict_parameters(fit, data)[:mu] ≈ expected_mean
     boot = bootstrap_result(fit; data, B = 1,
                             rng = MersenneTwister(2026102319), failures = :skip)
@@ -275,7 +275,7 @@ end
     slope_fit = drm(slope_formula, Poisson(); data = slope_data)
     @test slope_fit.converged
     @test coef(slope_fit, :sd)[2] > 0
-    @test fitted(slope_fit) ≈ exp.(coef(slope_fit, :mu)[1] .+
+    @test fitted(slope_fit; re = :zero) ≈ exp.(coef(slope_fit, :mu)[1] .+
                                     coef(slope_fit, :mu)[2] .* x .+ log_exposure)
 end
 

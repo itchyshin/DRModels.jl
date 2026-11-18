@@ -26,18 +26,23 @@ unit_height <- function(tree) {
   tree
 }
 
-# F1: the Arc 1 probe fixture, sweep_fixture("gaussian") in drmTMB
-# tools/julia-model-identity-sweep.R (seed 20260924, n = 90, 15 tips), copied
-# here so the receipt is self-contained. Only y, x and sp are used.
-fixture_f1 <- function(n = 90L, ntip = 15L, seed = 20260924L) {
+# F1: independently implemented reproduction of the recorded fixture.
+# Independent model-data prototype; uses the ambient RNG kind.
+make_f1_data <- function(seed = 20260924L, n_tip = 15L, n = 90L) {
   set.seed(seed)
-  tree <- ape::rcoal(ntip)
-  tree$tip.label <- paste0("t", seq_len(ntip))
-  grp <- factor(rep(tree$tip.label, each = n %/% ntip), levels = tree$tip.label)
-  x <- stats::rnorm(n)
-  group_effect <- stats::rnorm(nlevels(grp), 0, 0.4)[as.integer(grp)]
-  y <- 0.3 + 0.5 * x + group_effect + stats::rnorm(n, 0, 1)
-  list(data = data.frame(y = y, x = x, sp = grp), tree = unit_height(tree))
+  tree <- ape::rcoal(n_tip)
+  tree$tip.label <- paste0("t", seq_len(n_tip))
+  sp <- factor(rep(tree$tip.label, each = n / n_tip), levels = tree$tip.label)
+  x <- rnorm(n)
+  effects <- rnorm(n_tip, 0, 0.4)
+  residuals <- rnorm(n)
+  y <- 0.3 + 0.5 * x + effects[as.integer(sp)] + residuals
+  tree$edge.length <- tree$edge.length / max(ape::node.depth.edgelength(tree))
+  list(data = data.frame(y = y, x = x, sp = sp), tree = tree)
+}
+
+fixture_f1 <- function(n = 90L, ntip = 15L, seed = 20260924L) {
+  make_f1_data(seed = seed, n_tip = ntip, n = n)
 }
 
 # F2: a genuine phylogenetic location-scale draw (50 tips x 6 rows) with

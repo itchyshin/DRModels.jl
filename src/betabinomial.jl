@@ -111,6 +111,10 @@ function _drm_betabinomial_fit(f::DrmFormula, fam::BetaBinomial; data, tree = no
                           "intercepts `(1 | g) + (1 | h)` only, #761)")
     mv === nothing ||
         error("BetaBinomial() does not support meta_V markers")
+    let sigre = _drm_sigma_ranef_laplace_family(f, fam; data, g_tol, se, fixed_mu, re, mv, st,
+                                                offset_term = offset_term, isva = false, isaghq = isaghq)
+        sigre === nothing || return sigre
+    end
     for (pname, r) in f.forms          # only the mean may carry a random effect
         pname === :mu && continue
         _, re2, mv2, st2 = _split_ranef(r)
@@ -491,6 +495,7 @@ function _fit_betabinomial_ranef(fam::BetaBinomial, s, ntr, Xμ, Xσ, gidx, G, n
     names = [:mu => nmμ, :sigma => nmσ, :resd => [String(grp)]]
     means = Dict(:mu => _logistic.(Xμ * θ̂[1:pμ])); obs = Dict(:mu => s ./ ntr)   # population μ (b=0)
     scales = Dict(:sigma => exp.(Xσ * θ̂[(pμ+1):(pμ+pσ)]), :trials => Float64.(nint))
+    _record_cond_fit_aghq!(scales, nll, θ̂, bcache, gidx, Zre)   # fitted-row modes for `fitted(fit)`
     return _withiterations(
         _withnll(DrmFit(fam, blocks, names, θ̂, V, -nll(θ̂), n, drm_optim_converged(res), means, obs, scales), nll),
         Optim.iterations(res))
@@ -529,6 +534,7 @@ function _fit_betabinomial_corr_ranef(fam::BetaBinomial, s, ntr, Xμ, Xσ, xs, g
     names = [:mu => nmμ, :sigma => nmσ, :recov => ["$(grp):L11", "$(grp):L22", "$(grp):L21"]]
     means = Dict(:mu => _logistic.(Xμ * θ̂[1:pμ])); obs = Dict(:mu => s ./ ntr)
     scales = Dict(:sigma => exp.(Xσ * θ̂[(pμ+1):(pμ+pσ)]), :trials => Float64.(nint))
+    _record_cond_fit_aghq!(scales, nll, θ̂, bcache, gidx, Zre)   # fitted-row modes for `fitted(fit)`
     return _withiterations(
         _withnll(DrmFit(fam, blocks, names, θ̂, V, -nll(θ̂), n, drm_optim_converged(res), means, obs, scales), nll),
         Optim.iterations(res))
