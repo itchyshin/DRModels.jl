@@ -122,7 +122,11 @@ end
     # main's vcov(fit) was done across two checkouts on Totoro (see the PR).
     Hold = _fhn_old_healthy_hessian(fit.nll, θ̂; h = h)
     Hnew = DRModels._finite_hessian(fit.nll, θ̂; h = h)
-    @test maximum(abs, Hnew .- Hold) <= 1e-7 * maximum(abs, Hold)
+    # #1073: this route's SEs no longer come from this value stencil (they difference the
+    # exact gradient). The value stencil is KNOWN-NOISY -- inner-solve noise / h^2 -- so
+    # two evaluations of it agree to ~1e-5 relative, not 1e-9; it is kept only as the
+    # fallback for a collapsed variance. The tolerance below states that, nothing more.
+    @test maximum(abs, Hnew .- Hold) <= 1e-4 * maximum(abs, Hold)
     @test all(isfinite, vcov(fit))
     Vold = DRModels._vcov_from_hessian(Hold)
     @test maximum(abs, vcov(fit) .- Vold) <= 1e-5 * maximum(abs, Vold)

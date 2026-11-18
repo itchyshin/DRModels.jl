@@ -26,7 +26,10 @@
     CumulativeLogit()
 
 Cumulative-logit (proportional-odds) ordinal family. The response is an ordered
-category coded `1, 2, …, K`. `Pr(y ≤ k) = logistic(θ_k − η)` with ordered
+category coded `1, 2, …, K`. Every code in `1:K` must be observed at least once;
+a skipped level is an `ArgumentError` naming the missing level(s) and the
+observed levels (drmTMB refuses that empty category too). `Pr(y ≤ k) =
+logistic(θ_k − η)` with ordered
 cutpoints `θ_1 < … < θ_{K-1}`; the single linear predictor `η` comes from the
 `mu` formula **with its intercept dropped** (cutpoints absorb it). No scale
 parameter. `coef(fit, :mu)` are the slopes; `coef(fit, :cutpoints)` are the raw
@@ -36,7 +39,9 @@ the expected ordered-category score `Σ_k k·Pr(y=k)`. Mirrors `drmTMB`'s
 random slope `(0 + x | g)` on `mu` integrates the group-level term out by
 per-group adaptive Gauss–Hermite quadrature (41 nodes centred on each group's
 conditional mode); `coef(fit, :resd)` is the log random-effect
-SD. An unlabelled, intercept-only phylogenetic random intercept
+SD. `marginal = :Laplace` fits one ordinary random intercept `(1 | g)` by the one-point
+Laplace approximation instead, which is what drmTMB computes (`fit.marginal === :Laplace`);
+it is refused for any other model and the default is unchanged. An unlabelled, intercept-only phylogenetic random intercept
 `phylo(1 | species)` on `mu` is fit via the sparse-Laplace GLMM route instead
 (needs `tree = …`); it cannot be combined with an ordinary random effect. For
 the `phylo` route, `re_sd(fit)[:group]` is on the RAW branch-length scale (tip
@@ -53,11 +58,12 @@ Correlated slopes `(1 + x | g)` and `relmat`/`animal`/`spatial` structured
 markers are not implemented.
 
 ```julia
-fit = drm(bf(y ~ x), CumulativeLogit(); data = dat)          # y coded 1..K
-fit_re = drm(bf(y ~ x + (1 | g)), CumulativeLogit(); data = dat)
-fit_slope = drm(bf(y ~ x + (0 + x | g)), CumulativeLogit(); data = dat)
-fit_phylo = drm(bf(y ~ x + phylo(1 | species)), CumulativeLogit(); data = dat, tree = tr)
-fit_crossed = drm(bf(y ~ x + (1 | g) + (1 | h)), CumulativeLogit(); data = dat)
+fit = drm(bf(@formula(y ~ x)), CumulativeLogit(); data = dat)          # y coded 1..K
+fit_re = drm(bf(@formula(y ~ x + (1 | g))), CumulativeLogit(); data = dat)
+fit_lap = drm(bf(@formula(y ~ x + (1 | g))), CumulativeLogit(); data = dat, marginal = :Laplace)
+fit_slope = drm(bf(@formula(y ~ x + (0 + x | g))), CumulativeLogit(); data = dat)
+fit_phylo = drm(bf(@formula(y ~ x + phylo(1 | species))), CumulativeLogit(); data = dat, tree = tr)
+fit_crossed = drm(bf(@formula(y ~ x + (1 | g) + (1 | h))), CumulativeLogit(); data = dat)
 re_sd(fit_crossed)                                            # Dict(:g => ..., :h => ...)
 ```
 """
@@ -133,16 +139,131 @@ function _cumulative_cut_init(y, K, n)
     return δ0
 end
 
-function drm(f::DrmFormula, fam::CumulativeLogit; data, tree = nothing, g_tol::Real = 1e-8,
-             se::Bool = true)
+# drmTMB does not read a character response: it refuses a character response and an
+# unordered factor, and asks for an ordered factor or integer category scores. Here a
+# string or symbol response is a Julia-side convenience, recoded in sorted label order
+# to the integer codes 1..K the
+# route fits (gap map v2: `y ~ x1` with labels "o1".."o4" died with
+# `Float64(::String)`). Numeric codes pass through; any other element type is refused.
+function _cumulative_label_response(f::DrmFormula, data)
+    col = _maybe_table_column(data, f.response)
+    col isa AbstractVector || return data
+    all(x -> ismissing(x) || x isa Real, col) && return data
+    all(x -> ismissing(x) || x isa Union{AbstractString,Symbol}, col) || throw(ArgumentError(
+        "CumulativeLogit(): the response `$(f.response)` must be integer categories coded " *
+        "1, 2, …, K, or string/symbol labels that sort in category order; got element type " *
+        "$(nonmissingtype(eltype(col)))."))
+    labels = sort!(unique(string(x) for x in col if !ismissing(x)))
+    code = Dict(l => k for (k, l) in enumerate(labels))
+    @info "CumulativeLogit(): response `$(f.response)` has labels; coded 1..$(length(labels)) in " *
+          "sorted label order ($(join(labels, " < "))). Pass integer codes to choose another order."
+    coded = [ismissing(x) ? missing : code[string(x)] for x in col]
+    any(ismissing, coded) || (coded = Int.(coded))
+    return _replace_table_column(data, f.response, coded)
+end
+
+# #1303. `K = maximum(y)` would otherwise reserve a cutpoint for a code that
+# never occurs and drive that increment to −Inf, collapsing two thresholds.
+# drmTMB's `validate_ordinal_codes` refuses the same hole: every category in
+# `1:K` must appear at least once, and the empty categories are named. Two
+# observed categories remain valid here when both codes occur.
+function _cumulative_require_observed_levels(response::Symbol,
+                                             yi::AbstractVector{<:Integer}, K::Integer)
+    observed = sort!(unique(yi))
+    length(observed) == K && first(observed) == 1 && return nothing
+    gaps = String[]
+    prev = 0
+    for v in observed
+        if v > prev + 1
+            lo = prev + 1
+            hi = v - 1
+            push!(gaps, lo == hi ? string(lo) : string(lo, ":", hi))
+        end
+        prev = v
+    end
+    if prev < K
+        lo = prev + 1
+        hi = Int(K)
+        push!(gaps, lo == hi ? string(lo) : string(lo, ":", hi))
+    end
+    msg = string(
+        "CumulativeLogit() requires every ordered category in 1:", K,
+        " to appear at least once in the fitted data. Response `", response,
+        "` has missing level(s): ", join(gaps, ", "),
+        " (observed levels: ", join(observed, ", "),
+        "). Drop unused levels or combine sparse categories before fitting.")
+    throw(ArgumentError(msg))
+end
+
+# FX3b: `se = false` is recorded on the fit (`DrmFit.uncertainty`), so
+# `convergence_status` does not read the skipped (NaN) covariance as a failure.
+@drm_entry function drm(f::DrmFormula, fam::CumulativeLogit; se::Bool = true, kwargs...)
+    return _withuncertainty(_drm_cumulative_fit(f, fam; se = se, kwargs...), se)
+end
+
+# `marginal` on `CumulativeLogit`: `:LA` (the default, any case) keeps every route as it was;
+# `:Laplace` is admitted for exactly one ordinary random intercept `(1 | g)` (checked in
+# `_drm_cumulative_fit`). Returns `:LA` or `:Laplace`; anything else is refused by name.
+function _cumulative_marginal(marginal::Symbol)
+    t = Symbol(uppercase(String(marginal)))
+    t === :LA && return :LA
+    t === :LAPLACE && return :Laplace
+    throw(ArgumentError(
+        "drm (CumulativeLogit): `marginal = :$marginal` is not available for CumulativeLogit(). " *
+        "Use the default `marginal = :LA` (adaptive Gauss-Hermite quadrature on a random " *
+        "intercept) or `marginal = :Laplace` (the Laplace approximation drmTMB uses) for a " *
+        "single random intercept `(1 | g)`."))
+end
+
+function _cumulative_laplace_reject(what)
+    throw(ArgumentError(
+        "marginal = :Laplace is not available for CumulativeLogit() with $what. This route " *
+        "covers exactly one ordinary random intercept `(1 | g)` on the mean, fitted by " *
+        "maximum likelihood. Omit `marginal` (the default `:LA`) for other models."))
+end
+
+function _drm_cumulative_fit(f::DrmFormula, fam::CumulativeLogit; data, tree = nothing, g_tol::Real = 1e-8,
+             se::Bool = true, marginal::Union{Nothing,Symbol} = nothing)
+    mkind = marginal === nothing ? :LA : _cumulative_marginal(marginal)
+    laplace = mkind === :Laplace
+    _drm_entry_guard(f, fam, data; tree = tree)   # #1027 #1022 #1010
+    data = _cumulative_label_response(f, data)    # string/symbol labels -> codes 1..K
+    # The response-mask wrapper rebuilds full-design outputs and does not yet
+    # preserve this route's group-specific scale design. Refuse incomplete data
+    # until that mapping is implemented rather than silently fitting a changed
+    # SD model.
+    if !isempty(_sd_parts(f)) && !all(_formula_response_observed_mask(f, data))
+        throw(ArgumentError("CumulativeLogit random-effect SD regression requires observed responses; remove incomplete rows before fitting."))
+    end
     missing_fit = _fit_observed_response_rows(f, data) do data_observed
-        drm(f, fam; data = data_observed, tree = tree, g_tol = g_tol, se = se)
+        laplace ? drm(f, fam; data = data_observed, tree = tree, g_tol = g_tol, se = se, marginal = :Laplace) :
+                  drm(f, fam; data = data_observed, tree = tree, g_tol = g_tol, se = se)
     end
     missing_fit !== nothing && return missing_fit
 
-    _lss_only_gaussian_guard(f, fam)   # #544: refuse, never silently drop, sd() parts
+    sd_parts = _sd_parts(f)
+    isempty(_sdphylo_parts(f)) || throw(ArgumentError(
+        "CumulativeLogit() does not yet support predictor-dependent `sd_phylo()` formulas."))
     rhs = Dict(f.forms)
     fixed_mu, re, mv, st = _split_ranef(rhs[:mu])
+    indep_route = laplace && length(re) > 1 && _has_indep_slopes(re) && st === nothing && mv === nothing
+    fixed_mu, offset_term = _extract_offset(fixed_mu)   # #938: offset(z), coefficient fixed at 1
+    if laplace && !indep_route
+        isempty(sd_parts) || _cumulative_laplace_reject("an `sd(group) ~ ...` formula")
+        mv === nothing || _cumulative_laplace_reject("a `meta_V` marker")
+        st === nothing || _cumulative_laplace_reject("a phylogenetic/structured random effect")
+        offset_term === nothing || _cumulative_laplace_reject("an `offset(...)`")
+        isempty(re) && _cumulative_laplace_reject("no random effect (there is nothing to integrate)")
+        length(re) == 1 || _cumulative_laplace_reject("crossed or multiple random effects")
+        _re_kind(re[1][1])[1] === :intercept ||
+            _cumulative_laplace_reject("a random slope or correlated random-effect block")
+        for (pname, r) in f.forms
+            (pname === :mu || (pname === :sigma && r == ConstantTerm(1))) ||
+                _cumulative_laplace_reject("a formula for `$pname`")
+        end
+    end
+    offset_term === nothing || (isempty(re) && mv === nothing && st === nothing) ||
+        _refuse_offset_route(fam, "a random, structured or `meta_V` term on the mean")
     mv === nothing ||
         error("CumulativeLogit() does not support meta_V markers")
     if st !== nothing
@@ -157,6 +278,34 @@ function drm(f::DrmFormula, fam::CumulativeLogit; data, tree = nothing, g_tol::R
             error("CumulativeLogit() phylo(1 | $grp) cannot be combined with an ordinary " *
                   "random effect on `mu` yet")
     end
+    if !isempty(sd_parts)
+        length(sd_parts) == 1 || throw(ArgumentError(
+            "CumulativeLogit() SD regression currently requires one ordinary `sd(group) ~ …` formula."))
+        target = only(_sd_target_parts(f))
+        descriptor = target.target
+        (descriptor.level === :iid && descriptor.dpar === :mu &&
+         descriptor.block === nothing) || throw(ArgumentError(
+            "CumulativeLogit SD regression targets one ordinary mean intercept or independent numeric slope."))
+        sgrp, srhs = descriptor.group, target.rhs
+        st === nothing || throw(ArgumentError(
+            "CumulativeLogit() SD regression currently supports one ordinary random intercept or independent slope; structured effects are not admitted."))
+        length(re) == 1 || throw(ArgumentError(
+            "CumulativeLogit() SD regression currently supports one ordinary random-effect coefficient."))
+        rk, slope = _re_kind(re[1][1])
+        member = rk === :intercept ? :intercept : rk === :slope ? slope : nothing
+        rk in (:intercept, :slope) || throw(ArgumentError(
+            "CumulativeLogit() SD regression supports `(1 | group)` or one independent numeric `(0 + x | group)` slope; correlated blocks are not admitted."))
+        member === nothing && throw(ArgumentError(
+            "CumulativeLogit() SD regression requires an ordinary intercept or independent numeric slope."))
+        descriptor.member in (nothing, member) || throw(ArgumentError(
+            "CumulativeLogit SD target `coef($(descriptor.member))` does not match random-effect coefficient `$member`."))
+        re[1][2] === sgrp || throw(ArgumentError(
+            "CumulativeLogit() `sd($sgrp)` must target the grouping variable in the `mu` random effect."))
+        sd_keys = Set(item.key for item in _sd_target_parts(f))
+        any(!(p === :mu || p in sd_keys ||
+              (p === :sigma && r == ConstantTerm(1))) for (p, r) in f.forms) &&
+            throw(ArgumentError("CumulativeLogit() SD regression supports only `mu` and one ordinary `sd(group)` formula."))
+    end
     y, Xμ, nmμ = _design(f.response, fixed_mu, data)
     ic = findfirst(==("(Intercept)"), nmμ)               # drop the location intercept
     if ic !== nothing
@@ -167,6 +316,9 @@ function drm(f::DrmFormula, fam::CumulativeLogit; data, tree = nothing, g_tol::R
         error("CumulativeLogit() requires ordered integer categories coded 1, 2, …, K (K ≥ 2)")
     K = round(Int, maximum(y))
     yi = round.(Int, y)
+    # Before any route allocates `K - 1` cutpoints (#1303). Fixed effects,
+    # random intercepts/slopes, phylo and crossed intercepts all pass through here.
+    _cumulative_require_observed_levels(f.response, yi, K)
     if st !== nothing                  # phylo(1 | g) random intercept → sparse Laplace (#563 S8 follow-on)
         _, grp = st
         labels = getproperty(data, grp)
@@ -175,11 +327,21 @@ function drm(f::DrmFormula, fam::CumulativeLogit; data, tree = nothing, g_tol::R
     end
     if !isempty(re)                    # random intercept/slope on mu → GHQ marginal (#563 S8)
         if length(re) > 1               # crossed/multiple intercepts (#738)
+            if _has_indep_slopes(re)    # `(1 | g) + (0 + x | g)`: drmTMB's Laplace objective (zi_re_laplace.jl)
+                isempty(sd_parts) || throw(ArgumentError(
+                    "CumulativeLogit() independent random intercept and slope terms do not combine with `sd(...)` formulas"))
+                for r in re
+                    kd, var = _re_kind(r[1])
+                    kd === :slope && _require_finite_data_column(data, var)
+                end
+                return _withformula(_fit_cumulative_indep_laplace(
+                    fam, yi, Xμ, K, _indep_slope_comps(re, data, length(yi)), nmμ, g_tol), f)
+            end
             all(_re_kind(r[1])[1] === :intercept for r in re) ||
                 error("CumulativeLogit() supports multiple random effects only as " *
                       "crossed/nested intercepts, e.g. `(1 | g) + (1 | h)`")
             comps = map(re) do r
-                grp = r[2]; gidx, G = _group_index(getproperty(data, grp))
+                grp = r[2]; gidx, G = _group_index(getproperty(data, grp); col = grp)
                 (ones(length(yi)), gidx, G, String(grp))
             end
             return _withformula(_fit_cumulative_crossed_laplace(fam, yi, Xμ, K, comps, nmμ, g_tol), f)
@@ -189,11 +351,38 @@ function drm(f::DrmFormula, fam::CumulativeLogit; data, tree = nothing, g_tol::R
                   "`(0 + x | g)` random slope on `mu`; crossed/multiple random effects are " *
                   "not implemented in this slice")
         (rk, var) = _re_kind(re[1][1]); grp = re[1][2]
-        gidx, G = _group_index(getproperty(data, grp))
+        gidx, G = _group_index(getproperty(data, grp); col = grp)
         if rk === :intercept
+            if !isempty(sd_parts)
+                target = only(_sd_target_parts(f))
+                Zg, nmsd = _sd_group_design(f.response, target.rhs, data, gidx, G, grp;
+                                            schema_cache = f.schema_cache, schema_key = target.key)
+                size(Zg, 2) <= G && rank(Zg) == size(Zg, 2) || throw(ArgumentError(
+                    "CumulativeLogit() `sd($grp)` group-level design is rank deficient; use predictors that vary independently across groups."))
+                return _withformula(_fit_cumulative_sd_regression(
+                    fam, yi, Xμ, K, ones(length(yi), 1), Zg, gidx, G,
+                    nmμ, nmsd, grp, g_tol; se = se), f)
+            end
+            laplace && return _withformula(_withmarginal(
+                _fit_cumulative_ranef(fam, yi, Xμ, K, gidx, G, nmμ, grp, g_tol; nq = 1), :Laplace), f)
             return _withformula(_fit_cumulative_ranef(fam, yi, Xμ, K, gidx, G, nmμ, grp, g_tol), f)
         elseif rk === :slope
-            xs = Float64.(getproperty(data, var))
+            _require_finite_data_column(data, var)
+            raw_slope = getproperty(data, var)
+            raw_slope isa AbstractVector{<:Real} && length(raw_slope) == length(yi) &&
+                all(isfinite, raw_slope) || throw(ArgumentError(
+                    "CumulativeLogit random-slope predictor `$var` must contain one finite numeric value per response."))
+            xs = Float64.(raw_slope)
+            if !isempty(sd_parts)
+                target = only(_sd_target_parts(f))
+                Zg, nmsd = _sd_group_design(f.response, target.rhs, data, gidx, G, grp;
+                                            schema_cache = f.schema_cache, schema_key = target.key)
+                size(Zg, 2) <= G && rank(Zg) == size(Zg, 2) || throw(ArgumentError(
+                    "CumulativeLogit() `sd($grp)` group-level design is rank deficient; use predictors that vary independently across groups."))
+                return _withformula(_fit_cumulative_sd_regression(
+                    fam, yi, Xμ, K, reshape(xs, :, 1), Zg, gidx, G,
+                    nmμ, nmsd, grp, g_tol; se = se), f)
+            end
             return _withformula(
                 _fit_cumulative_slope_ranef(fam, yi, Xμ, K, xs, gidx, G, nmμ, grp, g_tol), f)
         else
@@ -204,25 +393,139 @@ function drm(f::DrmFormula, fam::CumulativeLogit; data, tree = nothing, g_tol::R
                   "are implemented in this slice\")")
         end
     end
-    return _withformula(_fit_cumulative(fam, yi, Xμ, K, nmμ, g_tol), f)
+    return _withformula(_fit_cumulative(fam, yi, Xμ, K, nmμ, g_tol; offset = _offset_for_fit(fam, offset_term, data, size(Xμ, 1))), f)
 end
 
-function _fit_cumulative(fam::CumulativeLogit, y::Vector{Int}, Xμ, K, nmμ, g_tol)
+# #1221: separation message for the fixed-effect CumulativeLogit fit, as the Binomial
+# route has (`separation.jl`). With cutpoints θ_1 < … < θ_{K-1} and linear predictor
+# η, the log-likelihood is non-decreasing along (d, δ) iff δ_{y_i - 1} <= x_i·d <= δ_{y_i}
+# for every row, i.e. iff the stacked binary problem (row (i, k): response 1{y_i > k},
+# design [x_i, e_k], k = 1..K-1) has a (quasi-)complete separating direction. The
+# existing exact screen is reused on that stacked design. WARN ONLY: the estimates,
+# SEs, `converged` and `convergence_status` are left exactly as before (whether this
+# route should also set Inf SEs / a degenerate geometry, as Binomial does, is an
+# owner decision; see #1221). Quiet inside bootstrap / profile refits.
+function _cumulative_separation_warn(Xμ, y, K, nmμ)
+    pμ = size(Xμ, 2); n = length(y); nc = K - 1
+    (pμ == 0 || n == 0 || nc < 1) && return String[]
+    Xs = zeros(n * nc, pμ + nc); s = zeros(n * nc)
+    r = 0
+    for k in 1:nc, i in 1:n
+        r += 1
+        Xs[r, 1:pμ] .= view(Xμ, i, :)
+        Xs[r, pμ + k] = 1.0
+        s[r] = y[i] > k ? 1.0 : 0.0
+    end
+    det = try
+        _detect_separation(Xs, s, ones(length(s)))
+    catch err
+        _boundary_diagnostic_failed("CumulativeLogit separation", err)
+        return String[]
+    end
+    flagged = [string(nmμ[j]) for j in det.flagged if j <= pμ]
+    (det.separated && !isempty(flagged)) || return String[]
+    get(task_local_storage(), :drm_quiet_boundary, false) === true && return flagged
+    partial = det.conclusive ? "" :
+        "\nThe separation check ran out of its iteration budget, so this list may be incomplete."
+    @warn """
+          CumulativeLogit fixed-effect fit shows (quasi-)complete separation. The
+          maximum-likelihood estimate does not exist (or is not finite): the affected
+          coefficients can grow without bound at little or no cost in likelihood, and
+          their reported estimates are an arbitrary stopping point of the optimiser.
+          Any standard errors printed for this fit (large but finite, or 0) are not
+          meaningful, and `converged` / `convergence_status` do NOT reflect this.
+          Consider removing or collapsing the offending predictor, or a penalised fit.$partial
+          """ separation = :complete_or_quasi flagged_coefficients = flagged
+    return flagged
+end
+
+# Cumulative-logit ordinal GLMM with a group-specific SD for one ordinary
+# location random coefficient. `Zre` is the observation-level loading (ones for
+# an intercept or the numeric covariate for an independent slope); the scale
+# design is constant within group. Each group's scalar effect is integrated by
+# the same 41-node adaptive Gauss-Hermite approximation as the constant-SD fit.
+function _fit_cumulative_sd_regression(fam::CumulativeLogit, y::Vector{Int}, Xμ, K,
+                                       Zre, Zg, gidx, G, nmμ, nmsd, grp, g_tol;
+                                       nq::Int = _CUMLOGIT_AGHQ_K, se::Bool = true)
+    n = length(y); pμ = size(Xμ, 2); nc = K - 1; psd = size(Zg, 2)
+    members = [Int[] for _ in 1:G]
+    for i in 1:n
+        push!(members[gidx[i]], i)
+    end
+    rule = _AGHQRule(1, nq); bcache = zeros(1, G)
+    function nll(θ)
+        β = @view θ[1:pμ]
+        δ = @view θ[(pμ+1):(pμ+nc)]
+        α = @view θ[(pμ+nc+1):(pμ+nc+psd)]
+        cuts = _cumulative_cuts(δ)
+        η0 = pμ == 0 ? zeros(eltype(θ), n) : Xμ * β
+        sd_group = exp.(Zg * α)
+        ll = (i, η) -> _cumulative_loglik(y[i], η, cuts, K, nc)
+        total = zero(eltype(θ))
+        for gi in 1:G
+            Lg = reshape([sd_group[gi]], 1, 1)
+            value, bhat = _aghq_group_logint(ll, members[gi], η0, Zre, Lg,
+                                              rule, @view(bcache[:, gi]))
+            bcache[1, gi] = isfinite(bhat[1]) ? bhat[1] : 0.0
+            total += value
+        end
+        return -total
+    end
+    θ0 = zeros(pμ + nc + psd)
+    θ0[(pμ+1):(pμ+nc)] = _cumulative_cut_init(y, K, n)
+    θ0[(pμ+nc+1):end] .= Zg \ fill(log(0.5), G)
+    res = Optim.optimize(nll, θ0, Optim.LBFGS(), Optim.Options(g_tol = g_tol); autodiff = :forward)
+    θ̂ = Optim.minimizer(res)
+    V = se ? _vcov_from_hessian(ForwardDiff.hessian(nll, θ̂)) :
+             fill(NaN, length(θ̂), length(θ̂))
+    sd_range = (pμ + nc + 1):(pμ + nc + psd)
+    blocks = [:mu => 1:pμ, :cutpoints => (pμ+1):(pμ+nc), :sd => sd_range]
+    names = [:mu => nmμ, :cutpoints => ["theta$k" for k in 1:nc], :sd => nmsd]
+    β̂ = θ̂[1:pμ]; cuts_hat = _cumulative_cuts(θ̂[pμ+1:pμ+nc])
+    η̂ = pμ == 0 ? zeros(n) : Xμ * β̂
+    score = _cumulative_score(η̂, cuts_hat, K)
+    sd_group = exp.(Zg * θ̂[sd_range])
+    means = Dict(:mu => score); obs = Dict(:mu => Float64.(y))
+    scales = Dict(:ordinal_eta => η̂, :ordinal_cuts => Float64.(cuts_hat),
+                  :sd_group => sd_group, :sd => sd_group[gidx],
+                  :sd_group_index => Float64.(gidx), :aghq_nodes => [Float64(nq)])
+    return _withiterations(
+        _withnll(DrmFit(fam, blocks, names, θ̂, V, -nll(θ̂), n,
+                        drm_optim_converged(res), means, obs, scales), nll),
+        Optim.iterations(res))
+end
+
+# A marginal bootstrap draw must apply its freshly sampled random effect before
+# converting the new linear predictor into ordered categories. The generic
+# simulator's fitted `ordinal_eta` is correct for ordinary simulation but must
+# not override the explicit `mu` supplied by the marginal simulator.
+function _simulate_once(fit::DrmFit{CumulativeLogit}, rng; mu = nothing, sigma = nothing)
+    eta = mu === nothing ? _scale_vector(fit, :ordinal_eta) : Float64.(mu)
+    cuts = _scale_vector(fit, :ordinal_cuts)
+    length(eta) == length(fit.means[:mu]) || throw(ArgumentError(
+        "CumulativeLogit simulation predictor length does not match the fitted design"))
+    return Float64[_rand_cumulative_logit(rng, eta[i], cuts) for i in eachindex(eta)]
+end
+
+function _fit_cumulative(fam::CumulativeLogit, y::Vector{Int}, Xμ, K, nmμ, g_tol; offset = nothing)
     n = length(y); pμ = size(Xμ, 2); nc = K - 1
+    w = _ctl_weights(n)                  # prior weights: row log-lik multipliers (#931)
     function nll(θ)
         β = θ[1:pμ]; δ = θ[pμ+1:pμ+nc]
         cuts = _cumulative_cuts(δ)
-        η = pμ == 0 ? zeros(eltype(θ), n) : Xμ * β
+        η = _add_offset(pμ == 0 ? zeros(eltype(θ), n) : Xμ * β, offset)   # #938
         s = zero(eltype(θ))
         @inbounds for i in 1:n
-            s -= _cumulative_loglik(y[i], η[i], cuts, K, nc)
+            s -= w[i] * (_cumulative_loglik(y[i], η[i], cuts, K, nc))
         end
         return s
     end
     θ0 = zeros(pμ + nc)
     θ0[(pμ+1):(pμ+nc)] = _cumulative_cut_init(y, K, n)
-    res = Optim.optimize(nll, θ0, Optim.LBFGS(), Optim.Options(g_tol = g_tol); autodiff = :forward)
-    θ̂ = Optim.minimizer(res); V = _vcov_from_hessian(ForwardDiff.hessian(nll, θ̂))
+    res = _ctl_optimize((x0, opts, method) -> Optim.optimize(nll, x0, method, opts; autodiff = :forward),
+                       θ0; g_tol = g_tol)   # control: maxit / start / multi_start (#948 #994)
+    θ̂ = Optim.minimizer(res); V = _ctl_se(() -> _vcov_from_hessian(ForwardDiff.hessian(nll, θ̂)), θ̂)
+    _cumulative_separation_warn(Xμ, y, K, nmμ)   # #1221: warn only
     blocks = [:mu => 1:pμ, :cutpoints => (pμ+1):(pμ+nc)]
     names = [:mu => nmμ, :cutpoints => ["theta$k" for k in 1:nc]]
     # fitted = expected category score Σ_k k·P(y=k)
@@ -231,7 +534,7 @@ function _fit_cumulative(fam::CumulativeLogit, y::Vector{Int}, Xμ, K, nmμ, g_t
     # `cuts`, and sharing the name here would make it one boxed variable shared
     # with a closure that threaded profile CIs call concurrently.
     cuts_hat = _cumulative_cuts(δ̂)
-    η̂ = pμ == 0 ? zeros(n) : Xμ * β̂
+    η̂ = _add_offset(pμ == 0 ? zeros(n) : Xμ * β̂, offset)   # #938
     score = _cumulative_score(η̂, cuts_hat, K)
     means = Dict(:mu => score); obs = Dict(:mu => Float64.(y))
     scales = Dict(:ordinal_eta => η̂, :ordinal_cuts => Float64.(cuts_hat))
@@ -286,6 +589,7 @@ function _fit_cumulative_ranef(fam::CumulativeLogit, y::Vector{Int}, Xμ, K, gid
     score = _cumulative_score(η̂, cuts_hat, K)
     means = Dict(:mu => score); obs = Dict(:mu => Float64.(y))
     scales = Dict(:ordinal_eta => η̂, :ordinal_cuts => Float64.(cuts_hat))
+    _record_cond_fit_aghq!(scales, nll, θ̂, bcache, gidx, Zre)   # fitted-row modes for `fitted(fit)`
     return _withiterations(
         _withnll(DrmFit(fam, blocks, names, θ̂, V, -nll(θ̂), n, drm_optim_converged(res), means, obs, scales), nll),
         Optim.iterations(res))
@@ -322,6 +626,7 @@ function _fit_cumulative_slope_ranef(fam::CumulativeLogit, y::Vector{Int}, Xμ, 
     score = _cumulative_score(η̂, cuts_hat, K)
     means = Dict(:mu => score); obs = Dict(:mu => Float64.(y))
     scales = Dict(:ordinal_eta => η̂, :ordinal_cuts => Float64.(cuts_hat))
+    _record_cond_fit_aghq!(scales, nll, θ̂, bcache, gidx, Zre)   # fitted-row modes for `fitted(fit)`
     return _withiterations(
         _withnll(DrmFit(fam, blocks, names, θ̂, V, -nll(θ̂), n, drm_optim_converged(res), means, obs, scales), nll),
         Optim.iterations(res))
@@ -611,7 +916,16 @@ function _fit_cumulative_phylo_laplace(fam::CumulativeLogit, y::Vector{Int}, Xμ
     grad!(gfinal, θ̂)
     converged = _laplace_outer_converged(res, nllhat, gfinal, θ̂, n, g_tol)
     V = if se
-        Hθ = _finite_hessian(nll, θ̂; h = _fd_hessian_step(n))
+        Hθ = if _se_hessian_path(θ̂; sd = (pμ + nc + 1):(pμ + nc + 1), sd_lo = _SE_LOGSD_LO) === :value
+            _warn_value_hessian("sparse-Laplace CumulativeLogit (phylo-mean)")
+            _finite_hessian(nll, θ̂; h = _fd_hessian_step(n))
+        else
+            _finite_hessian_from_gradient(
+                _se_grad((θ, tol) -> _cumulative_phylo_laplace_fg(
+                    y, K, nc, n, Xμ, leaf_node, Q, logdetQ, θ; grad = true, b0 = zeros(q),
+                    newton_tol = tol, newton_maxiter = _SE_MODE_MAXITER)),
+                θ̂; context = "sparse-Laplace CumulativeLogit (phylo-mean)")
+        end
         _vcov_from_fd_hessian(Hθ; context = "sparse-Laplace CumulativeLogit (phylo-mean)")
     else
         fill(NaN, length(θ̂), length(θ̂))
@@ -678,15 +992,21 @@ function _fit_cumulative_crossed_laplace(fam::CumulativeLogit, y::Vector{Int}, X
     length(comps) == 2 || error("_fit_cumulative_crossed_laplace requires two random-intercept components")
     n = length(y); pμ = size(Xμ, 2); nc = K - 1
     θβ0 = zeros(pμ)
+    # Warm start for the inner mean-coefficient fit: cold-starting at β = 0 with
+    # cutpoints far from zero can stall (#953: -107 vs -81.5 at the nested-model
+    # cutpoints), so each inner fit starts from the last converged β.
+    βwarm = Ref(copy(θβ0))
 
     function inner_fit(δ::Vector{<:Real}; polish_iterations::Int = 0)
         cuts = _cumulative_cuts(δ)
         aux = (y = y, cuts = cuts, K = K, nc = nc)
-        return _fit_crossed_mean_laplace(
+        fit = _fit_crossed_mean_laplace(
             fam, Val(:cumlogit_fixed), aux, n, Xμ,
             comps[1][2], comps[1][3], comps[2][2], comps[2][3], nmμ,
             [comps[1][4], comps[2][4]], g_tol;
-            θβ0 = θβ0, se = false, polish_iterations = polish_iterations)
+            θβ0 = βwarm[], se = false, polish_iterations = polish_iterations)
+        fit.converged && (βwarm[] = copy(fit.theta[1:pμ]))
+        return fit
     end
 
     obj(δ) = -inner_fit(δ).loglik
@@ -703,6 +1023,7 @@ function _fit_cumulative_crossed_laplace(fam::CumulativeLogit, y::Vector{Int}, X
         try
             f1 = _fit_cumulative_ranef(fam, y, Xμ, K, c[2], c[3], nmμ, c[4], g_tol)
             push!(starts, f1.theta[(pμ+1):(pμ+nc)])
+            βwarm[] = copy(f1.theta[1:pμ])
         catch
             # a failed one-component fit only loses a candidate start
         end
@@ -735,6 +1056,10 @@ function _fit_cumulative_crossed_laplace(fam::CumulativeLogit, y::Vector{Int}, X
     means = Dict(:mu => score)
     obs = Dict(:mu => Float64.(y))
     scales = Dict(:ordinal_eta => η̂, :ordinal_cuts => Float64.(cuts_hat))
+    # fitted-row modes from the inner crossed engine at the final cutpoints (conditional `fitted`)
+    for k in (:cond_fit_eta_re, :cond_fit_failed)
+        haskey(fit.scales, k) && (scales[k] = fit.scales[k])
+    end
 
     return DrmFit(fam, blocks, names, theta, V, fit.loglik, fit.nobs, fit.converged,
                  means, obs, scales)

@@ -148,3 +148,71 @@ using Test, Random
         @test coef(fit_lw, :sigma) ≈ coef(fit_full, :sigma) atol = 0.10
     end
 end
+
+# #1111: a numeric predictor typed `Vector{Union{Missing,Float64}}` that holds no
+# `missing` must be fitted as continuous, not dummy-coded as a factor (one
+# coefficient per distinct value). `drm_listwise` on complete data must hand back
+# a narrowed column too. A `Vector{Any}` column (the bridge's R `factor(x)`)
+# stays categorical.
+@testset "#1111: Union{Missing,Float64} predictor with no missing is continuous" begin
+    n = 120; G = 12
+    g = repeat(1:G, inner = n ÷ G)
+    r = Random.MersenneTwister(2111)
+    x = randn(r, n)
+    U(v) = Vector{Union{Missing,eltype(v)}}(v)
+    η = 0.2 .+ 0.3 .* x .+ 0.3 .* randn(r, G)[g]
+
+    @testset "$(nameof(typeof(fam))) (1 | g)" for fam in (Gaussian(), Poisson(), Gamma())
+        y = fam isa Gaussian ? η .+ 0.5 .* randn(r, n) :
+            fam isa Poisson  ? Float64.([rand(r, 0:max(0, round(Int, 2exp(e)))) for e in η]) :
+                               exp.(η) .* (0.5 .+ rand(r, n))
+        mk() = bf(@formula(y ~ x + (1 | g)))
+        ref = drm(mk(), fam; data = (; y, x, g))
+        fit = drm(mk(), fam; data = (; y, x = U(x), g))
+        @test length(coef(fit, :mu)) == 2
+        @test loglik(fit) ≈ loglik(ref)
+        @test coef(fit, :mu) ≈ coef(ref, :mu)
+    end
+
+    @testset "sigma ~ x: one sigma slope, not one per value" begin
+        y = 0.5 .+ 0.4 .* x .+ exp.(-0.3 .+ 0.2 .* x) .* randn(r, n)
+        mk() = bf(@formula(y ~ x), @formula(sigma ~ x))
+        ref = drm(mk(), Gaussian(); data = (; y, x))
+        fit = drm(mk(), Gaussian(); data = (; y, x = U(x)))
+        @test length(coef(fit, :sigma)) == 2
+        @test loglik(fit) ≈ loglik(ref)
+    end
+
+    @testset "few distinct values (the plausible-looking failure)" begin
+        xi = Float64.(round.(x))
+        y = 0.5 .+ 0.4 .* xi .+ 0.5 .* randn(r, n)
+        mk() = bf(@formula(y ~ xi), @formula(sigma ~ 1))
+        ref = drm(mk(), Gaussian(); data = (; y, xi))
+        fit = drm(mk(), Gaussian(); data = (; y, xi = U(xi)))
+        @test length(coef(fit, :mu)) == 2
+        @test loglik(fit) ≈ loglik(ref)
+    end
+
+    @testset "drm_listwise on complete data narrows the column" begin
+        y = 0.5 .+ 0.4 .* x .+ 0.5 .* randn(r, n)
+        f = bf(@formula(y ~ x), @formula(sigma ~ 1))
+        clean = @test_logs drm_listwise(f, (; y = U(y), x = U(x)))
+        @test eltype(clean.x) === Float64
+        @test eltype(clean.y) === Float64
+        @test clean.x == x
+        # rows are dropped here; every kept column is narrowed, an unrelated one too
+        xm = U(x); xm[3] = missing
+        junk = U(x)
+        clean2 = drm_listwise(f, (; y, x = xm, junk); verbose = false)
+        @test eltype(clean2.junk) === Float64          # kept rows hold no missing
+        clean3 = drm_listwise(f, (; y, x, junk))        # nothing dropped: still narrowed
+        @test eltype(clean3.junk) === Float64
+    end
+
+    @testset "a Vector{Any} factor column stays categorical" begin
+        xf = Vector{Any}(Float64.(repeat(1:3, inner = n ÷ 3)))
+        y = 0.5 .+ 0.4 .* Float64.(xf) .+ 0.5 .* randn(r, n)
+        fit = drm(bf(@formula(y ~ x), @formula(sigma ~ 1)), Gaussian(); data = (; y, x = xf))
+        @test length(coef(fit, :mu)) == 3              # intercept + 2 dummies
+    end
+end

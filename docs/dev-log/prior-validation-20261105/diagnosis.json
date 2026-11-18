@@ -1,0 +1,25 @@
+{
+  "prior_run": {
+    "source_sha256": "a30e347285f925af2e128ed6350fafe4d6b9035668444606bfa2fcea13e26653",
+    "limit_seconds": 5400,
+    "exit": 124,
+    "log_sha256": "47122a57595bc6aa70f8e70b87b9e532cbd8978696851bb2ef75b91a435851d5",
+    "interrupted_file": "test/test_crossed_tweedie.jl",
+    "testset_line": 28,
+    "fit_line": 46,
+    "completed_summary_count": 352,
+    "completed_summary_seconds": 2028.7,
+    "unpartitioned_seconds": 3371.3,
+    "unpartitioned_includes": "setup, compilation, untimed work and interrupted test; not all attributable to Tweedie"
+  },
+  "baseline": {
+    "commit": "24ac6ca925a5c0f870b345b18804c9e592d0d275",
+    "run_url": "https://github.com/itchyshin/DRModels.jl/actions/runs/42056992643/job/127349180304",
+    "job": "Julia 1.10 - shard 4/4",
+    "conclusion": "success",
+    "test_step_seconds": 10872,
+    "crossed_tweedie_testset_seconds": 7351.1,
+    "interpretation": "The old 90-minute budget for the entire unsharded suite was shorter than this unchanged testset on the completed baseline CI host. It does not measure candidate runtime on Totoro or establish a new performance regression.",
+    "julia_version": "1.10.13"
+  }
+}

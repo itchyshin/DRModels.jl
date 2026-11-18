@@ -14,6 +14,8 @@ tails, so outliers are downweighted instead of dominating. The shape parameter
 
 ## Fitting a Student-t model
 
+The code below also loads the `Distributions` package to simulate data. If you have not added it to your Julia environment, run `using Pkg; Pkg.add("Distributions")` once first.
+
 Give each parameter its own formula, exactly like the Gaussian model — `nu ~ 1`
 estimates a single degrees-of-freedom value:
 
@@ -41,8 +43,12 @@ exp(coef(fit, :sigma)[1])       # residual scale
 2 + exp(coef(fit, :nu)[1])      # degrees of freedom, ν = 2 + exp(η)  (≈ 5 ⇒ heavy tails)
 ```
 
-A small `ν` (say < 10) is the signal that robustness is earning its keep; a large
-`ν` says the data are effectively Gaussian and you could simplify.
+As `ν` grows, the Student-t likelihood approaches its Gaussian limit, so very
+large values can be weakly identified. If the reported standard error for `nu`
+is zero or non-finite, treat its Wald interval as unreliable even if the
+optimizer reports convergence. Compare with a Gaussian fit when that simpler
+model answers the same question. A profile interval is useful only when the
+target is available and its evidence supports the intended interpretation.
 
 !!! tip "Scale, not variance"
     For the t the residual *variance* is `σ² · ν/(ν−2)` (and is undefined for

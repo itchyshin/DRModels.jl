@@ -88,7 +88,7 @@ function _variance_boundary(fit::DrmFit; ratio::Real = _VARIANCE_BOUNDARY_RATIO)
     rblock = haskey(have, :resid) ? have[:resid] : get(have, :sigma, nothing)
     (rblock !== nothing && length(rblock) == 1) || return nothing
     haskey(have, :resd) || return nothing                      # structured SDs live here
-    any(p -> first(p) in (:sd, :sd_phylo), fit.blocks) && return nothing
+    _has_sd_regression_block(fit) && return nothing
     fit.ranef isa AbstractDict || return nothing
     ci = findfirst(cn -> cn[1] === :resd, fit.coefnames)
     ci === nothing && return nothing
@@ -261,11 +261,13 @@ function _warn_variance_boundary(fit)
     fit isa DrmFit || return fit
     get(task_local_storage(), :drm_quiet_boundary, false) === true && return fit
     # #952: a fit that ended on the failed-objective sentinel used to come back
-    # silently (only `loglik = -1e18` and `converged = false` said so).
+    # silently (only `loglik = -1e18` and `converged = false` said so). The
+    # `converged` field printed is `is_converged`, as `show` and `check_drm` print:
+    # the raw optimiser flag can read `true` on the sentinel plateau.
     _sentinel_loglik(fit) && @warn "drm: the fit FAILED -- the optimiser ended on the " *
         "failed-objective sentinel (logLik = $(fit.loglik)), so the estimates are not an " *
         "optimum (often still the start values). Try rescaling the response or the tree " *
-        "(see `phylo_tree_height`), or a simpler model." converged = fit.converged
+        "(see `phylo_tree_height`), or a simpler model." converged = is_converged(fit)
     _is_temporal_fit(fit) && return _warn_temporal_boundary(fit)   # temporal(): its own rules
     vb = try
         _variance_boundary(fit)

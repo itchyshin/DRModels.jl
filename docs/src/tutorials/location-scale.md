@@ -3,7 +3,7 @@
 !!! note "Status — Stable"
     Mirrors drmTMB's [When variance carries signal, Part 1](https://itchyshin.github.io/drmTMB/articles/location-scale.html).
     **In DRModels.jl today:** the univariate Gaussian location–scale model fits by ML.
-    Continue with [Part 2: location–scale–scale](location-scale-scale.md) when the
+    Continue with [Part 2: location–scale–scale](https://itchyshin.github.io/DRModels.jl/dev/tutorials/location-scale-scale) when the
     question moves from the residual SD to the SD of a random effect.
 
 Sometimes the science is in the *spread*, not the mean. A classic case: two
@@ -90,7 +90,7 @@ random effect of SD τ on log σ, the two differ by τ²/2.
 
 ## See also
 
-- [Part 2: location–scale–scale](location-scale-scale.md) — predictors on the
+- [Part 2: location–scale–scale](https://itchyshin.github.io/DRModels.jl/dev/tutorials/location-scale-scale) — predictors on the
   SD of a random effect (iid and phylogenetic).
 - [Get started](../getting-started.md) — your first fit.
 - [Changing residual coupling with rho12](bivariate-coscale.md) — two responses.

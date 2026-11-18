@@ -24,7 +24,9 @@ using Test
 @testset "bridge: R formula operator translation" begin
     p = 16; m = 5
     phy = random_balanced_tree(p; branch_length = 0.20)
-    species = ["sp$(i)" for i in repeat(1:p, inner = m)]
+    # Labels are the tree's tip names: name-bearing labels that are not tip names
+    # are refused rather than matched by order of appearance (#1026).
+    species = phy.leaf_names[repeat(1:p, inner = m)]
     n = length(species)
     rng_x1 = Float64[sin(i) for i in 1:n]          # deterministic, no RNG dependence
     rng_x2 = Float64[cos(2i) for i in 1:n]
@@ -34,12 +36,15 @@ using Test
     grp3 = ["a", "b", "c"][mod1.(1:n, 3)]
     dat = (; y, x1 = rng_x1, x2 = rng_x2, x3 = rng_x3, species, grp3)
 
+    # `tree` only where the formula reads it: a `tree` with no `phylo()` term is
+    # refused rather than silently ignored (#1010).
+    treefor(f) = occursin("phylo", f) ? phy : nothing
     fitok(f) = isfinite(drm_bridge(; formula = f, family = "gaussian",
-                                   data = dat, tree = phy)["loglik"])
+                                   data = dat, tree = treefor(f))["loglik"])
     ncoef(f) = length(drm_bridge(; formula = f, family = "gaussian",
-                                 data = dat, tree = phy)["coef_names"])
+                                 data = dat, tree = treefor(f))["coef_names"])
     rejects(f) = (@test_throws ArgumentError drm_bridge(; formula = f, family = "gaussian",
-                                                         data = dat, tree = phy))
+                                                         data = dat, tree = treefor(f)))
 
     @testset "valid formulas still fit" begin
         @test fitok("y ~ x1; sigma ~ 1")
@@ -95,8 +100,8 @@ using Test
         @test fitok("y ~ x2 & poly(x1, 2); sigma ~ 1")     # R `:` — 3 columns both sides
 
         # k columns, not one: poly(x1, 3) must add exactly 3 mu coefficients.
-        base = drm_bridge(; formula = "y ~ 1; sigma ~ 1", family = "gaussian", data = dat, tree = phy)
-        p3   = drm_bridge(; formula = "y ~ poly(x1, 3); sigma ~ 1", family = "gaussian", data = dat, tree = phy)
+        base = drm_bridge(; formula = "y ~ 1; sigma ~ 1", family = "gaussian", data = dat)
+        p3   = drm_bridge(; formula = "y ~ poly(x1, 3); sigma ~ 1", family = "gaussian", data = dat)
         nmu(o) = count(k -> startswith(k, "mu_"), keys(o["coef"]))
         @test nmu(p3) == nmu(base) + 3
 
@@ -105,7 +110,7 @@ using Test
         # terms yields 7, the extra being poly1 & poly2.
         try
             drm_bridge(; formula = "y ~ (x1 + poly(x1, 2))^2; sigma ~ 1", family = "gaussian",
-                       data = dat, tree = phy)
+                       data = dat)
             @test false
         catch e
             @test e isa ArgumentError
@@ -116,7 +121,7 @@ using Test
         # (k columns out); this rewrite would map it over their SUM (one column).
         try
             drm_bridge(; formula = "y ~ log1p(poly(x1, 2)); sigma ~ 1", family = "gaussian",
-                       data = dat, tree = phy)
+                       data = dat)
             @test false
         catch e
             @test e isa ArgumentError
@@ -196,8 +201,8 @@ using Test
     end
 
     @testset "R `- 1` drops the intercept" begin
-        with_int = drm_bridge(; formula = "y ~ x1; sigma ~ 1", family = "gaussian", data = dat, tree = phy)
-        no_int   = drm_bridge(; formula = "y ~ x1 - 1; sigma ~ 1", family = "gaussian", data = dat, tree = phy)
+        with_int = drm_bridge(; formula = "y ~ x1; sigma ~ 1", family = "gaussian", data = dat)
+        no_int   = drm_bridge(; formula = "y ~ x1 - 1; sigma ~ 1", family = "gaussian", data = dat)
         # naming-agnostic: dropping the intercept removes exactly one mu coefficient.
         @test length(no_int["coef_names"]) == length(with_int["coef_names"]) - 1
     end

@@ -22,7 +22,9 @@ end
     full    = drm(bf(@formula(y ~ 1 + x), @formula(sigma ~ 1 + x)), Gaussian(); data)
     reduced = drm(bf(@formula(y ~ 1),     @formula(sigma ~ 1)),     Gaussian(); data)
     bad = _with_loglik(full, -1e18)
-    @test bad.converged
+    # The constructor clears `converged` when loglik is the -1e18 sentinel
+    # (#1009 / #1012 / #1019). `_with_loglik` still asks for `true`.
+    @test !bad.converged
     @test DRModels._sentinel_loglik(bad)
     @test !DRModels._nondegenerate_fit(bad)
     @test !is_converged(bad)

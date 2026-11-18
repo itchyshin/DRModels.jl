@@ -15,7 +15,8 @@ Random.seed!(5)
 n = 1500
 x = randn(n)
 y = 0.4 .+ 0.7 .* x .+ exp.(-0.2 .+ 0.3 .* x) .* randn(n)
-fit = drm(bf(@formula(y ~ x), @formula(sigma ~ x)), Gaussian(); data = (; y, x))
+dat = (; y, x)
+fit = drm(bf(@formula(y ~ x), @formula(sigma ~ x)), Gaussian(); data = dat)
 
 coef(fit, :mu)        # mean coefficients
 stderror(fit)         # Wald standard errors (all coefficients)
@@ -52,7 +53,7 @@ confint(fit; method = :profile)
 ## Fitted values and residuals
 
 ```@example wf
-ŷ = fitted(fit)            # fitted means (Xβ̂)
+ŷ = fitted(fit)            # fitted means (Xβ̂; plus the fitted random-effect modes, if any)
 res = residuals(fit)       # observed − fitted
 (n = length(res), sum_resid = round(sum(res), digits = 6))
 ```
@@ -60,8 +61,9 @@ res = residuals(fit)       # observed − fitted
 For a bivariate model, `fitted` / `residuals` return one vector per response,
 keyed `Dict(:mu1 => …, :mu2 => …)`.
 
-Predict the mean on **new** data (population level — random/structured effects
-integrated out):
+Predict the mean on **new** data (`type = :response` returns `invlink(Xβ)`
+with random and structured effects set to 0, so an average group rather than
+an average over groups):
 
 ```@example wf
 predict(fit, (; x = [-1.0, 0.0, 1.0]))    # μ̂ at three new x values
@@ -88,7 +90,7 @@ bootstrap_ci(bf(@formula(y ~ x), @formula(sigma ~ x)), Gaussian();
              data = dat, B = 500, level = 0.95)
 ```
 
-Returns the same `(param, coef, estimate, lower, upper)` rows as `confint`. Use
+Returns the same `(param, coef, estimate, lower, upper, scale)` rows as `confint`. Use
 Wald (`confint`) for speed; use a bootstrap to see how interval estimates vary
 when data are repeatedly simulated and refitted under the fitted model. A
 parametric bootstrap therefore still depends on that model's assumptions.

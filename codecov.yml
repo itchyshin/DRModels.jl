@@ -1,0 +1,38 @@
+# Codecov config for DRModels.jl.
+#
+# Uploads come from CI.yml's non-required `codecov` job: four complementary
+# Julia 1 / Linux shard lcov files, one combined upload, flag `julia-linux-1`.
+# Julia 1.10 nightly and macOS/Windows release-platform jobs do not upload, so
+# the same src/ lines are not counted twice.
+#
+# Status checks are informational so they cannot become accidental merge
+# blockers (see CI.yml's `ci-ok` history). Do not treat this file as proof that
+# Codecov accepted an upload.
+
+coverage:
+  status:
+    project:
+      default:
+        informational: true
+    patch:
+      default:
+        informational: true
+
+comment:
+  layout: "condensed_header, condensed_files, condensed_footer"
+  behavior: default
+  require_changes: true
+
+ignore:
+  - "test/**"
+  - "docs/**"
+  - "bench/**"
+  - "tools/**"
+  - "report/**"
+
+flag_management:
+  default_rules:
+    carryforward: true
+  individual_flags:
+    - name: julia-linux-1
+      carryforward: true

@@ -6,7 +6,9 @@ measurement dated today — sources cited per row. No number here is extrapolate
 
 **Reading rules.** All engine-vs-engine rows compare **warm fit medians** on the same
 model; the two caveat rows at the bottom are part of the claim, not footnotes. Speedup
-= R median / Julia median; >1 means DRM.jl is faster.
+= R median / Julia median; >1 means DRM.jl is faster. New rows follow the labelling
+rules in [`docs/design/timing-protocol.md`](../docs/design/timing-protocol.md)
+(backend, workers/threads, BLAS and OpenMP threads, platform).
 
 ## The table
 

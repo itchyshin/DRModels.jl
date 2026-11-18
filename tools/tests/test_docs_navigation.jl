@@ -16,8 +16,8 @@ include(joinpath(@__DIR__, "..", "parity_docs_navigation.jl"))
     paths = navigation_paths(real)
     # Keep an explicit reviewed page count: adding a public page must update
     # this contract deliberately, rather than silently bypassing navigation.
-    @test length(paths) == 45
-    @test length(unique(paths)) == 45
+    @test length(paths) == 47
+    @test length(unique(paths)) == 47
     @test !("get-started.md" in paths)
     @test "getting-started.md" in paths
     @test length(real) == 5

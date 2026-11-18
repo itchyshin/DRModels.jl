@@ -1,0 +1,17 @@
+{
+  "candidate_aggregate_sha256": "d4cd26d51d9508f2728fbcd152a3c05340cfe0c8c9352d7d714c8b7594c71e6f",
+  "auxiliary_aggregate_sha256": "221b0c6c73abec1104ed54f6d1b72a3912b46a95fd98a70324934e94cdf0474c",
+  "timed_runner_sha256": "21e499925807382fa4c8549fe6d7bec917fe18f5256919ed4c8df21370bb792e",
+  "root_manifest_sha256": "629b83c48a3d8041652d25959bfbde0c9f7e67e86a713382069b05a4a71551fa",
+  "julia_executable_sha256": "d413f34bf8e3356cb1ce2da762e1799d038e7f5b512adedc26ceb562d3e196f9",
+  "raw_log_sha256": {
+    "/home/snakagaw/hsq_work/drm-priors-20261105-01a1ad0b/evidence/validation8/shard-1.log": "6d55f8e772c4af0c17525bdeddd77a2d335b3fd264eca7f954cfc1a9953909c5",
+    "/home/snakagaw/hsq_work/drm-priors-20261105-01a1ad0b/evidence/validation8/shard-2.log": "2fbdcb8d0883fcc56bc0245ed932ec9772a00c4175f1985133940631b86160ff",
+    "/home/snakagaw/hsq_work/drm-priors-20261105-01a1ad0b/evidence/validation8/shard-3.log": "e2a9be39d51ab73969214d0a7b34bccdcab8ad11ddd46feed7fc4b82f99db42c",
+    "/home/snakagaw/hsq_work/drm-priors-20261105-01a1ad0b/evidence/validation8/shard-4.log": "01f0f68c783d8a050b2d5ec3810c2fe7301ae4b0799a95021756025e860d4bb7",
+    "/home/snakagaw/hsq_work/drm-priors-20261105-01a1ad0b/evidence/validation8/shard-5.log": "915aef7ca295ccd131acc4fbfa277b104564ff709c727c39b1f25fdf36dfc039",
+    "/home/snakagaw/hsq_work/drm-priors-20261105-01a1ad0b/evidence/validation8/shard-6.log": "d494082763226f5356bdeb6824efacb3ead6c337474f2394435577e97f93935b",
+    "/home/snakagaw/hsq_work/drm-priors-20261105-01a1ad0b/evidence/validation8/shard-7.log": "5e53d871368cf29ab7db6d75eb630a135b4ca367f5e466835039c39c9df88b03",
+    "/home/snakagaw/hsq_work/drm-priors-20261105-01a1ad0b/evidence/validation8/shard-8.log": "9f4f775f7058df19e1ac5d440f725c95254851f84134fd64cbef28a6be7df854"
+  }
+}

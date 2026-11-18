@@ -94,8 +94,13 @@ phy = augmented_phy("((A:1,B:2,C:3):4,D:5,E:6);")
 sigma_phy_dense(phy)
 ```
 
-For an ultrametric tree of height `h`, Julia's raw phylogenetic SD multiplied by
-`sqrt(h)` is on the correlation scale used by the R bridge. One height cannot
+For an ultrametric tree of height `h`, a raw branch-length phylogenetic SD
+multiplied by `sqrt(h)` is on the correlation scale used by the R bridge. Check
+first which scale your fit reports with `fit.phylo_scale`: a Gaussian
+`phylo(1 | species)` on the mean now reports the correlation scale (`:correlation`)
+for every `sigma` formula on an ultrametric tree, so multiplying by `sqrt(h)` is
+wrong there ([DRModels.jl#979](https://github.com/itchyshin/DRModels.jl/issues/979)); the non-Gaussian Laplace routes and a
+non-ultrametric tree still report the raw scale (`:covariance`). One height cannot
 standardize a tree whose tip depths differ. Accepting a topology does not itself
 verify every response family, profile interval or bootstrap workflow.
 
@@ -171,6 +176,12 @@ For the bridge to work, DRModels.jl exposes a stable, marshalling-friendly surfa
   values, residuals, and fitted scale. Some advanced outputs are available only
   for the particular model types listed above; they are not a general guarantee
   of interval or coverage performance.
+- **Failed fits**: a fit whose log-likelihood is the failure sentinel
+  (`-1e18`), is non-finite, or runs away (`|logLik| >= 1e15`) without converging
+  crosses the bridge with `loglik = NaN` and `ml_loglik = NaN`, `fit_failed = true`
+  and a `fit_failed_message` that says the fit must not be used. A usable fit sends
+  `fit_failed = false` and an empty message. The raw value stays on the `DrmFit`
+  on the Julia side.
 
 For the Gaussian phylogenetic mean cell, the current `algorithm = :auto` route
 uses an all-node sparse L-BFGS fitter. That route

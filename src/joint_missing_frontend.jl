@@ -33,14 +33,17 @@ end
 """
     miss_control(; response = "fail", predictor = "fail")
 
-Declare missing-data handling for the joint frontend. Its currently verified
-admission requires `predictor = "model"` and, when responses are missing,
-`response = "include"`; the defaults
-fail rather than silently changing a conventional `drm()` fit.
+Declare missing-data handling. For the joint missing-predictor frontend, the
+currently verified admission requires `predictor = "model"` and, when responses
+are missing, `response = "include"`; the defaults fail rather than silently
+changing a conventional `drm()` fit. `response = "drop"` (complete cases) is accepted
+only by the bivariate routes, where it is the default when no `missing` is given,
+as in drmTMB; there `response = "include"` keeps partly observed rows and
+`response = "fail"` refuses data with a missing response.
 """
 function miss_control(; response = "fail", predictor = "fail")
     return JointMissingControl(
-        _joint_control_value(response, "response", (:fail, :include)),
+        _joint_control_value(response, "response", (:fail, :drop, :include)),
         _joint_control_value(predictor, "predictor", (:fail, :model)),
     )
 end
@@ -927,6 +930,8 @@ vcov(fit::JointDrmFit) = vcov(fit.prepared.fit)
 loglik(fit::JointDrmFit) = loglik(fit.prepared.fit)
 nobs(fit::JointDrmFit) = nobs(fit.prepared.fit)
 is_converged(fit::JointDrmFit) = is_converged(fit.prepared.fit)
+convergence_status(fit::JointDrmFit) = convergence_status(fit.prepared.fit)
+_converged_nondegenerate(fit::JointDrmFit) = _converged_nondegenerate(fit.prepared.fit)
 niterations(fit::JointDrmFit) = niterations(fit.prepared.fit)
 family(::JointDrmFit) = Gaussian()
 
@@ -963,6 +968,8 @@ vcov(fit::JointTwoDrmFit) = vcov(fit.prepared.fit)
 loglik(fit::JointTwoDrmFit) = loglik(fit.prepared.fit)
 nobs(fit::JointTwoDrmFit) = nobs(fit.prepared.fit)
 is_converged(fit::JointTwoDrmFit) = is_converged(fit.prepared.fit)
+convergence_status(fit::JointTwoDrmFit) = convergence_status(fit.prepared.fit)
+_converged_nondegenerate(fit::JointTwoDrmFit) = _converged_nondegenerate(fit.prepared.fit)
 niterations(fit::JointTwoDrmFit) = niterations(fit.prepared.fit)
 family(::JointTwoDrmFit) = Gaussian()
 
@@ -1012,9 +1019,11 @@ vcov(fit::JointFiniteDrmFit) = vcov(fit.prepared.fit)
 loglik(fit::JointFiniteDrmFit) = loglik(fit.prepared.fit)
 nobs(fit::JointFiniteDrmFit) = nobs(fit.prepared.fit)
 is_converged(fit::JointFiniteDrmFit) = is_converged(fit.prepared.fit)
+convergence_status(fit::JointFiniteDrmFit) = convergence_status(fit.prepared.fit)
+_converged_nondegenerate(fit::JointFiniteDrmFit) = _converged_nondegenerate(fit.prepared.fit)
 niterations(fit::JointFiniteDrmFit) = niterations(fit.prepared.fit)
 family(::JointFiniteDrmFit) = Gaussian()
-fitted(fit::JointFiniteDrmFit) = fitted(fit.prepared.fit)
+fitted(fit::JointFiniteDrmFit; re::Symbol = :conditional) = fitted(fit.prepared.fit; re)
 joint_missing_summary(fit::JointFiniteDrmFit) = joint_missing_summary(fit.prepared)
 
 function _joint_finite_retained_prediction_plan(fit::JointFiniteDrmFit)

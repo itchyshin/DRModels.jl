@@ -71,6 +71,7 @@ jobs:
         # before the expensive Documenter build.
         run: |
           python3 tools/tests/test_reader_surface_audit.py
+          python3 tools/tests/test_docs_audit_semantics.py
           python3 tools/reader_surface_audit.py --public-only
       - name: Instantiate docs environment
         run: |

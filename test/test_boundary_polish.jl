@@ -106,17 +106,23 @@ end
     y = Float64.(rand(rng, n) .< 0.5)
 
     err = try
-        drm(bf(@formula(y ~ x + relmat(1 | g))), DRModels.Binomial(); data = (; y, x, g), K = K)
+        drm(bf(@formula(y ~ x + relmat(1 + x | g))), DRModels.Binomial(); data = (; y, x, g), K = K)   # bare relmat(1 | g) fits now (residual-refusals); the slope form stays refused
         nothing
     catch e
         e
     end
     @test err !== nothing
     @test !(err isa MethodError)                     # the actual regression
-    @test occursin("phylo", sprint(showerror, err))  # and it names what IS supported
+    @test occursin("intercept form", sprint(showerror, err))  # and it names what IS supported
 
     # the supported provider still fits
     phy = random_balanced_tree(G; branch_length = 0.25)
     fit = drm(bf(@formula(y ~ x + phylo(1 | g))), DRModels.Binomial(); data = (; y, x, g), tree = phy)
-    @test is_converged(fit)
+    # FX3b: `is_converged` is now true only for an interior optimum. This
+    # pure-noise response puts the phylo SD at its lower clamp, where the twin
+    # status is :boundary or, when the curvature there comes out negative,
+    # :degenerate (it differs across platforms). The check this line made before
+    # FX3b, the optimiser flag and no sentinel, is `_converged_nondegenerate`.
+    @test DRModels._converged_nondegenerate(fit)
+    @test convergence_status(fit) !== :converged
 end

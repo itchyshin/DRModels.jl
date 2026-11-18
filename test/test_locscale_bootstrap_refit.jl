@@ -38,7 +38,10 @@ end
 
 @testset "coupled Gamma public bootstrap B2" begin
     fit = _locscale_bootstrap_refit_fixture()
-    @test is_converged(fit)
+    # FX3b: one log-Cholesky standard error is ~1e4 against a median near 0.3,
+    # so the twin status is :degenerate and `is_converged` is false. This checks
+    # what `is_converged` checked before FX3b, as the bootstrap's own gate does.
+    @test DRModels._converged_nondegenerate(fit)
     obj = fit.nll
     data = (; y = copy(obj.y), x = copy(obj.Xμ[:,2]), species = copy(obj.gidx))
     serial_result = nothing
@@ -68,7 +71,7 @@ end
     p = size(obj.Xμ, 2) + size(obj.Xψ, 2)
     for replay in replays
         theta = vcat(replay.theta[1:p], replay.theta[p+1], replay.theta[p+3], replay.theta[p+2])
-        @test is_converged(replay)
+        @test DRModels._converged_nondegenerate(replay)   # the gate that retains a refit (FX3b)
         @test maximum(abs, DRModels._ls_objective_gradient(replay.nll, theta)) <= 1e-8
     end
     # Merely relabelling the previously failed first-seed fit as converged must fail.

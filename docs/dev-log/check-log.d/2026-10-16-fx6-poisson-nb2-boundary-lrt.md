@@ -1,0 +1,1 @@
+| 2026-10-16 | **FX6 Poisson ⊂ NB2 boundary warning** (#1115) | `julia --project=.` `test/test_family_boundary_lrt.jl` (11 pass) + `test/test_comparison.jl` (12 pass) | ✅ `lrtest(Poisson, NegBinomial2)` warns; packaged p stays χ² (#304). Type-I #1116/#1118 not closed (chi-bar 3.0%/3.4% on t10 grids). Twin drmTMB #1557. | FX6 |

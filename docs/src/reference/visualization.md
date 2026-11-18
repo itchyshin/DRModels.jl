@@ -20,6 +20,8 @@ plot_parameter_surface
 plot_corpairs
 ```
 
+The code below needs the `CairoMakie` and `AlgebraOfGraphics` packages. If you have not added them to your Julia environment, run `using Pkg; Pkg.add(["CairoMakie", "AlgebraOfGraphics"])` once first.
+
 To draw locally (not in default CI):
 
 ```julia

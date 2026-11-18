@@ -10,6 +10,48 @@
 using DRModels
 using Test, LinearAlgebra, Random, Statistics, SparseArrays
 
+@testset "q2 ML: inadmissible covariance and failed final likelihood" begin
+    # No random draws or optimizer trajectory: these states are fixed regressions
+    # for the covariance boundary reached by the phylogenetic ML fit on CI.
+    X = ones(4, 1)
+    Y = [0.1 0.4; -0.2 0.3; 0.3 -0.1; -0.4 -0.2]
+    prob, Q = DRModels.make_coevo_problem_from_covariance(
+        Matrix{Float64}(I, 4, 4), Y, X; group = collect(1:4))
+    β = zeros(1, 2)
+    D = Matrix{Float64}(I, 2, 2)
+    for lc in ([-25.0, 1.0, -25.0], [-35.0, 0.0, 0.0])
+        Λ = DRModels.lc_to_cov(lc, 2)
+        @test !DRModels._q2_lambda_admissible(Λ)
+        @test first(DRModels.coevo_marginal_cov(prob, Q, β, Λ, D)) == -Inf
+    end
+
+    # An unsuccessful factorization already returns -Inf, without throwing.
+    # A stationary barrier (zero finite-difference gradient) must never turn
+    # that failed final evaluation into a converged fit.
+    badQ = sparse(-100.0 * I(4))
+    failed = DRModels.fit_coevolution_q2_residual(
+        prob, badQ; β0 = β, Λ0 = D, σ0 = ones(2), iterations = 0)
+    @test !isfinite(failed.loglik)
+    @test !failed.converged
+
+    # The ML driver already retains its log-Cholesky coordinates. Re-factorizing
+    # their rounded covariance during front-end packing can throw even when the
+    # failed fit should simply be returned as nonconverged.
+    θ = [0.0, 0.0, -400.0, 1.0, -400.0, 0.0, 0.0, 0.0]
+    βbad, Λbad, Dbad, σbad, ρbad = DRModels.coevo_q2_residual_unpack(prob, θ)
+    @test !isposdef(Symmetric(Λbad))
+    badfit = (; β = βbad, Λ = Λbad, σ_res = σbad, rho12 = ρbad, θ)
+    packed = DRModels._q2_structured_theta(badfit, 1, :ML)
+    @test packed == θ[[1, 2, 6, 7, 8, 3, 4, 5]]
+
+    # Healthy ML and REML fits retain the existing public parameter order.
+    Λhealthy = [0.3 0.02; 0.02 0.2]
+    θhealthy = DRModels.coevo_q2_residual_pack(β, Λhealthy, [0.5, 0.7], 0.2)
+    healthy = (; β, Λ = Λhealthy, σ_res = [0.5, 0.7], rho12 = 0.2, θ = θhealthy)
+    @test DRModels._q2_structured_theta(healthy, 1, :ML) ≈
+          DRModels._q2_structured_theta(healthy, 1, :REML)
+end
+
 function _q2_reml_known_cov_fixture(K, β, Λ, residual_cov; nrep, rng)
     G = size(K, 1)
     Q = sparse(Matrix(inv(cholesky(Symmetric(K)))))
@@ -174,12 +216,18 @@ end
     G = 12
     coords = hcat(range(0.0, 1.0; length = G), sin.(range(0.0, pi; length = G)))
     Ddist = [sqrt(sum(abs2, coords[k, :] .- coords[l, :])) for k in 1:G, l in 1:G]
-    rho_mean = sum(Ddist) / (G^2 - G)          # the route's fixed-range rule
-    Ksp = exp.(-Ddist ./ rho_mean) + 1e-8 * I
+    # The route's fixed-range rule is drmTMB's native kernel (median positive distance,
+    # 1e-6 diagonal jitter); the earlier mean-distance / 1e-8 default is kept only behind
+    # `legacy_mean_range` and pinned below.
+    rho_mean = sum(Ddist) / (G^2 - G)
+    rho_med = median([Ddist[k, l] for k in 1:G for l in (k+1):G])
+    Ksp = exp.(-Ddist ./ rho_med) + 1e-6 * I
 
     # The matrix the route builds is EXACTLY this one, bit for bit, and
     # `spatial_range` overrides the default rule.
     @test DRModels._spatial_covariance_from_coords(:site, G, coords, nothing) == Ksp
+    @test DRModels._spatial_covariance_from_coords(:site, G, coords, nothing; legacy_mean_range = true) ==
+        exp.(-Ddist ./ rho_mean) + 1e-8 * I
     @test DRModels._spatial_covariance_from_coords(:site, G, coords, 0.5) ==
         exp.(-Ddist ./ 0.5) + 1e-8 * I
 
@@ -222,7 +270,7 @@ end
     # The FIXED range is the one free choice this cell makes and its default is
     # data-dependent, so it must be readable off the fit, not inferred -- the
     # same field the q=4 route records. A relmat fit has no range and says so.
-    @test fit_sp.ranef.spatial_range == rho_mean
+    @test fit_sp.ranef.spatial_range == rho_med
     @test drm(spatial_form, Gaussian(); data = dat, coords = coords,
               spatial_range = 0.5, g_tol = 2e-4).ranef.spatial_range == 0.5
 

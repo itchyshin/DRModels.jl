@@ -438,7 +438,11 @@ end
         n = length(data.y)
         fit = drm(_ARC2_FORMS["sigma_only"][1], Gaussian(); data = data, tree = phy,
                   method = :REML)
-        @test is_converged(fit)
+        # FX3b: on the boundary the covariance has no Wald curvature (NaN, tested
+        # below), so the twin status is :degenerate. This checks what
+        # `is_converged` checked before FX3b: the optimiser flag and no sentinel.
+        @test DRModels._converged_nondegenerate(fit)
+        @test convergence_status(fit) === :degenerate
         @test exp(coef(fit, :resd_sigma)[1]) < 1e-3
         Zη, Zψ = _D._glsp_asym_loadings(n)
         sup = -_arc2_nllR(data, phy, _D._glsp_asym_Λ(-20.0), Zη, Zψ)
@@ -451,7 +455,7 @@ end
     n = length(data.y)
     fit = drm(_ARC2_FORMS["mu_sigma"][1], Gaussian(); data = data, tree = phy,
               method = :REML, phylo_coupled = true)
-    @test is_converged(fit)
+    @test DRModels._converged_nondegenerate(fit)   # FX3b: as above
     @test fit.scales[:lambda_sd_mu][1] < 1e-3 && fit.scales[:lambda_sd_sigma][1] < 1e-3
     sup = -_arc2_nllR(data, phy, _D._glsp_coupled_Λ([-20.0, 0.0, -20.0]),
                       _D._ls_canonical_Zeta(n), _D._ls_canonical_Zpsi(n))

@@ -96,10 +96,139 @@ using Test, Random, LinearAlgebra
     native_g = zeros(length(coef(native_multi)))
     native_multi.nllgrad(native_g, coef(native_multi))
     @test g ≈ native_g atol=1e-10
+    # The vector's only producer is `fit.nllgrad`, so the top-level label is
+    # `"stored"` exactly when the vector is present. The nested diagnostic
+    # keeps the scalar `max_abs_grad` producer and is not that label (#1402).
+    @test haskey(bridged_multi, "gradient") ==
+          (get(bridged_multi, "grad_source", nothing) == "stored")
+    @test bridged_multi["grad_source"] == "stored"
 
     # --- (4) gradient key absent on a route with no stored gradient ------------
+    # Closed-form Gaussian location-scale stores an objective and no `nllgrad`
+    # (`_fit_fixed_gaussian`). `bridge_diagnostics` may still report a scalar
+    # `max_abs_grad` from ForwardDiff (`grad_source = :forward`). That scalar
+    # must not be labelled as a bridge gradient vector (#1402): drmTMB's
+    # `drm_julia_gradient_source()` aborts when a producer source arrives
+    # without `"gradient"`. With the vector omitted, the top-level key is
+    # omitted too (R reports `"unknown"`), unless the scalar source is already
+    # `:none` or `:unavailable`.
+    plain = drm(bf(@formula(y ~ x), @formula(sigma ~ x)), Gaussian(); data = data)
+    @test plain.nllgrad === nothing
     plain_bridged = drm_bridge(; formula = "y ~ x; sigma ~ x", family = "gaussian",
                                data = data)
     @test !haskey(plain_bridged, "gradient")
     @test !haskey(plain_bridged, "gradient_names")
+    plain_src = get(plain_bridged, "grad_source", nothing)
+    plain_diag = plain_bridged["diagnostics"]["grad_source"]
+    @test plain_diag == String(bridge_diagnostics(plain).grad_source)
+    if plain_diag in ("none", "unavailable")
+        @test plain_src == plain_diag
+    else
+        @test plain_src === nothing
+        @test plain_diag in ("locscale", "stored", "forward", "finite")
+    end
+    @test haskey(plain_bridged, "gradient") == (plain_src == "stored")
+
+    # A callback that writes NaN is not a finite gradient. The vector is
+    # withheld, and the top-level label is not `"stored"`. The nested
+    # diagnostic still names the scalar fallback (`:finite` or `:unavailable`).
+    nan_fit = DRModels._withnll(plain, plain.nll, (g, θ) -> fill!(g, NaN))
+    nan_bridged = DRModels._bridge_flatten(nan_fit; family = "gaussian")
+    @test !haskey(nan_bridged, "gradient")
+    @test !haskey(nan_bridged, "gradient_names")
+    nan_src = get(nan_bridged, "grad_source", nothing)
+    nan_diag = nan_bridged["diagnostics"]["grad_source"]
+    @test nan_src != "stored"
+    @test haskey(nan_bridged, "gradient") == (nan_src == "stored")
+    @test nan_diag == String(bridge_diagnostics(nan_fit).grad_source)
+    @test nan_diag != "stored"
+    if nan_diag in ("none", "unavailable")
+        @test nan_src == nan_diag
+    else
+        @test nan_src === nothing
+    end
+end
+
+@testset "drm_bridge names an option the target fitter does not accept" begin
+    Random.seed!(20261031)
+    n = 60
+    x = randn(n)
+    data = (; y = rand(1:5, n), x = x)
+    err = try
+        drm_bridge(; formula = "y ~ x", family = "poisson", data = data,
+                   options = Dict(:sparse => true))
+        nothing
+    catch e
+        e
+    end
+    @test err isa ArgumentError
+    @test occursin("`sparse`", sprint(showerror, err))
+    # `wald` is not served by drm_bridge_inference; the text says so and lists accepted methods.
+    err2 = try
+        drm_bridge_inference(; formula = "y ~ x", family = "gaussian",
+                             data = (; y = randn(n), x = x), method = "wald")
+        nothing
+    catch e
+        e
+    end
+    @test err2 isa ArgumentError
+    @test occursin("\"profile\"", sprint(showerror, err2))
+    @test occursin("\"bootstrap\"", sprint(showerror, err2))
+end
+
+@testset "drm_bridge forwards q4_f_reltol to the q=4 L-BFGS stopping rule" begin
+    Random.seed!(20261108)
+    p, m = 12, 3
+    phy = random_balanced_tree(p; branch_length = 0.3)
+    LC = cholesky(Symmetric(sigma_phy_dense(phy; σ²_phy = 1.0))).L
+    species = repeat(1:p, inner = m)
+    n = length(species)
+    x = randn(n)
+    U = LC * randn(p, 4) .* 0.4
+    dat = (; y1 = 0.3 .* x .+ U[species, 1] .+ 0.5 .* randn(n),
+           y2 = 0.2 .* x .+ U[species, 2] .+ 0.5 .* randn(n), x, species)
+    fml = Dict(:mu1 => "y1 ~ x + phylo(1 | species)", :mu2 => "y2 ~ x + phylo(1 | species)",
+               :sigma1 => "sigma1 ~ 1 + phylo(1 | species)", :sigma2 => "sigma2 ~ 1 + phylo(1 | species)",
+               :rho12 => "rho12 ~ 1")
+    fitq(extra) = DRModels.drm_bridge(; formula = fml, family = "biv_gaussian", data = dat, tree = phy,
+                                      options = merge(Dict(:q4_iterations => 300, :q4_vcov => false), extra))
+    default = fitq(Dict())
+    tight = fitq(Dict(:q4_f_reltol => 1e-12))
+    loose = fitq(Dict(:q4_f_reltol => 1e-1))
+    # A tight tolerance reproduces the default optimum; a very loose one stops the optimiser
+    # measurably earlier, which proves the key reaches `fit_q4_sparse_tmb`.
+    @test tight["loglik"] ≈ default["loglik"] atol = 1e-6
+    @test loose["loglik"] < default["loglik"] - 1.0
+end
+
+@testset "drm_bridge refuses q4_f_reltol on routes that never read it" begin
+    Random.seed!(20261108)
+    p, m = 8, 2
+    phy = random_balanced_tree(p; branch_length = 0.3)
+    species = repeat(1:p, inner = m)
+    n = length(species)
+    x = randn(n)
+    dat = (; y1 = randn(n), y2 = randn(n), x, species)
+    q4 = Dict(:mu1 => "y1 ~ x + phylo(1 | species)", :mu2 => "y2 ~ x + phylo(1 | species)",
+              :sigma1 => "sigma1 ~ 1 + phylo(1 | species)", :sigma2 => "sigma2 ~ 1 + phylo(1 | species)",
+              :rho12 => "rho12 ~ 1")
+    q2 = Dict(:mu1 => "y1 ~ x + phylo(1 | species)", :mu2 => "y2 ~ x + phylo(1 | species)",
+              :sigma1 => "sigma1 ~ 1", :sigma2 => "sigma2 ~ 1", :rho12 => "rho12 ~ 1")
+    resid = Dict(:mu1 => "y1 ~ x", :mu2 => "y2 ~ x", :sigma1 => "sigma1 ~ 1",
+                 :sigma2 => "sigma2 ~ 1", :rho12 => "rho12 ~ 1")
+    refused(fml, opts) = try
+        DRModels.drm_bridge(; formula = fml, family = "biv_gaussian", data = dat, tree = phy, options = opts)
+        nothing
+    catch e
+        e
+    end
+    e1 = refused(q4, Dict(:q4_f_reltol => 1e-3, :method => "REML"))
+    @test e1 isa ArgumentError && occursin("q4_f_reltol", sprint(showerror, e1)) &&
+          occursin("q=4 REML route", sprint(showerror, e1))
+    e2 = refused(q2, Dict(:q4_f_reltol => 1e-3))
+    @test e2 isa ArgumentError && occursin("q=2 structured route", sprint(showerror, e2))
+    e3 = refused(resid, Dict(:q4_f_reltol => 1e-3))
+    @test e3 isa ArgumentError && occursin("residual-only route", sprint(showerror, e3))
+    # the default value is never refused
+    @test DRModels._bridge_check_q4_f_reltol_route(nothing, nothing, 1e-7, :ML) === nothing
 end

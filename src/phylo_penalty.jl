@@ -91,6 +91,10 @@ penalized fits with `aic` / `lrtest` (both refuse).
     `h` and the fitted SD carries a factor `sqrt(h)`. drmTMB instead standardises
     via `ape::vcv(tree, corr = TRUE)`, whose tips always have variance 1.
 
+    (The Gaussian `phylo(1 | g)` mean route with a constant `sigma` on an ultrametric
+    tree is the exception: it fits at unit height and reports the correlation scale, so
+    `sd_u` is already on drmTMB's scale there, #979.)
+
     So the same `sd_u` is the **same prior on both sides only when the tree has
     unit height**. Copying `sd_u = 1` from an R script onto a raw tree of height
     2 gives a prior roughly `sqrt(2)` tighter than intended. Rescale first:
@@ -107,7 +111,7 @@ penalized fits with `aic` / `lrtest` (both refuse).
 # Example
 ```julia
 pen = drm_phylo_penalty(sd_u = 0.5, sd_alpha = 0.05)
-fit = drm(bf(mu = @formula(y ~ x + phylo(1 | species)), sigma = @formula(~1)),
+fit = drm(bf(@formula(y ~ x + phylo(1 | species)), @formula(sigma ~ 1)),
           Gaussian(); data = dat, tree = tree, penalty = pen)
 fit.phylo_penalty        # the penalty at the optimum
 loglik(fit)              # UNPENALIZED data log-likelihood
@@ -257,8 +261,8 @@ Extra `kwargs...` are forwarded to [`drm`](@ref) (`tree`, `g_tol`, …).
 # Example
 ```julia
 sw = drm_phylo_penalty_sweep(
-        bf(mu = @formula(y ~ x + phylo(1 | species)),
-           sigma = @formula(~ 1 + phylo(1 | species))),
+        bf(@formula(y ~ x + phylo(1 | species)),
+            @formula(sigma ~ 1 + phylo(1 | species))),
         Gaussian(); data = dat, tree = tree, cor_sd = [0.25, 0.5, 1.0])
 sw.summary          # one row per cor_sd
 ```

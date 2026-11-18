@@ -33,8 +33,9 @@ using Test, Random
     end
 
     @testset "weights" begin
-        @test weights(full) == ones(nobs(full))
-        @test weights(reduced) == ones(nobs(reduced))
+        # #931 step (b): no prior weights given -> `nothing`, not a ones() stub.
+        @test weights(full) === nothing
+        @test weights(reduced) === nothing
     end
 
     @testset "update" begin

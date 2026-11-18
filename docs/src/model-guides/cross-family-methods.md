@@ -18,10 +18,11 @@
 
 The bivariate Gaussian model (`bf(mu1=…, mu2=…, sigma1=…, sigma2=…, rho12=…)`)
 couples two responses through a **residual correlation** ``\rho_{12}`` on a
-common identity-link, real-valued scale. That construction is only available
-when both responses are Gaussian: ``\rho_{12}`` is the correlation of two
-residuals that live on the *same* scale, so it is undefined the moment one
-response is a count, a proportion, or a strictly positive quantity.
+common identity-link, real-valued scale. DRModels.jl currently provides this
+joint Gaussian residual-correlation parameter only for Gaussian margins.
+Responses from different families need an explicit joint dependence model;
+the Gaussian likelihood's ``\rho_{12}`` cannot simply be carried over to a
+count, proportion, or positive-response likelihood.
 
 The cross-family model removes that restriction. It couples two responses that
 may come from **different** families — Gaussian × Poisson, Gamma × Beta,
@@ -154,21 +155,21 @@ evaluated with the numerically stable ``\operatorname{logsumexp}`` (subtract the
 per-observation maximum, exponentiate, sum, re-log). The default node count is
 ``K = 32``.
 
-### Why quadrature, not Laplace
+### One-dimensional quadrature
 
-For this model the integrand is genuinely one-dimensional, so a ``K``-node
-Gauss–Hermite rule is both cheap (``O(nK)`` per likelihood evaluation) and far
-more accurate than a single mode-plus-curvature Laplace match — it captures
-skewed and heavy-tailed conditional posteriors that Laplace cannot see (the
-shape/dispersion bias documented in
-[Laplace vs variational marginals](marginal-la-vs-va.md)). The summand is a
+For this model the integral is one-dimensional. The Gauss–Hermite rule
+uses ``K`` evaluations per observation, or ``O(nK)`` scalar evaluations per
+likelihood call. It evaluates the integrand at multiple nodes; Laplace uses
+its local mode and curvature. Their accuracy depends on the integrand, and
+neither description establishes a general accuracy ranking. See the bounded
+comparisons in [Laplace vs variational marginals](marginal-la-vs-va.md). The summand is a
 smooth, deterministic function of ``\boldsymbol{\theta}`` (the nodes are
 constants), so the objective is differentiable by forward-mode automatic
 differentiation and is optimised with L-BFGS. A finite-penalty guard maps any
 non-finite objective value (e.g. an overflow from a large Poisson loading
 mid-line-search) to a large finite number of the same dual type, so the
-optimiser backtracks rather than aborting; the well-conditioned path — hence
-every converged estimate and interval — is untouched.
+optimiser can backtrack rather than aborting. The guard leaves finite
+objective values unchanged.
 
 ## 4. Link-residual standardisation
 
@@ -196,10 +197,13 @@ the fit objective.
 
 ### Per-family ``v_k`` derivations
 
-The link-residual map is exactly Nakagawa & Schielzeth's (2010, Table 2; see also
-Nakagawa, Johnson & Schielzeth 2017) distribution-specific variance for each
-family's canonical link, evaluated at a representative fitted mean
-``\bar\mu_k = n^{-1}\sum_i g_k^{-1}(\eta_{ki})``.
+The link-residual map draws on distribution-specific variance formulations in
+Nakagawa & Schielzeth (2010) and Nakagawa, Johnson & Schielzeth (2017), where
+applicable. The family-specific expressions below are evaluated at the
+representative fitted mean
+``\bar\mu_k = n^{-1}\sum_i g_k^{-1}(\eta_{ki})``. The Poisson and binomial
+entries correspond to formulations discussed by Nakagawa & Schielzeth (2010);
+the NB2, Gamma, and Beta entries are package-specific reporting expressions.
 
 | Family | Link | ``v_k`` | Origin |
 |---|---|---|---|
@@ -226,11 +230,12 @@ want to check:
 - **Poisson, ``v_k = \log(1 + 1/\bar\mu)``.** Under the ``\log`` link a Poisson
   mean ``\mu`` with ``\operatorname{Var}(y)=\mu`` has, to the lognormal /
   delta-method order used throughout Nakagawa & Schielzeth, an observation-level
-  variance on the log scale of ``\operatorname{Var}(\log y)\approx
-  \operatorname{Var}(y)/\mu^2 = 1/\mu``, refined to ``\log(1+1/\mu)`` (the exact
+  latent-scale variance approximation of ``\operatorname{Var}(y)/\mu^2 =
+  1/\mu``, refined to ``\log(1+1/\mu)`` (the exact
   lognormal-matching expression that reproduces ``1/\mu`` for large ``\mu`` while
   staying finite and positive for small ``\mu``). It is evaluated at the
-  representative mean ``\bar\mu``.
+  representative mean ``\bar\mu``. This is a reporting approximation, not
+  the variance of the observed ``\log y``, which is undefined when ``y = 0``.
 
 - **Binomial, ``v_k = \pi^2/3``.** On the ``\mathrm{logit}`` link the observation
   variance is taken as the variance of the standard logistic distribution,
@@ -244,9 +249,11 @@ want to check:
   exactly the variance of ``\log`` of a Gamma deviate). Here ``\sigma_k^2`` is the
   squared coefficient of variation, the package's Gamma `sigma`-slot convention.
 
-- **NegBinomial2, ``v_k = \psi_1(\theta_k)``.** The lognormal-approximation
-  distribution-specific variance contributed by the size/dispersion ``\theta`` on
-  the ``\log`` link, matching gllvmTMB's `nbinom2` entry.
+- **NegBinomial2, ``v_k = \psi_1(\theta_k)``.** The package uses this
+  dispersion component on the ``\log`` link as a reporting convention.
+  It is the variance of the log Gamma mixing factor in the Poisson-Gamma
+  representation; it is not the variance of the observed ``\log y`` or a
+  claim that the Poisson sampling contribution vanishes.
 
 - **Beta, ``v_k = \psi_1(\bar\mu\phi) + \psi_1((1-\bar\mu)\phi)``.** For
   ``y\sim\mathrm{Beta}(\mu\phi,(1-\mu)\phi)`` the variance of ``\mathrm{logit}(y)
@@ -287,12 +294,12 @@ estimable:
    With ``\lambda_1 > 0`` pinned, the sign of ``\rho`` is the sign of
    ``\lambda_2``, which is now identified.
 
-2. **Gaussian × non-Gaussian: fully identified.** When at least one axis is
-   non-Gaussian, that axis has no free residual variance competing with the
-   loading on the same scale (its observation variance ``v_k`` is fixed by the
-   mean / dispersion, not by ``\lambda_k``). All parameters —
-   ``\boldsymbol{\beta}_k``, both loadings, the dispersions, and hence ``\rho`` —
-   are then separately identified.
+2. **Gaussian × non-Gaussian: check identification for the chosen pair.**
+   The exact Gaussian × Gaussian ridge argument below does not by itself
+   settle identification for mixed margins. Identification depends on the
+   family pair, its parameterisation, and the data. Inspect the parameter
+   estimates, likelihood curvature, and the evidence for the selected route;
+   do not assume every loading and dispersion is separately identified.
 
 3. **Gaussian × Gaussian: only ``\log L`` and ``\rho`` identified.** When *both*
    axes are Gaussian the model has a flat ridge in the individual loadings: the
@@ -349,9 +356,11 @@ engine applies whenever the observed information is singular.
 
 ### 6.2 Profile likelihood
 
-The recommended interval when the Wald approximation is doubted (small ``n``, or
-``\rho`` near the boundary), better calibrated than Wald and cheaper than the
-bootstrap. Fix the correlation at a trial value ``\rho_0`` and re-optimise all
+Profile likelihood is an available alternative when the Wald approximation is
+questionable, for example near a correlation boundary. Its interval coverage
+has not been established for these mixed-family routes; inspect the profile
+and its endpoint diagnostics before reporting it. Fix the correlation at a
+trial value ``\rho_0`` and re-optimise all
 other parameters subject to that constraint, enforced with a quadratic penalty on
 the ``z`` scale:
 

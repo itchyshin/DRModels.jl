@@ -27,18 +27,31 @@ coef(fit, :mu), coef(fit, :sigma)
 
 ## Predicting the mean at new data
 
-[`predict`](@ref) evaluates the fitted **mean** at a `newdata` column table. By
-default it returns the response scale; pass `type = :link` for the linear
-predictor.
+[`predict`](@ref) evaluates the fitted **mean** at a `newdata` column table.
+`type = :response` (the default) returns `invlink(Xβ̂)` with every random
+effect set to 0; pass `type = :link` for the linear predictor `Xβ̂`. Those
+random or structured effects are not integrated out, so on a random-effect
+fit this is the prediction for an average group, not the mean averaged over
+groups.
 
 ```@example postfit
 nd = (; x = [-1.0, 0.0, 1.0])
 predict(fit, nd)                 # μ̂ at x = -1, 0, 1  (response scale)
 ```
 
+**Factors in `newdata`.** A factor is coded with the levels and contrasts of the
+data the model was fitted to, so `newdata` may hold any subset of the fitted
+levels, in any order, down to a single row. This holds for every family and for
+`predict_parameters`, as in drmTMB, whose `predict()` restores the fitted levels.
+A level the model never saw is an error that names the column, the level and the
+fitted levels (drmTMB: "unknown factor level"); it is never silently coded as the
+reference level.
+
 ### Standard errors (the delta method)
 
-Add `se = true` for delta-method standard errors — the glmmTMB/drmTMB `se.fit`.
+Add `se = true` for delta-method standard errors — the glmmTMB `se.fit`
+convention (drmTMB's `predict()` has no standard-error option). They carry the
+uncertainty in `β̂` only.
 You get back a `NamedTuple` `(; prediction, se)`:
 
 ```@example postfit
@@ -86,7 +99,9 @@ predict_parameters(fit, grid)[:sigma]   # σ̂ rising across the x sweep
 For the per-observation fitted parameters at the **training** data there is a
 cheap accessor that reads straight from the fit (no recomputation) —
 [`marginal_parameters`](@ref). In-sample it equals
-`predict_parameters(fit, data)`:
+`predict_parameters(fit, data)` for the mean and `sigma` of the GLM-type families
+(Gaussian, Poisson, NegBinomial2, Gamma, Beta, Binomial), as here (the
+[`predict_parameters`](@ref) docstring lists the exceptions):
 
 ```@example postfit
 mp = marginal_parameters(fit)
@@ -117,6 +132,41 @@ rq = residuals(fit; type = :quantile)
     observation against a different reference (a random intercept integrated
     out, or the fitted temporal path), so what "≈ N(0, 1)" means changes;
     [`residuals`](@ref) lists what each kind of fit returns.
+
+!!! warning "Accuracy limit when the random-effect variance is large (#1103)"
+    Where a random intercept is integrated out by the 32-node Gauss–Hermite
+    mixture (non-Gaussian `(1 | g)` on the mean, a Gaussian `sigma ~ 1 + (1 | g)`
+    intercept, and structured effects that keep the mixture), the conditional CDF
+    becomes a near-step in the node variable once σ̂_b ≫ σ̂, and 32 nodes stop
+    resolving it. Measured for a Gaussian mean intercept (max |Φ⁻¹(mixture) −
+    exact z| over |z| ≤ 4): about 1e-6 at σ_b/σ = 2, 6e-3 at 4, 0.02 at 5,
+    0.12 at 10 and 0.21 at 20. Read the residuals from those routes as
+    approximate when σ̂_b/σ̂ is above about 3. Gaussian `(1 | g)` on the mean and
+    Gaussian / LogNormal `phylo(1 | g)` already use the closed-form marginal and
+    are not affected. Separately, every continuous family computes
+    `Φ⁻¹(clamp(Φ(z), eps, 1 − eps))`, which loses upper-tail precision (error
+    about 6e-6 at z = 7 and 8e-3 at z = 8) and caps |r| at about 8.13.
+
+!!! note "Quantile residuals with a structured mean: DRModels.jl vs drmTMB"
+    For a fit whose mean has a `phylo()`, `relmat()` or `animal()` random
+    intercept, the two packages do not return the same numbers, although the
+    fits agree (same log-likelihood to about 6e-8 on the checked Gaussian
+    `phylo(1 | species)` model).
+
+    | Convention | Residual | Who returns it |
+    |---|---|---|
+    | marginal | `(y − Xβ̂) / √(σ̂² + σ̂_b² C_ii)` | DRModels.jl (default Gaussian `phylo(1 \| g)` route) |
+    | conditional | `(y − Xβ̂ − û) / σ̂` | drmTMB's `residuals(type = "quantile")` code |
+    | fixed-effect only | `(y − Xβ̂) / σ̂` | what drmTMB's residual help text describes |
+
+    On that model the two engines agree to within 3.5e-9 under either
+    convention, so the gap is the convention, not the fit. Marginal residuals
+    stay near N(0, 1) for each row, but rows that share ancestry are
+    correlated, so read the whole set (a QQ plot, the SD) and do not hold each
+    row to N(0, 1). Do not compare the two packages' quantile residuals number by number for
+    these fits. [`residuals`](@ref) lists the convention for every other kind
+    of fit. Which convention drmTMB should use is an open drmTMB-side decision
+    ([#1101](https://github.com/itchyshin/DRModels.jl/issues/1101)).
 
 ## Does the extra structure earn its keep?
 

@@ -1,0 +1,1 @@
+| 2026-10-19 | **README optimizer-selection example** | `git diff --check` + README link/code-scope inspection | ✅ Added a short entry point for `:bfgs` and `:lbfgs`; qualified routes and caveats link to the convergence guide. No model fits or package tests run for this documentation-only change. | Codex |

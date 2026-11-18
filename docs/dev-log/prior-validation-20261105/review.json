@@ -1,0 +1,18 @@
+{
+  "reviewer": "prior_integration_review",
+  "perspective": "independent integration and Rose claim-vs-evidence audit",
+  "verdict": "scoped READY",
+  "evidence": [
+    "full verifier rerun: 8/8 shards,554/554 files,6negativecontrols",
+    "all8remote raw-logSHA256 independently matched",
+    "source/runtime snapshot checks passed",
+    "JETexecuted;opt-inparityoff",
+    "originaltimeout versus laterpass wording verified in bothrepos"
+  ],
+  "findings_resolved": [
+    "P2 receipt/hash and source/runtime bindings",
+    "P3 eight distinct sandbox-path cardinality",
+    "P3 stale old-report and Rchecklog wording"
+  ],
+  "scope_limit": "Pinned Julia1.10.10default suite; no widerparity,calibration,otherplatform orreleaseclaim"
+}

@@ -49,7 +49,7 @@ using Optim: Optim
 function _variance_component_indices(fit::DrmFit)
     # Location-scale-scale fits (#544): group-varying RE SD makes "the" variance
     # component ill-defined, exactly like the heteroscedastic-residual rejection below.
-    any(p -> first(p) in (:sd, :sd_phylo), fit.blocks) &&
+    _has_sd_regression_block(fit) &&
         error("heritability/repeatability: this fit models the random-effect SD with " *
             "covariates (`sd(group) ~ ...`), so a single variance component is not defined. " *
             "The estimand is covariate-CONDITIONAL, R(z) = σ_b(z)² / (σ_b(z)² + σ_e(z)²) " *
@@ -92,8 +92,8 @@ function _variance_component_indices(fit::DrmFit)
     end
 
     isempty(comps) && !isempty(omega) && error("heritability/repeatability: this fit " *
-        "has a random intercept only on the scale (`sigma ~ (1 | g)`). Its SD lives on " *
-        "the log σ scale and is not a variance component of the response, so there is " *
+        "has random effects only on the scale (`sigma ~ (1 | g)` or a `sigma` slope). Their SDs live on " *
+        "the log σ scale and are not variance components of the response, so there is " *
         "no mean random-effect variance to put in the ratio. Add a mean random " *
         "intercept (e.g. `y ~ x + (1 | g)`), as drmTMB requires too.")
     isempty(comps) && error("heritability/repeatability: no structured variance " *
@@ -104,10 +104,11 @@ function _variance_component_indices(fit::DrmFit)
     return comps, resid_idx, omega
 end
 
-# Is the `:resd` entry `nm` a random intercept on log σ? The routes name it
-# `<group>_logsigma` (#322), but a mean grouping column could carry that suffix
-# too, so the name only counts when the `sigma` formula really has a random term
-# on `<group>`. A fit without a retained formula falls back to the suffix.
+# Is the `:resd` entry `nm` a random effect on log σ? The routes name an intercept
+# `<group>_logsigma` (#322) and a slope `<group>_<slope>_logsigma`, but a mean grouping
+# column could carry that suffix too, so the name only counts when the `sigma` formula
+# really has a random term on `<group>` (and, for a slope name, on that slope). A fit
+# without a retained formula falls back to the suffix.
 function _is_logsigma_re(fit::DrmFit, nm)
     s = String(nm)
     endswith(s, "_logsigma") || return false
@@ -115,9 +116,27 @@ function _is_logsigma_re(fit::DrmFit, nm)
     f isa DrmFormula || return true
     i = findfirst(p -> first(p) === :sigma, f.forms)
     i === nothing && return false
-    grp = s[1:end-length("_logsigma")]
+    base = s[1:end-length("_logsigma")]
     rhs = replace(string(last(f.forms[i])), r"\s+" => " ")
-    return occursin("| $grp)", rhs)
+    occursin("| $base)", rhs) && return true
+    return base in _sigma_re_stored_names(last(f.forms[i]))
+end
+
+# The SD names a `sigma` random-effect formula can store a slope under: `<group>_<slope>` for
+# `(0 + x | g)` and for the slope half of `(1 + x | g)`. Empty when the term cannot be parsed
+# (a structured or labelled term): the intercept check above is then the only rule.
+function _sigma_re_stored_names(rhs)
+    out = String[]
+    try
+        _, sre = _split_ranef(rhs)
+        for t in sre
+            kind, sym = _re_kind(t[1])
+            kind === :intercept || push!(out, string(t[2], "_", sym))
+        end
+    catch e
+        e isa InterruptException && rethrow()
+    end
+    return out
 end
 
 # Variance contributed by θ index `idx` to a ratio. A component's variance is
@@ -168,8 +187,11 @@ function _ratio_delta(fit::DrmFit, focal::Int, denom::Vector{Int}; level::Real,
                       resid::Int = 0, omega::Vector{Int} = Int[])
     g = _ratio_closure(focal, denom; resid = resid, omega = omega)
     bc = bias_correct(fit, g; level = level)
+    # #1007: a non-finite SE means "no uncertainty estimate". Clamping its (-Inf, Inf)
+    # interval would report a finite, valid-looking (0, 1), so the interval is NaN.
+    ci = isfinite(bc.se) ? _clamp01_ci(bc.ci) : (lower = NaN, upper = NaN)
     return (estimate = bc.estimate, corrected = bc.corrected, bias = bc.bias,
-            se = bc.se, ci = _clamp01_ci(bc.ci), level = bc.level)
+            se = bc.se, ci = ci, level = bc.level)
 end
 
 # ---------------------------------------------------------------------------
@@ -343,19 +365,24 @@ intervals; the default sparse all-node phylogenetic route stores only partial
 covariance information in this slice, so profile intervals are the safer
 uncertainty path there.
 
+For an active fixed-effect prior fit, variance-ratio intervals are not qualified;
+`heritability`, `icc`, and `repeatability` refuse both interval methods.
+
 Returns a `NamedTuple`:
 
 - `estimate`  — the plug-in ratio `g(θ̂)` (exactly in `[0, 1]`);
 - `corrected` — the bias-corrected estimate `g(θ̂) + ½·tr(H_g·V)` (delta only);
 - `se`        — the delta-method standard error (delta only);
 - `ci`        — the `(lower, upper)` CI, **clamped to `[0, 1]`** (when the
-  delta-method SE is not finite the bounds are `(NaN, NaN)` when the covariance
-  is all-NaN (a saddle) or the clamped `(0, 1)` when it is finite but gives a
-  negative variance: read `status`, which is then `:vcov_unavailable`);
+  delta-method SE is not finite the bounds are `(NaN, NaN)` (an all-NaN covariance
+  or a finite but non-positive-definite one that gives a negative variance); read
+  `status`, which is then `:vcov_unavailable`);
 - `level`     — the confidence level;
 - `method`    — the method used;
 - `status`    — `:ok`, or the first applicable caveat: `:not_converged`
-  ([`is_converged`](@ref) is false, which includes a sentinel log-likelihood),
+  (the optimiser did not stop normally, or the optimum is degenerate, which
+  includes a sentinel log-likelihood; a variance component on its boundary,
+  [`convergence_status`](@ref) `:boundary`, is not flagged here),
   `:penalized_map` (a MAP fit, whose variance components are deliberately
   shrunk), `:vcov_unavailable` (delta SE not finite), `:profile_edge` (a profile
   bound is the `0`/`1` edge, i.e. one-sided, not a likelihood-ratio crossing) or
@@ -390,6 +417,7 @@ marginal residual variance `E[σ²]`; see [`repeatability`](@ref).
 """
 function heritability(fit::DrmFit; component::Union{Symbol,Nothing} = nothing,
                       level::Real = 0.95, method::Symbol = :delta)
+    level = _validate_ci_level(level; what="heritability")
     return _signal_ratio(fit; component = component, level = level, method = method,
                          what = "heritability")
 end
@@ -417,6 +445,7 @@ marginal residual variance `E[σ²]`; see [`repeatability`](@ref).
 """
 function icc(fit::DrmFit; component::Union{Symbol,Nothing} = nothing,
              level::Real = 0.95, method::Symbol = :delta)
+    level = _validate_ci_level(level; what="icc")
     comps, resid_idx, omega = _variance_component_indices(fit)
     focal = _resolve_component(comps, component, "icc")
     denom = [focal, resid_idx]
@@ -495,7 +524,7 @@ repeatability(fit::DrmFit; component::Union{Symbol,Nothing} = nothing,
 # block :sd_phylo, ratio = phylogenetic h²(z)). logit R(z) = 2(η_sd − η_σ) is linear in
 # the coefficients, so the Wald SE on that scale is c'Vc with c = (2 x_sd, −2 x_σ).
 function _conditional_ratio(fit::DrmFit, newdata; kind::Symbol, level::Real, what::String)
-    0 < level < 1 || throw(ArgumentError("$what: `level` must be in (0, 1), got $level"))
+    level = _validate_ci_level(level; what=what)
     f = fit.formula
     f isa DrmFormula || error("$what: this fit did not retain its formula")
     numblk = kind === :iid ? :sd : :sd_phylo
@@ -505,7 +534,9 @@ function _conditional_ratio(fit::DrmFit, newdata; kind::Symbol, level::Real, wha
               (kind === :iid ? "sd(group) ~ …" : "sd(group, phylogenetic) ~ …") *
               "` submodel, so repeatability is a single number — call `$what(fit)` instead")
     pre = kind === :iid ? "sd_" : "sdphy_"
-    parts = [k => r for (k, r) in f.forms if startswith(String(k), pre)]
+    parts = kind === :iid ?
+        [item.key => item.rhs for item in _sd_target_parts(f)] :
+        [k => r for (k, r) in f.forms if startswith(String(k), pre)]
     length(parts) == 1 ||
         error("$what(fit, newdata): found $(length(parts)) `sd()` submodels of this kind; " *
               "the conditional ratio is implemented for exactly one")
@@ -514,7 +545,7 @@ function _conditional_ratio(fit::DrmFit, newdata; kind::Symbol, level::Real, wha
               "two-component ratio")
     nd = NamedTuple(pairs(newdata))
     nrows = length(first(values(nd)))
-    ndr = merge(nd, NamedTuple{(f.response,)}((zeros(nrows),)))
+    ndr = _predict_data(nd, f.response)
     _, Xsd, _ = _design(f.response, last(parts[1]), ndr)
     fixed_sigma, _, _, _ = _split_ranef(Dict(f.forms)[:sigma])
     _, Xσ, _ = _design(f.response, fixed_sigma, ndr; schema_cache = f.schema_cache, schema_key = :sigma)
@@ -580,6 +611,8 @@ end
 # Dispatch to the requested CI method and assemble the public NamedTuple.
 function _emit_ratio(fit::DrmFit, focal::Int, denom::Vector{Int}; level, method,
                      resid::Int = 0, omega::Vector{Int} = Int[])
+    _is_fixed_prior_fit(fit) && fit.estim_method === :MAP && throw(ArgumentError(
+        "variance-ratio intervals are not qualified for $(_prior_kind_label(fit)) MAP fits; covariance is local curvature"))
     if method === :delta
         r = _ratio_delta(fit, focal, denom; level = level, resid = resid, omega = omega)
         st = _ratio_status(fit, isfinite(r.se) ? :ok : :vcov_unavailable)
@@ -602,15 +635,15 @@ end
 # degenerate or penalized fit returned a ratio that looked like any other. Fit-level
 # caveats take precedence over interval-level ones; every caveat warns once.
 function _ratio_status(fit::DrmFit, ci_status::Symbol)
-    st = !is_converged(fit) ? :not_converged :
+    st = !_converged_nondegenerate(fit) ? :not_converged :
          fit.estim_method === :MAP ? :penalized_map : ci_status
     st === :not_converged && @warn "variance ratio: the fit is not converged (or is " *
-        "degenerate / at the failed-objective sentinel; see `is_converged`), so the ratio " *
+        "degenerate / at the failed-objective sentinel; see `convergence_status`), so the ratio " *
         "and its interval are not trustworthy." status = st
     st === :penalized_map && @warn "variance ratio: penalized (MAP) fit -- the variance " *
         "components are deliberately shrunk, so this is not a likelihood-based ratio." status = st
     st === :vcov_unavailable && @warn "variance ratio: the delta-method standard error is " *
-        "not finite (no usable covariance), so the interval is NaN or the uninformative [0, 1]. " *
+        "not finite (no usable covariance), so the interval is NaN. " *
         "Use `method = :profile`." status = st
     st === :profile_edge && @warn "variance ratio: a profile bound is the 0/1 edge, not a " *
         "likelihood-ratio crossing (one-sided interval)." status = st

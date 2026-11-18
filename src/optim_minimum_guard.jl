@@ -69,3 +69,103 @@ That is the defect in DRModels.jl#944. Routes that deliberately stop on `f_relto
 near a variance boundary are not switched to this predicate.
 """
 drm_optim_converged(res) = Optim.converged(res) && Optim.g_converged(res)
+
+"""
+    _SCALE_RUNOFF_LOG_SPREAD
+
+Unit-free bound on the spread of fitted `log σ_i` across observations used by
+[`_scale_runoff`](@ref): `log(1e4)`, i.e. a 10⁴-fold range of fitted scales
+(10⁸-fold in variance).
+
+Why 10⁴: it is a judgement threshold, not a derived or calibrated one. It is the
+`log(1e4)` spread that DRModels.jl#1059 proposes, taken from drmTMB's native
+engine rule, so the two routes can agree. It is far larger than the scale range
+of ordinary heteroscedastic data, yet far from floating-point limits, so a fit
+beyond it is more often a collapsing scale than a real design. The cost is that a
+genuinely well-identified fit with a wider range is also reported as not
+converged. Change it here only.
+"""
+const _SCALE_RUNOFF_LOG_SPREAD = log(1e4)
+
+"""
+    _scale_runoff(scales) -> Bool
+
+True when the fitted scale has run off toward zero (or infinity) for some
+observations (DRModels.jl#1059). `scales` is the fit's `Dict(:sigma => σ_i)`.
+The rule is the spread `maximum(log σ) - minimum(log σ)` across observations
+exceeding `log(1e4)`; it is invariant to the units of the response (rescaling
+`y` shifts every `log σ_i` by the same constant), unlike an absolute log-sigma
+bound. A divergent `sigma ~ x` fit (a group whose response is constant, so its
+log σ → -∞ while the gradient test still fires) is flagged; a non-finite or
+non-positive scale counts as run-off. Callers AND the negation into
+`converged`, as the Hessian-finite check already is.
+"""
+function _scale_runoff(scales)
+    σ = get(scales, :sigma, nothing)
+    σ === nothing && return false
+    isempty(σ) && return false
+    all(s -> isfinite(s) && s > 0, σ) || return true
+    lo, hi = extrema(log, σ)
+    return hi - lo > _SCALE_RUNOFF_LOG_SPREAD
+end
+
+import LinearAlgebra
+
+# Unit-free stationarity, the drmTMB #1503 rule. An absolute gradient tolerance
+# (Optim's `g_tol = 1e-8`) moves with the predictor units: the same model at
+# `x` and at `x * 1000` can stall with `|g|∞` just above 1e-8 while the Newton
+# step is a negligible fraction of a standard error. Converged means
+#
+#     max_i | (H⁻¹ g)_i | / SE_i  ≤  1e-3
+#
+# with `SE_i = sqrt((H⁻¹)_ii)`. A non-finite Hessian returns false. A Hessian
+# that is singular or not positive definite is not usable for that ratio. A saddle (a negative
+# eigenvalue) is not a minimum. A singular Hessian falls back to the absolute
+# rule `max |g| ≤ 1e-3`, which still rejects a runaway and accepts a stall
+# that only missed the absolute 1e-8 bar.
+const _UNITFREE_SE_TOL = 1e-3
+const _UNITFREE_ABS_TOL = 1e-3
+
+function _unitfree_converged(H::AbstractMatrix, g::AbstractVector)
+    length(g) == size(H, 1) == size(H, 2) || return false
+    all(isfinite, g) || return false
+    abs_ok = maximum(abs, g) <= _UNITFREE_ABS_TOL
+    # A non-finite Hessian is not converged for any caller (#1114, #983).
+    all(isfinite, H) || return false
+    Hs = Matrix{Float64}(H)
+    Hs = (Hs .+ Hs') ./ 2
+    gs = collect(Float64, g)
+    # #983: judge singularity on the correlation form D H D, D = diag(H)^(-1/2).
+    # The raw eigenvalue ratio moves with the units of each parameter (a mean
+    # coefficient at residual SD 1e-4 has curvature 1e8 times that of log σ).
+    # The Newton step in SE units is unchanged by this rescaling.
+    dH = LinearAlgebra.diag(Hs)
+    if all(>(0), dH)
+        D = 1 ./ sqrt.(dH)
+        Hs = Hs .* (D * D')
+        gs = gs .* D
+    end
+    # A near-zero diagonal makes D overflow, so the scaled Hessian is not
+    # finite. That is not a usable minimum, so it is not converged.
+    all(isfinite, Hs) || return false
+    Hs = LinearAlgebra.Symmetric(Hs)
+    ev = LinearAlgebra.eigvals(Hs)
+    all(isfinite, ev) || return false
+    scale = maximum(abs, ev)
+    scale == 0 && return abs_ok
+    # A negative eigenvalue is a saddle, not a minimum (same bar as the vcov guard).
+    minimum(ev) < -_VCOV_RTOL * scale && return false
+    minimum(abs, ev) <= _VCOV_RTOL * scale && return abs_ok
+    C = LinearAlgebra.cholesky(Hs; check = false)
+    LinearAlgebra.issuccess(C) || return abs_ok
+    δ = C \ gs
+    n = length(g)
+    se2 = LinearAlgebra.diag(C \ Matrix{Float64}(LinearAlgebra.I, n, n))
+    worst = 0.0
+    for i in 1:n
+        se = sqrt(max(se2[i], 0.0))
+        se > 0 || return abs_ok
+        worst = max(worst, abs(δ[i]) / se)
+    end
+    return worst <= _UNITFREE_SE_TOL
+end

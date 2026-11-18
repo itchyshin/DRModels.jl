@@ -1,0 +1,1 @@
+| 2026-10-25 | **Bivariate predict reuses the training factor schema** (#1000) | `julia --project=test --check-bounds=yes test/test_bivariate_schema_cache_1000.jl test/test_predict.jl test/test_lane_j4_predict_numerics.jl` on Julia 1.10.12 | 13/13 + 4/4 + 122/122 pass; J4 #1000 cell now expects a subset predict | Shannon |

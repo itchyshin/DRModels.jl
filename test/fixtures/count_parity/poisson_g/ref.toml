@@ -1,0 +1,10 @@
+route = "poisson_g"
+drmTMB_version = "0.7.1"
+R_version = "4.3.3"
+note = "Poisson, mean (1 | g); generated outputs only"
+tmb_names = ["beta_mu", "beta_mu", "log_sd_mu"]
+names = ["mu_(Intercept)", "mu_x", "resd_g"]
+loglik = -385.66890920704867
+max_grad = 1.776357e-14
+theta = [0.39660354644256579, 0.41953762390550925, -0.82612749245140882]
+se = [0.098043138385008319, 0.052646734052143068, 0.17900193332226533]

@@ -15,7 +15,7 @@ tree. A working checkout can sit hundreds of commits behind `origin/main`
 (2026-08-14: it was 987 behind, and reading it produced a gap list that was
 wrong in both directions).
 
-    python3 tools/parity_ledger.py --drmtmb ../drmTMB --ref origin/main
+    python3 tools/parity_ledger.py --drmtmb ../drmTMB --ref origin/main --julia-ref origin/main
 """
 
 import argparse
@@ -26,6 +26,7 @@ from pathlib import Path
 
 # drmTMB R name -> DRModels.jl symbol, where the twin exists under a different name.
 ALIASES = {
+    "beta_family": "Beta",
     "nbinom2": "NegBinomial2",
     "truncated_nbinom2": "TruncatedNegBinomial2",
     "truncated_poisson": "TruncatedPoisson",
@@ -248,13 +249,22 @@ def norm(s: str) -> str:
     return re.sub(r"[_.]", "", s).lower()
 
 
+def has_julia_twin(name: str, julia_exports: list[str]) -> bool:
+    """Return whether an R export has a same-name or explicitly aliased Julia twin."""
+    julia_names = {norm(export) for export in julia_exports}
+    if norm(name) in julia_names:
+        return True
+    alias = ALIASES.get(name)
+    return bool(alias and norm(alias) in julia_names)
+
+
 def drmtmb_exports(repo: Path, ref: str) -> list[str]:
     ns = git_show(repo, ref, "NAMESPACE")
     return sorted(re.findall(r"^export\((.+?)\)", ns, re.M))
 
 
-def drmjl_exports(root: Path) -> list[str]:
-    src = (root / "src" / "DRModels.jl").read_text()
+def drmjl_exports(root: Path, ref: str) -> list[str]:
+    src = git_show(root, ref, "src/DRModels.jl")
     names: list[str] = []
     for block in re.findall(r"^export\s+(.+?)(?=\n\s*\n|\nexport|\Z)", src, re.M | re.S):
         block = re.sub(r"#.*", "", block)
@@ -273,28 +283,31 @@ def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--drmtmb", required=True, type=Path, help="path to the drmTMB repo")
     ap.add_argument("--ref", default="origin/main", help="git ref to read (default origin/main)")
+    ap.add_argument("--julia-ref", default="HEAD", help="DRModels.jl git ref to read (default HEAD)")
     ap.add_argument("--root", default=Path(__file__).resolve().parents[1], type=Path)
     args = ap.parse_args()
 
-    sha = subprocess.run(
-        ["git", "-C", str(args.drmtmb), "rev-parse", args.ref],
-        capture_output=True, text=True,
-    ).stdout.strip()
+    def resolve_sha(repo: Path, ref: str) -> str:
+        result = subprocess.run(
+            ["git", "-C", str(repo), "rev-parse", "--verify", f"{ref}^{{commit}}"],
+            capture_output=True, text=True,
+        )
+        if result.returncode != 0:
+            sys.exit(f"cannot resolve {ref} in {repo}: {result.stderr.strip()}")
+        return result.stdout.strip()
+
+    r_sha = resolve_sha(args.drmtmb, args.ref)
+    j_sha = resolve_sha(args.root, args.julia_ref)
     version = re.search(
         r"^Version:\s*(\S+)", git_show(args.drmtmb, args.ref, "DESCRIPTION"), re.M
     ).group(1)
 
     r_exports = drmtmb_exports(args.drmtmb, args.ref)
-    j_exports = drmjl_exports(args.root)
-    j_norm = {norm(x) for x in j_exports}
-
-    def has_twin(name: str) -> bool:
-        if norm(name) in j_norm:
-            return True
-        alias = ALIASES.get(name)
-        return bool(alias and norm(alias) in j_norm)
-
-    unmatched = [x for x in r_exports if not has_twin(x) and x not in NOT_CAPABILITY]
+    j_exports = drmjl_exports(args.root, args.julia_ref)
+    unmatched = [
+        x for x in r_exports
+        if not has_julia_twin(x, j_exports) and x not in NOT_CAPABILITY
+    ]
     # A4e: split the raw count into "actually owed" vs "accounted for in writing".
     missing = [x for x in unmatched if x not in DELIBERATELY_NOT_PORTED]
     accounted = [x for x in unmatched if x in DELIBERATELY_NOT_PORTED]
@@ -317,7 +330,8 @@ def main() -> int:
     caps = tsv_rows(args.drmtmb, args.ref, "inst/extdata/julia-capabilities.tsv")
     gates = tsv_rows(args.drmtmb, args.ref, "inst/extdata/julia-gates.tsv")
 
-    print(f"drmTMB {version} @ {args.ref} ({sha[:9]})")
+    print(f"drmTMB {version} @ {args.ref} ({r_sha[:9]})")
+    print(f"DRModels.jl @ {args.julia_ref} ({j_sha[:9]})")
     print(f"  exports: {len(r_exports)}   DRModels.jl exports: {len(j_exports)}")
     print()
 

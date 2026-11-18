@@ -95,6 +95,7 @@ bc.estimate, bc.corrected, bc.se, bc.ci
 ```
 """
 function bias_correct(fit::DrmFit, g::Function; level::Real = 0.95)
+    _is_fixed_prior_fit(fit) && fit.estim_method === :MAP && throw(ArgumentError("bias_correct: intervals are not qualified for $(_prior_kind_label(fit)) MAP fits"))
     θ̂ = coef(fit)
     V = vcov(fit)
     return _bias_correct(g, θ̂, V; level = level)
@@ -113,7 +114,7 @@ function bias_correct(θ̂::AbstractVector, V::AbstractMatrix, g::Function;
 end
 
 function _bias_correct(g, θ̂::AbstractVector, V::AbstractMatrix; level::Real)
-    0 < level < 1 || throw(ArgumentError("level must be in (0, 1), got $level"))
+    level = _validate_ci_level(level; what="bias_correct")
     θ = collect(float.(θ̂))
     n = length(θ)
     size(V) == (n, n) ||

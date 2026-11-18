@@ -42,7 +42,9 @@ makedocs(
             "model-guides/distribution-families.md",
             "families.md",
             "model-guides/model-workflow.md",
+            "model-guides/missing-data.md",
             "model-guides/model-selection.md",
+            "Fixed-effect priors" => "priors.md",
             "model-guides/convergence.md",
             "model-guides/marginal-la-vs-va.md",
             "model-guides/cross-family-methods.md",
@@ -53,6 +55,7 @@ makedocs(
         "Biological examples" => [
             "tutorials/location-scale.md",
             "tutorials/location-scale-scale.md",
+            "tutorials/predictor-dependent-random-sd.md",
             "tutorials/robust-student.md",
             "tutorials/count-nbinom2.md",
             "tutorials/proportion-beta-binomial.md",

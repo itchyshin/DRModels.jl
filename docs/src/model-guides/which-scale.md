@@ -63,7 +63,13 @@ DRModels.jl keeps the inference you are entitled to:
   estimated variance is finite and positive, and `Inf` — an undefined,
   infinitely wide SE — only for the genuinely unidentified direction. That `Inf`
   propagates to an honest **unbounded `(-Inf, Inf)`** Wald interval rather than a
-  silent `NaN`. The well-identified directions stay usable.
+  silent `NaN`. The well-identified directions stay usable. This covers
+  variance components estimated at zero. A *shape* parameter at its limit is
+  not yet covered: Student-t `nu` running towards infinity, or a `ZeroOneBeta`
+  `coi` part with no exact ones in the data, can show a standard error of 0
+  and a zero-width interval instead of `Inf`
+  ([DRModels.jl#969](https://github.com/itchyshin/DRModels.jl/issues/969)).
+  Use a profile or bootstrap interval there, or drop the parameter.
 - **Profile likelihood.** [`confint`](@ref)`(fit; method = :profile)` inverts the
   likelihood-ratio statistic. A non-crossing endpoint describes the searched
   range, not proof of an infinite interval. Inspect `profile_result` diagnostics:
@@ -73,15 +79,16 @@ DRModels.jl keeps the inference you are entitled to:
   entirely and is the recommended tool right at a true boundary.
 - **Diagnostics.** [`check_drm`](@ref) flags the situation explicitly via its
   `vcov_posdef` / `min_eigval` fields, so a non-PD covariance is reported, not
-  hidden.
+  hidden. A shape parameter at its limit (above) can still pass these checks
+  with `converged = true`, so look at its estimate as well.
 
-This is a **measured** advantage, not a hope. On the verified q=4 PLSM fit the
-observed information had a single negative eigenvalue — the singular variance
-direction — and DRModels.jl still returned valid Wald SEs for the identified
-parameters where drmTMB's `sdreport` was all-`NaN`; a parametric bootstrap
-returned a finite interval for every replicate it was run on — no refit failed
-at the boundary. The counts and the run
-conditions are in `report/comparison-grid.md`.
+A retained q=4 PLSM fixture had one negative observed-information eigenvalue.
+The floored-inverse calculation returned finite Wald SEs for 16 of 17
+parameters where drmTMB's `sdreport` returned all `NaN`, and 60 bootstrap refits
+completed. These results describe computation on one boundary fixture; they
+do not establish parameter identification or Wald/bootstrap interval coverage.
+The counts and run conditions are in the
+[historical comparison receipt](https://github.com/itchyshin/DRModels.jl/blob/2643768080803cdb00e10993ae6fcf6e40bfc726/report/comparison-grid.md).
 
 !!! note "An undefined CI is information, not a failure"
     `(-Inf, Inf)` and `Inf` are deliberate: they say "this direction is not

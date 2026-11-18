@@ -189,8 +189,10 @@ function make_coevo_problem_from_covariance(K::AbstractMatrix,
                                             Y::AbstractMatrix,
                                             X::AbstractMatrix;
                                             group = 1:size(K, 1))
+    _require_finite_array(K, "K")
     G = LinearAlgebra.checksquare(K)
-    C = Matrix{Float64}(K)
+    # #1020: `Symmetric(C)` reads one triangle, so check symmetry and finiteness first.
+    C = _require_symmetric_finite_covariance(K, "the known structured covariance (`K` / `A`)")
     isposdef(Symmetric(C)) || error("known structured covariance must be positive definite")
     Q = Matrix(inv(cholesky(Symmetric(C))))
     size(Q) == (G, G) || error("internal covariance inversion returned the wrong size")
@@ -272,7 +274,8 @@ plus the inner mode `û`, the CHOLMOD factor of the WHITENED `H̃ = (I⊗L') H_u
 (`logdet H_uu = logdet H̃ − 2N Σ log Lᵢᵢ`), and the sparse prior `P`.
 `β` is `k × q` (trait-major columns), `Λ` is q×q SPD — either as a matrix or,
 preferably, factored as a `Cholesky` (see [`lc_to_chol`](@ref)) — and `σ_res` a
-length-q vector of residual SDs.
+length-q vector of residual SDs. Rejected q2 covariance states return `-Inf` and
+`nothing` for the factor and prior, which have not been constructed.
 
 Numerics (#857 site K). `Λ⁻¹` is never formed. With `L L' = Λ` and whitened
 effects `v = (I ⊗ L⁻¹) u`, the prior is `v'(Q ⊗ I)v`, the Hessian is
@@ -287,6 +290,14 @@ former form lost every digit (l22 = −17: +0.03 nats; ≤ −18: `-Inf`).
 function coevo_marginal_cov(prob::CoevoProblem, Q_cond::SparseMatrixCSC,
                             β::AbstractMatrix, Λ::AbstractMatrix, D::AbstractMatrix)
     q = prob.q
+    # q2: the matrix form has already formed Λ = L L' in Float64, which is lossy
+    # near singularity (see above). Reject numerically inadmissible q2 states
+    # here, with the same boundary as q2 REML, instead of factorising a Λ that
+    # rounding may have made non-PD. Final ML evaluations and the packed-Λ paths
+    # use this method. The Cholesky method below stays accurate on purpose.
+    if q == 2 && !(_q2_lambda_admissible(Λ) && isposdef(Symmetric(Matrix{Float64}(Λ))))
+        return (-Inf, zeros(q * prob.N), nothing, nothing)
+    end
     chΛ = cholesky(Symmetric(Matrix{Float64}(Λ)); check = false)
     issuccess(chΛ) || return (-Inf, zeros(q * prob.N), nothing, nothing)
     return coevo_marginal_cov(prob, Q_cond, β, chΛ, D)
@@ -297,6 +308,12 @@ function coevo_marginal_cov(prob::CoevoProblem, Q_cond::SparseMatrixCSC,
     q = prob.q
     n = length(prob.leaf_node)
     size(D) == (q, q) || error("residual covariance has size $(size(D)); expected ($q, $q)")
+    # A non-finite or non-PD q2 residual covariance is a rejected state, not an
+    # error. Λ is deliberately NOT bounded here: the whitened form is accurate
+    # for near-singular Λ (tests in test_q4_prior_whitening.jl).
+    if q == 2 && !(all(isfinite, D) && isposdef(Symmetric(D)))
+        return (-Inf, zeros(prob.q * prob.N), nothing, nothing)
+    end
     isposdef(Symmetric(D)) || error("residual covariance must be positive definite")
     Dinv = inv(Symmetric(D))
     L = Matrix{Float64}(chΛ.L)
@@ -384,6 +401,13 @@ function coevo_marginal_cov(prob::CoevoProblem, Q_cond::SparseMatrixCSC,
     return ℓ, û, chH, P
 end
 
+"""
+    coevo_marginal(prob::CoevoProblem, Q_cond, β, Λ, σ_res)
+
+Method of `coevo_marginal` for independent residual SDs `σ_res`; it forwards to
+`coevo_marginal_cov` with the diagonal residual covariance `Diagonal(σ_res.^2)`
+and returns the same `(ℓ, û, ch_H, P)`.
+"""
 function coevo_marginal(prob::CoevoProblem, Q_cond::SparseMatrixCSC,
                         β::AbstractMatrix, Λ::Union{AbstractMatrix,Cholesky},
                         σ_res::AbstractVector)
@@ -395,6 +419,12 @@ end
 # θ pack / unpack and the fit driver.
 # ---------------------------------------------------------------------------
 
+"""
+    coevo_theta_len(prob::CoevoProblem) -> Int
+
+Length of the packed coevolution parameter vector: `k*q` coefficients, the
+`q`-dimensional log-Cholesky block, and `q` residual log-SDs.
+"""
 coevo_theta_len(prob::CoevoProblem) = prob.k * prob.q + lc_len(prob.q) + prob.q
 
 "Unpack θ → (β::k×q, Λ::q×q, σ_res::q). Eltype follows θ."
@@ -573,7 +603,7 @@ function fit_coevolution_q2_residual(prob::CoevoProblem, Q_cond::SparseMatrixCSC
     local ℓ, û, cholesky_ok
     try
         ℓ, û, _, _ = coevo_marginal_cov(prob, Q_cond, β̂, Λ̂, D̂)
-        cholesky_ok = true
+        cholesky_ok = isfinite(ℓ)
     catch e
         (e isa DomainError || e isa LinearAlgebra.PosDefException ||
          e isa LinearAlgebra.SingularException) || rethrow(e)
@@ -606,8 +636,10 @@ function simulate_coevolution(phy, β::AbstractMatrix, Λ::AbstractMatrix,
                               rng = Random.default_rng())
     q = size(Λ, 1)
     Q_cond, leaf_pos, N = augmented_tree_precision(phy)
+    isposdef(Symmetric(Matrix{Float64}(Λ))) ||
+        throw(ArgumentError("simulate_coevolution: Λ must be positive definite"))
     P = prior_precision(Q_cond, inv(Λ))
-    F = cholesky(Symmetric(P))
+    F = _pd_chol_or_throw(P, "the tip-RE prior precision kron(Q_cond, Λ⁻¹)")
     u_aug = F.UP \ randn(rng, size(P, 1))         # vec(B) ~ N(0, P⁻¹), axis-inner
     p = phy.n_leaves
     species = repeat(1:p, inner = nrep)

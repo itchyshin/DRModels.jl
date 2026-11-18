@@ -13,6 +13,8 @@ expected count.
 
 ## A Poisson abundance model
 
+The code below also loads the `Distributions` package to simulate data. If you have not added it to your Julia environment, run `using Pkg; Pkg.add("Distributions")` once first.
+
 ```@example count
 using DRModels, Random
 import Distributions          # `Poisson` below is DRModels's family; qualify the distribution

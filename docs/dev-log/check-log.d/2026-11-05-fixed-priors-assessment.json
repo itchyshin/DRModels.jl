@@ -1,0 +1,36 @@
+{
+  "assessment_performed": true,
+  "draft_sha256": "7f85ccacb985eb295c90337b146d768cd4aa6792fccdd0bb7cbfa759286622c7",
+  "draft_version": "v1",
+  "requested_mode": "independent",
+  "assessor_type": "self",
+  "reviewer": "Codex",
+  "method": "separate post-draft review against source, logs, process receipt and mechanical slop check",
+  "genre": "check-log row",
+  "coverage": "whole draft",
+  "score": 2,
+  "style_status": "scored",
+  "score_reason": "Concrete scope and numerical evidence with explicit unresolved limits. No change needed for this short status row.",
+  "confidence": "medium",
+  "confidence_reason": "Self-review and bounded evidence; not independent validation.",
+  "examples": [
+    {
+      "location": "line 1",
+      "cue": "The single row records counts, source and the incomplete full suite together.",
+      "impact": "The reader can distinguish measured outcomes from unfinished checks.",
+      "repair": "no change needed",
+      "line": 1,
+      "quote": "| 2026-11-05 | Experimental fixed-effect priors | Totoro Julia 1.10.10: final `a30e3472` focused 82/82 and 14 affected test files exit 0; independent ridge, objective and derivative oracles; native/bridge smoke; prior guide example and isolated HTML page PASS | Final `Pkg.test()` INCOMPLETE: 90-minute cap, exit 124; no remaining process-group members. Full predecessor Documenter failed on joint-missing convergence, reproduced as a single example on clean `24ac6ca` with the same docs manifest. Two predecessor runs stopped as superseded (exit 143). No coverage or release claim. | Codex |"
+    }
+  ],
+  "evidence_none_reason": null,
+  "science_gate": "pass",
+  "science_gate_reason": "Penalty and inferential descriptions were checked against the approved equations and focused tests.",
+  "facts_gate": "pass",
+  "facts_gate_reason": "Counts, process exit, log hash and source digest were checked against the recorded commands and logs.",
+  "references_gate": "not_applicable",
+  "references_gate_reason": "The document has no bibliographic citations.",
+  "date": "2026-11-05",
+  "calibration_status": "No calibration examples were consulted during this review.",
+  "interpretation": "perceived_style_not_authorship"
+}

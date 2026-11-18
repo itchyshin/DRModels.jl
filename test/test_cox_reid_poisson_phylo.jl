@@ -144,7 +144,7 @@ _sigma(fit) = exp(D.coef(fit)[end])
         @test _sigma(fit_rel) > _sigma(fit_ml)
     end
 
-    @testset "uncertified routes still error" begin
+    @testset "uncertified routes still error (coordinate-spatial now admitted)" begin
         rng = StableRNG(4504)
         G, m = 8, 4
         n = G * m
@@ -153,18 +153,15 @@ _sigma(fit) = exp(D.coef(fit)[end])
         y = Float64.([rand(rng, Distributions.Poisson(exp(0.3 + 0.2 * xi))) for xi in x])
         data = (; y, x, g)
 
-        # Coordinate-spatial with jointly estimated ρ is a different fitter.
+        # Coordinate-spatial now uses the fixed-range kernel on the relmat spine, so :REML is
+        # admitted there (it was refused while the range was jointly estimated).
         coords = rand(rng, G, 2)
         site = g
-        err_sp = try
-            D.drm(D.bf(D.@formula(y ~ x + spatial(1 | site))), D.Poisson();
-                  data = (; y, x, site), coords = coords, se = false, method = :REML)
-            nothing
-        catch e
-            e
-        end
-        @test err_sp isa ArgumentError
-        @test occursin("REML", sprint(showerror, err_sp))
+        fit_sp = D.drm(D.bf(D.@formula(y ~ x + spatial(1 | site))), D.Poisson();
+                       data = (; y, x, site), coords = coords, se = false, method = :REML)
+        @test D.estimation_method(fit_sp) === :REML
+        @test isfinite(fit_sp.reml_loglik) && isfinite(fit_sp.ml_loglik)
+        @test fit_sp.reml_loglik != fit_sp.ml_loglik
 
         # Crossed intercepts, slopes, VA, FE-only stay rejected.
         h = repeat(1:4, outer = div(n, 4))

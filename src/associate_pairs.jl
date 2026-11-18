@@ -1,24 +1,24 @@
-# associate_pairs.jl — staged (frozen-margin) association, the Julia twin of
+# associate_pairs.jl: staged (frozen-margin) association, the Julia twin of
 # drmTMB's `associate_pairs()` / `latent_normal()` / `association()`.
 #
 # THIS IS A TWO-STAGE ESTIMATOR, NOT A JOINT MODEL. Two univariate models are
 # fitted independently, then FROZEN, and a single latent-normal copula
 # association is estimated conditional on them. The margins are never refitted.
 #
-# The consequence has to be stated wherever the uncertainty is reported: because
-# the margins are treated as exact, the association's standard error is
-# CONDITIONAL — it ignores margin estimation error. drmTMB bounds its own version
-# the same way (alpha-scale Wald only, an experimental-interval warning, and no
-# simultaneous eta bands or profiles), and this port must not offer intervals the
-# twin refuses.
+# Reported association standard errors here are conditional on the fitted
+# margins; they do not propagate margin-estimation uncertainty. R's drmTMB
+# separately provides a two-stage Godambe covariance on admitted pairs; that
+# does not supply such a covariance for this Julia estimator. Keep the Julia
+# qualification explicit and consult the capability guide for route-specific
+# interval evidence. The likelihood alone does not establish calibration.
 #
-# First slice: the `gaussian_bernoulli` pair class, whose likelihood is CLOSED
-# FORM. The Gaussian margin's latent is observed exactly, so the Bernoulli's
-# contribution is a conditional univariate normal CDF — no rectangle probability,
-# no quadrature, no new dependency. The four pair classes that censor BOTH
-# latents need a 1-D adaptive integral with a retained error estimate and are
-# deliberately deferred (design note
-# `docs/dev-log/design/2026-08-15-a3c-design-staged-association.md`).
+# Gaussian × Bernoulli and Gaussian × NB2 use closed-form conditional-normal
+# probabilities: the Gaussian margin's latent value is observed. Bernoulli ×
+# Bernoulli, Bernoulli × NB2, and NB2 × NB2 censor both latent values
+# and use one-dimensional adaptive rectangle integration. All five classes
+# retain frozen fitted margins; these implementation routes do not establish
+# general interval calibration. The initial staged design is recorded in
+# `docs/dev-log/design/2026-08-15-a3c-design-staged-association.md`.
 
 using Distributions: Normal, cdf, logcdf, logccdf, logpdf, pdf, quantile
 import Distributions
@@ -87,9 +87,12 @@ Bernoulli × NB2 exception.
 The margins are **frozen**: `fit_1` and `fit_2` are used as fitted and are never
 re-estimated. Reported uncertainty is therefore conditional on them.
 
-Implemented pair class: **gaussian × binomial** (`gaussian_bernoulli`). The other
-four reviewed classes need a rectangle probability and are not implemented yet;
-they error rather than silently approximating.
+Implemented pair classes are Gaussian × Bernoulli, Gaussian × NB2,
+Bernoulli × Bernoulli, Bernoulli × NB2, and NB2 × NB2. A Binomial margin must
+represent Bernoulli observations on these routes. The accepted classes have
+class-specific continuous/discrete likelihood calculations; other family
+pairs are refused. These implementation routes do not imply general interval
+calibration, and the margins remain frozen as described above.
 
 ```julia
 fg = drm(bf(@formula(y ~ x), @formula(sigma ~ 1)), Gaussian(); data = d)
@@ -113,8 +116,8 @@ function associate_pairs(fit_1::DrmFit, fit_2::DrmFit; kernel = nothing,
             "`kernel = latent_normal()` declaration — there is no implicit " *
             "association kernel."))
     association === nothing || _assoc_intercept_only(association)
-    _assoc_require_converged(fit_1, "fit_1")
-    _assoc_require_converged(fit_2, "fit_2")
+    _assoc_guard_margin(fit_1, "fit_1")
+    _assoc_guard_margin(fit_2, "fit_2")
 
     pc, comps = _assoc_components(fit_1, fit_2)
     loglik, n = _assoc_loglik_for(pc, comps)
@@ -148,9 +151,18 @@ function associate_pairs(fit_1::DrmFit, fit_2::DrmFit; kernel = nothing,
     η = _assoc_eta(best_a)
     tol = 1e-7 * (1 + abs(best_o))
     finite = filter(isfinite, objectives)
-    disagree = length(finite) < 2 || (maximum(finite) - minimum(finite)) > tol
+    # Every start hit the non-finite sentinel (`prevfloat(Inf)`), so the
+    # profile never saw a real likelihood. That is a disagreement with itself,
+    # and it is not a fit to return.
+    all_sentinel = isempty(finite)
+    disagree = all_sentinel || length(finite) < 2 || (maximum(finite) - minimum(finite)) > tol
+    ll = -best_o
+    if all_sentinel || _loglik_is_sentinel(ll) || !isfinite(best_a)
+        throw(ArgumentError("associate_pairs: the pair log-likelihood is non-finite " *
+            "at the optimum (loglik = $ll). The association was not estimated."))
+    end
 
-    return PairAssociation(pc, [best_a], ["(Intercept)"], η, -best_o,
+    return PairAssociation(pc, [best_a], ["(Intercept)"], η, ll,
                            [score], [curv], abs(η) >= 0.995, disagree, n, comps)
 end
 
@@ -393,12 +405,39 @@ end
 # -2909.5), and the association came back attenuated -- 0.42 against drmTMB's
 # 0.58 -- with nothing in the result to indicate why.
 function _assoc_require_converged(f::DrmFit, name::AbstractString)
-    is_converged(f) && return nothing
+    _converged_nondegenerate(f) && return nothing
     throw(ArgumentError("associate_pairs: `$name` did not converge, so it cannot be " *
         "frozen as a margin. A staged association conditions on the margin as if it " *
         "were exact: a non-converged fit (e.g. a dispersion collapsed to its " *
         "boundary) would bias the association with no visible failure. Refit the " *
         "margin first, or use `engine = \"tmb\"` for that margin."))
+end
+
+# A margin fitted after dropping missing responses still stores the full
+# `obs`/`means` vectors, NaN in the dropped rows, with `nobs` equal to the
+# kept rows (#1021). Pairing that vector with the other margin evaluates a
+# non-finite likelihood at every trial and used to return `eta ≈ 0.995` with
+# loglik `-floatmax`. Refuse the margin instead.
+function _assoc_guard_margin(f::DrmFit, name::AbstractString)
+    _assoc_require_converged(f, name)
+    haskey(f.obs, :mu) || return nothing
+    y = f.obs[:mu]
+    nobs(f) == length(y) || throw(ArgumentError(
+        "associate_pairs: `$name` dropped rows (nobs = $(nobs(f)), stored response " *
+        "length = $(length(y))). A staged association pairs on the stored rows, so a " *
+        "margin fitted after dropping missing responses cannot be frozen. Drop the " *
+        "incomplete rows from every margin before fitting (`drm_listwise`)."))
+    _require_finite_inputs(; response=(y, "$name response"),
+                           response_allow_missing=false, context="associate_pairs")
+    if haskey(f.means, :mu)
+        _require_finite_inputs(; predictors=(f.means[:mu], "$name mu"),
+                               context="associate_pairs")
+    end
+    if haskey(f.scales, :sigma)
+        _require_finite_inputs(; predictors=(f.scales[:sigma], "$name sigma"),
+                               context="associate_pairs")
+    end
+    return nothing
 end
 
 # ── shared margin extractors ─────────────────────────────────────────────────

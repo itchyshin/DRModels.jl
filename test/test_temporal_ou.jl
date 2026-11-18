@@ -39,7 +39,11 @@ using Distributions: MvNormal, Normal, logpdf
     fOU = bf(@formula(y ~ x + temporal(1 | id, elapsed, ou)), @formula(sigma ~ 1))
     fOUi = bf(@formula(y ~ x + (1 | id) + temporal(1 | id, elapsed, ou)), @formula(sigma ~ 1))
 
-    @testset "dense oracle to 1e-10 (irregular times, ± ordinary intercept)" begin
+    # Tolerance is 1e-9, not 1e-10: on the x86-64 GitHub runner (Julia 1.13) the filter and
+    # the dense oracle differ by 1.7e-10 at one random theta (same value on main's own CI);
+    # this is floating-point summation order, not a model difference (a wrong filter
+    # moves the objective by far more). loglik checks at fit.theta keep 1e-10.
+    @testset "dense oracle to 1e-9 (irregular times, ± ordinary intercept)" begin
         rng = StableRNG(21)
         for rep in 1:3, ordinary in (false, true)
             d = sim_data(rng; S = 8 + 3rep, sb = ordinary ? 0.4 : 0.0)
@@ -51,12 +55,20 @@ using Distributions: MvNormal, Normal, logpdf
             @test np == (ordinary ? 6 : 5)
             for _ in 1:4
                 θ = [randn(rng); randn(rng); 0.5randn(rng); 0.5 .* randn(rng, np - 4); 1.5randn(rng)]
-                @test abs(fit.nll(θ) - dense_nll(θ, d.y, X, d.id, d.elapsed; ordinary)) < 1e-10
+                @test abs(fit.nll(θ) - dense_nll(θ, d.y, X, d.id, d.elapsed; ordinary)) < 1e-9
             end
             # very fast decay (near-independent states) and very slow decay
             for ψ in (4.0, -5.0)
                 θ = copy(fit.theta); θ[end] = ψ
-                @test abs(fit.nll(θ) - dense_nll(θ, d.y, X, d.id, d.elapsed; ordinary)) < 1e-10
+                dn = dense_nll(θ, d.y, X, d.id, d.elapsed; ordinary)
+                # Absolute 1e-10 plus 1e-12 relative to the nll's scale: at ψ = -5
+                # (λ ≈ 0.007, near-perfectly-correlated states) the DENSE oracle's V is
+                # ill-conditioned, so its own rounding error scales with |nll|. Measured
+                # |filter - dense| for the one worst cell (rep 1, ordinary, |nll| = 2349.8;
+                # every other cell is ≤ 6e-14): 5.9e-12 (Mac arm64), 8.0e-11 (Totoro
+                # x86_64 znver5, Julia 1.13.1 and 1.13.3 alike), 1.71e-10 (GitHub runner,
+                # Julia 1.13.3) — a platform spread, not a Julia-version change.
+                @test abs(fit.nll(θ) - dn) < 1e-10 + 1e-12 * abs(dn)
             end
             # decay → 0 (λ = e^-20): a precision-matrix evaluation measured a negative
             # 1ᵀV⁻¹1 here during a line search; the filter must match the dense oracle
@@ -129,7 +141,7 @@ using Distributions: MvNormal, Normal, logpdf
         @test Dict(fit.coefnames)[:temporal_decay] == [lbl]
         tp = temporal_parameters(fit)
         @test tp.decay ≈ exp(only(coef(fit, :temporal_decay)))
-        @test predict(fit, d) ≈ fitted(fit) ≈ X * coef(fit, :mu)
+        @test predict(fit, d) ≈ fitted(fit; re = :zero) ≈ X * coef(fit, :mu)
         @test structured_effects(fit) == [(dpar = :mu, kind = :temporal, grouping = :id)]
         # conditional modes against the dense model: temporal σ_t² R V⁻¹ r (rows),
         # intercept σ_b² Zᵀ V⁻¹ r (series in first-seen order)
@@ -148,7 +160,7 @@ using Distributions: MvNormal, Normal, logpdf
         d = sim_data(StableRNG(71); S = 300, sb = 0.4)
         fit = drm(fOUi, Gaussian(); data = d)
         tp = temporal_parameters(fit)
-        E = simulate(fit; nsim = 400, rng = StableRNG(72)) .- fitted(fit)
+        E = simulate(fit; nsim = 400, rng = StableRNG(72)) .- fitted(fit; re = :zero)
         v_model = tp.sd^2 + tp.sd_iid^2 + tp.sigma^2
         @test mean(var(E; dims = 1)) ≈ v_model rtol = 0.03
         # covariance of two rows of one series = σ_t² e^{−λ|Δt|} + σ_b²

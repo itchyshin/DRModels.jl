@@ -79,6 +79,9 @@ likelihood-ratio test:
 lrtest(fit_sigma_constant, fit_sigma_x)   # (; statistic, dof, pvalue)
 ```
 
+`lrtest` is the StatsModels.jl function with a method added for DRModels fits, so it
+works the same whether you load only DRModels or also `using StatsModels`.
+
 A small p-value supports the moving-scale term within these nested, checked
 candidate models; it is not proof of a biological mechanism. Interpret the selected
 σ-coefficient on the **ratio** scale — a one-unit increase in `x` multiplies the
@@ -89,6 +92,8 @@ exp(coef(fit_sigma_x, :sigma)[2])         # residual-SD ratio per unit x
 ```
 
 ## A tail assumption: Gaussian vs Student-t
+
+The code below also loads the `Distributions` package to simulate data. If you have not added it to your Julia environment, run `using Pkg; Pkg.add("Distributions")` once first.
 
 A robust [`Student`](@ref) model is useful when the process can produce
 unusually large residuals. Here the data are generated with heavy-tailed
@@ -162,7 +167,12 @@ check_drm(fit_zinb2)
 ```
 
 Exclude errored fits from selection, and treat a non-converged or boundary fit
-as a diagnostic finding, not as an ordinary winner.
+as a diagnostic finding, not as an ordinary winner. A `converged` value of
+`true` in the table above is not enough on its own to call a fit clean: a fit
+can report `true` with a parameter at its limit (for example a zero-inflation
+probability or a dispersion running to its boundary). Read `max_abs_grad`,
+`grad_source` and the estimates themselves too; see
+[Improving convergence](convergence.md).
 
 ## Practical checklist
 

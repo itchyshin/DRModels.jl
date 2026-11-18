@@ -3,15 +3,14 @@
 !!! note "Status — Stable"
     Mirrors drmTMB's [Improving convergence](https://itchyshin.github.io/drmTMB/articles/convergence.html). A practical guide to checking and improving a fit in **DRModels.jl**, built around the [`check_drm`](@ref) diagnostic.
 
-A distributional regression fits by maximum likelihood: `drm` runs an LBFGS
-optimiser (with a robust mode-finder for the phylogenetic engine) and stores
-whether it converged. Most models converge without intervention. This page is
-for the ones that don't — and how to tell the difference between a real problem
-and a model that is simply sitting at the edge of its parameter space.
+The optimiser and stopping tests depend on the fitted route. Use this page
+when a fit reports a numerical problem, and to distinguish an early stop from
+a model sitting at the edge of its parameter space.
 
 ## Step 1 — check the fit
 
-Every fit carries a convergence flag and an observed-information covariance.
+Every fit carries a convergence flag and a covariance matrix for its
+estimates (on most routes the inverse of the observed information).
 [`check_drm`](@ref) bundles the useful diagnostics into one report:
 
 ```julia
@@ -22,16 +21,36 @@ check_drm(fit)
 
 The report is a `NamedTuple`:
 
-- `converged` — did the optimiser report success?
-- `max_abs_grad` — `max|∇nll|` at the solution. Near a clean interior optimum
-  this is ≈ 0; a large value means the optimiser stopped early.
+- `convergence_status` reports `:converged`, `:boundary`, or `:degenerate`.
+  `converged` is `true` exactly when this status is `:converged`, matching
+  [`is_converged`](@ref). The raw optimiser flag is `fit.converged`.
+- `max_abs_grad` — `max|∇nll|` at the solution, the largest slope of the
+  negative log-likelihood. Near a clean interior optimum this is ≈ 0; a large
+  value means the optimiser stopped early.
+- `grad_source` — how `max_abs_grad` was obtained. `:none` or `:unavailable`
+  means no gradient could be computed, so `max_abs_grad` is `NaN` and the
+  gradient was not checked at all.
 - `vcov_posdef` — is the covariance positive-definite? When this is `false`,
   some parameters have no finite standard error (drmTMB's `sdreport` returns all
   `NaN` in exactly this situation).
 - `min_eigval` / `cond` — the smallest eigenvalue and the condition number of the
   covariance. A near-zero `min_eigval` flags a direction the data barely
   constrain (a variance pinned near zero, two confounded coefficients).
-- `ok` — `true` when converged, the gradient is small, and the covariance is PD.
+- `ok` combines the raw convergence/nondegeneracy check, a small available
+  gradient, a positive-definite covariance, and no fixed-effect rank deficiency.
+  The gradient condition is skipped when unavailable or for penalised MAP fits.
+  This summary differs from `is_converged`: `ok` can be `true` at a variance
+  boundary or when the status flags inflated standard errors. Read both fields.
+
+!!! warning "Read the status as well as the raw flag"
+    `fit.converged = true` says the optimiser's stopping rule was met. It does
+    not prove an interior, identified maximum. `is_converged(fit)` additionally
+    checks the public convergence status and returns `false` at `:boundary`
+    or `:degenerate`, including detected variance/correlation boundaries and
+    non-finite or inflated standard errors when uncertainty was computed.
+    These checks are numerical diagnostics, not a model-adequacy test. Read
+    `max_abs_grad`, `grad_source`, the covariance checks, and the fitted
+    parameter values together.
 
 ## Step 2 — read the failure mode
 
@@ -41,12 +60,35 @@ A non-`ok` report is information, not necessarily an error.
 
 If a random-effect SD or a scale parameter is estimated near zero, the
 likelihood flattens in that direction: `min_eigval` is tiny and the gradient may
-not reach zero. This is often the *correct* MLE — the data carry little of that
-variance component. The other parameters still have valid Wald standard errors;
-only the boundary direction is undefined. Prefer
-[`confint`](@ref)`(fit; method = :profile)` there: the profile interval is exact
-under the likelihood-ratio statistic where the quadratic Wald approximation
-breaks down at a boundary.
+not reach zero. This can be the MLE when the data provide little information
+about that variance component. Do not assume the other parameters' Wald
+standard errors remain reliable; inspect their own identification and
+covariance diagnostics. A profile interval avoids the quadratic Wald
+approximation, but its likelihood-ratio calibration is still asymptotic and
+boundary likelihood-ratio limits can be nonstandard [Self and Liang
+(1987)](https://doi.org/10.1080/01621459.1987.10478472).
+
+On the independent-term Laplace route (`(1 | g) + (0 + x | g)` for the non-Gaussian
+families) the objective rejects any trial point whose log SD is below -30 or above
+30. If the best fit runs to the lower end, the SD is zero for every practical
+purpose and the likelihood is flat in that direction (drmTMB follows the same
+ridge much further out, to a log SD near -111). Such a fit is reported as
+`convergence_status(fit) === :boundary`, with a warning. The optimizer flag is
+`false` there, and the reported log-likelihood can be a little below drmTMB's.
+Do not read its Wald standard errors. To test the variance against zero use
+[`lrt_boundary`](@ref) with a reduced fit that drops the term (a 50:50
+chi-bar-square mixture, not a plain chi-square). The reduced fit must use the same
+marginal approximation as the full fit: drop the term but keep another
+independent term, as in `(0 + x | g)` alone. A profile interval,
+`confint(fit; method = :profile)`, may not converge on a fit at the wall.
+
+This advice applies to variance components estimated at zero. A Student-t
+shape parameter near its infinite-`nu` Gaussian limit is a different
+identification problem: the data may weakly distinguish large values of `nu`.
+If its standard error is zero or non-finite, do not interpret the Wald
+interval; the optimizer flag alone does not make that uncertainty reliable.
+Compare with a Gaussian fit when it answers the same question, and use a
+profile or bootstrap interval only when the target and evidence support it.
 
 ### Confounded predictors
 
@@ -54,20 +96,104 @@ A near-singular covariance with a large `cond` usually means two columns of a
 design matrix are nearly collinear (e.g. an intercept and a centred covariate
 that is almost constant). Re-centre or drop one; refit.
 
+An *exactly* aliased column is a different case: `sigma ~ 1 + x + z` with
+`z = 2x + 1`, or a duplicated column, leaves the likelihood flat along the alias
+direction, so the coefficient is not identified at all. `drm` (Gaussian
+location-scale route) checks the rank of each parameter's fixed-effect design
+once, warns with `fixed_effect_rank_deficiency` naming the parameter block and the
+aliased coefficients, and reports `is_converged(fit) == false`. The aliased
+coefficients' standard errors are `NaN`, and `check_drm(fit).ok` is `false` with the
+blocks listed in `check_drm(fit).fixed_effect_rank_deficiency`. The log-likelihood
+and the identified coefficients are unchanged (the covariance is still the
+pseudo-inverse); drop or recode the aliased column and refit. This matches
+drmTMB's `convergence_status() == "degenerate"` for the same designs.
+
 ### Stopped early
 
 If `converged` is `false` but `max_abs_grad` is still sizable, the optimiser ran
-out of iterations rather than hitting a boundary. Tighten the gradient tolerance
-and refit:
+out of iterations rather than hitting a boundary. A smaller `g_tol` will not help:
+it is the gradient size at which the optimiser may stop, so tightening it makes
+stopping harder, not easier. To raise the iteration cap or supply starting
+values, pass one `DRMControl` (the names follow drmTMB's `drm_control()`):
 
 ```julia
-fit = drm(bf(@formula(y ~ x), @formula(sigma ~ x)), Gaussian();
-          data = dat, g_tol = 1e-10)
+f = bf(@formula(y ~ x), @formula(sigma ~ x))
+fit = drm(f, Gaussian(); data = dat, control = DRMControl(maxit = 2000))
+
+# Start from another fit's estimates, or try five starts and keep the best:
+fit2 = drm(f, Gaussian(); data = dat, control = DRMControl(start = coef(fit)))
+fit5 = drm(f, Gaussian(); data = dat, control = DRMControl(multi_start = 5))
+control_info(fit5).start_logliks     # one log-likelihood per start
+control_info(fit5).starts_agree      # false (and a warning) if they disagree
 ```
+
+`maxit`, `start` and `multi_start` work on the fixed-effect routes of the
+univariate families. On a model with a random, structured or `meta_V` term
+(and on bivariate models) they are refused with an `ArgumentError` before
+fitting, so there is no multi-start check for a `(1 | g)` fit yet, although
+drmTMB's `drm_control(multi_start =)` accepts it there (#1219). You can request `:lbfgs` or `:bfgs` directly on those
+primary ML fits. Hold the model, data and internal-scale start fixed when
+comparing methods:
+
+```julia
+base = drm(f, Gaussian(); data = dat)
+x0 = coef(base)
+lb = drm(f, Gaussian(); data = dat,
+         control = DRMControl(optimizer = :lbfgs, start = x0))
+bfgs_fit = drm(f, Gaussian(); data = dat,
+         control = DRMControl(optimizer = :bfgs, start = x0))
+control_info(bfgs_fit).requested_optimizer   # :bfgs
+control_info(bfgs_fit).actual_optimizer      # :bfgs
+control_info(bfgs_fit).optimizer_runs        # every attempted start and native stopping result
+```
+
+`optimizer = :default` retains the route's current method and restart policy.
+Gaussian ML with one mean random intercept `(1 | g)` also accepts `:lbfgs` or
+`:bfgs`; its data-driven start, conditional restart, exact-gradient check and
+boundary tie rule still apply. Its own two starts are reported separately in
+`optimizer_runs`, and `selected_optimizer_stage` names the one retained.
+`maxit`, `start`, `multi_start`, `seed` and `jitter` are not available on this random-intercept
+route. Gaussian selection requires the ordinary ML route with
+`algorithm = :auto`, and refuses alternate integration, imputation or
+profiling options. Other random, structured, bivariate and REML routes refuse
+an explicit optimizer by name. `profile_result`, `confint(...; method = :profile)`
+and fit-based `bootstrap_result`, `bootstrap_summary` and `bootstrap_ci` refuse
+fits with an explicit optimizer choice before starting any refit; they cannot
+yet forward the selected method. Refit with `optimizer = :default` to use those
+inference routes. Wald intervals remain available when standard errors were
+computed. Solver agreement alone does not establish
+parameter identification.
+
+SkewNormal fixed-effect fits restart on their own. The slant can have two or three
+local optima, so after the default start the fit also runs from four fixed starts.
+A start replaces the fit so far only if Optim reports convergence, its
+log-likelihood is higher by more than 1e-5, and the estimate is an interior optimum
+(positive definite Hessian, finite standard errors, none inflated). An accepted replacement
+has a higher log-likelihood and passes the convergence and interior checks. If no
+replacement qualifies, the original fit is retained and may itself be unconverged
+or degenerate. The restarts use no random numbers and are skipped when `control`
+sets `start`, `multi_start`, `maxit` or `optimizer`. The additional starts increase
+computation time. The multi-start procedure does not guarantee a global optimum.
+A large slant estimate (above about 20) with a standard error of similar size means
+the likelihood is flat in the slant; it occurs with or without the restarts.
+`fit.scales[:q2_restarts]` records what happened.
+
+`se = false` works on every route:
+
+```julia
+fit = drm(f, Gaussian(); data = dat, control = DRMControl(se = false))
+H = hessian(fit)                    # observed information, `coef(fit)` order
+inv(H)                              # the covariance, computed later
+g = gradient(fit)                   # ≈ 0 at the optimum
+g' * (H \ g)                        # scaled Newton decrement: a stationarity audit
+```
+
+`gradient` and `hessian` are of the negative log-likelihood the
+optimiser minimised, in the same order and on the same scale as `coef(fit)`.
 
 ## Step 3 — scale and standardise
 
-Most convergence trouble is conditioning. Two cheap fixes:
+Check conditioning first. Two cheap fixes:
 
 - **Standardise covariates.** Predictors on wildly different scales make the
   Hessian ill-conditioned. Centre and scale continuous covariates before fitting.
@@ -75,10 +201,30 @@ Most convergence trouble is conditioning. Two cheap fixes:
   fixed-effect structures; REML likelihoods are not. Keep ML when selecting
   models with [`aic`](@ref) / [`bic`](@ref).
 
+## Comparing logLik with drmTMB or glmmTMB (#943)
+
+For a `sigma ~ x + (1 | g)` model on `NegBinomial2()`, `Gamma()` or `Beta()`, the
+default `:LA` route integrates the random intercept by adaptive Gauss-Hermite
+quadrature. drmTMB and glmmTMB use the TMB Laplace approximation, so the two
+log-likelihoods are **not comparable**: do not compare `loglik`, `aic` or an LRT
+across the engines for these models. The estimates agree closely; the gap is the
+integration convention, not a different optimum. Measured on lme4 `grouseticks`,
+NB2 `ticks ~ year + height100 + (1 | brood)`:
+
+| `sigma` formula | DRModels.jl default `:LA` | drmTMB / glmmTMB (TMB Laplace) |
+|---|---|---|
+| `sigma ~ year` | -888.350 | -888.885 |
+| `sigma ~ 1` | -889.612 | -890.203 |
+
+With `sigma ~ 1`, `marginal = :Laplace` reproduces the drmTMB value
+(-890.2035). That route does not accept a non-constant `sigma`, and a
+TMB-convention Laplace for `sigma ~ x + (1 | g)` is not planned for now, so
+the comparison is not available for those models.
+
 ## The phylogenetic engine
 
 The verified q=4 phylogenetic location–scale engine has its own mode-finder
-(sparse augmented-state Laplace with an exact O(p) gradient). Two notes specific
+(sparse augmented-state Laplace with an exact sparse gradient). Two notes specific
 to it:
 
 - **Off-diagonal initialisation.** Starting the cross-covariance Cholesky away

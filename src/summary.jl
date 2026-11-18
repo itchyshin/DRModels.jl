@@ -66,7 +66,7 @@ function _block_title(p::Symbol)
     p === :sd_phylo && return "Phylo SD model sd_phylo(group) (log σ_a)"
     p === :resid   && return "Residual scale (log σ)"
     p === :recov   && return "Random-effect covariance (Cholesky)"
-    p === :phylocov && return "Group-level covariance Σ_a (log-Cholesky; see vc/coevolution)"
+    p === :phylocov && return "Group-level covariance Σ_a (log-Cholesky; Wald intervals uncalibrated)"
     return String(p)
 end
 
@@ -126,31 +126,11 @@ function rho12(fit::DrmFit)
     return fit.scales[:rho12]
 end
 
-"""
-    is_converged(fit::DrmFit) -> Bool
+# `is_converged`, `converged` and `convergence_status` live in convergence_status.jl
+# (the FX3b twin contract with drmTMB).
 
-Whether this fit may be trusted: the optimiser reported convergence **and** the
-optimum is not degenerate. A `false` here means the reported estimates / standard
-errors should not be trusted.
-
-This is deliberately STRICTER than the raw `fit.converged` flag. The Gaussian
-log-likelihood is unbounded as the residual scale goes to zero: with one row per
-group a structured random effect can interpolate the data, so `sigma` collapses and
-the objective runs away to `+Inf`. `Optim.converged` only asks whether the gradient
-test was met, and at such a point it returns `true`.
-
-For example, a one-row-per-species phylogenetic fit produced
-`sd_phylo = 22980`, `sigma = 7.5e-15`, `loglik = 6.8e13`, `converged = true` — and
-25% of parametric-bootstrap replicates in that example reached such a point.
-Including these invalid fits among successful refits can distort a percentile
-interval.
-
-Use this accessor to check both convergence and degeneracy. `fit.converged`
-exposes only the raw optimiser flag.
-"""
-is_converged(fit::DrmFit) = fit.converged && _nondegenerate_fit(fit)
-
-# The degeneracy test behind `is_converged`. GAUSSIAN ONLY: for NB2/Beta/Gamma the
+# The degeneracy test behind `convergence_status`'s geometry step (and
+# `_converged_nondegenerate`). GAUSSIAN ONLY: for NB2/Beta/Gamma the
 # `:sigma` slot holds a dispersion or shape, where a genuinely small value is
 # legitimate, so applying a residual-scale test there would reject good fits.
 #
@@ -160,11 +140,25 @@ is_converged(fit::DrmFit) = fit.converged && _nondegenerate_fit(fit)
 # nll >= 1e17 on the nll scale; loglik <= -1e15 is the same bar taken a couple of
 # decades more conservatively on the loglik scale, so no genuine fit is caught
 # (a real loglik of -1e15 would need ~1e14 observations at O(10) nats each).
-_sentinel_loglik(fit::DrmFit) = !isfinite(fit.loglik) || fit.loglik <= -1e15
+#
+# The same rule as `loglik()` (`_loglik_is_failed`): the sentinel, a non-finite value, OR a runaway
+# magnitude (>= 1e15) on a fit with converged = false (a Gaussian q2 fit with a covariate scaled by
+# 1e6 stored +3.6e76, which would otherwise give the best-looking AIC and a huge LR statistic).
+_sentinel_loglik(fit::DrmFit) = _loglik_is_failed(fit.loglik, fit.converged)
 
 function _nondegenerate_fit(fit::DrmFit)
     _sentinel_loglik(fit) && return false
+    # Same coefficient rule as `_report_converged`, so `is_converged` and
+    # `fit.converged` agree when a coefficient is non-finite.
+    _coefficients_finite(fit.theta) || return false
+    _design_rank_deficient(fit) && return false   # #1110: aliased fixed-effect column
     fit.family isa Gaussian || return true
+    # A temporal Gaussian puts the response variance in the AR/OU term. A
+    # residual SD near 0 is that split (`sigma_ratio` in `_temporal_boundary`),
+    # which the optimiser can report as converged. It is not the saturated-mean
+    # collapse this bar rejects (#461). Treating it as degeneracy drops every
+    # bootstrap replicate of a boundary temporal fit.
+    _is_temporal_fit(fit) && return true
     haskey(fit.scales, :sigma) || return true
     s = fit.scales[:sigma]
     smax = maximum(abs, s)
@@ -195,9 +189,14 @@ end
     deviance(fit::DrmFit) -> Float64
 
 Deviance of the fitted model, `-2 · loglik(fit)` — drmTMB's `deviance()`.
+`NaN` (with a warning) on a fit stranded on the failed-objective sentinel.
 Extends `StatsAPI.deviance`.
 """
-deviance(fit::DrmFit) = -2 * loglik(fit)
+function deviance(fit::DrmFit)
+    # A fit stranded on the failed-objective sentinel has no deviance (#1093).
+    _sentinel_infocrit_nan(fit, "deviance") && return NaN
+    return -2 * loglik(fit)
+end
 
 """
     dof_residual(fit::DrmFit) -> Int
@@ -207,18 +206,68 @@ Extends `StatsAPI.dof_residual`.
 """
 dof_residual(fit::DrmFit) = nobs(fit) - dof(fit)
 
+# #1071: name the integrator behind the printed logLik. `:LA` (the default) and
+# `:Laplace` give different logLik values for the same random-effect model: the
+# default is the more accurate, `:Laplace` is the one-point approximation drmTMB
+# reports. A cross-engine or cross-approximation AIC / LRT is only valid between
+# like approximations. The quadrature node count is deliberately not printed: it
+# differs by route, so a fixed "GHQ-32" would sometimes be false. Not printed for a
+# random-effect-free fit (exact logLik, nothing to name) or a Gaussian `:LA` fit
+# (the Gaussian marginal is exact), so those outputs are unchanged. The "has a
+# random effect" test is `_fit_is_re_free` (comparison.jl), not
+# `fit.ranef === nothing`: Poisson / Binomial `(1|g)` never store BLUPs.
+function _marginal_note(fit::DrmFit)
+    m = fit.marginal
+    (_fit_is_re_free(fit) || (m === :LA && fit.family isa Gaussian)) && return nothing
+    desc = m === :LA      ? "default integrator, not the one-point Laplace drmTMB reports; " *
+                            "`marginal = :Laplace` matches drmTMB" :
+           m === :Laplace ? "one-point Laplace approximation, as drmTMB" :
+           m === :VA      ? "variational ELBO, not a log-likelihood" :
+           m === :AGHQ    ? "adaptive Gauss-Hermite quadrature" : "integrator"
+    return "logLik (marginal :" * String(m) * ", " * desc * ")"
+end
+
+# `max|grad nll|` at the reported optimum, from the same producer `check_drm` uses (`max_abs_grad`,
+# `grad_source`). Nothing is printed when no gradient could be produced, and a failure here never
+# stops the fit from printing. Costs one gradient evaluation, only for fits whose optimiser did not converge.
+function _final_gradient_note(io::IO, fit::DrmFit)
+    g = try _check_max_abs_grad(fit) catch; return nothing end
+    (g.source in (:none, :unavailable) || !isfinite(g.magnitude)) && return nothing
+    println(io, "  final gradient: max|grad| = ", @sprintf("%.3e", g.magnitude),
+            g.source === :finite ? " (central finite difference)" : "")
+    return nothing
+end
+
 function Base.show(io::IO, ::MIME"text/plain", fit::DrmFit)
     se = _display_se(fit)
+    fixed_map = _is_fixed_prior_fit(fit) && fit.estim_method === :MAP
     fam = _family_name(fit.family)
     println(io, "Distributional regression fit (", fam, ")")
+    fixed_map && println(io, "  MAP fit; standard errors are local penalized curvature, and z/p values are withheld.")
+    status = convergence_status(fit)
     println(io, "  nobs = ", fit.nobs,
-                "   logLik = ", @sprintf("%.4f", fit.loglik),
-                "   converged = ", is_converged(fit))
+                "   logLik = ", @sprintf("%.4f", _display_loglik(fit)),
+                "   convergence_status = ", status,
+                "   converged = ", status === :converged)
+    mnote = _marginal_note(fit)
+    mnote === nothing || println(io, "  ", mnote)
+    haskey(fit.scales, :spatial_range) && println(io, "  Spatial range = ",
+        @sprintf("%.4g", first(fit.scales[:spatial_range])),
+        " (fixed at the median distance between sites, as drmTMB; not estimated)")
     # #949: show the trusted accessor; say so when the raw optimiser flag disagrees.
-    (fit.converged && !is_converged(fit)) && println(io, "  (the optimiser stopped normally, " *
-        "but the fit is degenerate -- see `is_converged`)")
+    (fit.converged && status !== :converged) && println(io, "  (the optimiser stopped normally, " *
+        "but convergence_status is ", status, " -- see `convergence_status`)")
+    # The final gradient norm of an optimiser that did not converge, so the reader sees how far from
+    # stationary the reported point is. Printed only then: a converged fit's output is unchanged.
+    fit.converged || _final_gradient_note(io, fit)
     _wald_withheld(fit) && println(io, "  Wald SEs withheld (homogeneous Toeplitz, as drmTMB): `sigma` is the " *
         "TOTAL within-series SD; use profile intervals for mean coefficients.")
+    # #1193: no Wald SEs from an unconverged fit or a non-PD Hessian.
+    if !_wald_withheld(fit)
+        why = _wald_unreliable(fit)
+        why === nothing || println(io, "  Wald SEs withheld: ", why, ".\n",
+            "  Std.Error, z and p are NaN; `stderror(fit)` keeps the Hessian values.")
+    end
 
     # Residual SD on the RESPONSE scale + residual dof (issue #752). An R user
     # looks for these first: lm() prints both and drmTMB prints sigma. The value
@@ -255,15 +304,21 @@ function Base.show(io::IO, ::MIME"text/plain", fit::DrmFit)
         println(io, _block_title(p), ":")
         # One line per note, so nothing wraps in a 78-column code block (the book's
         # width; requested by the stats-hours lane 2026-09-06).
-        for note in _block_null_note(p)
+        for note in (fixed_map ? String[] : _block_null_note(p))
             println(io, "  ", note)
+        end
+        # #969: flag the Student ν Gaussian-limit boundary under the `nu` block.
+        if p === :nu && _student_nu_boundary(fit) !== nothing
+            println(io, "  boundary (limit): 1/ν < ", _STUDENT_NU_BOUNDARY_INV,
+                    " (Gaussian limit); these Std.Error / z / p values are not valid,")
+            println(io, "  a Std.Error of 0 means 'not computable'. Compare with Gaussian() by a 0.5χ²₀ + 0.5χ²₁ LRT.")
         end
         # Build the rows for this block.
         labels = String[]; c1 = String[]; c2 = String[]; c3 = String[]; c4 = String[]
         for (j, idx) in enumerate(r)
             est = fit.theta[idx]
             s = se[idx]
-            z, pval = _wald_zp(p, est, s)
+            z, pval = fixed_map ? (NaN, NaN) : _wald_zp(p, est, s)
             push!(labels, nms[j])
             push!(c1, fmt(est)); push!(c2, fmt(s)); push!(c3, fmt(z)); push!(c4, fmtp(pval))
         end
@@ -289,21 +344,23 @@ end
     summary(fit::DrmFit)
 
 Coefficient table for a fitted model — the DRModels.jl analogue of drmTMB's `summary()`.
-Returns the same `CoefTable` as [`coeftable`](@ref) (estimates, SEs, z, p, CIs).
+Returns the same `CoefTable` as [`coeftable`](@ref). Fixed-prior MAP fits
+withhold z, p and interval columns; their SEs describe local penalized curvature.
 """
 Base.summary(fit::DrmFit) = coeftable(fit)
 
 """
     coeftable(fit::DrmFit; level = 0.95) -> StatsBase.CoefTable
 
-Wald coefficient table across every parameter block: columns Estimate,
+Coefficient table across every parameter block: columns Estimate,
 Std.Error, z, Pr(>|z|), and a `level` confidence interval (Lower/Upper). Values
 are on each block's working scale (μ on the response scale; σ on log σ; ρ12 on
 atanh ρ12; random-effect SDs on log σ_b). Row names are prefixed with the block
 (e.g. `"mu: (Intercept)"`) so they stay unique across blocks.
 
 The `z` and `Pr(>|z|)` columns are the Wald `z = Estimate / Std.Error` and its
-two-sided normal p-value for **every** row with a finite standard error, and the
+two-sided normal p-value for rows with a finite standard error, except on
+fixed-prior MAP fits where z, p and interval columns are withheld. The
 null is always "coefficient = 0 **on the working scale** of that block":
 
 | block | null tested by the z and p columns |
@@ -319,19 +376,26 @@ under each block heading). To test a variance component against 0 use a
 boundary-corrected likelihood-ratio test (`lrt_boundary`), not the `:resd`
 row. A boundary / singular direction (non-finite SE) reports `NaN` z / p rather
 than a spurious `z = 0, p = 1`.
+
+When the fit is not converged ([`is_converged`](@ref) is `false`) or its Hessian
+is not positive definite, the Std.Error, z, p and interval columns are all `NaN`
+(#1193), as drmTMB refuses `vcov()` there; `show(fit)` prints the reason.
+[`stderror`](@ref) and `vcov` still return the Hessian-based values.
 """
 function coeftable(fit::DrmFit; level::Real = 0.95)
+    level = _validate_ci_level(level; what="coeftable")
     se = _display_se(fit)
     z = quantile(Normal(), 1 - (1 - level) / 2)
     est = Float64[]; ses = Float64[]; zs = Float64[]; ps = Float64[]
     lo = Float64[]; hi = Float64[]; rownms = String[]
+    fixed_map = _is_fixed_prior_fit(fit) && fit.estim_method === :MAP
     for ((p, r), (_, nms)) in zip(fit.blocks, fit.coefnames)
         for (j, idx) in enumerate(r)
             e = fit.theta[idx]; s = se[idx]
-            zval, pval = _wald_zp(p, e, s)
+            zval, pval = fixed_map ? (NaN, NaN) : _wald_zp(p, e, s)
             push!(est, e); push!(ses, s); push!(zs, zval)
             push!(ps, pval)
-            push!(lo, e - z * s); push!(hi, e + z * s)
+            push!(lo, fixed_map ? NaN : e - z * s); push!(hi, fixed_map ? NaN : e + z * s)
             push!(rownms, string(p, ": ", nms[j]))
         end
     end

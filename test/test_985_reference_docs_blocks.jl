@@ -1,0 +1,83 @@
+# #985: user-facing exports that the manual's reference pages must list in an
+# `@docs` block (docs/make.jl keeps `checkdocs = :none`, so Documenter itself
+# would never report a missing entry). Each name must also carry a docstring,
+# otherwise the `@docs` block breaks the docs build ("no docs found").
+using DRModels
+using Test
+using LinearAlgebra: I
+
+const _REF_DIR = joinpath(@__DIR__, "..", "docs", "src", "reference")
+
+# Names that appear as a line inside any ```@docs fence of the reference pages.
+function _reference_docs_names()
+    names = Set{String}()
+    for f in readdir(_REF_DIR; join = true)
+        endswith(f, ".md") || continue
+        inblock = false
+        for line in eachline(f)
+            s = strip(line)
+            if startswith(s, "```@docs")
+                inblock = true
+            elseif startswith(s, "```")
+                inblock = false
+            elseif inblock && !isempty(s)
+                push!(names, s)
+            end
+        end
+    end
+    return names
+end
+
+# `Base.Docs.hasdoc` only exists from Julia 1.11; the module's doc table works on 1.10 too.
+# An alias (`const drm_formula = bf`) carries no docstring of its own: Documenter finds the
+# one on the function it points to, so resolve the name to that function first.
+function _has_docstring(nm::Symbol)
+    v = getfield(DRModels, nm)
+    b = v isa Function ? Base.Docs.Binding(parentmodule(v), nameof(v)) :
+        Base.Docs.Binding(DRModels, nm)
+    return haskey(Base.Docs.meta(b.mod), b)
+end
+
+@testset "#985 reference pages list the user-facing exports" begin
+    if !isdir(_REF_DIR)
+        @info "docs/src/reference not found; skipping #985 check"
+    else
+        listed = _reference_docs_names()
+        for nm in ("bridge_diagnostics", "drm_formula", "offset")
+            @testset "$nm" begin
+                @test nm in listed
+                @test _has_docstring(Symbol(nm))
+            end
+        end
+    end
+end
+
+# #985 (owner decision, 25 Oct 2026): the engine-internal exports are documented in
+# reference/engine-internals.md. Each needs a docstring and an `@docs` entry.
+@testset "#985 engine-internal exports carry a docstring and an @docs entry" begin
+    if !isdir(_REF_DIR)
+        @info "docs/src/reference not found; skipping #985 engine-internals check"
+    else
+        listed = _reference_docs_names()
+        for nm in (:AugProblem, :aug_prior_grad!, :build_Huu, :coevo_marginal,
+                   :coevo_theta_len, :estep_mode, :fit_q4_sparse_tmb,
+                   :fz_correlations, :fz_phi_to_lc, :joint_grad, :joint_nll,
+                   :lc_to_Λ, :make_problem, :prepared_joint_nll,
+                   :prior_precision, :Λ_to_lc)
+            @testset "$nm" begin
+                @test (string(nm) in listed) || ("DRModels." * string(nm) in listed)
+                @test _has_docstring(nm)
+            end
+        end
+    end
+end
+
+# #985: pin two documented return types so the docstrings cannot drift from the code.
+@testset "#985 documented return types" begin
+    lc = DRModels.Λ_to_lc(Matrix(1.0I, 4, 4))   # documented `-> Vector{Float64}`
+    @test lc isa Vector{Float64}
+    @test length(lc) == 10
+    r = DRModels.fz_correlations(zeros(10))      # documented `-> NTuple{6}`
+    @test r isa NTuple{6}
+    @test all(x -> -1 <= x <= 1, r)
+end

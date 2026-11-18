@@ -163,6 +163,19 @@ _pit_obs(::Any, i; obs, scales)          = obs[:mu][i]
 # for this model conditions on the fitted log-σ modes instead (its
 # `predict(dpar = "sigma")` adds them); DRModels.jl keeps the population-level
 # reference it uses for the mean intercept.
+#
+# Random-effect SD-regression fits (`sdtarget_*` blocks: the predictor-dependent
+# SD routes, including the q2 intercept-plus-slope, q3/q4, phylo / spatial q2, the
+# Gamma/NB2 two-field routes and the joint mean + sigma routes) store no `:resd`
+# block, so they are not σ_b-marginalised. Their residuals condition on the
+# Laplace modes at θ̂, as drmTMB's do: each route records the per-row link-scale
+# mode contribution `scales[:cond_eta_re]` (see `_attach_conditional_structured!`)
+# and `_conditional_mean_at_modes` shifts the mean by it. The joint mean + sigma
+# routes store the conditional mean and conditional `sigma` directly in
+# `fit.means[:mu]` / `fit.scales[:sigma]`. `fitted(fit)` is conditional by default (`re = :zero` is population level)
+# (except the joint routes). Conditional residuals are not marginally N(0, 1): their
+# SD is below 1 (about 0.8-1 on the test fixtures), as for any residual evaluated at
+# posterior modes.
 _ranef_link(::Poisson) = (μ -> log(max(μ, eps())), exp)
 _ranef_link(::NegBinomial2) = (μ -> log(max(μ, eps())), exp)
 _ranef_link(::TruncatedNegBinomial2) = (μ -> log(max(μ, eps())), exp)
@@ -175,6 +188,15 @@ _ranef_link(::ZeroOneBeta) = (μ -> (m = clamp(μ, eps(), 1 - eps()); log(m / (1
 _ranef_link(::Gaussian) = (identity, identity)
 _ranef_link(::Student) = (identity, identity)
 _ranef_link(fam) = nothing
+
+# Link pair (g, g⁻¹) of the component mean for the conditional `fitted(fit)`, or `nothing`
+# when the conditional value is not defined on the route (see `_fitted_component_mu`).
+# Binomial uses its own link (logit, probit or cloglog); ZeroOneBeta stores the mixture mean,
+# so it is not a link pair of `means[:mu]`.
+_fitted_link(fam) = _ranef_link(fam)
+_fitted_link(fam::Binomial) = (p -> _binomial_start(fam, p), η -> _binomial_mean(fam, η))
+_fitted_link(::ZeroOneBeta) = nothing
+_fitted_link(::Tweedie) = (μ -> log(max(μ, eps())), exp)
 
 # A single length-n Dict sliced down to a length-1 Dict at row `i`, so the
 # per-family `_conditional_dist(fam, 1; μ, scales, obs, …)` builder can be
@@ -190,9 +212,35 @@ function _ordinary_resd_block(fit::DrmFit)
     for (p, r) in fit.blocks
         (p === :resd && length(r) == 1) || continue
         nm = last(first(cn for cn in fit.coefnames if first(cn) === :resd))[1]
-        return (range = r, axis = _is_logsigma_re(fit, nm) ? :sigma : :mu)
+        axis = _is_logsigma_re(fit, nm) ? :sigma : :mu
+        # A sigma-axis block of the constant-SD sigma routes (a slope `(0 + x | g)`, a correlated
+        # `(1 + x | g)`, two groups, mean + sigma on different groups; `_sigma_blocks_shape`)
+        # is not an ordinary random intercept: the intercept-only quadrature below does not
+        # apply to a slope. Those fits keep their stored population mean and sigma.
+        axis === :sigma && fit.formula isa DrmFormula &&
+            _sigma_blocks_shape(fit.formula, fit.family) !== nothing && return nothing
+        # A lone mean random SLOPE `(0 + x | g)` stores the same single `:resd` block as
+        # `(1 | g)`, but it is not an intercept: its variance on row i is `x_i^2 sd^2`, and
+        # the fit does not keep `x`. Treating it as an intercept gave residuals that were
+        # silently wrong, so it keeps the stored population mean (random effect set to 0).
+        axis === :mu && _mean_re_has_slope(fit) && return nothing
+        return (range = r, axis = axis)
     end
     return nothing
+end
+
+# Does the retained mean formula carry a random slope (`(0 + x | g)`, `(1 + x | g)`)?
+# A fit without a parseable formula is treated as an intercept, the old rule.
+function _mean_re_has_slope(fit::DrmFit)
+    f = fit.formula
+    f isa DrmFormula || return false
+    return try
+        re = _split_ranef(Dict(f.forms)[:mu]; allow_phylo_slope = true, allow_temporal = true)[2]
+        any(t -> first(_re_kind(t[1])) !== :intercept, re)
+    catch e
+        e isa InterruptException && rethrow()
+        false
+    end
 end
 
 # Is the lone mean `:resd` block a STRUCTURED random effect (phylo / relmat /
@@ -212,31 +260,53 @@ function _structured_mean_re(fit::DrmFit)
     return st !== nothing
 end
 
+# #1104: the dense `algorithm = :gls` Gaussian `phylo(1 | g)` route stores
+# `fitted = Xβ̂` exactly and fits the tip CORRELATION (`phylo_scale ===
+# :correlation`, C_ii = 1), so the σ_b-marginal PIT is already correct there and
+# the structured warning below is a false positive. The sparse / EM routes carry
+# a `LocOnlyRanef` and are handled exactly in `_ranef_marginal_mix`.
+function _dense_gls_phylo_pit_exact(fit::DrmFit)
+    fit.family isa Gaussian && fit.phylo_scale === :correlation || return false
+    fit.ranef isa LocOnlyRanef && return false
+    any(p -> first(p) in (:range, :temporal_phi, :temporal_decay, :temporal_pac), fit.blocks) &&
+        return false
+    f = fit.formula
+    f isa DrmFormula || return false
+    st = try
+        _split_ranef(Dict(f.forms)[:mu]; allow_phylo_slope = true, allow_temporal = true)[4]
+    catch
+        nothing
+    end
+    return st !== nothing && st[1] === :phylo
+end
+
 # #995 / #996 / #981: the σ_b-marginal PIT is exact for an ordinary `(1 | g)`.
 # For a structured effect it is calibrated only when (i) `fitted(fit)` is the
 # population-level mean and (ii) every unit's random-effect variance is σ_b².
-# Neither is guaranteed: the Gaussian sparse / EM phylo routes store
-# BLUP-conditional fitted means (the random effect would be counted twice), and
-# on the raw branch-length scale a tip's variance is σ_b²·C_ii (σ_b²·h on an
-# ultrametric tree of height h). Say so instead of returning residuals that look
-# calibrated. A correct structured reference is an owner decision (see #995).
+# Gaussian sparse / EM `phylo(1 | g)` fits (`LocOnlyRanef`) and non-Gaussian
+# `phylo(1 | g)` Laplace fits (`PhyloTipVariance`, #996) are handled exactly
+# in `_ranef_marginal_mix` (fixed-effect centre, per-tip σ_b² C_ii) and never
+# reach this warning. Every other structured route still may violate (i) or
+# (ii) — a raw-branch-length tree gives tip variance σ_b²·C_ii (σ_b²·h on an
+# ultrametric tree of height h) — so say so instead of returning residuals that
+# look calibrated.
 function _warn_structured_pit()
     @warn "residuals(type = :quantile): this fit's random intercept is a structured " *
           "(phylo / relmat / animal / spatial) effect. The σ_b-marginal reference used " *
           "here assumes a population-level fitted mean and a random-effect variance of " *
           "σ_b² for every unit (tree height 1, or a unit-diagonal relatedness / spatial " *
-          "matrix). Gaussian sparse / EM phylo fits store BLUP-conditional fitted means " *
-          "and raw-branch-length trees give unit variances σ_b²·C_ii, so these residuals " *
-          "can be mis-calibrated (DRModels.jl #995, #996)." maxlog = 1
+          "matrix). Fits that store BLUP-conditional fitted means and raw-branch-length " *
+          "trees (unit variances σ_b²·C_ii) can give mis-calibrated residuals " *
+          "(DRModels.jl #995, #996)." maxlog = 1
     return nothing
 end
 
 # Precomputed marginalisation context for `_cdf_value`, or `nothing` when the
 # fit has no single ordinary random intercept, or the family has no verified
-# mapping for its axis: the links above for the mean, Gaussian only for log σ
-# (`drm()` fits `sigma ~ 1 + (1 | g)` for Gaussian only and refuses every
-# non-Gaussian sigma random effect; `_fit_sigma_axis_re` has no caller, so the
-# non-Gaussian σ-axis case below is a defensive guard, not a reachable shape).
+# mapping for its axis: the links above for the mean, Gaussian only for log σ.
+# A random effect on sigma of any other family (LogNormal, Gamma, NB2 and
+# BetaBinomial `sigma ~ ... + (1 | g)`) and the sigma slopes get no mixture:
+# their residuals use the stored population mean and sigma.
 function _ranef_marginal_mix(fit::DrmFit, fam, μ)
     blk = _ordinary_resd_block(fit)
     blk === nothing && return nothing
@@ -248,12 +318,48 @@ function _ranef_marginal_mix(fit::DrmFit, fam, μ)
     end
     linkpair = _ranef_link(fam)
     linkpair === nothing && return nothing
-    _structured_mean_re(fit) && _warn_structured_pit()
+    # #995 / #996: a Gaussian sparse / EM `phylo(1 | g)` fit stores the CONDITIONAL
+    # mean in `fit.means` (BLUPs included), so centre on the fixed-effect mean
+    # `Xβ̂` it also carries, and give tip i its prior variance σ_b² C_ii (raw
+    # branch-length scale). The marginal N(x_i'β̂, σ_e² + σ_b² C_ii) is closed
+    # form, so `_cdf_value` evaluates it directly: the 32-node quadrature is off
+    # by 6e-3 in the residual at σ_b √C_ii / σ_e = 4 and by 0.12 at 10. Nothing
+    # is double-counted, so no warning.
+    if fit.ranef isa LocOnlyRanef && fam isa Gaussian
+        return (axis = :mu_gaussian, eta0 = fit.ranef.mu_fixed,
+                vb = σb^2 .* _loconly_row_tip_variance(fit.ranef))
+    end
+    # #1102: a LogNormal `phylo(1 | g)` fit is the Gaussian fit on log(y) with its
+    # `means` exponentiated, so the same closed form holds on the log scale:
+    # Φ((log y − x'β̂) / √(σ_e² + σ_b² C_ii)).
+    if fit.ranef isa LocOnlyRanef && fam isa LogNormal
+        return (axis = :mu_lognormal, eta0 = fit.ranef.mu_fixed,
+                vb = σb^2 .* _loconly_row_tip_variance(fit.ranef))
+    end
+    # #1103: an ordinary Gaussian `(1 | g)` on the mean has the same closed-form
+    # marginal N(μ, σ² + σ_b²), with `μ` the fixed-effect mean, so skip the
+    # quadrature (6e-3 off at σ_b/σ = 4, 0.12 at 10). Structured effects keep
+    # the mixture and its warning.
+    if fam isa Gaussian && !_structured_mean_re(fit)
+        return (axis = :mu_gaussian, eta0 = μ, vb = fill(σb^2, length(μ)))
+    end
     link, invlink = linkpair
     eta0 = [link(μ[i]) for i in eachindex(μ)]
+    # #996: a non-Gaussian `phylo(1 | g)` Laplace fit stores the population-level
+    # mean and the tree diagonal, so tip i's random effect is N(0, σ_b² C_ii) and
+    # the mixture is exact: no warning. `rt2σb` is then per row.
+    if fit.ranef isa PhyloTipVariance
+        return (axis = :mu, invlink = invlink, eta0 = eta0,
+                rt2σb = sqrt(2.0) * σb .* sqrt.(fit.ranef.tipvar), z = z, wk = w ./ sqrt(π))
+    end
+    _structured_mean_re(fit) && !_dense_gls_phylo_pit_exact(fit) && _warn_structured_pit()
     return (axis = :mu, invlink = invlink, eta0 = eta0, rt2σb = sqrt(2.0) * σb,
             z = z, wk = w ./ sqrt(π))
 end
+
+# `rt2σb` is a scalar (ordinary random intercept) or one value per row (the tree
+# diagonal of a non-Gaussian phylo fit, #996).
+_mix_rt2σb(mix, i) = mix.rt2σb isa Real ? mix.rt2σb : mix.rt2σb[i]
 
 # CDF at `yval` for observation `i`: the plain per-family conditional
 # distribution (`mix === nothing`), or the mixture over the random intercept's
@@ -262,6 +368,14 @@ function _cdf_value(fam, i, yval; μ, scales, obs, gsis, mix)
     if mix === nothing
         d = _conditional_dist(fam, i; μ = μ, scales = scales, obs = obs, gamma_sigma_is_shape = gsis)
         return Distributions.cdf(d, yval)
+    end
+    if mix.axis === :mu_gaussian   # closed-form Gaussian marginal (#995 / #996)
+        return Distributions.cdf(Distributions.Normal(mix.eta0[i],
+                                     sqrt(scales[:sigma][i]^2 + mix.vb[i])), yval)
+    end
+    if mix.axis === :mu_lognormal  # closed-form LogNormal marginal (#1102)
+        return yval > 0 ? Distributions.cdf(Distributions.Normal(mix.eta0[i],
+                                     sqrt(scales[:sigma][i]^2 + mix.vb[i])), log(yval)) : 0.0
     end
     acc = 0.0
     scales_i = _at_index(scales, i); obs_i = _at_index(obs, i)
@@ -275,7 +389,7 @@ function _cdf_value(fam, i, yval; μ, scales, obs, gsis, mix)
         return acc
     end
     @inbounds for k in eachindex(mix.z)
-        μk = mix.invlink(mix.eta0[i] + mix.rt2σb * mix.z[k])
+        μk = mix.invlink(mix.eta0[i] + _mix_rt2σb(mix, i) * mix.z[k])
         d = _conditional_dist(fam, 1; μ = [μk], scales = scales_i, obs = obs_i, gamma_sigma_is_shape = gsis)
         acc += mix.wk[k] * Distributions.cdf(d, yval)
     end
@@ -363,6 +477,20 @@ function _zi_hurdle_pit_interval(fit::DrmFit, fam, i, yi; μ, gsis, mix)
     return p0 + (1 - p0) * at, p0 + (1 - p0) * bt
 end
 
+# μ shifted to the conditional mean at the recorded Laplace modes (see
+# `_attach_conditional_structured!`): g⁻¹(g(μ_pop) + η_re). Unchanged when the fit
+# recorded none, when a σ_b-marginal mixture applies, or when the family has no
+# verified link pair.
+function _conditional_mean_at_modes(fit::DrmFit, fam, μ, mix)
+    mix === nothing || return μ
+    haskey(fit.scales, :cond_eta_re) || return μ
+    lk = _ranef_link(fam)
+    lk === nothing && return μ
+    ηre = fit.scales[:cond_eta_re]
+    length(ηre) == length(μ) || return μ
+    return [lk[2](lk[1](μ[i]) + ηre[i]) for i in eachindex(μ)]
+end
+
 # Randomized quantile residuals r_i = Φ⁻¹(u_i) (Dunn & Smyth; DHARMa / glmmTMB).
 # Continuous families use u = F(y); discrete families randomize within the jump
 # interval [F(y⁻), F(y)]; ZeroOneBeta / CumulativeLogit use the atomic / ordinal
@@ -372,7 +500,11 @@ end
 # random intercept `(1 | g)` on the mean (#760), or a Gaussian one on log σ
 # (#923), judges every row against the σ_b-MARGINAL distribution, not the
 # fixed-effect-only (b = 0) distribution — see `_ranef_marginal_mix`.
+# Gaussian and LogNormal closed-form marginals (#1103 / #1102) return the
+# exact z-score and skip Φ⁻¹(Φ(z)), which otherwise loses upper-tail
+# precision and caps |r| at about 8.13.
 function _quantile_residuals(fit::DrmFit, rng)
+    _refuse_multi_re_laplace(fit, "residuals(type = :quantile)")
     haskey(fit.means, :mu) ||
         throw(ArgumentError("residuals(type=:quantile) is univariate-only"))
     fam = fit.family
@@ -406,7 +538,30 @@ function _quantile_residuals(fit::DrmFit, rng)
     # fixed-effects-only fit (unchanged behaviour) or a random-effect
     # shape/family this does not cover.
     mix = _ranef_marginal_mix(fit, fam, μ)
+    # Fits that recorded their conditional random-effect contribution at θ̂
+    # (`scales[:cond_eta_re]`, the Laplace modes: the SD-regression q2 / two-field
+    # / structured routes) are judged against the distribution CONDITIONAL on
+    # those modes, as drmTMB's `drm_quantile_residuals()` is (it evaluates F at
+    # `predict()`'s fitted-row parameters, which include the modes). The σ_b-marginal
+    # `mix` above has priority and is unchanged for fits that have one.
+    μ = _conditional_mean_at_modes(fit, fam, μ, mix)
     u = Vector{Float64}(undef, n)
+    # #1103: N(η, σ² + v_b) is closed form. Returning z = (y − η) / √(σ² + v_b)
+    # (or the log-y form for LogNormal) avoids Φ⁻¹(clamp(Φ(z), eps, 1−eps)).
+    if mix !== nothing && mix.axis === :mu_gaussian
+        @inbounds for i in 1:n
+            u[i] = (y[i] - mix.eta0[i]) / sqrt(fit.scales[:sigma][i]^2 + mix.vb[i])
+        end
+        return u
+    elseif mix !== nothing && mix.axis === :mu_lognormal
+        @inbounds for i in 1:n
+            yi = y[i]
+            u[i] = yi > 0 ?
+                (log(yi) - mix.eta0[i]) / sqrt(fit.scales[:sigma][i]^2 + mix.vb[i]) :
+                Distributions.quantile(std_normal, lo)
+        end
+        return u
+    end
     if _is_continuous_family(fam)
         @inbounds for i in 1:n
             F = _cdf_value(fam, i, y[i]; μ = μ, scales = fit.scales, obs = fit.obs,
@@ -445,6 +600,14 @@ function _quantile_residuals(fit::DrmFit, rng)
         end
     else
         @inbounds for i in 1:n
+            if isnan(y[i])
+                # A row dropped for a missing response: NaN, as the other
+                # discrete families give. The draw is still taken so the
+                # stream matches the Poisson and NegBinomial2 routes.
+                rand(rng)
+                u[i] = NaN
+                continue
+            end
             yi = _pit_obs(fam, i; obs = fit.obs, scales = fit.scales)
             a = _cdf_value(fam, i, yi - 1; μ = μ, scales = fit.scales, obs = fit.obs, gsis = gsis, mix = mix)
             b = _cdf_value(fam, i, yi; μ = μ, scales = fit.scales, obs = fit.obs, gsis = gsis, mix = mix)
@@ -452,6 +615,41 @@ function _quantile_residuals(fit::DrmFit, rng)
         end
     end
     return Distributions.quantile.(std_normal, u)
+end
+
+# Pearson residuals `(y - E[Y]) / sqrt(Var[Y])` from the fitted per-observation distribution
+# (`_conditional_dist`), for fixed-effect fits of the families whose drmTMB Pearson residual
+# is the same quantity. Everything else is refused by name.
+const _PEARSON_FAMILIES = (Gaussian, Poisson, NegBinomial2, Gamma, Beta)
+
+function _pearson_residuals(fit::DrmFit)
+    fam = fit.family
+    fname = string(nameof(typeof(fam)), "()")
+    haskey(fit.means, :mu) && !haskey(fit.scales, :sigma1) ||
+        throw(ArgumentError("residuals(type = :pearson) is univariate only; $fname with a " *
+            "bivariate response is not supported"))
+    any(fam isa F for F in _PEARSON_FAMILIES) ||
+        throw(ArgumentError("residuals(type = :pearson) is not implemented for $fname " *
+            "(supported: Gaussian, Poisson, NegBinomial2, Gamma, Beta, fixed-effect fits). " *
+            "drmTMB defines its Pearson residual differently for some other families, " *
+            "so no number is returned. Use type = :quantile or type = :response."))
+    (any(cn -> first(cn) === :resd, fit.coefnames) || any(p -> first(p) in
+        (:range, :temporal_phi, :temporal_decay, :temporal_pac), fit.blocks) ||
+        haskey(fit.scales, :zi) || haskey(fit.scales, :hu) || haskey(fit.scales, :nu) ||
+        fit.ranef !== nothing || _wald_withheld(fit) || _is_temporal_fit(fit)) &&
+        throw(ArgumentError("residuals(type = :pearson) is implemented for fixed-effect fits " *
+            "only; this $fname fit has a random effect, a structured or temporal term, a " *
+            "zero-inflation or hurdle part, or a dense known sampling covariance or `meta_V` with a " *
+            "random effect. " *
+            "Use type = :quantile or type = :response."))
+    y = fit.obs[:mu]
+    μ = fit.means[:mu]
+    gsis = _gamma_sigma_is_shape(fit)
+    return map(eachindex(y)) do i
+        d = _conditional_dist(fam, i; μ = μ, scales = fit.scales, obs = fit.obs,
+                              gamma_sigma_is_shape = gsis)
+        (y[i] - Distributions.mean(d)) / sqrt(Distributions.var(d))
+    end
 end
 
 # ZeroOneBeta atomic driver. Mixture: P(0) = zoi(1−coi) at the atom 0, P(1) = zoi·coi
@@ -489,7 +687,7 @@ function _quantile_residuals_zeroonebeta(fit::DrmFit, rng, lo, hi)
             else
                 Fc = 0.0
                 @inbounds for k in eachindex(mix.z)
-                    m = clamp(mix.invlink(mix.eta0[i] + mix.rt2σb * mix.z[k]), eps(), 1 - eps())
+                    m = clamp(mix.invlink(mix.eta0[i] + _mix_rt2σb(mix, i) * mix.z[k]), eps(), 1 - eps())
                     Fc += mix.wk[k] * Distributions.cdf(Distributions.Beta(m * φ, (1 - m) * φ), y[i])
                 end
             end

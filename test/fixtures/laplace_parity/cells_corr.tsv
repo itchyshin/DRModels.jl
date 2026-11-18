@@ -1,0 +1,10 @@
+cell_id	family	kind	lab	q	pat	cm	est
+binomial|corr|lab0|q2|sd-none|cm0|ML	binomial	corr	0	2	none	0	ML
+binomial|corr|lab0|q2|sd-one|cm0|ML	binomial	corr	0	2	one	0	ML
+binomial|corr|lab0|q2|sd-first|cm0|ML	binomial	corr	0	2	first	0	ML
+binomial|corr|lab0|q2|sd-z|cm0|ML	binomial	corr	0	2	z	0	ML
+binomial|corr|lab0|q2|sd-last|cm0|ML	binomial	corr	0	2	last	0	ML
+binomial|corr|lab0|q3|sd-first|cm0|ML	binomial	corr	0	3	first	0	ML
+binomial|corr|lab0|q4|sd-first|cm0|ML	binomial	corr	0	4	first	0	ML
+poisson|corr|lab0|q2|sd-none|cm0|ML	poisson	corr	0	2	none	0	ML
+nb2|corr|lab0|q2|sd-none|cm0|ML	nb2	corr	0	2	none	0	ML

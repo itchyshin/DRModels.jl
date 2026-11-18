@@ -31,7 +31,7 @@ Random.seed!(7)
 
 G = 64
 phy = random_balanced_tree(G; branch_length = 0.3)     # a tree over G species
-C = sigma_phy_dense(phy; σ²_phy = 1.0)                 # phylogenetic covariance
+C = sigma_phy_dense(phy; σ²_phy = 1.0) ./ phylo_tree_height(phy)  # tip correlation (ultrametric tree)
 
 m = 4; n = G * m
 species = repeat(1:G, inner = m)
@@ -42,25 +42,30 @@ y = 0.2 .+ 0.5 .* x .+ u[species] .+ 0.4 .* randn(n)
 fit = drm(bf(@formula(y ~ x + phylo(1 | species)), @formula(sigma ~ 1)),
           Gaussian(); data = (; y, x, species), tree = phy)
 
-re_sd(fit)[:species]      # estimated raw-tree SD coefficient; simulation value 0.9
+re_sd(fit)[:species]      # estimated phylogenetic SD (correlation scale); simulation value 0.9
 ```
 
 ```@example phy
 exp(coef(fit, :sigma)[1])     # residual SD (≈ 0.4)
 ```
 
-`sigma_phy_dense` supplies the raw-tree covariance `C`. The coefficient
-`σ_phylo²` multiplies this covariance: the phylogenetic effect’s SD at tip `i` is
-`σ_phylo * sqrt(C[i, i])`, not necessarily `σ_phylo`. Both the simulation and
-`re_sd` above use that raw-tree scale. Fitting estimates the phylogenetic and
+`sigma_phy_dense` returns the raw branch-length covariance, whose diagonal is
+the tree's height `h`. On an ultrametric tree, dividing it by `h` gives the tip
+correlation (what `ape::vcv(tree, corr = TRUE)` returns in R), which is the matrix
+the simulation above uses, so the coefficient `σ_phylo` is the phylogenetic SD at
+every tip. For a Gaussian `phylo(1 | species)` on the mean, `re_sd` reports
+`σ_phylo` on this correlation scale on every route and for every `sigma` formula
+(the tree is fitted at unit height, as drmTMB always does), so the value does not
+change with the height of the tree you supply or with the `sigma` formula
+([DRModels.jl#979](https://github.com/itchyshin/DRModels.jl/issues/979)). The one exception is a non-ultrametric tree: its tip
+correlation is tip-wise, not one rescaling, so the sparse `sigma ~ 1` route keeps the
+raw branch-length scale there and warns. Fitting estimates the phylogenetic and
 residual SD parameters jointly using the exact Gaussian marginal likelihood.
 
-To report this result, state that `re_sd` is the phylogenetic SD coefficient for
-the supplied, raw-scaled tree and describe how that tree was scaled. Do not
-compare this coefficient directly with the residual SD, or turn the two into a
-variance proportion, unless the covariance scale makes that comparison valid.
-The tip-specific quantity `σ_phylo * sqrt(C[i, i])` is the relevant SD on the
-trait scale.
+To report this result, state that `re_sd` is the phylogenetic SD on the tip
+correlation scale. Do not compare this coefficient directly with the residual SD,
+or turn the two into a variance proportion, unless the covariance scale makes that
+comparison valid.
 
 ## Non-Gaussian responses (counts, proportions, …)
 
@@ -75,6 +80,8 @@ The call site is identical — add `phylo(1 | species)` to the mean formula, pas
 `tree =`. Here is a phylogenetic Poisson count model: a shared tree effect on
 `log λ` on top of a fixed slope. We simulate with a known phylogenetic SD and
 recover it.
+
+The code below also loads the `Distributions` package to simulate data. If you have not added it to your Julia environment, run `using Pkg; Pkg.add("Distributions")` once first.
 
 ```@example phycount
 using DRModels, Random, LinearAlgebra
@@ -174,7 +181,7 @@ families.
 
 ## See also
 
-- [Location–scale–scale models](location-scale-scale.md) — predictors on the
+- [Location–scale–scale models](https://itchyshin.github.io/DRModels.jl/dev/tutorials/location-scale-scale) — predictors on the
   phylogenetic standard deviation (`sd(species, phylogenetic) ~ x`, Mizuno et al.
   macro-evolutionary framework).
 - [Known-matrix relatedness with relmat](relmat-known-matrices.md) — the same

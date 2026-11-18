@@ -1,7 +1,17 @@
-# threaded_bootstrap_demo.jl — the structural DRModels.jl win: a parametric
-# bootstrap of the q=4 PLSM run SERIAL vs THREADED. drmTMB's bootstrap is
-# serial R; DRModels.jl threads the refits across cores. At per-fit parity the
-# threading multiplier is the pipeline-level speedup over drmTMB.
+# threaded_bootstrap_demo.jl — a parametric bootstrap of the q=4 PLSM run
+# SERIAL vs THREADED (Julia `Threads.@threads`, BLAS pinned to 1 thread below).
+#
+# What the drmTMB comparison line means: it extrapolates drmTMB's single-fit time
+# (DRMTMB_T) to B = 199 refits, i.e. drmTMB with `parallel = "none"`. drmTMB's
+# profile/bootstrap also offer `parallel = "multicore"` (forked R workers, about
+# half the detected cores by default; not available on Windows), which this
+# script does NOT run. A fair pipeline comparison is therefore
+#   drmTMB parallel = "none"  vs  DRModels.jl serial, and
+#   drmTMB parallel = "multicore" (N workers)  vs  DRModels.jl threaded (N threads),
+# each row labelled with backend (none / multicore / JuliaThreads), worker or
+# thread count, BLAS threads, OpenMP threads and platform. Only the first pair's
+# DRModels.jl side and the drmTMB single-fit time are measured here.
+# Column rules: docs/design/timing-protocol.md.
 #
 # Run (threads matter):
 #   cd .../drm_q4
@@ -65,7 +75,7 @@ thr = zeros(B); t_thr = @elapsed Threads.@threads for b in 1:B; thr[b] = boot_re
 @printf "threading speedup: %.2fx\n" (t_ser/t_thr)
 @printf "\n--- extrapolate to standard B=199 ---\n"
 per = t_ser/B
-@printf "drmTMB (serial R, ~%.2fs/refit): ~%.0f s\n" DRMTMB_T (199*DRMTMB_T)
+@printf "drmTMB parallel = \"none\" (extrapolated, ~%.2fs/refit): ~%.0f s\n" DRMTMB_T (199*DRMTMB_T)
 @printf "DRModels.jl serial:   ~%.0f s\n" (199*per)
-@printf "DRModels.jl threaded: ~%.0f s  ->  vs drmTMB = %.1fx FASTER\n" (199*t_thr/B) (199*DRMTMB_T/(199*t_thr/B))
+@printf "DRModels.jl threaded: ~%.0f s  ->  %.1fx vs drmTMB parallel = \"none\" (multicore not measured)\n" (199*t_thr/B) (199*DRMTMB_T/(199*t_thr/B))
 println("=== done ===")

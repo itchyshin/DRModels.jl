@@ -159,6 +159,242 @@ function _finite_hessian(f, x; h::Real = 1e-4)
     return H
 end
 
+# Wald Hessian by central differences of an EXACT gradient (issue #1073).
+#
+# `_finite_hessian` second-differences the objective VALUE, whose error is
+# ~ eps_f / h^2. On a Laplace objective eps_f is the noise of the inner mode
+# solve (warm-started, solved to a tolerance), and at the old n-scaled step the
+# noise swamps the curvature in the between-cluster directions (grouseticks NB2
+# crossed: intercept/YEAR SEs 4-10% too small). Differencing the gradient gives
+# error ~ eps_g / h, and the step is cbrt(eps) * max(1, |x_i|), independent of n.
+#
+# The gradient must be the exact implicit derivative through the inner mode, and
+# the caller should evaluate it with the inner solve tightened and cold-started
+# (`_SE_MODE_TOL`), so a stencil point is not contaminated by a warm start.
+# Failure convention matches `_finite_hessian`: an all-NaN matrix plus a warning,
+# never a made-up SE. `require_pd` (default) also returns NaN when the
+# symmetrised Hessian is not positive definite.
+const _SE_MODE_TOL = 1e-12
+# If the cold solve cannot reach 1e-12 (rounding floor of the step norm), retry cold at looser
+# tolerances before giving up: a NaN vcov is worse than a 1e-8-converged mode, whose gradient is
+# still accurate to ~1e-8 -- far below the old stencil noise.
+const _SE_MODE_TOLS = (1e-12, 1e-10, 1e-8)
+const _SE_MODE_MAXITER = 100
+# Loosest inner-mode tolerance a `_se_grad` Hessian build actually used (NaN until a
+# stencil point succeeds). Tests read it; `_warn_se_mode_fallback` warns at 1e-8.
+const _SE_MODE_TOL_USED = Ref(NaN)
+# Attempts of `_crossed_nuisance_box_refit`. Tests reset this and assert it is
+# nonzero on a known run-off, so a family whose inner fits use `se = false`
+# cannot pass by construction (the Tweedie crossed route).
+const _CROSSED_NUISANCE_BOX_REFITS = Ref(0)
+
+function _finite_hessian_from_gradient(grad!, x; require_pd::Bool = true,
+                                       context::AbstractString = "Laplace",
+                                       coords = eachindex(x))
+    n = length(x)
+    # `coords` (#1190): the coordinates to difference. The result is the Hessian block of those
+    # coordinates, with every other coordinate held fixed at `x`; the default is all of them.
+    m = length(coords)
+    fail(msg) = (@warn("$context vcov: $msg; reporting a NaN vcov (standard errors unavailable)");
+                 fill(NaN, m, m))
+    H = zeros(n, m)
+    gp = zeros(n); gm = zeros(n)
+    for (c, i) in enumerate(coords)
+        hi = cbrt(eps(Float64)) * max(1.0, abs(x[i]))
+        e = zeros(n); e[i] = hi
+        grad!(gp, x .+ e); grad!(gm, x .- e)
+        (all(isfinite, gp) && all(isfinite, gm)) ||
+            return fail("gradient is non-finite at a Hessian stencil point")
+        H[:, c] .= (gp .- gm) ./ (2hi)
+    end
+    H = H[collect(coords), :]
+    H = (H .+ H') ./ 2
+    all(isfinite, H) || return fail("gradient-difference Hessian is non-finite")
+    if require_pd && !isposdef(Symmetric(H))
+        return fail("gradient-difference Hessian is not positive definite at the optimum")
+    end
+    return H
+end
+
+# True when a log-SD / log-dispersion coordinate sits at (or within a stencil of)
+# its clamp, where the objective is flat in that coordinate but the analytic
+# gradient is not; the gradient-difference Hessian is then not defined and the
+# caller keeps the value-based path with its clamp handling.
+_clamp_active(θ, ks; lo::Real = -8.0, hi::Real = 3.0, tol::Real = 1e-3) =
+    any(k -> θ[k] <= lo + tol || θ[k] >= hi - tol, ks)
+
+# Which Hessian a route's SE build uses (#1073). `sd` are log-SD coordinates, clamped to
+# [-8, 3] by the objective. `disp` are log-dispersion coordinates, whose REAL bound is the
+# family's: NB2 / Gamma / Beta `aux_from` clamp `-2 log sigma` to [-8, 8], i.e. log sigma to
+# [-4, 4] (`_dispersion_clamp`), narrower than the [-8, 8] box `_crossed_mean_laplace_nuisance_fg`
+# applies first. `eta` is an optional per-observation log-sigma linear predictor
+# (`ησ = Xσ·βσ` on the hetero phylo-mean route): the clamp lives on those fitted
+# values, not on the βσ coordinates, so a slope can be interior while some
+# observations sit on the family's bound. A coordinate (or observation) at its
+# clamp makes the objective flat there while the gradient is not, so the
+# gradient-difference Hessian is undefined and the route falls back to the
+# value-based (known-noisy) `_finite_hessian`.
+function _se_hessian_path(θ̂; sd = (), disp = (), disp_bound::Real = 4.0, sd_lo::Real = -8.0,
+                          eta = nothing)
+    eta_hit = eta !== nothing &&
+        _clamp_active(eta, eachindex(eta); lo = -disp_bound, hi = disp_bound)
+    (_clamp_active(θ̂, sd; lo = sd_lo, hi = 3.0) ||
+     _clamp_active(θ̂, disp; lo = -disp_bound, hi = disp_bound) ||
+     eta_hit) ? :value : :gradient
+end
+
+# Real bound of log sigma for each family routed through `_crossed_mean_laplace_nuisance_fg`,
+# listed explicitly: a new family has no entry and errors here rather than inheriting a bound
+# it was never checked against. Tweedie uses logsigma raw (only the fg's own [-8, 8] clamp
+# applies); the others build their aux through `clamp(-2 * logsigma, -8, 8)`, i.e. [-4, 4].
+_dispersion_clamp(::Val{:nb2_fixed}) = 4.0
+_dispersion_clamp(::Val{:gamma_fixed}) = 4.0
+_dispersion_clamp(::Val{:beta_fixed}) = 4.0
+_dispersion_clamp(::Val{:betabinomial_fixed}) = 4.0
+_dispersion_clamp(::Val{:tweedie_fixed}) = 8.0
+# Hetero phylo-mean kinds: same family bounds as the `_fixed` twins. `aux_from`
+# still clamps `-2 ησ` to [-8, 8], i.e. ησ to [-4, 4]. Listed explicitly so a
+# new hetero kind errors here rather than inheriting a catch-all (J3a review).
+_dispersion_clamp(::Val{:nb2_hetero}) = 4.0
+_dispersion_clamp(::Val{:gamma_hetero}) = 4.0
+_dispersion_clamp(::Val{:beta_hetero}) = 4.0
+_dispersion_clamp(k::Val) = throw(ArgumentError(
+    "_dispersion_clamp: no log-dispersion bound registered for family kind $(typeof(k).parameters[1]); " *
+    "add one before routing it through a Laplace SE path"))
+
+# The fallback must not be silent: the reported SEs of such a fit come from the noisy stencil.
+_warn_value_hessian(context::AbstractString) =
+    @warn("$context vcov: a variance or dispersion coordinate sits at its clamp, so the " *
+          "gradient-difference Hessian is not defined; falling back to the value-based " *
+          "finite-difference Hessian. Its standard errors are known to be noisy (inner-solve " *
+          "noise / h^2); treat them with caution.")
+
+# A log-SD this small (sd < ~1e-3 of the residual scale) is a variance collapse:
+# the marginal is flat in that coordinate, the gradient-difference Hessian is
+# singular, and the value-based path plus the singular-vcov guard owns that case.
+const _SE_LOGSD_LO = -7.0
+
+# Single `_se_grad`: the #1099 / J3e tolerance ladder. #1099 lands first; this
+# PR keeps that one definition and does not add a second copy. Callers pass
+# `fgtight(θ, tol)`.
+# Adapt a route's tight, cold-started `fg(θ, tol) -> (val, grad, b, ok)` into the
+# in-place `grad!(Gout, θ)` that `_finite_hessian_from_gradient` differences.
+# Walks `_SE_MODE_TOLS`. A failed inner solve at every rung becomes NaN, which
+# the helper turns into an all-NaN vcov.
+_se_grad(fgtight) = function (Gout, θ)
+    for tol in _SE_MODE_TOLS
+        _, g, _, ok = fgtight(θ, tol)
+        if ok
+            Gout .= g
+            prev = _SE_MODE_TOL_USED[]
+            _SE_MODE_TOL_USED[] = isnan(prev) ? Float64(tol) : max(prev, Float64(tol))
+            return Gout
+        end
+    end
+    Gout .= NaN
+    return Gout
+end
+
+# The 1e-8 rung of `_SE_MODE_TOLS` is a last resort: a NaN vcov is worse, but the
+# inner solve is looser than the usual SE path. Warn once per Hessian (the
+# caller reads `_SE_MODE_TOL_USED`). Silent inside bootstrap / profile refits.
+function _warn_se_mode_fallback(context::AbstractString, tol::Real)
+    (isfinite(tol) && tol == last(_SE_MODE_TOLS)) || return nothing
+    get(task_local_storage(), :drm_quiet_boundary, false) === true && return nothing
+    @warn("$context vcov: the SE inner mode solve could not reach $(first(_SE_MODE_TOLS)) and fell back to $tol. Standard errors still use the exact gradient, but the inner solve is looser than the usual SE path.")
+    return nothing
+end
+
+# Run-off guard for `_fit_crossed_mean_laplace_nuisance` (issue #1088).
+#
+# θ = [β; log-dispersion; log SD₁; log SD₂]. Past its clamp a coordinate no longer changes
+# the objective, but the analytic gradient there is evaluated at the clamped value and is
+# NOT zero. On the #1088 NB2 sets (size ≈ 0.002) the MoM start is capped at size 0.5 and the
+# start gradient is ~3e3, so LBFGS's first, unscaled step lands at log sigma ≈ 3021 and log
+# SDs ≈ 616 / 687. The objective there (1034) is below the start's (2980), so the line search
+# accepts it; the next line search fails on the flat objective with a non-zero gradient.
+# drmTMB's optimum (426.1) is reached inside the box (its log SDs, -64 and -8.3, sit on the
+# flat lower side, where the clamped objective equals its value at -8).
+#
+# Only the UPPER side counts as a run-off: there the family degenerates (NB2 size, Gamma
+# shape, Beta precision -> 0, Tweedie dispersion -> inf, or a random-effect SD > e^3 on the
+# link scale). With at least one non-degenerate observation (NB2 / Tweedie y > 0, Gamma / Beta
+# any y, BetaBinomial 0 < y < n) the likelihood falls to -inf there, so an end point past the
+# upper clamp is a run-off. On degenerate data (all-or-none BetaBinomial, all-zero Tweedie)
+# the supremum itself lies past the clamp; the reported value is then the clamp, not an
+# estimate, and is flagged the same way. The lower side (Poisson / no-dispersion limit,
+# variance collapse) is a legitimate boundary, handled as before (#422, #959). Returns the
+# descriptions of the coordinates past an upper clamp, or `nothing`.
+function _nuisance_runoff(θ, pμ::Int, disp_bound::Real; sd_hi::Real = 3.0, tol::Real = 1e-6)
+    all(isfinite, θ) || return ["a non-finite estimate"]
+    hits = String[]
+    θ[pμ+1] > disp_bound + tol &&
+        push!(hits, "log-dispersion (log sigma) = $(round(θ[pμ+1]; sigdigits = 5)) past its upper clamp $(disp_bound)")
+    for k in (pμ + 2):length(θ)
+        θ[k] > sd_hi + tol &&
+            push!(hits, "random-effect log SD = $(round(θ[k]; sigdigits = 5)) past its upper clamp $(sd_hi)")
+    end
+    return isempty(hits) ? nothing : hits
+end
+
+# Re-fit inside the box where the objective depends on every coordinate and the analytic
+# gradient is its derivative: log-dispersion in [-disp_bound, disp_bound], log SDs in
+# [-8, 3] (the clamps of `_crossed_mean_laplace_nuisance_fg` / `aux_from`). Bounding only the
+# upper side is not enough: the collapsed log SDs then run off downwards (to ~ -1e9 on the
+# #1088 sets) and the search misses an interior SD. Returns the Optim result, or `nothing`.
+function _crossed_nuisance_box_refit(nll, grad!, θ0, pμ::Int, disp_bound::Real, g_tol)
+    _CROSSED_NUISANCE_BOX_REFITS[] += 1
+    np = length(θ0)
+    lo = fill(-Inf, np); hi = fill(Inf, np)
+    lo[pμ+1] = -disp_bound; hi[pμ+1] = disp_bound
+    lo[(pμ + 2):np] .= -8.0; hi[(pμ + 2):np] .= 3.0
+    θs = clamp.(θ0, lo .+ 0.1, hi .- 0.1)          # Fminbox needs an interior start
+    # A failed inner solve reports a NaN gradient (#1093) so a fit is never called converged
+    # on it. Fminbox's Hager-Zhang line search asserts a finite slope and would throw, losing
+    # the whole re-fit, so inside this search only a non-finite gradient is zeroed (the value
+    # there is the 1e18 sentinel, so no step is taken towards it). The caller still reads
+    # convergence from the unwrapped `grad!` at the adopted point.
+    grad_finite!(Gout, θ) = (grad!(Gout, θ); all(isfinite, Gout) || fill!(Gout, 0.0); Gout)
+    return try
+        od = Optim.OnceDifferentiable(nll, grad_finite!, θs)
+        Optim.optimize(od, lo, hi, θs, Optim.Fminbox(Optim.LBFGS()),
+                       Optim.Options(g_tol = g_tol, outer_iterations = 20, iterations = 250))
+    catch err
+        err isa InterruptException && rethrow()
+        nothing
+    end
+end
+
+# A fit that still ends past an upper clamp has no usable estimate there; say so (silent
+# inside bootstrap / profile refits, like the other boundary warnings).
+function _warn_nuisance_runoff(context::AbstractString, hits; refit_tried::Bool = true)
+    get(task_local_storage(), :drm_quiet_boundary, false) === true && return nothing
+    @warn "drm ($context): the fit ended past an upper clamp (" * join(hits, "; ") *
+          "). The objective is flat there, so these values are not estimates: either the " *
+          "optimiser ran off, or the data are degenerate (e.g. all-or-none BetaBinomial " *
+          "counts) and the supremum lies past the clamp. The fit is marked converged = " *
+          "false; do not use its estimates or standard errors (DRModels.jl #1088). " *
+          (refit_tried ? "A re-fit inside the clamp box did not do better. " : "") *
+          "Consider rescaling the response or a simpler random-effect structure."
+    return nothing
+end
+
+# A crossed nuisance fit that ends on the failed-inner-solve sentinel (objective >= 1e17, the
+# value the inner-solve failure branches return as 1e18) has no estimate at all: the optimiser
+# never left a point where the Laplace mode solve fails, so nothing ran past a clamp and
+# `_warn_nuisance_runoff` stays silent (#1142). This is a separate message from the NaN-vcov one
+# and does not touch the optimiser, the estimates or the converged flag (which
+# `_laplace_outer_converged` already sets to false at nll >= 1e17).
+function _warn_crossed_nuisance_failed(context::AbstractString, nllhat::Real)
+    get(task_local_storage(), :drm_quiet_boundary, false) === true && return nothing
+    @warn "drm ($context): the fit failed. The objective ended on the failed-inner-solve " *
+          "sentinel (" * string(nllhat) * "), so the Laplace mode solve failed at the " *
+          "point the optimiser stopped and there is no usable estimate. The fit is marked " *
+          "converged = false; do not use its estimates or standard errors (DRModels.jl #1142). " *
+          "Consider rescaling the response or a simpler random-effect structure."
+    return nothing
+end
+
 # ---------------------------------------------------------------------------
 # Boundary polish for a collapsed variance component (issue #422).
 #
@@ -229,6 +465,100 @@ function _laplace_outer_converged(res, nllhat, gfinal, θ, n::Int, g_tol)
     return norm(gfinal, Inf) / max(n, 1) <= _LAPLACE_OUTER_RELTOL
 end
 
+# Boundary restarts for the structured intercept-and-slope (q2) Laplace fitters.
+#
+# When a coefficient SD is weakly identified the Laplace likelihood in its SD
+# coefficients has a flat ridge running to the boundary (SD -> 0) and more than
+# one stationary point. L-BFGS from the single default start slides down the ridge
+# and stops at the boundary point, which is a genuine stationary point and so
+# reports convergence, although a better interior point exists. Examples (drmTMB
+# reaches the interior point from its own start, and the objective at its estimate
+# evaluated by Julia equals its log-likelihood to 1e-8): NB2 phylo seed 55 of the
+# scale-extension study, -1637.42187 against -1637.42077; Binomial phylo seed 5 and
+# spatial seed 28 of the weak-probe family, 0.015 and 0.008 below. The interior
+# optima have a slope SD that varies strongly across groups (|z1 coefficient| near
+# 2); every start with a constant slope SD (z1 coefficient 0) ends on the ridge.
+# Remedy: only when the first fit ends near the boundary (a fitted group SD below
+# `_Q2_BOUNDARY_SD`) or has not met the outer gradient test, run L-BFGS again from
+# the alternative starts in `_Q2_ALT_STARTS` (constant SDs, and slope SDs that rise
+# or fall by a factor e^2 across the range of each slope-SD predictor) and keep an
+# alternative only if (same convergence status) its objective is lower by more than
+# 1e-5; (alternative converged, incumbent not) its objective is no more than 1e-5
+# higher, the objective being noisy at that level near rho = +-1; (alternative
+# unconverged, incumbent converged) its objective is lower by more than `big_gain` (default 1e-3;
+# the Binomial independent-term route passes 1.0, see `_BINOMIAL_INDEP_BIG_GAIN`), so a
+# converged fit is not exchanged for a marginally lower unconverged point. A fit
+# whose first optimum is kept is returned with the warm-start buffer `last_b`
+# exactly as the first run left it: THIS helper never alters a fit it keeps. That is
+# not a claim about a whole route versus an earlier release: the separate noise-floor
+# acceptance in `_binomial_animal_q2_mode` changes the inner solve itself, and moved
+# Binomial "weak" coefficients by up to 0.28 on fits that never restart.
+# With `info = Ref{Any}()` the helper records what it did (`ran`, `winner`: 0 = the
+# default start, k = k-th entry of `_Q2_ALT_STARTS`, `gain` = objective decrease over
+# the first run, `flipped` = convergence status changed); it never affects the choice.
+#   run_from(theta0) -> Optim result      start_from(sd0, sd1, het) -> theta0
+#   sd_min(theta)    -> smallest fitted group SD      converged(result) -> Bool
+const _Q2_BOUNDARY_SD = 0.05
+const _Q2_ALT_STARTS = ((0.2, 0.1, 0), (0.7, 0.7, 0),
+                        (0.4, 0.22, -1), (0.4, 0.22, 1), (0.4, 0.05, -1), (0.4, 0.05, 1))
+# NB2 spatial `sd-z`: the second interior mode differs from the default one by the sign of
+# the z coefficient of the INTERCEPT SD, so these starts tilt both SD blocks (sd0, sd1, het1, het0).
+const _NB2_SPATIAL_ALT_STARTS = Tuple((0.4, 0.22, h1, h0) for h1 in (-1, 1) for h0 in (-1, 1))
+const _Q2_RESTART_GAIN = 1e-5
+const _Q2_RESTART_BIG_GAIN = 1e-3   # what an unconverged alternative must gain over a converged fit
+
+# Alternative start: constant SDs `sd0`, `sd1` (log scale intercepts of the two SD
+# blocks); with `het = +-1` the non-intercept coefficients of the slope-SD block are
+# set to het * 2 / max|column|, so the slope SD varies by e^4 over the predictor range.
+# `Zs` are the group-level SD designs, `ranges` the theta ranges of the two blocks.
+function _q2_alt_theta(theta0, ranges, Zs, sd0, sd1, het, het0 = 0)
+    th = copy(theta0)
+    th[ranges[1]] .= Zs[1] \ fill(log(sd0), size(Zs[1], 1))
+    th[ranges[2]] .= Zs[2] \ fill(log(sd1), size(Zs[2], 1))
+    if het0 != 0   # the same tilt for the INTERCEPT-SD block (opt-in: NB2 spatial `sd-z`)
+        for j in 2:size(Zs[1], 2)
+            th[ranges[1][j]] = het0 * 2 / max(maximum(abs, view(Zs[1], :, j)), eps())
+        end
+    end
+    if het != 0
+        for j in 2:size(Zs[2], 2)
+            th[ranges[2][j]] = het * 2 / max(maximum(abs, view(Zs[2], :, j)), eps())
+        end
+    end
+    return th
+end
+
+function _q2_boundary_restarts(run_from, last_b, result, start_from, sd_min, converged; info = nothing,
+                               force::Bool = false, big_gain::Real = _Q2_RESTART_BIG_GAIN,
+                               starts = _Q2_ALT_STARTS)
+    snapshot = copy(last_b)
+    first_ok = converged(result)
+    if !force && first_ok && sd_min(Optim.minimizer(result)) >= _Q2_BOUNDARY_SD
+        last_b .= snapshot
+        info === nothing || (info[] = (ran = false, winner = 0, gain = 0.0, flipped = false))
+        return result
+    end
+    best, best_f, best_ok, best_b = result, Optim.minimum(result), first_ok, snapshot
+    first_f, winner = best_f, 0
+    for (k, st) in enumerate(starts)
+        last_b .= 0
+        r = run_from(start_from(st...))
+        f = Optim.minimum(r)
+        ok = converged(r)
+        gain = best_f - f
+        accept = ok == best_ok ? gain > _Q2_RESTART_GAIN :
+                 ok ? gain > -_Q2_RESTART_GAIN : gain > big_gain
+        if accept
+            best, best_f, best_ok, best_b = r, f, ok, copy(last_b)
+            winner = k
+        end
+    end
+    last_b .= best_b
+    info === nothing || (info[] = (ran = true, winner = winner, gain = first_f - best_f,
+                                   flipped = best_ok != first_ok))
+    return best
+end
+
 function _poisson_fixed_start(y, X)
     p = size(X, 2)
     β = zeros(p)
@@ -245,6 +575,21 @@ function _poisson_fixed_start(y, X)
         norm(step) <= 1e-8 * (1 + norm(β)) && break
     end
     return β
+end
+
+# Fitted-row modes for `fitted(fit)` on the single-`phylo(1 | g)` Laplace routes. `mode_at(θ, b0)`
+# is the SAME inner-mode evaluation the Laplace objective uses (the family `*_fg` function with its
+# default settings, `grad = false`), called once at the final θ̂ and warm-started from the objective's
+# last mode `last_b`. It returns `(val, b, ok)`. The record never touches `last_b`, the fit's values
+# or its closures. Row i loads latent `b[leaf_node[i]]` (identity loading on the link scale).
+function _record_laplace_modes!(scales::AbstractDict, mode_at, θ̂, last_b, leaf_node)
+    delete!(scales, :cond_fit_failed); delete!(scales, :cond_fit_eta_re)
+    _, b, ok = mode_at(θ̂, copy(last_b))
+    if !ok
+        _, b, ok = mode_at(θ̂, zeros(length(last_b)))
+    end
+    ok || (scales[:cond_fit_failed] = [1.0]; return scales)
+    return _record_cond_fit!(scales, b[leaf_node])
 end
 
 function _poisson_phylo_setup(tree, labels)
@@ -277,7 +622,7 @@ function _poisson_phylo_setup(tree, labels)
     numeric_labels = true
     @inbounds for i in eachindex(labels)
         li = labels[i]
-        if li isa Integer && 1 <= Int(li) <= phy.n_leaves
+        if li isa Real && isinteger(li) && 1 <= Int(li) <= phy.n_leaves   # Float64 codes from R too (#1026)
             leaf_node[i] = leaf_pos[Int(li)]
         else
             numeric_labels = false
@@ -286,6 +631,9 @@ function _poisson_phylo_setup(tree, labels)
     end
     numeric_labels && return Q, leaf_node, phy
 
+    # #1026: labels that carry names but do not all match tip names are refused;
+    # only purely numeric codes fall through to the positional match below.
+    _refuse_unmatched_tip_labels(labels, phy.leaf_names)
     gidx, G = _group_index(labels)
     G == phy.n_leaves ||
         error("phylo labels must match tree tip names, integer tip indices, or have one level per tree tip")
@@ -293,6 +641,24 @@ function _poisson_phylo_setup(tree, labels)
         leaf_node[i] = leaf_pos[gidx[i]]
     end
     return Q, leaf_node, phy
+end
+
+# #996: the non-Gaussian phylo(1 | g) Laplace routes fit `b ~ N(0, σ_b² Q⁻¹)` on the
+# raw branch-length tree, so tip i has prior variance σ_b² · C_ii with
+# C_ii = (Q⁻¹)_ii, not σ_b². `fit.means` on these routes is the population-level
+# mean `g⁻¹(Xβ̂)` (no BLUPs), so the quantile residual needs only this diagonal.
+# `DrmFit` has no slot for it, so it rides on `fit.ranef` as this carrier (as the
+# Gaussian routes' `LocOnlyRanef` does). It holds no conditional modes: `ranef(fit)`
+# treats it like `nothing`.
+struct PhyloTipVariance
+    tipvar::Vector{Float64}     # C_ii for each data row, raw branch-length scale
+end
+
+# The diagonal lies in the Cholesky pattern, so the Takahashi selected inverse
+# gives it exactly in O(nnz(L)) (the idiom of `_loconly_row_tip_variance`).
+function _with_phylo_tipvar(fit::DrmFit, Q, leaf_node)
+    d = takahashi_diag(cholesky(Symmetric(Q)))
+    return _withranef(fit, PhyloTipVariance(d[leaf_node]))
 end
 
 function _sparse_trace_product(A, B)
@@ -308,7 +674,7 @@ function _sparse_trace_product(A, B)
 end
 
 function _poisson_phylo_mode(y, η0, leaf_node, Q, logσ; b0 = nothing,
-                             maxiter::Int = 60, tol::Real = 1e-8)
+                             maxiter::Int = 60, tol::Real = 1e-8, weights = nothing)
     q = size(Q, 1)
     b = b0 === nothing ? zeros(q) : copy(b0)
     invσ2 = exp(-2 * logσ)
@@ -317,7 +683,7 @@ function _poisson_phylo_mode(y, η0, leaf_node, Q, logσ; b0 = nothing,
         s = zero(eltype(bb))
         @inbounds for i in eachindex(y)
             η = clamp(η0[i] + bb[leaf_node[i]], -30.0, 30.0)
-            s += exp(η) - y[i] * η
+            s += (weights === nothing ? 1.0 : weights[i]) * (exp(η) - y[i] * η)
         end
         return s + 0.5 * invσ2 * dot(bb, Q * bb)
     end
@@ -333,8 +699,9 @@ function _poisson_phylo_mode(y, η0, leaf_node, Q, logσ; b0 = nothing,
             li = leaf_node[i]
             η = clamp(η0[i] + b[li], -30.0, 30.0)
             μ = exp(η)
-            grad[li] += μ - y[i]
-            diagH[li] += μ
+            wi = weights === nothing ? 1.0 : weights[i]      # prior weight: row log-lik multiplier
+            grad[li] += wi * (μ - y[i])
+            diagH[li] += wi * μ
         end
         grad .+= invσ2 .* (Q * b)
         Hmat = invσ2 .* Q + spdiagm(0 => diagH)
@@ -401,7 +768,7 @@ introduces. Returns `(val[, grad], b, ok)`; on a non-PD inner solve `ok = false`
 function _poisson_phylo_laplace_fg(y, Xμ, leaf_node, Q, logdetQ, lf, θ;
                                    grad::Bool = false, b0 = nothing,
                                    newton_tol::Real = 1e-10, newton_maxiter::Int = 60,
-                                   raw_scales::Bool = false)
+                                   raw_scales::Bool = false, offset = nothing, weights = nothing)
     # newton_tol was 1e-8 until 2026-08-26. That is tight enough for coefficients
     # and logLik (parity ~1e-8) but NOT for the SECOND-derivative quantity: the
     # inner mode's residual error propagates into the Hessian, and therefore into
@@ -425,10 +792,14 @@ function _poisson_phylo_laplace_fg(y, Xμ, leaf_node, Q, logdetQ, lf, θ;
     logσ = raw_scales ? θ[pμ+1] : clamp(θ[pμ+1], -8.0, 3.0)
     invσ2 = exp(-2 * logσ)
     η0 = Xμ * βμ
+    # #941: a known offset (coefficient fixed at 1) shifts η only; it is constant
+    # in θ and b, so every derivative below is unchanged.
+    offset === nothing || (η0 = η0 .+ offset)
     b, ch, _, ok = _poisson_phylo_mode(y, η0, leaf_node, Q, logσ;
-                                       b0 = b0, tol = newton_tol, maxiter = newton_maxiter)
+                                       b0 = b0, tol = newton_tol, maxiter = newton_maxiter,
+                                       weights = weights)
     if !ok
-        return grad ? (1e18, zeros(length(θ)), b, false) : (1e18, b, false)
+        return grad ? (1e18, fill(NaN, length(θ)), b, false) : (1e18, b, false)
     end
 
     data = zero(eltype(θ))
@@ -437,9 +808,10 @@ function _poisson_phylo_laplace_fg(y, Xμ, leaf_node, Q, logdetQ, lf, θ;
     @inbounds for i in eachindex(y)
         η = clamp(η0[i] + b[leaf_node[i]], -30.0, 30.0)
         μ = exp(η)
-        μstore[i] = μ
-        data += μ - y[i] * η + lf[i]
-        r = μ - y[i]
+        wi = weights === nothing ? 1.0 : weights[i]          # prior weight (drmTMB `weights`)
+        μstore[i] = wi * μ                                   # weighted data curvature (d²ℓ = d³ℓ = w·μ)
+        data += wi * (μ - y[i] * η + lf[i])
+        r = wi * (μ - y[i])
         for k in 1:pμ
             gradβ_raw[k] += Xμ[i, k] * r
         end
@@ -490,9 +862,10 @@ function _fit_poisson_phylo_laplace(fam::Poisson, y, Xμ, labels, tree, nmμ, gr
                                     polish_iterations::Int = 15,
                                     reml::Bool = false)
     Q, leaf_node, _ = _poisson_phylo_setup(tree, labels)
-    return _fit_poisson_general_laplace(fam, y, Xμ, Q, leaf_node, nmμ, grp, g_tol;
-                                        se = se, polish_iterations = polish_iterations,
-                                        reml = reml)
+    fit = _fit_poisson_general_laplace(fam, y, Xμ, Q, leaf_node, nmμ, grp, g_tol;
+                                       se = se, polish_iterations = polish_iterations,
+                                       reml = reml, record_modes = true)
+    return _with_phylo_tipvar(fit, Q, leaf_node)
 end
 
 """
@@ -500,23 +873,26 @@ end
 
 Resolve a user-supplied per-group covariance/relatedness matrix `C` (G×G, SPD)
 to the `(precision Q, leaf_node)` pair the sparse-Laplace spine consumes. `C` is
-first rescaled to a unit-diagonal correlation `R` (so the recovered `:resd` block
-is the random-effect SD `σ_b`, with prior `b ~ N(0, σ_b² R)`, matching the phylo
-convention), then `Q = R⁻¹`. `leaf_node` maps each observation to its group level
-via [`_group_index`](@ref) — the relatedness/animal-model/spatial analogue of the
-tree's leaf-to-node map. Mathematically identical to the phylo path with the tree
-precision swapped for an arbitrary PD precision.
+checked as a positive-definite covariance matrix. This helper's own default
+rescales it to a unit-diagonal correlation `R` (prior `b ~ N(0, σ_b² R)`); the
+Poisson, NB2 and Gamma relmat/animal routes pass `normalize = false` so `C` enters
+as supplied, giving prior covariance `σ_b² C` as in native drmTMB. The helper returns
+the matching precision `Q` in either case. `leaf_node` maps each observation to
+its group level via [`_group_index`](@ref). Mathematically identical to the phylo
+path with the tree precision swapped for an arbitrary PD precision.
 """
-function _general_cov_setup(C::AbstractMatrix, labels)
+function _general_cov_setup(C::AbstractMatrix, labels; normalize::Bool = true)
     gidx, G = _group_index(labels)
     size(C, 1) == size(C, 2) == G ||
         error("covariance matrix must be $(G)×$(G) (the number of `$(length(labels))`-row group levels = $G)")
     Cf = Matrix{Float64}(C)
     d = sqrt.(diag(Cf))
     all(>(0), d) || error("covariance matrix must have a strictly positive diagonal")
-    R = Symmetric(Cf ./ (d * d'))                       # unit-diagonal correlation
-    Rchol = cholesky(R; check = false)
-    issuccess(Rchol) || error("covariance matrix is not positive definite")
+    covariance = normalize ? Symmetric(Cf ./ (d * d')) : Symmetric(Cf)
+    Rchol = cholesky(covariance; check = false)
+    issuccess(Rchol) || error("covariance matrix is not positive definite (identical rows and columns, " *
+        "e.g. duplicated individuals, make it singular); merge or remove the duplicated individuals, " *
+        "or supply a positive-definite matrix")
     Q = sparse(Symmetric(inv(Rchol)))                   # dense precision, sparse-wrapped
     return Q, gidx
 end
@@ -533,9 +909,10 @@ unchanged.
 """
 function _fit_poisson_relmat_laplace(fam::Poisson, y, Xμ, C, labels, nmμ, grp,
                                      g_tol; se::Bool = true,
+                                     normalize::Bool = false,
                                      polish_iterations::Int = 15,
                                      reml::Bool = false)
-    Q, leaf_node = _general_cov_setup(C, labels)
+    Q, leaf_node = _general_cov_setup(C, labels; normalize)
     return _fit_poisson_general_laplace(fam, y, Xμ, Q, leaf_node, nmμ, grp, g_tol;
                                         se = se, polish_iterations = polish_iterations,
                                         reml = reml)
@@ -548,7 +925,8 @@ end
 function _fit_poisson_general_laplace(fam::Poisson, y, Xμ, Q, leaf_node, nmμ, grp,
                                       g_tol; se::Bool = true,
                                       polish_iterations::Int = 15,
-                                      reml::Bool = false)
+                                      reml::Bool = false,
+                                      record_modes::Bool = false)
     n = length(y)
     pμ = size(Xμ, 2)
     q = size(Q, 1)
@@ -568,7 +946,7 @@ function _fit_poisson_general_laplace(fam::Poisson, y, Xμ, Q, leaf_node, nmμ, 
                     y, Xμ, leaf_node, Q, logdetQ, lf, θ; grad = true, b0 = zeros(q)
                 )
             end
-            ok || return 1e18, zeros(length(θ))
+            ok || return 1e18, fill(NaN, length(θ))
             last_b .= b
             return val, g
         else
@@ -616,7 +994,16 @@ function _fit_poisson_general_laplace(fam::Poisson, y, Xμ, Q, leaf_node, nmμ, 
     grad!(gfinal, θ̂)
     converged = _laplace_outer_converged(res, nllhat, gfinal, θ̂, n, g_tol)
     V = if se
-        Hθ = _finite_hessian(nll, θ̂; h = _fd_hessian_step(n))
+        Hθ = if _se_hessian_path(θ̂; sd = (pμ + 1):(pμ + 1), sd_lo = _SE_LOGSD_LO) === :value
+            _warn_value_hessian("sparse-Laplace Poisson (general covariance)")
+            _finite_hessian(nll, θ̂; h = _fd_hessian_step(n))
+        else
+            _finite_hessian_from_gradient(
+                _se_grad((θ, tol) -> _poisson_phylo_laplace_fg(
+                    y, Xμ, leaf_node, Q, logdetQ, lf, θ; grad = true, b0 = zeros(q),
+                    newton_tol = tol, newton_maxiter = _SE_MODE_MAXITER)),
+                θ̂; context = "sparse-Laplace Poisson (general covariance)")
+        end
         _vcov_from_fd_hessian(Hθ; context = "sparse-Laplace Poisson (general covariance)")
     else
         fill(NaN, length(θ̂), length(θ̂))
@@ -626,6 +1013,8 @@ function _fit_poisson_general_laplace(fam::Poisson, y, Xμ, Q, leaf_node, nmμ, 
     means = Dict(:mu => exp.(Xμ * θ̂[1:pμ]))
     obs = Dict(:mu => Vector{Float64}(y))
     scales = Dict{Symbol,Vector{Float64}}()
+    mode_at = (θ, b0) -> _poisson_phylo_laplace_fg(y, Xμ, leaf_node, Q, logdetQ, lf, θ; grad = false, b0 = b0)
+    record_modes && _record_laplace_modes!(scales, mode_at, θ̂, last_b, leaf_node)   # for `fitted(fit)`
     fit = DrmFit(fam, blocks, names, θ̂, Matrix(V), -nllhat, n, converged, means, obs, scales)
     _warn_laplace_clamp(fit)   # #959: say when a clamp is active
     fit = _withnll(fit, nll, grad!)
@@ -637,6 +1026,7 @@ function _fit_poisson_general_laplace(fam::Poisson, y, Xμ, Q, leaf_node, nmμ, 
         _glsp_reml_refit_clean(nll, grad_fn, θ̂, pμ; ml_converged = converged)
     V = _glsp_reml_vcov(grad_fn, θ̂, pμ)
     means = Dict(:mu => exp.(Xμ * θ̂[1:pμ]))
+    record_modes && _record_laplace_modes!(scales, mode_at, θ̂, last_b, leaf_node)   # at the REML θ̂
     fit = DrmFit(fam, blocks, names, θ̂, Matrix(V), -ml_nll, n, conv, means, obs, scales)
     return _withreml(_withnll(fit, nll, grad!), -reml_nll, -ml_nll)
 end
@@ -696,16 +1086,28 @@ function _phylo_mean_mode(kind, aux, η0, leaf_node, Q, logσ; b0 = nothing,
             f0 = joint(b)
             α = 1.0
             accepted = false
+            # Rounding slack (#1093): near the mode the true decrease is below
+            # the floating-point resolution of a joint worth hundreds of nats,
+            # so a strict `<=` rejects every step and the search reports failure
+            # at a point that is already the mode to ~1e-9.
+            slack = 8 * eps(Float64) * (1 + abs(f0))
             while α >= 1e-4
                 trial = b .- α .* step
-                if joint(trial) <= f0
+                if joint(trial) <= f0 + slack
                     b = trial
                     accepted = true
                     break
                 end
                 α *= 0.5
             end
-            accepted || return b, ch, iters, false
+            if !accepted
+                # `ch` succeeded, so the Hessian is positive definite and the
+                # Newton step is a descent direction. Once that step is tiny we
+                # are inside the quadratic basin and the objective cannot resolve
+                # it: take it in full rather than fail closed.
+                sn <= 1e-6 * (1 + norm(b)) || return b, ch, iters, false
+                b = b .- step
+            end
         end
     end
     # Cap exhausted without the step meeting `tol` (#1024): `b` is not the mode
@@ -718,7 +1120,7 @@ function _phylo_mean_laplace_nuisance_fg(kind, aux_from, n::Int, Xμ, leaf_node,
                                          Q, logdetQ, θ; grad::Bool = false,
                                          b0 = nothing, newton_tol::Real = 1e-10,
                                          newton_maxiter::Int = 60,
-                                         raw_scales::Bool = false)
+                                         raw_scales::Bool = false, offset = nothing)
     pμ = length(θ) - 2
     βμ = θ[1:pμ]
     # `raw_scales = true`: no clamp on the dispersion or the RE log-SD (see
@@ -726,11 +1128,11 @@ function _phylo_mean_laplace_nuisance_fg(kind, aux_from, n::Int, Xμ, leaf_node,
     θσ = raw_scales ? θ[pμ+1] : clamp(θ[pμ+1], -8.0, 8.0)
     logσ = raw_scales ? θ[pμ+2] : clamp(θ[pμ+2], -8.0, 3.0)
     aux = aux_from(θσ)
-    η0 = Xμ * βμ
+    η0 = _eta_with_offset(Xμ, βμ, offset)       # #938: a known offset shifts η only
     b, ch, _, ok = _phylo_mean_mode(kind, aux, η0, leaf_node, Q, logσ; b0 = b0,
                                     tol = newton_tol, maxiter = newton_maxiter)
     if !ok
-        return grad ? (1e18, zeros(length(θ)), b, false) : (1e18, b, false)
+        return grad ? (1e18, fill(NaN, length(θ)), b, false) : (1e18, b, false)
     end
 
     q = size(Q, 1)
@@ -801,14 +1203,17 @@ function _fit_phylo_mean_laplace_nuisance(fam, kind, aux_from, n::Int, Xμ, labe
                                           θσ0::Real, sigma_scale,
                                           se::Bool = false,
                                           polish_iterations::Int = 0,
-                                          extra_scales = Dict{Symbol,Vector{Float64}}())
+                                          extra_scales = Dict{Symbol,Vector{Float64}}(),
+                                          record_modes::Bool = false)
     Q, leaf_node, _ = _poisson_phylo_setup(tree, labels)
-    return _fit_general_mean_laplace_nuisance(
+    fit = _fit_general_mean_laplace_nuisance(
         fam, kind, aux_from, n, Xμ, Q, leaf_node, nmμ, nmσ, grp, g_tol;
         θβ0 = θβ0, θσ0 = θσ0, sigma_scale = sigma_scale, se = se,
         polish_iterations = polish_iterations, extra_scales = extra_scales,
-        prec_error = "phylo(1 | $grp) tree precision is not positive definite after root conditioning"
+        prec_error = "phylo(1 | $grp) tree precision is not positive definite after root conditioning",
+        record_modes = record_modes
     )
+    return _with_phylo_tipvar(fit, Q, leaf_node)
 end
 
 # Q-generic core for a nuisance-parameter family (NB2/Gamma/Beta) with a single
@@ -824,7 +1229,8 @@ function _fit_general_mean_laplace_nuisance(fam, kind, aux_from, n::Int, Xμ, Q,
                                             se::Bool = false,
                                             polish_iterations::Int = 0,
                                             extra_scales = Dict{Symbol,Vector{Float64}}(),
-                                            prec_error::AbstractString = "structured(1 | $grp) precision is not positive definite")
+                                            prec_error::AbstractString = "structured(1 | $grp) precision is not positive definite",
+                                            record_modes::Bool = false)
     q = size(Q, 1)
     pμ = size(Xμ, 2)
     qchol = cholesky(Symmetric(Q); check = false)
@@ -843,7 +1249,7 @@ function _fit_general_mean_laplace_nuisance(fam, kind, aux_from, n::Int, Xμ, Q,
                     grad = true, b0 = zeros(q)
                 )
             end
-            ok || return 1e18, zeros(length(θ))
+            ok || return 1e18, fill(NaN, length(θ))
             last_b .= b
             return val, g
         else
@@ -901,7 +1307,18 @@ function _fit_general_mean_laplace_nuisance(fam, kind, aux_from, n::Int, Xμ, Q,
     grad!(gfinal, θ̂)
     converged = _laplace_outer_converged(res, nllhat, gfinal, θ̂, n, g_tol)
     V = if se
-        Hθ = _finite_hessian(nll, θ̂; h = _fd_hessian_step(n))
+        # log-dispersion: the fg clamps it to [-8, 8] but `aux_from` to the family's [-4, 4]
+        Hθ = if _se_hessian_path(θ̂; disp = (pμ + 1,), sd = (pμ + 2):(pμ + 2),
+                                 disp_bound = _dispersion_clamp(kind), sd_lo = _SE_LOGSD_LO) === :value
+            _warn_value_hessian("sparse-Laplace GLMM (general-mean nuisance)")
+            _finite_hessian(nll, θ̂; h = _fd_hessian_step(n))
+        else
+            _finite_hessian_from_gradient(
+                _se_grad((θ, tol) -> _phylo_mean_laplace_nuisance_fg(
+                    kind, aux_from, n, Xμ, leaf_node, Q, logdetQ, θ; grad = true, b0 = zeros(q),
+                    newton_tol = tol, newton_maxiter = _SE_MODE_MAXITER)),
+                θ̂; context = "sparse-Laplace GLMM (general-mean nuisance)")
+        end
         _vcov_from_fd_hessian(Hθ; context = "sparse-Laplace GLMM (general-mean nuisance)")
     else
         fill(NaN, length(θ̂), length(θ̂))
@@ -912,6 +1329,8 @@ function _fit_general_mean_laplace_nuisance(fam, kind, aux_from, n::Int, Xμ, Q,
     means = Dict(:mu => [_laplace_mean(kind, dot(@view(Xμ[i, :]), θ̂[1:pμ])) for i in 1:n])
     obs = Dict(:mu => [_laplace_obs(kind, auxhat, i) for i in 1:n])
     scales = merge(Dict(:sigma => fill(sigma_scale(θ̂[pμ+1]), n)), extra_scales)
+    record_modes && _record_laplace_modes!(scales, (θ, b0) -> _phylo_mean_laplace_nuisance_fg(
+        kind, aux_from, n, Xμ, leaf_node, Q, logdetQ, θ; grad = false, b0 = b0), θ̂, last_b, leaf_node)   # for `fitted(fit)`
     fit = DrmFit(fam, blocks, names, θ̂, Matrix(V), -nllhat, n, converged, means, obs, scales)
     _warn_laplace_clamp(fit; logsigma = θ̂[pμ+1:pμ+1])   # #959: say when a clamp is active
     return _withnll(fit, nll, grad!)
@@ -949,7 +1368,7 @@ function _phylo_mean_laplace_hetero_fg(kind, aux_from, n::Int, Xμ, Xσ, leaf_no
     b, ch, _, ok = _phylo_mean_mode(kind, aux, η0, leaf_node, Q, logσ; b0 = b0,
                                     tol = newton_tol, maxiter = newton_maxiter)
     if !ok
-        return grad ? (1e18, zeros(length(θ)), b, false) : (1e18, b, false)
+        return grad ? (1e18, fill(NaN, length(θ)), b, false) : (1e18, b, false)
     end
 
     q = size(Q, 1)
@@ -1021,7 +1440,8 @@ end
 function _fit_phylo_mean_laplace_hetero(fam, kind, aux_from, n::Int, Xμ, Xσ,
                                         labels, tree, nmμ, nmσ, grp, g_tol; θβ0,
                                         θσ0, sigma_scale, se::Bool = false,
-                                        polish_iterations::Int = 0)
+                                        polish_iterations::Int = 0,
+                                        record_modes::Bool = false)
     Q, leaf_node, _ = _poisson_phylo_setup(tree, labels)
     q = size(Q, 1)
     pμ = size(Xμ, 2)
@@ -1042,7 +1462,7 @@ function _fit_phylo_mean_laplace_hetero(fam, kind, aux_from, n::Int, Xμ, Xσ,
                     grad = true, b0 = zeros(q)
                 )
             end
-            ok || return 1e18, zeros(length(θ))
+            ok || return 1e18, fill(NaN, length(θ))
             last_b .= b
             return val, g
         else
@@ -1100,7 +1520,22 @@ function _fit_phylo_mean_laplace_hetero(fam, kind, aux_from, n::Int, Xμ, Xσ,
     grad!(gfinal, θ̂)
     converged = _laplace_outer_converged(res, nllhat, gfinal, θ̂, n, g_tol)
     V = if se
-        Hθ = _finite_hessian(nll, θ̂; h = _fd_hessian_step(n))
+        # log-SD collapse *or* a per-observation ησ = Xσ·βσ sitting at the
+        # family's dispersion clamp (fg :1047, then aux_from to ±`_dispersion_clamp`).
+        # Checking βσ coordinates themselves would miss a slope that is interior
+        # while some observations are already flat.
+        Hθ = if _se_hessian_path(θ̂; sd = (pμ + pσ + 1):(pμ + pσ + 1), sd_lo = _SE_LOGSD_LO,
+                                 eta = Xσ * θ̂[pμ+1:pμ+pσ],
+                                 disp_bound = _dispersion_clamp(kind)) === :value
+            _warn_value_hessian("sparse-Laplace GLMM (phylo-mean, covariate dispersion)")
+            _finite_hessian(nll, θ̂; h = _fd_hessian_step(n))
+        else
+            _finite_hessian_from_gradient(
+                _se_grad((θ, tol) -> _phylo_mean_laplace_hetero_fg(
+                    kind, aux_from, n, Xμ, Xσ, leaf_node, Q, logdetQ, θ; grad = true, b0 = zeros(q),
+                    newton_tol = tol, newton_maxiter = _SE_MODE_MAXITER)),
+                θ̂; context = "sparse-Laplace GLMM (phylo-mean, covariate dispersion)")
+        end
         _vcov_from_fd_hessian(Hθ; context = "sparse-Laplace GLMM (phylo-mean, covariate dispersion)")
     else
         fill(NaN, length(θ̂), length(θ̂))
@@ -1112,9 +1547,11 @@ function _fit_phylo_mean_laplace_hetero(fam, kind, aux_from, n::Int, Xμ, Xσ,
     means = Dict(:mu => [_laplace_mean(kind, dot(@view(Xμ[i, :]), θ̂[1:pμ])) for i in 1:n])
     obs = Dict(:mu => [_laplace_obs(kind, auxhat, i) for i in 1:n])
     scales = Dict(:sigma => [sigma_scale(ησ̂[i]) for i in 1:n])
+    record_modes && _record_laplace_modes!(scales, (θ, b0) -> _phylo_mean_laplace_hetero_fg(
+        kind, aux_from, n, Xμ, Xσ, leaf_node, Q, logdetQ, θ; grad = false, b0 = b0), θ̂, last_b, leaf_node)   # for `fitted(fit)`
     fit = DrmFit(fam, blocks, names, θ̂, Matrix(V), -nllhat, n, converged, means, obs, scales)
     _warn_laplace_clamp(fit; logsigma = Xσ * θ̂[pμ+1:pμ+pσ])   # #959: say when a clamp is active
-    return _withnll(fit, nll, grad!)
+    return _with_phylo_tipvar(_withnll(fit, nll, grad!), Q, leaf_node)
 end
 
 function _phylo_mean_laplace_fg(kind, aux, n::Int, Xμ, leaf_node, Q, logdetQ, θ;
@@ -1128,7 +1565,7 @@ function _phylo_mean_laplace_fg(kind, aux, n::Int, Xμ, leaf_node, Q, logdetQ, �
     b, ch, _, ok = _phylo_mean_mode(kind, aux, η0, leaf_node, Q, logσ; b0 = b0,
                                     tol = newton_tol, maxiter = newton_maxiter)
     if !ok
-        return grad ? (1e18, zeros(length(θ)), b, false) : (1e18, b, false)
+        return grad ? (1e18, fill(NaN, length(θ)), b, false) : (1e18, b, false)
     end
 
     q = size(Q, 1)
@@ -1182,7 +1619,8 @@ end
 function _fit_phylo_mean_laplace(fam, kind, aux, n::Int, Xμ, labels, tree, nmμ,
                                  grp, g_tol; θβ0, se::Bool = false,
                                  polish_iterations::Int = 0,
-                                 scales = Dict{Symbol,Vector{Float64}}())
+                                 scales = Dict{Symbol,Vector{Float64}}(),
+                                 record_modes::Bool = false)
     Q, leaf_node, _ = _poisson_phylo_setup(tree, labels)
     q = size(Q, 1)
     pμ = size(Xμ, 2)
@@ -1202,7 +1640,7 @@ function _fit_phylo_mean_laplace(fam, kind, aux, n::Int, Xμ, labels, tree, nmμ
                     grad = true, b0 = zeros(q)
                 )
             end
-            ok || return 1e18, zeros(length(θ))
+            ok || return 1e18, fill(NaN, length(θ))
             last_b .= b
             return val, g
         else
@@ -1253,7 +1691,16 @@ function _fit_phylo_mean_laplace(fam, kind, aux, n::Int, Xμ, labels, tree, nmμ
     grad!(gfinal, θ̂)
     converged = _laplace_outer_converged(res, nllhat, gfinal, θ̂, n, g_tol)
     V = if se
-        Hθ = _finite_hessian(nll, θ̂; h = _fd_hessian_step(n))
+        Hθ = if _se_hessian_path(θ̂; sd = (pμ + 1):(pμ + 1), sd_lo = _SE_LOGSD_LO) === :value
+            _warn_value_hessian("sparse-Laplace GLMM (phylo-mean)")
+            _finite_hessian(nll, θ̂; h = _fd_hessian_step(n))
+        else
+            _finite_hessian_from_gradient(
+                _se_grad((θ, tol) -> _phylo_mean_laplace_fg(
+                    kind, aux, n, Xμ, leaf_node, Q, logdetQ, θ; grad = true, b0 = zeros(q),
+                    newton_tol = tol, newton_maxiter = _SE_MODE_MAXITER)),
+                θ̂; context = "sparse-Laplace GLMM (phylo-mean)")
+        end
         _vcov_from_fd_hessian(Hθ; context = "sparse-Laplace GLMM (phylo-mean)")
     else
         fill(NaN, length(θ̂), length(θ̂))
@@ -1262,9 +1709,11 @@ function _fit_phylo_mean_laplace(fam, kind, aux, n::Int, Xμ, labels, tree, nmμ
     names = [:mu => nmμ, :resd => [String(grp)]]
     means = Dict(:mu => [_laplace_mean(kind, dot(@view(Xμ[i, :]), θ̂[1:pμ])) for i in 1:n])
     obs = Dict(:mu => [_laplace_obs(kind, aux, i) for i in 1:n])
+    record_modes && _record_laplace_modes!(scales, (θ, b0) -> _phylo_mean_laplace_fg(
+        kind, aux, n, Xμ, leaf_node, Q, logdetQ, θ; grad = false, b0 = b0), θ̂, last_b, leaf_node)   # for `fitted(fit)`
     fit = DrmFit(fam, blocks, names, θ̂, Matrix(V), -nllhat, n, converged, means, obs, scales)
     _warn_laplace_clamp(fit)   # #959: say when a clamp is active
-    return _withnll(fit, nll, grad!)
+    return _with_phylo_tipvar(_withnll(fit, nll, grad!), Q, leaf_node)
 end
 
 # Shared NB2 setup for the sparse-Laplace nuisance routes (phylo + general-cov):
@@ -1295,7 +1744,8 @@ function _fit_nb2_phylo_laplace(fam, y, Xμ, Xσ, labels, tree, nmμ, nmσ, grp,
         return _fit_phylo_mean_laplace_nuisance(
             fam, Val(:nb2_fixed), aux_from, length(y), Xμ, labels, tree, nmμ, nmσ,
             grp, g_tol; θβ0 = θβ0, θσ0 = θσ0,
-            sigma_scale = exp, se = se, polish_iterations = polish_iterations
+            sigma_scale = exp, se = se, polish_iterations = polish_iterations,
+            record_modes = true
         )
     end
     # Covariate dispersion (#164): log-size is a per-observation linear predictor
@@ -1314,7 +1764,8 @@ function _fit_nb2_phylo_laplace(fam, y, Xμ, Xσ, labels, tree, nmμ, nmσ, grp,
     return _fit_phylo_mean_laplace_hetero(
         fam, Val(:nb2_hetero), aux_from_hetero, length(y), Xμ, Xσ, labels, tree,
         nmμ, nmσ, grp, g_tol; θβ0 = _poisson_fixed_start(y, Xμ), θσ0 = θσ0,
-        sigma_scale = exp, se = se, polish_iterations = polish_iterations
+        sigma_scale = exp, se = se, polish_iterations = polish_iterations,
+        record_modes = true
     )
 end
 
@@ -1330,17 +1781,457 @@ O(p) gradient and Takahashi log-det derivatives carry over unchanged (#167).
 """
 function _fit_nb2_relmat_laplace(fam, y, Xμ, Xσ, C, labels, nmμ, nmσ, grp,
                                  g_tol; se::Bool = true,
-                                 polish_iterations::Int = 0)
+                                 polish_iterations::Int = 0,
+                                 normalize::Bool = false)
     size(Xσ, 2) == 1 || error("drm(NegBinomial2()): a `relmat`/`animal`/`spatial` random effect requires `sigma ~ 1`; a covariate `sigma` formula is not implemented on this route. Refit with `sigma ~ 1` (#945).")
     all(x -> x == 1.0, @view Xσ[:, 1]) ||
         error("drm(NegBinomial2()): a `relmat`/`animal`/`spatial` random effect requires `sigma ~ 1`; a covariate `sigma` formula is not implemented on this route. Refit with `sigma ~ 1` (#945).")
-    Q, leaf_node = _general_cov_setup(C, labels)
+    Q, leaf_node = _general_cov_setup(C, labels; normalize)
     aux_from, θβ0, θσ0 = _nb2_laplace_setup(y, Xμ)
     return _fit_general_mean_laplace_nuisance(
         fam, Val(:nb2_fixed), aux_from, length(y), Xμ, Q, leaf_node, nmμ, nmσ,
         grp, g_tol; θβ0 = θβ0, θσ0 = θσ0,
         sigma_scale = exp, se = se, polish_iterations = polish_iterations
     )
+end
+
+# With latent tree state u ~ N(0, Q⁻¹), the observed phylogenetic effect is
+# _binomial_sd_scale(Z_i α) * u_leaf(i), giving tip covariance D K D without
+# changing the tree's existing branch-length scaling. The scale coefficients are few, but
+# the sparse factorization is not dual-number generic, so the outer score below
+# uses central differences of the converged Laplace objective.
+function _binomial_phylo_sd_mode(aux, n::Int, Xμ, Zobs, leaf_node, Q,
+                                 beta, alpha; b0 = nothing,
+                                 re_design = ones(Float64, n),
+                                 maxiter::Int = 60, tol::Real = 1e-10)
+    q = size(Q, 1)
+    b = b0 === nothing ? zeros(q) : copy(b0)
+    eta0 = Xμ * beta
+    length(re_design) == n || throw(ArgumentError(
+        "structured Binomial random-effect design must have one value per response"))
+    loading = re_design .* _binomial_sd_scale(Zobs * alpha)
+    all(isfinite, loading) || return b, nothing, false
+    function joint(bb)
+        total = 0.5 * dot(bb, Q * bb)
+        @inbounds for i in eachindex(eta0)
+            total += _laplace_value(Val(:binomial), aux, i,
+                                    eta0[i] + loading[i] * bb[leaf_node[i]])
+        end
+        total
+    end
+    for _ in 1:maxiter
+        grad = Q * b
+        diagH = zeros(Float64, q)
+        all_w_nonneg = true
+        @inbounds for i in eachindex(eta0)
+            li = leaf_node[i]
+            _, r, w, _ = _laplace_v123(Val(:binomial), aux, i,
+                                        eta0[i] + loading[i] * b[li])
+            grad[li] += loading[i] * r
+            diagH[li] += loading[i]^2 * w
+            w < 0 && (all_w_nonneg = false)
+        end
+        H = Q + spdiagm(0 => diagH)
+        ch = cholesky(Symmetric(H); check = false)
+        issuccess(ch) || return b, ch, false
+        step = ch \ grad
+        norm(step) <= tol * (1 + norm(b)) && return b, ch, true
+        if all_w_nonneg && norm(step) <= 1e-3 * (1 + norm(b))
+            b .-= step
+            continue
+        end
+        f0 = joint(b)
+        a = 1.0
+        accepted = false
+        while a >= 1e-5
+            trial = b .- a .* step
+            if joint(trial) <= f0
+                b = trial
+                accepted = true
+                break
+            end
+            a *= 0.5
+        end
+        accepted || return b, ch, false
+    end
+    return b, nothing, false
+end
+
+function _binomial_phylo_sd_laplace(aux, n::Int, Xμ, Zobs, leaf_node, Q,
+                                    logdetQ, θ; b0 = nothing,
+                                    re_design = ones(Float64, n))
+    pμ = size(Xμ, 2)
+    beta = @view θ[1:pμ]
+    alpha = @view θ[pμ+1:end]
+    b, ch, ok = _binomial_phylo_sd_mode(aux, n, Xμ, Zobs, leaf_node, Q,
+                                        beta, alpha; b0 = b0,
+                                        re_design = re_design)
+    ok || return 1e18, b, false
+    loading = re_design .* _binomial_sd_scale(Zobs * alpha)
+    eta0 = Xμ * beta
+    total = 0.5 * dot(b, Q * b)
+    @inbounds for i in 1:n
+        total += _laplace_value(Val(:binomial), aux, i,
+                                eta0[i] + loading[i] * b[leaf_node[i]])
+    end
+    return total - 0.5 * logdetQ + 0.5 * logdet(ch), b, true
+end
+
+function _fit_binomial_phylo_sd_laplace(fam, s, ntr, Xμ, Zobs, labels, tree,
+                                        nmμ, nmsd, grp, g_tol;
+                                        se::Bool = true, maxiter::Int = 250,
+                                        re_design = ones(Float64, length(s)))
+    n = length(s)
+    sint, nint = round.(Int, s), round.(Int, ntr)
+    logchoose = [_logfactorial(nint[i]) - _logfactorial(sint[i]) -
+                 _logfactorial(nint[i] - sint[i]) for i in eachindex(sint)]
+    aux = if fam.link in (:probit, :cloglog)
+        (s = sint, ntr = nint, logchoose = logchoose, link = fam.link)
+    else
+        (s = sint, ntr = nint, logchoose = logchoose)
+    end
+    Q, leaf_node, phy = _poisson_phylo_setup(tree, labels)
+    size(Zobs, 1) == n || throw(ArgumentError("phylogenetic SD design must have one row per response"))
+    size(Zobs, 2) == length(nmsd) || throw(ArgumentError("phylogenetic SD names do not match its design"))
+    qchol = cholesky(Symmetric(Q); check = false)
+    issuccess(qchol) || error("phylo(1 | $grp) tree precision is not positive definite after root conditioning")
+    logdetQ = logdet(qchol)
+    pμ, psd = size(Xμ, 2), size(Zobs, 2)
+    last_b = zeros(size(Q, 1))
+    function nll(θ)
+        value, b, ok = _binomial_phylo_sd_laplace(aux, n, Xμ, Zobs,
+            leaf_node, Q, logdetQ, θ; b0 = last_b, re_design)
+        if !ok
+            value, b, ok = _binomial_phylo_sd_laplace(aux, n, Xμ, Zobs,
+                leaf_node, Q, logdetQ, θ; b0 = zeros(length(last_b)),
+                re_design)
+        end
+        ok || return 1e18
+        last_b .= b
+        return value
+    end
+    function grad!(g, θ)
+        for j in eachindex(θ)
+            h = 2e-4 * (1 + abs(θ[j]))
+            e = zeros(length(θ)); e[j] = h
+            g[j] = (nll(θ .+ e) - nll(θ .- e)) / (2h)
+        end
+        return g
+    end
+    pbar = clamp(sum(s) / max(sum(ntr), 1), 1e-4, 1 - 1e-4)
+    θ0 = zeros(pμ + psd)
+    θ0[1] = _binomial_start(fam, pbar)
+    θ0[pμ+1] = log(0.4)
+    od = Optim.OnceDifferentiable(nll, grad!, θ0)
+    res0 = Optim.optimize(od, θ0,
+        Optim.LBFGS(linesearch = Optim.LineSearches.BackTracking()),
+        Optim.Options(g_tol = g_tol, iterations = maxiter))
+    θhat = Optim.minimizer(res0)
+    nll_hat = nll(θhat)
+    gfinal = zeros(length(θhat)); grad!(gfinal, θhat)
+    converged = _laplace_outer_converged(res0, nll_hat, gfinal, θhat, n, g_tol)
+    V = se ? _vcov_from_fd_hessian(
+        _finite_hessian(nll, θhat; h = _fd_hessian_step(n));
+        context = "sparse-Laplace Binomial phylogenetic SD regression") :
+        fill(NaN, length(θhat), length(θhat))
+    blocks = Pair{Symbol,UnitRange{Int}}[:mu => (1:pμ), :sd_phylo => (pμ+1:pμ+psd)]
+    names = Pair{Symbol,Vector{String}}[:mu => nmμ, :sd_phylo => nmsd]
+    means = Dict(:mu => _binomial_mean.(Ref(fam), Xμ * θhat[1:pμ]))
+    obs = Dict(:mu => s ./ ntr)
+    sdobs = _binomial_sd_scale(Zobs * θhat[pμ+1:end])
+    scales = Dict(:trials => Float64.(nint), :sd_phylo => sdobs,
+                  :tree_tip_index => Float64.(_lss_phylo_group_index(tree, labels, grp)[2]))
+    fit = DrmFit(fam, blocks, names, θhat, Matrix(V), -nll_hat, n,
+                 converged, means, obs, scales)
+    return _withiterations(_withnll(fit, _nll_pinned(nll, θhat, nll_hat)), Optim.iterations(res0))
+end
+
+# Validate and align the observation-to-mesh projection. The projection rows
+# are keyed by `alignment_ids`; when `data.row_id` is present, reorder them to
+# match the retained response rows instead of relying on incidental row order.
+function _binomial_mesh_inputs(mesh, data, response)
+    all(k -> hasproperty(mesh, k), (:projection, :precision)) ||
+        throw(ArgumentError("Binomial `mesh` must provide `projection` and `precision` matrices."))
+    projection = sparse(Float64.(getproperty(mesh, :projection)))
+    precision = sparse(Float64.(getproperty(mesh, :precision)))
+    size(projection, 1) > 0 && size(projection, 2) > 0 || throw(ArgumentError(
+        "Binomial mesh projection must have at least one row and one mesh vertex."))
+    size(precision) == (size(projection, 2), size(projection, 2)) ||
+        throw(ArgumentError("Binomial mesh precision must be square with one row per projection column."))
+    all(isfinite, nonzeros(projection)) || throw(ArgumentError(
+        "Binomial mesh projection must contain only finite values."))
+    all(isfinite, nonzeros(precision)) || throw(ArgumentError(
+        "Binomial mesh precision must contain only finite values."))
+    asymmetry = norm(precision - transpose(precision), Inf)
+    asymmetry <= 1e-10 * max(norm(precision, Inf), 1.0) || throw(ArgumentError(
+        "Binomial mesh precision must be symmetric."))
+    precision = sparse(Symmetric((precision + transpose(precision)) / 2))
+    qchol = cholesky(Symmetric(precision); check = false)
+    issuccess(qchol) || throw(ArgumentError(
+        "Binomial mesh precision must be positive definite."))
+    rowsums = vec(sum(projection; dims = 2))
+    all(x -> isfinite(x) && x > 0 && abs(x - 1) <= 1e-8, rowsums) ||
+        throw(ArgumentError("Each Binomial mesh projection row must sum to one."))
+    all(x -> x >= -1e-12, nonzeros(projection)) || throw(ArgumentError(
+        "Binomial mesh projection weights must be non-negative."))
+
+    n = length(getproperty(data, response))
+    source_ids = if hasproperty(mesh, :alignment_ids)
+        collect(getproperty(mesh, :alignment_ids))
+    else
+        collect(1:size(projection, 1))
+    end
+    length(source_ids) == size(projection, 1) && length(unique(source_ids)) == length(source_ids) ||
+        throw(ArgumentError("Binomial mesh `alignment_ids` must be unique and have one value per projection row."))
+    target_ids = hasproperty(data, :row_id) ? collect(getproperty(data, :row_id)) : collect(1:n)
+    length(target_ids) == n && length(unique(target_ids)) == n &&
+        all(!ismissing, target_ids) || throw(ArgumentError(
+        "Binomial mesh alignment requires one unique `row_id` per response."))
+    all(!ismissing, source_ids) && length(source_ids) == n &&
+        Set(source_ids) == Set(target_ids) || throw(ArgumentError(
+        "Binomial mesh alignment IDs must match the response rows; provide `data.row_id` to align reordered rows."))
+    source_index = Dict(id => i for (i, id) in enumerate(source_ids))
+    projection = projection[[source_index[id] for id in target_ids], :]
+    return projection, precision, target_ids
+end
+
+function _binomial_mesh_sd_mode(aux, n::Int, Xμ, Zobs, projection, Q,
+                                beta, alpha; b0 = nothing,
+                                maxiter::Int = 60, tol::Real = 1e-10)
+    q = size(Q, 1)
+    b = b0 === nothing ? zeros(q) : copy(b0)
+    eta0 = Xμ * beta
+    loading = _binomial_sd_scale(Zobs * alpha)
+    all(isfinite, loading) || return b, nothing, false
+    function joint(bb)
+        eta = eta0 + loading .* (projection * bb)
+        return 0.5 * dot(bb, Q * bb) +
+               sum(_laplace_value(Val(:binomial), aux, i, eta[i]) for i in 1:n)
+    end
+    for _ in 1:maxiter
+        eta = eta0 + loading .* (projection * b)
+        grad = Q * b
+        curvature = zeros(Float64, n)
+        score = zeros(Float64, n)
+        @inbounds for i in 1:n
+            _, r, w, _ = _laplace_v123(Val(:binomial), aux, i, eta[i])
+            score[i] = loading[i] * r
+            curvature[i] = loading[i]^2 * w
+        end
+        grad .+= transpose(projection) * score
+        H = Q + transpose(projection) * spdiagm(0 => curvature) * projection
+        H = sparse(Symmetric((H + transpose(H)) / 2))
+        ch = cholesky(Symmetric(H); check = false)
+        issuccess(ch) || return b, ch, false
+        step = ch \ grad
+        norm(step) <= tol * (1 + norm(b)) && return b, ch, true
+        f0 = joint(b)
+        a, accepted = 1.0, false
+        while a >= 1e-5
+            trial = b .- a .* step
+            if joint(trial) <= f0
+                b = trial
+                accepted = true
+                break
+            end
+            a *= 0.5
+        end
+        accepted || return b, ch, false
+    end
+    return b, nothing, false
+end
+
+function _binomial_mesh_sd_laplace(aux, n::Int, Xμ, Zobs, projection, Q,
+                                   logdetQ, theta; b0 = nothing)
+    pμ = size(Xμ, 2)
+    beta, alpha = @view(theta[1:pμ]), @view(theta[pμ+1:end])
+    b, ch, ok = _binomial_mesh_sd_mode(aux, n, Xμ, Zobs, projection, Q,
+                                       beta, alpha; b0)
+    ok || return 1e18, b, false
+    loading = _binomial_sd_scale(Zobs * alpha)
+    eta = Xμ * beta + loading .* (projection * b)
+    total = 0.5 * dot(b, Q * b)
+    @inbounds for i in 1:n
+        total += _laplace_value(Val(:binomial), aux, i, eta[i])
+    end
+    return total - 0.5 * logdetQ + 0.5 * logdet(ch), b, true
+end
+
+function _fit_binomial_mesh_sd_laplace(fam, s, ntr, Xμ, Zobs, Zg,
+        projection, Q, group_index, nmμ, nmsd, grp, alignment_ids, g_tol;
+        se::Bool = true, maxiter::Int = 250)
+    n = length(s)
+    size(projection, 1) == n || throw(ArgumentError(
+        "Binomial mesh projection must have one row per response."))
+    size(Q) == (size(projection, 2), size(projection, 2)) || throw(ArgumentError(
+        "Binomial mesh precision and projection dimensions do not agree."))
+    sint, nint = round.(Int, s), round.(Int, ntr)
+    logchoose = [_logfactorial(nint[i]) - _logfactorial(sint[i]) -
+                 _logfactorial(nint[i] - sint[i]) for i in eachindex(sint)]
+    aux = fam.link in (:probit, :cloglog) ?
+        (s = sint, ntr = nint, logchoose = logchoose, link = fam.link) :
+        (s = sint, ntr = nint, logchoose = logchoose)
+    qchol = cholesky(Symmetric(Q); check = false)
+    issuccess(qchol) || throw(ArgumentError("Binomial mesh precision must be positive definite."))
+    logdetQ = logdet(qchol)
+    pμ, psd = size(Xμ, 2), size(Zobs, 2)
+    last_b = zeros(size(Q, 1))
+    function nll(theta)
+        value, b, ok = _binomial_mesh_sd_laplace(aux, n, Xμ, Zobs,
+            projection, Q, logdetQ, theta; b0 = last_b)
+        if !ok
+            value, b, ok = _binomial_mesh_sd_laplace(aux, n, Xμ, Zobs,
+                projection, Q, logdetQ, theta; b0 = zeros(length(last_b)))
+        end
+        ok || return 1e18
+        last_b .= b
+        return value
+    end
+    function grad!(gradient, theta)
+        for j in eachindex(theta)
+            h = 1e-5 * (1 + abs(theta[j]))
+            e = zeros(length(theta)); e[j] = h
+            gradient[j] = (nll(theta .+ e) - nll(theta .- e)) / (2h)
+        end
+        return gradient
+    end
+    pbar = clamp(sum(s) / max(sum(ntr), 1), 1e-4, 1 - 1e-4)
+    theta0 = zeros(pμ + psd)
+    theta0[1] = _binomial_start(fam, pbar)
+    theta0[pμ+1] = log(0.4)
+    od = Optim.OnceDifferentiable(nll, grad!, theta0)
+    result = Optim.optimize(od, theta0,
+        Optim.LBFGS(linesearch = Optim.LineSearches.BackTracking()),
+        Optim.Options(g_tol = g_tol, iterations = maxiter))
+    theta_hat = Optim.minimizer(result)
+    nll_hat = nll(theta_hat)
+    grad_final = zeros(length(theta_hat)); grad!(grad_final, theta_hat)
+    converged = _laplace_outer_converged(result, nll_hat, grad_final, theta_hat, n, g_tol)
+    V = se ? _vcov_from_fd_hessian(
+        _finite_hessian(nll, theta_hat; h = _fd_hessian_step(n));
+        context = "sparse-Laplace Binomial mesh SD regression") :
+        fill(NaN, length(theta_hat), length(theta_hat))
+    blocks = Pair{Symbol,UnitRange{Int}}[:mu => (1:pμ), :sd => (pμ+1:pμ+psd)]
+    names = Pair{Symbol,Vector{String}}[:mu => nmμ, :sd => nmsd]
+    means = Dict(:mu => _binomial_mean.(Ref(fam), Xμ * theta_hat[1:pμ]))
+    obs = Dict(:mu => s ./ ntr)
+    sd_group = _binomial_sd_scale(Zg * theta_hat[pμ+1:end])
+    scales = Dict(:trials => Float64.(nint),
+        :sd_group_index => Float64.(group_index), :sd_group => sd_group,
+        :sd => sd_group[group_index])
+    fit = DrmFit(fam, blocks, names, theta_hat, Matrix(V), -nll_hat, n,
+        converged, means, obs, scales)
+    mesh_metadata = (; projection, precision = Q, alignment_ids,
+                     group_index, group = grp)
+    return _withranef(_withiterations(_withnll(fit, _nll_pinned(nll, theta_hat, nll_hat)), Optim.iterations(result)),
+                      (; effects = Dict{Symbol,Vector{Float64}}(), mesh = mesh_metadata))
+end
+
+# Binomial animal and related-matrix SD regression share sparse-Laplace mode
+# equations. Preserve the supplied covariance scale, giving latent covariance
+# D*C*D for either an intercept or slope.
+function _fit_binomial_related_sd_laplace(fam, s, ntr, Xμ, Zobs, Zg, labels,
+                                         C, group_index, nmμ, nmsd, grp, level,
+                                         g_tol; se::Bool = true,
+                                         re_design = ones(Float64, length(s)),
+                                         Ainv = nothing,
+                                         maxiter::Int = 250)
+    n = length(s)
+    G = Ainv === nothing ? size(C, 1) : size(Ainv, 1)
+    length(group_index) == n || throw(ArgumentError(
+        "$level group index must have one value per response"))
+    size(Zobs, 1) == n || throw(ArgumentError(
+        "$level SD design must have one row per response"))
+    size(Zg, 1) == G || throw(ArgumentError(
+        "$level SD group design must have one row per relatedness-matrix level"))
+    size(Zobs, 2) == length(nmsd) || throw(ArgumentError(
+        "$level SD names do not match its design"))
+    if Ainv === nothing
+        C_chol = _checked_relmat_chol(C, grp)
+        Q = sparse(Symmetric(inv(C_chol)))
+        logdetQ = -logdet(C_chol)
+    else
+        Q = sparse(Float64.(Ainv))
+        all(isfinite, nonzeros(Q)) || throw(ArgumentError(
+            "animal `Ainv` must contain only finite values."))
+        asymmetry = norm(Q - transpose(Q), Inf)
+        scale = max(norm(Q, Inf), 1.0)
+        asymmetry <= 1e-10 * scale || throw(ArgumentError(
+            "animal `Ainv` must be symmetric."))
+        Q = sparse(Symmetric((Q + transpose(Q)) / 2))
+        qchol = cholesky(Symmetric(Q); check = false)
+        issuccess(qchol) || throw(ArgumentError(
+            "animal `Ainv` must be positive definite."))
+        logdetQ = logdet(qchol)
+    end
+
+    sint, nint = round.(Int, s), round.(Int, ntr)
+    logchoose = [_logfactorial(nint[i]) - _logfactorial(sint[i]) -
+                 _logfactorial(nint[i] - sint[i]) for i in eachindex(sint)]
+    aux = fam.link === :logit ?
+        (s = sint, ntr = nint, logchoose = logchoose) :
+        (s = sint, ntr = nint, logchoose = logchoose, link = fam.link)
+    pμ, psd = size(Xμ, 2), size(Zobs, 2)
+    last_b = zeros(G)
+    function nll(θ)
+        value, b, ok = _binomial_phylo_sd_laplace(aux, n, Xμ, Zobs,
+            group_index, Q, logdetQ, θ; b0 = last_b,
+            re_design = re_design)
+        if !ok
+            value, b, ok = _binomial_phylo_sd_laplace(aux, n, Xμ, Zobs,
+                group_index, Q, logdetQ, θ; b0 = zeros(G),
+                re_design = re_design)
+        end
+        ok || return 1e18
+        last_b .= b
+        return value
+    end
+    function grad!(g, θ)
+        for j in eachindex(θ)
+            h = 2e-4 * (1 + abs(θ[j]))
+            e = zeros(length(θ)); e[j] = h
+            g[j] = (nll(θ .+ e) - nll(θ .- e)) / (2h)
+        end
+        return g
+    end
+    pbar = clamp(sum(s) / max(sum(ntr), 1), 1e-4, 1 - 1e-4)
+    θ0 = zeros(pμ + psd)
+    θ0[1] = _binomial_start(fam, pbar)
+    θ0[pμ+1] = log(0.4)
+    od = Optim.OnceDifferentiable(nll, grad!, θ0)
+    res0 = Optim.optimize(od, θ0,
+        Optim.LBFGS(linesearch = Optim.LineSearches.BackTracking()),
+        Optim.Options(g_tol = g_tol, iterations = maxiter))
+    θhat = Optim.minimizer(res0)
+    nll_hat = nll(θhat)
+    gfinal = zeros(length(θhat)); grad!(gfinal, θhat)
+    converged = _laplace_outer_converged(res0, nll_hat, gfinal, θhat, n, g_tol)
+    V = se ? _vcov_from_fd_hessian(
+        _finite_hessian(nll, θhat; h = _fd_hessian_step(n));
+        context = "sparse-Laplace Binomial $level SD regression") :
+        fill(NaN, length(θhat), length(θhat))
+    blocks = Pair{Symbol,UnitRange{Int}}[:mu => (1:pμ), :sd => (pμ+1:pμ+psd)]
+    names = Pair{Symbol,Vector{String}}[:mu => nmμ, :sd => nmsd]
+    means = Dict(:mu => _binomial_mean.(Ref(fam), Xμ * θhat[1:pμ]))
+    obs = Dict(:mu => s ./ ntr)
+    sd_group = _binomial_structured_sd_group_scale(Zg, θhat[pμ+1:end])
+    sd_obs = sd_group[group_index]
+    scales = Dict(:trials => Float64.(nint), :sd_group_index => Float64.(group_index),
+                  :sd_group => sd_group, :sd => sd_obs)
+    # b34: record the conditional field at theta_hat (fresh inner solve; `last_b`
+    # was moved by the finite-difference stencils above).
+    _, b_hat, ok_hat = _binomial_phylo_sd_laplace(aux, n, Xμ, Zobs,
+        group_index, Q, logdetQ, θhat; b0 = zeros(G), re_design = re_design)
+    if ok_hat
+        loading_hat = re_design .* _binomial_sd_scale(Zobs * θhat[pμ+1:end])
+        _attach_conditional_structured!(
+            scales, loading_hat .* b_hat[group_index], b_hat)
+    else
+        _mark_cond_failed!(scales)
+    end
+    fit = DrmFit(fam, blocks, names, θhat, Matrix(V), -nll_hat, n,
+                 converged, means, obs, scales)
+    return _withiterations(_withnll(fit, _nll_pinned(nll, θhat, nll_hat)), Optim.iterations(res0))
 end
 
 function _fit_binomial_phylo_laplace(fam, s, ntr, Xμ, labels, tree, nmμ, grp,
@@ -1356,7 +2247,7 @@ function _fit_binomial_phylo_laplace(fam, s, ntr, Xμ, labels, tree, nmμ, grp,
     return _fit_phylo_mean_laplace(
         fam, Val(:binomial), aux, length(s), Xμ, labels, tree, nmμ, grp, g_tol;
         θβ0 = θβ0, se = se, polish_iterations = polish_iterations,
-        scales = Dict(:trials => Float64.(nint))
+        scales = Dict(:trials => Float64.(nint)), record_modes = true
     )
 end
 
@@ -1389,7 +2280,7 @@ function _fit_gamma_phylo_laplace(fam, y, Xμ, Xσ, labels, tree, nmμ, nmσ, gr
         return _fit_phylo_mean_laplace_nuisance(
             fam, Val(:gamma_fixed), aux_from, length(y), Xμ, labels, tree, nmμ, nmσ,
             grp, g_tol; θβ0 = θβ0, θσ0 = θσ0, sigma_scale = exp,
-            se = se, polish_iterations = polish_iterations
+            se = se, polish_iterations = polish_iterations, record_modes = true
         )
     end
     # Covariate dispersion (#164): the σ-axis is a per-observation linear
@@ -1411,26 +2302,28 @@ function _fit_gamma_phylo_laplace(fam, y, Xμ, Xσ, labels, tree, nmμ, nmσ, gr
     return _fit_phylo_mean_laplace_hetero(
         fam, Val(:gamma_hetero), aux_from_hetero, length(yv), Xμ, Xσ, labels, tree,
         nmμ, nmσ, grp, g_tol; θβ0 = θβ0, θσ0 = θσ0, sigma_scale = exp,
-        se = se, polish_iterations = polish_iterations
+        se = se, polish_iterations = polish_iterations, record_modes = true
     )
 end
 
 """
-    _fit_gamma_relmat_laplace(fam, y, Xμ, Xσ, C, labels, nmμ, nmσ, grp, g_tol; se)
+    _fit_gamma_relmat_laplace(fam, y, Xμ, Xσ, C, labels, nmμ, nmσ, grp, g_tol; se, normalize)
 
 Gamma sparse-Laplace fit with a general user-supplied PD covariance `C` on the
 mean random intercept (`relmat`/`animal`/`spatial(1 | grp)`), with the shape `α`
 (via the `sigma` slot, σ = 1/√α) a fixed nuisance parameter. Reuses the verified
 phylo nuisance spine via [`_general_cov_setup`](@ref); only the prior precision
-differs (`C⁻¹` vs the tree topology). Exact O(p) gradient carries over (#167).
+differs (`C⁻¹` vs the tree topology). By default `C` is used as supplied
+(raw, as native drmTMB does); `normalize = true` rescales it to a correlation
+matrix (used only for the precomputed spatial route). Exact O(p) gradient carries over (#167).
 """
 function _fit_gamma_relmat_laplace(fam, y, Xμ, Xσ, C, labels, nmμ, nmσ, grp,
-                                   g_tol; se::Bool = true,
+                                   g_tol; se::Bool = true, normalize::Bool = false,
                                    polish_iterations::Int = 5)
     size(Xσ, 2) == 1 || error("drm(Gamma()): a `relmat`/`animal`/`spatial` random effect requires `sigma ~ 1`; a covariate `sigma` formula is not implemented on this route. Refit with `sigma ~ 1` (#945).")
     all(x -> x == 1.0, @view Xσ[:, 1]) ||
         error("drm(Gamma()): a `relmat`/`animal`/`spatial` random effect requires `sigma ~ 1`; a covariate `sigma` formula is not implemented on this route. Refit with `sigma ~ 1` (#945).")
-    Q, leaf_node = _general_cov_setup(C, labels)
+    Q, leaf_node = _general_cov_setup(C, labels; normalize)
     aux_from, θβ0, θσ0 = _gamma_laplace_setup(y, Xμ)
     return _fit_general_mean_laplace_nuisance(
         fam, Val(:gamma_fixed), aux_from, length(y), Xμ, Q, leaf_node, nmμ, nmσ,
@@ -1469,7 +2362,7 @@ function _fit_beta_phylo_laplace(fam, y, Xμ, Xσ, labels, tree, nmμ, nmσ, grp
         return _fit_phylo_mean_laplace_nuisance(
             fam, Val(:beta_fixed), aux_from, length(y), Xμ, labels, tree, nmμ, nmσ,
             grp, g_tol; θβ0 = θβ0, θσ0 = θσ0, sigma_scale = exp,
-            se = se, polish_iterations = polish_iterations
+            se = se, polish_iterations = polish_iterations, record_modes = true
         )
     end
     # Covariate dispersion (#164): the σ-axis is a per-observation linear
@@ -1492,7 +2385,7 @@ function _fit_beta_phylo_laplace(fam, y, Xμ, Xσ, labels, tree, nmμ, nmσ, grp
     return _fit_phylo_mean_laplace_hetero(
         fam, Val(:beta_hetero), aux_from_hetero, length(yv), Xμ, Xσ, labels, tree,
         nmμ, nmσ, grp, g_tol; θβ0 = θβ0, θσ0 = θσ0, sigma_scale = exp,
-        se = se, polish_iterations = polish_iterations
+        se = se, polish_iterations = polish_iterations, record_modes = true
     )
 end
 
@@ -1503,15 +2396,18 @@ Beta sparse-Laplace fit with a general user-supplied PD covariance `C` on the me
 (logit) random intercept (`relmat`/`animal`/`spatial(1 | grp)`), with the precision
 `φ` (via the `sigma` slot, σ = 1/√φ) a fixed nuisance parameter. Reuses the verified
 phylo nuisance spine via [`_general_cov_setup`](@ref); only the prior precision
-differs (`C⁻¹` vs the tree topology). Exact O(p) gradient carries over (#167).
+differs (`C⁻¹` vs the tree topology). `C` is used as supplied (raw, as native
+drmTMB does); `normalize = true` rescales it to a correlation matrix (used only for
+the precomputed spatial route). Exact O(p) gradient carries over (#167).
 """
 function _fit_beta_relmat_laplace(fam, y, Xμ, Xσ, C, labels, nmμ, nmσ, grp,
                                   g_tol; se::Bool = true,
-                                  polish_iterations::Int = 0)
+                                  polish_iterations::Int = 0,
+                                  normalize::Bool = false)
     size(Xσ, 2) == 1 || error("drm(Beta()): a `relmat`/`animal`/`spatial` random effect requires `sigma ~ 1`; a covariate `sigma` formula is not implemented on this route. Refit with `sigma ~ 1` (#945).")
     all(x -> x == 1.0, @view Xσ[:, 1]) ||
         error("drm(Beta()): a `relmat`/`animal`/`spatial` random effect requires `sigma ~ 1`; a covariate `sigma` formula is not implemented on this route. Refit with `sigma ~ 1` (#945).")
-    Q, leaf_node = _general_cov_setup(C, labels)
+    Q, leaf_node = _general_cov_setup(C, labels; normalize)
     aux_from, θβ0, θσ0 = _beta_laplace_setup(y, Xμ)
     return _fit_general_mean_laplace_nuisance(
         fam, Val(:beta_fixed), aux_from, length(y), Xμ, Q, leaf_node, nmμ, nmσ,
@@ -1562,7 +2458,7 @@ function _fit_betabinomial_phylo_laplace(fam, s, ntr, Xμ, labels, tree, nmμ, n
         fam, Val(:betabinomial_fixed), aux_from, length(s), Xμ, labels, tree, nmμ, nmσ,
         grp, g_tol; θβ0 = θβ0, θσ0 = θσ0, sigma_scale = exp,
         se = se, polish_iterations = polish_iterations,
-        extra_scales = Dict(:trials => Float64.(nint))
+        extra_scales = Dict(:trials => Float64.(nint)), record_modes = true
     )
 end
 
@@ -1741,7 +2637,7 @@ function _poisson_crossed_laplace_fg(y, Xμ, gidx, G, hidx, Hh, lf, θ;
     b, ch, _, ok = _poisson_crossed_mode(y, η0, gidx, G, hidx, Hh, logσ;
                                          b0 = b0, tol = newton_tol, maxiter = newton_maxiter)
     if !ok
-        return grad ? (1e18, zeros(length(θ)), b, false) : (1e18, b, false)
+        return grad ? (1e18, fill(NaN, length(θ)), b, false) : (1e18, b, false)
     end
     data = zero(eltype(θ))
     invg = exp(-2 * logσ[1])
@@ -1812,7 +2708,7 @@ function _fit_poisson_crossed_intercepts_laplace(fam::Poisson, y, Xμ, gidx, G, 
                     y, Xμ, gidx, G, hidx, Hh, lf, θ; grad = true, b0 = zeros(G + Hh)
                 )
             end
-            ok || return 1e18, zeros(length(θ))
+            ok || return 1e18, fill(NaN, length(θ))
             last_b .= b
             return val, g
         else
@@ -1860,7 +2756,16 @@ function _fit_poisson_crossed_intercepts_laplace(fam::Poisson, y, Xμ, gidx, G, 
     nllhat = nll(θ̂)
     converged = _laplace_outer_converged(res, nllhat, gfinal, θ̂, n, g_tol)
     V = if se
-        Hθ = _finite_hessian(nll, θ̂; h = _fd_hessian_step(n))
+        Hθ = if _se_hessian_path(θ̂; sd = (pμ + 1):(pμ + 2), sd_lo = _SE_LOGSD_LO) === :value
+            _warn_value_hessian("sparse-Laplace Poisson (crossed intercepts)")
+            _finite_hessian(nll, θ̂; h = _fd_hessian_step(n))
+        else
+            _finite_hessian_from_gradient(
+                _se_grad((θ, tol) -> _poisson_crossed_laplace_fg(
+                    y, Xμ, gidx, G, hidx, Hh, lf, θ; grad = true, b0 = zeros(G + Hh),
+                    newton_tol = tol, newton_maxiter = _SE_MODE_MAXITER)),
+                θ̂; context = "sparse-Laplace Poisson (crossed intercepts)")
+        end
         _vcov_from_fd_hessian(Hθ; context = "sparse-Laplace Poisson (crossed intercepts)")
     else
         fill(NaN, length(θ̂), length(θ̂))
@@ -1870,6 +2775,12 @@ function _fit_poisson_crossed_intercepts_laplace(fam::Poisson, y, Xμ, gidx, G, 
     means = Dict(:mu => exp.(Xμ * θ̂[1:pμ]))
     obs = Dict(:mu => Vector{Float64}(y))
     scales = Dict{Symbol,Vector{Float64}}()
+    # fitted-row modes for `fitted(fit)` (conditional default): fresh mode solve at θ̂ (step tolerance 1e-8)
+    let (bm, _, _, okm) = _poisson_crossed_mode(y, Xμ * θ̂[1:pμ], gidx, G, hidx, Hh,
+                                                clamp.(θ̂[pμ+1:pμ+2], -8.0, 3.0);
+                                                b0 = zeros(G + Hh), tol = 1e-8)
+        okm ? _record_cond_fit!(scales, bm[gidx] .+ bm[G .+ hidx]) : (scales[:cond_fit_failed] = [1.0])
+    end
     fit = DrmFit(fam, blocks, names, θ̂, Matrix(V), -nllhat, n, converged, means, obs, scales)
     _warn_laplace_clamp(fit)   # #959: say when a clamp is active
     return _withnll(fit, nll, grad!)
@@ -1918,17 +2829,24 @@ function _fit_poisson_crossed_laplace(fam::Poisson, y, Xμ, comps, nmμ, g_tol; 
 
     last_b = zeros(size(Z, 2))
     last_iters = Ref(0)
-    function eval_laplace(θ; grad::Bool = false)
+    function eval_laplace(θ; grad::Bool = false, tight::Bool = false, mode_tol::Real = _SE_MODE_TOL)
         βμ = θ[1:pμ]
         logσ = clamp.(θ[pμ+1:pμ+K], -8.0, 3.0)
         η0 = Xμ * βμ
-        b, ch, iters, ok = _poisson_laplace_mode(y, η0, Z, compid, logσ; b0 = last_b)
-        if !ok
-            b, ch, iters, ok = _poisson_laplace_mode(y, η0, Z, compid, logσ; b0 = zeros(size(Z, 2)))
+        if tight
+            # SE build (#1073): cold start + tightened inner solve; touches no warm state.
+            b, ch, iters, ok = _poisson_laplace_mode(y, η0, Z, compid, logσ;
+                b0 = zeros(size(Z, 2)), tol = mode_tol, maxiter = _SE_MODE_MAXITER)
+            ok || return grad ? (1e18, fill(NaN, length(θ))) : 1e18
+        else
+            b, ch, iters, ok = _poisson_laplace_mode(y, η0, Z, compid, logσ; b0 = last_b)
+            if !ok
+                b, ch, iters, ok = _poisson_laplace_mode(y, η0, Z, compid, logσ; b0 = zeros(size(Z, 2)))
+            end
+            last_iters[] = iters
+            ok || return grad ? (1e18, fill(NaN, length(θ))) : 1e18
+            last_b .= b
         end
-        last_iters[] = iters
-        ok || return grad ? (1e18, zeros(length(θ))) : 1e18
-        last_b .= b
         η = clamp.(η0 .+ Z * b, -30.0, 30.0)
         μ = exp.(η)
         data = zero(eltype(θ))
@@ -2032,7 +2950,17 @@ function _fit_poisson_crossed_laplace(fam::Poisson, y, Xμ, comps, nmμ, g_tol; 
     end
     θ̂ = Optim.minimizer(res)
     V = if se
-        H = _finite_hessian(nll, θ̂; h = _fd_hessian_step(n))
+        H = if _se_hessian_path(θ̂; sd = (pμ + 1):(pμ + K), sd_lo = _SE_LOGSD_LO) === :value
+            _warn_value_hessian("sparse-Laplace Poisson (crossed)")
+            _finite_hessian(nll, θ̂; h = _fd_hessian_step(n))
+        else
+            _finite_hessian_from_gradient(
+                _se_grad((θ, tol) -> begin
+                    val, g = eval_laplace(θ; grad = true, tight = true, mode_tol = tol)
+                    (val, g, nothing, all(isfinite, g) && isfinite(val) && val < 1e17)
+                end),
+                θ̂; context = "sparse-Laplace Poisson (crossed)")
+        end
         _vcov_from_fd_hessian(H; context = "sparse-Laplace Poisson (crossed)")
     else
         fill(NaN, length(θ̂), length(θ̂))
@@ -2053,36 +2981,40 @@ function _fit_poisson_crossed_laplace(fam::Poisson, y, Xμ, comps, nmμ, g_tol; 
     gfinal = zeros(length(θ̂))
     grad!(gfinal, θ̂)
     converged = _laplace_outer_converged(res, nllhat, gfinal, θ̂, n, g_tol)
+    # fitted-row modes for `fitted(fit)` (conditional default): fresh mode solve at θ̂ (step tolerance 1e-8)
+    let (bm, _, _, okm) = _poisson_laplace_mode(y, Xμ * θ̂[1:pμ], Z, compid,
+                                                clamp.(θ̂[pμ+1:pμ+K], -8.0, 3.0);
+                                                b0 = zeros(size(Z, 2)), tol = 1e-8)
+        okm ? _record_cond_fit!(scales, Z * bm) : (scales[:cond_fit_failed] = [1.0])
+    end
     fit = DrmFit(fam, blocks, names, θ̂, Matrix(V), -nllhat, n, converged, means, obs, scales)
     _warn_laplace_clamp(fit)   # #959: say when a clamp is active
     return _withnll(fit, nll, grad!)
 end
 
-_laplace_logistic(η) = 1 / (1 + exp(-η))
+_laplace_logistic(η) = η >= 0 ? 1 / (1 + exp(-η)) : exp(η) / (1 + exp(η))
 
 function _laplace_value(::Val{:binomial}, aux, i, η)
-    p = _laplace_logistic(clamp(η, -30.0, 30.0))
     s = aux.s[i]
     n = aux.ntr[i]
-    return -(aux.logchoose[i] + s * log(p) + (n - s) * log1p(-p))
+    return n * _log1pexp(η) - s * η - aux.logchoose[i]
 end
 
 function _laplace_d1(::Val{:binomial}, aux, i, η)
-    p = _laplace_logistic(clamp(η, -30.0, 30.0))
-    return aux.ntr[i] * p - aux.s[i]
+    return aux.ntr[i] * _laplace_logistic(η) - aux.s[i]
 end
 
 function _laplace_d2(::Val{:binomial}, aux, i, η)
-    p = _laplace_logistic(clamp(η, -30.0, 30.0))
+    p = _laplace_logistic(η)
     return aux.ntr[i] * p * (1 - p)
 end
 
 function _laplace_d3(::Val{:binomial}, aux, i, η)
-    p = _laplace_logistic(clamp(η, -30.0, 30.0))
+    p = _laplace_logistic(η)
     return aux.ntr[i] * p * (1 - p) * (1 - 2p)
 end
 
-_laplace_mean(::Val{:binomial}, η) = _laplace_logistic(clamp(η, -30.0, 30.0))
+_laplace_mean(::Val{:binomial}, η) = _laplace_logistic(η)
 _laplace_obs(::Val{:binomial}, aux, i) = aux.s[i] / aux.ntr[i]
 
 function _laplace_value(::Val{:nb2_fixed}, aux, i, η)
@@ -2619,18 +3551,16 @@ function _laplace_v123_nuisance(kind, aux, i, η)
 end
 
 function _laplace_d12(::Val{:binomial}, aux, i, η)
-    p = _laplace_logistic(clamp(η, -30.0, 30.0))
+    p = _laplace_logistic(η)
     w = aux.ntr[i] * p * (1 - p)
     return aux.ntr[i] * p - aux.s[i], w
 end
 
 function _laplace_v123(::Val{:binomial}, aux, i, η)
-    p = _laplace_logistic(clamp(η, -30.0, 30.0))
-    s = aux.s[i]
-    n = aux.ntr[i]
-    v = -(aux.logchoose[i] + s * log(p) + (n - s) * log1p(-p))
-    w = n * p * (1 - p)
-    return v, n * p - s, w, w * (1 - 2p)
+    return (_laplace_value(Val(:binomial), aux, i, η),
+            _laplace_d1(Val(:binomial), aux, i, η),
+            _laplace_d2(Val(:binomial), aux, i, η),
+            _laplace_d3(Val(:binomial), aux, i, η))
 end
 
 function _laplace_d12(::Val{:nb2_fixed}, aux, i, η)
@@ -2859,16 +3789,28 @@ function _crossed_mean_mode(kind, aux, η0, gidx, G, hidx, Hh, logσ; b0 = nothi
             f0 = joint(b)
             α = 1.0
             accepted = false
+            # Rounding slack (#1093): near the mode the true decrease is below
+            # the floating-point resolution of a joint worth hundreds of nats,
+            # so a strict `<=` rejects every step and the search reports failure
+            # at a point that is already the mode to ~1e-9.
+            slack = 8 * eps(Float64) * (1 + abs(f0))
             while α >= 1e-4
                 trial = b .- α .* step
-                if joint(trial) <= f0
+                if joint(trial) <= f0 + slack
                     b = trial
                     accepted = true
                     break
                 end
                 α *= 0.5
             end
-            accepted || return b, ch, iters, false
+            if !accepted
+                # `ch` succeeded, so the Hessian is positive definite and the
+                # Newton step is a descent direction. Once that step is tiny we
+                # are inside the quadratic basin and the objective cannot resolve
+                # it: take it in full rather than fail closed.
+                sn <= 1e-6 * (1 + norm(b)) || return b, ch, iters, false
+                b = b .- step
+            end
         end
     end
     # Cap exhausted without the step meeting `tol` (#1024): `b` is not the mode
@@ -2903,22 +3845,69 @@ function _zero_flat_clamped_logsd_columns!(H, θ, ks, h; lo::Float64 = -8.0, hi:
     return H
 end
 
+# #1190: covariance when a log-SD coordinate sits at its clamp. There the objective is flat
+# in that coordinate, so its Hessian row is (near) zero and inverting the whole matrix breaks
+# down: the pseudo-inverse reports a meaningless SE for the clamped coordinate and, when
+# finite-difference noise tips one eigenvalue negative, blanks every SE. Treat each clamped
+# log SD as fixed at the boundary and invert the Hessian of the remaining coordinates. The
+# clamped coordinate gets NaN (NA) variances and covariances, with a boundary warning.
+_clamped_logsd_coords(θ, ks; lo::Real = -8.0, hi::Real = 3.0, tol::Real = 1e-3) =
+    [k for k in ks if θ[k] <= lo + tol || θ[k] >= hi - tol]
+
+# Covariance from the Hessian block `Hfree` of the coordinates `free`, with the `fixed`
+# coordinates (a clamped log SD) reported as NaN.
+function _vcov_with_fixed_coords(Hfree, n::Int, free, fixed; context::AbstractString = "",
+                                 lo::Real = -8.0, hi::Real = 3.0)
+    V = fill(NaN, n, n)
+    all(isfinite, Hfree) || return V
+    V[free, free] .= _vcov_from_fd_hessian(Hfree; context = context)
+    get(task_local_storage(), :drm_quiet_boundary, false) === true ||
+        @warn("$context vcov: random-effect log SD coordinate(s) $(collect(fixed)) sit at the " *
+              "clamp [$(lo), $(hi)], so the Hessian is flat there. They are treated as fixed " *
+              "at the boundary: standard errors of the other coordinates come from the Hessian " *
+              "of the remaining parameters. The standard error of the clamped coordinate is not " *
+              "trustworthy and is reported as NaN.")
+    return V
+end
+
+# `_vcov_from_fd_hessian` of a full Hessian `H`, with the clamped log-SD coordinates in `ks`
+# fixed. With none clamped this is exactly `_vcov_from_fd_hessian`.
+function _vcov_with_clamped_logsd_fixed(H, θ, ks; context::AbstractString = "",
+                                        lo::Real = -8.0, hi::Real = 3.0, tol::Real = 1e-3)
+    fixed = _clamped_logsd_coords(θ, ks; lo = lo, hi = hi, tol = tol)
+    isempty(fixed) && return _vcov_from_fd_hessian(H; context = context)
+    all(isfinite, H) || return fill(NaN, size(H)...)
+    free = setdiff(axes(H, 1), fixed)
+    return _vcov_with_fixed_coords(H[free, free], size(H, 1), free, fixed;
+                                   context = context, lo = lo, hi = hi)
+end
+
 function _fit_crossed_mean_laplace(fam, kind, aux, n::Int, Xμ, gidx, G, hidx, Hh,
                                    nmμ, labels, g_tol; θβ0 = nothing,
-                                   se::Bool = false, polish_iterations::Int = 0)
+                                   se::Bool = false, polish_iterations::Int = 0,
+                                   extra_scales = Dict{Symbol,Vector{Float64}}())
     pμ = size(Xμ, 2)
     last_b = zeros(G + Hh)
 
-    function eval_laplace(θ; grad::Bool = false)
+    function eval_laplace(θ; grad::Bool = false, tight::Bool = false)
         βμ = θ[1:pμ]
         logσ = clamp.(θ[pμ+1:pμ+2], -8.0, 3.0)
         η0 = Xμ * βμ
-        b, ch, _, ok = _crossed_mean_mode(kind, aux, η0, gidx, G, hidx, Hh, logσ; b0 = last_b)
-        if !ok
-            b, ch, _, ok = _crossed_mean_mode(kind, aux, η0, gidx, G, hidx, Hh, logσ; b0 = zeros(G + Hh))
+        if tight
+            # SE build (#1073): cold start, tightened inner solve, no warm-state
+            # carry-over, so the stencil sees the same mode solve at every point.
+            b, ch, _, ok = _crossed_mean_mode(kind, aux, η0, gidx, G, hidx, Hh, logσ;
+                                              b0 = zeros(G + Hh), tol = _SE_MODE_TOL,
+                                              maxiter = _SE_MODE_MAXITER)
+            ok || return grad ? (1e18, fill(NaN, length(θ))) : 1e18
+        else
+            b, ch, _, ok = _crossed_mean_mode(kind, aux, η0, gidx, G, hidx, Hh, logσ; b0 = last_b)
+            if !ok
+                b, ch, _, ok = _crossed_mean_mode(kind, aux, η0, gidx, G, hidx, Hh, logσ; b0 = zeros(G + Hh))
+            end
+            ok || return grad ? (1e18, fill(NaN, length(θ))) : 1e18
+            last_b .= b
         end
-        ok || return grad ? (1e18, zeros(length(θ))) : 1e18
-        last_b .= b
 
         invg = exp(-2 * logσ[1])
         invh = exp(-2 * logσ[2])
@@ -3006,7 +3995,19 @@ function _fit_crossed_mean_laplace(fam, kind, aux, n::Int, Xμ, gidx, G, hidx, H
     converged = _laplace_outer_converged(res, nllhat, gfinal, θ̂, n, g_tol)
     V = if se
         hstep = _fd_hessian_step(n)
-        Hθ = _finite_hessian(nll, θ̂; h = hstep)
+        # #1073: central differences of the exact gradient with a tight, cold
+        # inner solve. When a log-SD is at its clamp the objective is flat there
+        # but the gradient is not, so that case keeps the value-based path and
+        # the flat-column handling below.
+        use_grad_hessian = _se_hessian_path(θ̂; sd = (pμ + 1):(pμ + 2)) === :gradient
+        use_grad_hessian || _warn_value_hessian("sparse-Laplace GLMM (crossed-mean)")
+        Hθ = if use_grad_hessian
+            se_grad!(Gout, θ) = (Gout .= eval_laplace(θ; grad = true, tight = true)[2])
+            _finite_hessian_from_gradient(se_grad!, θ̂;
+                context = "sparse-Laplace GLMM (crossed-mean)")
+        else
+            _finite_hessian(nll, θ̂; h = hstep)
+        end
         # log σ is clamped to [-8, 3]. Past that box the objective does not
         # depend on the coordinate, so a settled stencil is exact 0 and the
         # singular path keeps the intercept and slope. Finite-difference
@@ -3024,7 +4025,13 @@ function _fit_crossed_mean_laplace(fam, kind, aux, n::Int, Xμ, gidx, G, hidx, H
     names = [:mu => nmμ, :resd => labels]
     means = Dict(:mu => [_laplace_mean(kind, dot(@view(Xμ[i, :]), θ̂[1:pμ])) for i in 1:n])
     obs = Dict(:mu => [_laplace_obs(kind, aux, i) for i in 1:n])
-    scales = Dict{Symbol,Vector{Float64}}()
+    scales = Dict{Symbol,Vector{Float64}}(extra_scales)  # e.g. Binomial `:trials`, read by `simulate`
+    # fitted-row modes for `fitted(fit)` (conditional default): fresh mode solve at θ̂ (step tolerance 1e-8)
+    let (bm, _, _, okm) = _crossed_mean_mode(kind, aux, Xμ * θ̂[1:pμ], gidx, G, hidx, Hh,
+                                             clamp.(θ̂[pμ+1:pμ+2], -8.0, 3.0);
+                                             b0 = zeros(G + Hh), tol = 1e-8)
+        okm ? _record_cond_fit!(scales, bm[gidx] .+ bm[G .+ hidx]) : (scales[:cond_fit_failed] = [1.0])
+    end
     fit = DrmFit(fam, blocks, names, θ̂, Matrix(V), -nllhat, n, converged, means, obs, scales)
     _warn_laplace_clamp(fit)   # #959: say when a clamp is active
     return _withnll(fit, nll, grad!)
@@ -3032,16 +4039,18 @@ end
 
 function _crossed_mean_laplace_nuisance_fg(kind, aux_from, n::Int, Xμ, gidx, G,
                                            hidx, Hh, θ; grad::Bool = false,
-                                           b0 = nothing)
+                                           b0 = nothing, mode_tol::Real = 1e-8,
+                                           mode_maxiter::Int = 60)
     pμ = length(θ) - 3
     βμ = θ[1:pμ]
     θσ = clamp(θ[pμ+1], -8.0, 8.0)
     logσ = clamp.(θ[pμ+2:pμ+3], -8.0, 3.0)
     aux = aux_from(θσ)
     η0 = Xμ * βμ
-    b, ch, _, ok = _crossed_mean_mode(kind, aux, η0, gidx, G, hidx, Hh, logσ; b0 = b0)
+    b, ch, _, ok = _crossed_mean_mode(kind, aux, η0, gidx, G, hidx, Hh, logσ; b0 = b0,
+                                      tol = mode_tol, maxiter = mode_maxiter)
     if !ok
-        return grad ? (1e18, zeros(length(θ)), b, false) : (1e18, b, false)
+        return grad ? (1e18, fill(NaN, length(θ)), b, false) : (1e18, b, false)
     end
 
     invg = exp(-2 * logσ[1])
@@ -3112,7 +4121,10 @@ function _fit_crossed_mean_laplace_nuisance(fam, kind, aux_from, n::Int, Xμ, gi
                                             θβ0, θσ0::Real, sigma_scale,
                                             se::Bool = false,
                                             polish_iterations::Int = 0,
-                                            extra_scales = Dict{Symbol,Vector{Float64}}())
+                                            recover_runoff::Bool = true,
+                                            extra_scales = Dict{Symbol,Vector{Float64}}(),
+                                            logsd0 = (log(0.4), log(0.4)),
+                                            alphaguess = nothing)
     pμ = size(Xμ, 2)
     last_b = zeros(G + Hh)
 
@@ -3127,7 +4139,7 @@ function _fit_crossed_mean_laplace_nuisance(fam, kind, aux_from, n::Int, Xμ, gi
                     grad = true, b0 = zeros(G + Hh)
                 )
             end
-            ok || return 1e18, zeros(length(θ))
+            ok || return 1e18, fill(NaN, length(θ))
             last_b .= b
             return val, g
         else
@@ -3156,10 +4168,12 @@ function _fit_crossed_mean_laplace_nuisance(fam, kind, aux_from, n::Int, Xμ, gi
     θ0 = zeros(pμ + 3)
     θ0[1:pμ] .= θβ0
     θ0[pμ+1] = θσ0
-    θ0[pμ+2] = log(0.4)
-    θ0[pμ+3] = log(0.4)
+    θ0[pμ+2] = logsd0[1]
+    θ0[pμ+3] = logsd0[2]
     od = Optim.OnceDifferentiable(nll, grad!, θ0)
-    method = Optim.LBFGS(linesearch = Optim.LineSearches.BackTracking())
+    method = alphaguess === nothing ?
+        Optim.LBFGS(linesearch = Optim.LineSearches.BackTracking()) :
+        Optim.LBFGS(alphaguess = alphaguess, linesearch = Optim.LineSearches.BackTracking())
     res_fast = Optim.optimize(od, θ0, method, Optim.Options(g_tol = g_tol, iterations = 250))
     # #1069: an NB2 fit that ended at the lower dispersion clamp is re-run once from an
     # interior start (a no-op for every other kernel)
@@ -3180,13 +4194,75 @@ function _fit_crossed_mean_laplace_nuisance(fam, kind, aux_from, n::Int, Xμ, gi
         res_fast
     end
     θ̂ = Optim.minimizer(res)
+    # #1088: a first pass that ran off past an upper clamp is re-fitted inside the clamp box;
+    # the re-fit is adopted only if it strictly lowers the objective. Fits that stay inside
+    # the box take exactly the path they took before.
+    disp_bound = _dispersion_clamp(kind)
+    if recover_runoff && _nuisance_runoff(θ̂, pμ, disp_bound) !== nothing
+        nll_runoff = nll(θ̂)
+        rec = _crossed_nuisance_box_refit(nll, grad!, θ0, pμ, disp_bound, g_tol)
+        if rec !== nothing
+            θrec = copy(Optim.minimizer(rec))
+            if isfinite(nll(θrec)) && nll(θrec) < nll_runoff
+                res = rec
+                θ̂ = θrec
+            end
+        end
+    end
     gfinal = zeros(length(θ̂))
     grad!(gfinal, θ̂)
     nllhat = nll(θ̂)
     converged = _laplace_outer_converged(res, nllhat, gfinal, θ̂, n, g_tol)
+    runoff = _nuisance_runoff(θ̂, pμ, disp_bound)
+    if runoff !== nothing
+        converged = false
+        _warn_nuisance_runoff("sparse Laplace, crossed random intercepts with an estimated dispersion",
+                              runoff; refit_tried = recover_runoff)
+    end
+    if !isfinite(nllhat) || nllhat >= 1e17
+        _warn_crossed_nuisance_failed(
+            "sparse Laplace, crossed random intercepts with an estimated dispersion", nllhat)
+    end
     V = if se
-        Hθ = _finite_hessian(nll, θ̂; h = _fd_hessian_step(n))
-        _vcov_from_fd_hessian(Hθ; context = "sparse-Laplace GLMM (crossed-mean nuisance)")
+        # #1073: central differences of the exact gradient, inner mode solve
+        # tightened and cold-started at each stencil point. A clamped coordinate
+        # (flat objective, non-flat gradient) keeps the value-based path.
+        se_tight = _se_grad((θ, tol) -> _crossed_mean_laplace_nuisance_fg(
+            kind, aux_from, n, Xμ, gidx, G, hidx, Hh, θ; grad = true,
+            b0 = zeros(G + Hh), mode_tol = tol, mode_maxiter = _SE_MODE_MAXITER))
+        ctx = "sparse-Laplace GLMM (crossed-mean nuisance)"
+        sd_ks = (pμ + 2):(pμ + 3)
+        disp_clamped = _clamp_active(θ̂, (pμ + 1,); lo = -disp_bound, hi = disp_bound)
+        fixed_sd = _clamped_logsd_coords(θ̂, sd_ks)
+        if !isempty(fixed_sd) && !disp_clamped
+            # #1190: a log SD at its clamp is held fixed there. The objective is flat in that
+            # coordinate but the analytic gradient of every other coordinate is exact at the
+            # clamped value, so the gradient-difference Hessian of the remaining coordinates
+            # stays valid (and far less noisy than the value stencil). Falls back to the value
+            # stencil if a stencil inner solve fails.
+            free = setdiff(eachindex(θ̂), fixed_sd)
+            _SE_MODE_TOL_USED[] = NaN
+            Hfree = _finite_hessian_from_gradient(se_tight, θ̂; context = ctx, coords = free)
+            _warn_se_mode_fallback(ctx, _SE_MODE_TOL_USED[])
+            if !all(isfinite, Hfree)
+                Hfree = _finite_hessian(nll, θ̂; h = _fd_hessian_step(n))[free, free]
+            end
+            _vcov_with_fixed_coords(Hfree, length(θ̂), free, fixed_sd; context = ctx)
+        else
+            Hθ = if _se_hessian_path(θ̂; disp = (pμ + 1,), sd = sd_ks,
+                                     disp_bound = disp_bound) === :value
+                _warn_value_hessian(ctx)
+                _finite_hessian(nll, θ̂; h = _fd_hessian_step(n))
+            else
+                # Tolerance ladder (ported from J3e, #1073): at log-dispersion in (3, 4) the
+                # counts are heavy-tailed and the cold 1e-12 solve stalls on its rounding floor.
+                _SE_MODE_TOL_USED[] = NaN
+                Hgrad = _finite_hessian_from_gradient(se_tight, θ̂; context = ctx)
+                _warn_se_mode_fallback(ctx, _SE_MODE_TOL_USED[])
+                Hgrad
+            end
+            _vcov_with_clamped_logsd_fixed(Hθ, θ̂, sd_ks; context = ctx)
+        end
     else
         fill(NaN, length(θ̂), length(θ̂))
     end
@@ -3196,6 +4272,12 @@ function _fit_crossed_mean_laplace_nuisance(fam, kind, aux_from, n::Int, Xμ, gi
     means = Dict(:mu => [_laplace_mean(kind, dot(@view(Xμ[i, :]), θ̂[1:pμ])) for i in 1:n])
     obs = Dict(:mu => [_laplace_obs(kind, auxhat, i) for i in 1:n])
     scales = merge(Dict(:sigma => fill(sigma_scale(θ̂[pμ+1]), n)), extra_scales)
+    # fitted-row modes for `fitted(fit)` (conditional default): fresh mode solve at θ̂ (step tolerance 1e-8)
+    let (bm, _, _, okm) = _crossed_mean_mode(kind, auxhat, Xμ * θ̂[1:pμ], gidx, G, hidx, Hh,
+                                             clamp.(θ̂[pμ+2:pμ+3], -8.0, 3.0);
+                                             b0 = zeros(G + Hh), tol = 1e-8)
+        okm ? _record_cond_fit!(scales, bm[gidx] .+ bm[G .+ hidx]) : (scales[:cond_fit_failed] = [1.0])
+    end
     fit = DrmFit(fam, blocks, names, θ̂, Matrix(V), -nllhat, n, converged, means, obs, scales)
     _warn_laplace_clamp(fit; logsigma = θ̂[pμ+1:pμ+1])   # #959: say when a clamp is active
     return _withnll(fit, nll, grad!)
@@ -3213,11 +4295,14 @@ function _fit_binomial_crossed_laplace(fam, s, ntr, Xμ, comps, nmμ, g_tol; se:
     p̄ = clamp(sum(s) / max(sum(ntr), 1), 1e-4, 1 - 1e-4)
     θβ0 = zeros(size(Xμ, 2))
     θβ0[1] = log(p̄ / (1 - p̄))
-    return _fit_crossed_mean_laplace(
+    fit = _fit_crossed_mean_laplace(
         fam, Val(:binomial), aux, length(s), Xμ, comps[1][2], comps[1][3],
         comps[2][2], comps[2][3], nmμ, [comps[1][4], comps[2][4]], g_tol;
-        θβ0 = θβ0, se = se, polish_iterations = polish_iterations
+        θβ0 = θβ0, se = se, polish_iterations = polish_iterations,
+        extra_scales = Dict(:trials => Float64.(nint))   # `simulate` needs the trials
     )
+    fit.scales[:trials] = Float64.(nint)    # per-row trials, as every other Binomial route
+    return fit
 end
 
 # ---------------------------------------------------------------------------
@@ -3268,7 +4353,8 @@ rule (`K_h` nodes per axis, default `_crossed_aghq_default_kh(H)`, at most
 """
 function _fit_crossed_mean_aghq(fam, ll, n::Int, Xμ, comps, nmμ, g_tol; θ0,
                                 meanfun, obsvec, K_g::Int = _CROSSED_AGHQ_KG,
-                                K_h::Union{Nothing,Int} = nothing, se::Bool = true)
+                                K_h::Union{Nothing,Int} = nothing, se::Bool = true,
+                                extra_scales = Dict{Symbol,Vector{Float64}}())
     length(comps) == 2 && all(==(1.0), comps[1][1]) && all(==(1.0), comps[2][1]) ||
         throw(ArgumentError("marginal = :AGHQ on crossed random effects supports exactly two " *
                             "random intercepts `(1 | g) + (1 | h)`"))
@@ -3310,7 +4396,7 @@ function _fit_crossed_mean_aghq(fam, ll, n::Int, Xμ, comps, nmμ, g_tol; θ0,
     names = [:mu => nmμ, :resd => labels]
     means = Dict(:mu => [meanfun(dot(@view(Xμ[i, :]), θ̂[1:pμ])) for i in 1:n])
     obs = Dict(:mu => Vector{Float64}(obsvec))
-    scales = Dict{Symbol,Vector{Float64}}()
+    scales = Dict{Symbol,Vector{Float64}}(extra_scales)
     fit = DrmFit(fam, blocks, names, θ̂, Matrix(V), -nllhat, n, converged, means, obs, scales)
     _warn_laplace_clamp(fit)   # #959: say when a clamp is active
     return _withiterations(_withmarginal(_withnll(fit, nll, grad!), :AGHQ), Optim.iterations(res))
@@ -3426,7 +4512,8 @@ function _fit_binomial_crossed_aghq(fam, s, ntr, Xμ, comps, nmμ, g_tol; se::Bo
                                   θ0 = _crossed_aghq_start(lap, size(Xμ, 2)),
                                   meanfun = η -> _laplace_mean(Val(:binomial), η),
                                   obsvec = [_laplace_obs(Val(:binomial), aux, i) for i in eachindex(sint)],
-                                  K_g = K_g, K_h = K_h, se = se)
+                                  K_g = K_g, K_h = K_h, se = se,
+                                  extra_scales = Dict(:trials => Float64.(nint)))
 end
 
 """
@@ -3446,7 +4533,8 @@ function _fit_poisson_crossed_aghq(fam, y, Xμ, comps, nmμ, g_tol; se::Bool = t
 end
 
 function _fit_nb2_crossed_laplace(fam, y, Xμ, Xσ, comps, nmμ, nmσ, g_tol;
-                                  se::Bool = false, polish_iterations::Int = 0)
+                                  se::Bool = false, polish_iterations::Int = 0,
+                                  recover_runoff::Bool = true)
     length(comps) == 2 || error("_fit_nb2_crossed_laplace requires two random-intercept components")
     (size(Xσ, 2) == 1 && all(==(1.0), @view Xσ[:, 1])) || error("drm(NegBinomial2()): crossed random intercepts `(1 | g) + (1 | h)` require `sigma ~ 1`; a covariate `sigma` formula is not implemented on this route. Refit with `sigma ~ 1` (#945).")
     yint = round.(Int, y)
@@ -3466,7 +4554,7 @@ function _fit_nb2_crossed_laplace(fam, y, Xμ, Xσ, comps, nmμ, nmσ, g_tol;
         fam, Val(:nb2_fixed), aux_from, length(y), Xμ, comps[1][2], comps[1][3],
         comps[2][2], comps[2][3], nmμ, nmσ, [comps[1][4], comps[2][4]], g_tol;
         θβ0 = _poisson_fixed_start(y, Xμ), θσ0 = θσ0, sigma_scale = exp,
-        se = se, polish_iterations = polish_iterations
+        se = se, polish_iterations = polish_iterations, recover_runoff = recover_runoff
     )
 end
 
@@ -3500,7 +4588,8 @@ function _fit_nb2_crossed_aghq(fam, y, Xμ, Xσ, comps, nmμ, nmσ, g_tol; se::B
 end
 
 function _fit_gamma_crossed_laplace(fam, y, Xμ, Xσ, comps, nmμ, nmσ, g_tol;
-                                    se::Bool = true, polish_iterations::Int = 5)
+                                    se::Bool = true, polish_iterations::Int = 5,
+                                    recover_runoff::Bool = true)
     length(comps) == 2 || error("_fit_gamma_crossed_laplace requires two random-intercept components")
     (size(Xσ, 2) == 1 && all(==(1.0), @view Xσ[:, 1])) || error("drm(Gamma()): crossed random intercepts `(1 | g) + (1 | h)` require `sigma ~ 1`; a covariate `sigma` formula is not implemented on this route. Refit with `sigma ~ 1` (#945).")
     yv = Float64.(y)
@@ -3518,7 +4607,7 @@ function _fit_gamma_crossed_laplace(fam, y, Xμ, Xσ, comps, nmμ, nmσ, g_tol;
         fam, Val(:gamma_fixed), aux_from, length(yv), Xμ, comps[1][2], comps[1][3],
         comps[2][2], comps[2][3], nmμ, nmσ, [comps[1][4], comps[2][4]], g_tol;
         θβ0 = θβ0, θσ0 = -0.5 * log(α0), sigma_scale = exp,
-        se = se, polish_iterations = polish_iterations
+        se = se, polish_iterations = polish_iterations, recover_runoff = recover_runoff
     )
 end
 
@@ -3549,7 +4638,8 @@ function _fit_gamma_crossed_aghq(fam, y, Xμ, Xσ, comps, nmμ, nmσ, g_tol; se:
 end
 
 function _fit_beta_crossed_laplace(fam, y, Xμ, Xσ, comps, nmμ, nmσ, g_tol;
-                                   se::Bool = true, polish_iterations::Int = 0)
+                                   se::Bool = true, polish_iterations::Int = 0,
+                                   recover_runoff::Bool = true)
     length(comps) == 2 || error("_fit_beta_crossed_laplace requires two random-intercept components")
     (size(Xσ, 2) == 1 && all(==(1.0), @view Xσ[:, 1])) || error("drm(Beta()): crossed random intercepts `(1 | g) + (1 | h)` require `sigma ~ 1`; a covariate `sigma` formula is not implemented on this route. Refit with `sigma ~ 1` (#945).")
     yv = Float64.(y)
@@ -3568,7 +4658,7 @@ function _fit_beta_crossed_laplace(fam, y, Xμ, Xσ, comps, nmμ, nmσ, g_tol;
         fam, Val(:beta_fixed), aux_from, length(yv), Xμ, comps[1][2], comps[1][3],
         comps[2][2], comps[2][3], nmμ, nmσ, [comps[1][4], comps[2][4]], g_tol;
         θβ0 = θβ0, θσ0 = -0.5 * log(φ0), sigma_scale = exp,
-        se = se, polish_iterations = polish_iterations
+        se = se, polish_iterations = polish_iterations, recover_runoff = recover_runoff
     )
 end
 
@@ -3609,7 +4699,8 @@ the verified Beta-family crossed nuisance Laplace spine
 kernel.
 """
 function _fit_betabinomial_crossed_laplace(fam, s, ntr, Xμ, comps, nmμ, nmσ, g_tol;
-                                           se::Bool = true, polish_iterations::Int = 0)
+                                           se::Bool = true, polish_iterations::Int = 0,
+                                           recover_runoff::Bool = true)
     length(comps) == 2 || error("_fit_betabinomial_crossed_laplace requires two random-intercept components")
     all(==(1.0), comps[1][1]) && all(==(1.0), comps[2][1]) ||
         error("_fit_betabinomial_crossed_laplace supports scalar random intercepts only")
@@ -3619,7 +4710,7 @@ function _fit_betabinomial_crossed_laplace(fam, s, ntr, Xμ, comps, nmμ, nmσ, 
         fam, Val(:betabinomial_fixed), aux_from, length(s), Xμ, comps[1][2], comps[1][3],
         comps[2][2], comps[2][3], nmμ, nmσ, [comps[1][4], comps[2][4]], g_tol;
         θβ0 = θβ0, θσ0 = θσ0, sigma_scale = exp,
-        se = se, polish_iterations = polish_iterations,
+        se = se, polish_iterations = polish_iterations, recover_runoff = recover_runoff,
         extra_scales = Dict(:trials => Float64.(nint))
     )
 end

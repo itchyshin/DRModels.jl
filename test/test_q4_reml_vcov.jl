@@ -99,7 +99,12 @@ const BRIDGE_FAMILY = "biv_gaussian"
 # so it has no curvature in the beta directions at all and is not comparable
 # to `vcov(fit)`'s fixed-effect block. Using it here would compare two
 # different quantities, not verify the same one independently.
-function _independent_fd_hessian(fit; h::Real = 1e-3)
+#
+# Step size (#1083): `fit.nll` has ~1e-9 of solver noise, so the error of a
+# second difference is roughly 4e-9 / h^2 (noise) + O(h^2) (truncation). h =
+# 1e-3 left noise-dominated diagonals that CI measured at 2.2e-3 relative
+# error once; h = 3e-3 keeps both terms near 1e-4 on this fixture.
+function _independent_fd_hessian(fit; h::Real = 3e-3)
     θ̂ = fit.theta
     f = fit.nll
     nθ = length(θ̂)
@@ -145,6 +150,23 @@ end
         d_fit = diag(V)
         d_ind = diag(V_ind)
         relerr = abs.(d_fit .- d_ind) ./ max.(abs.(d_fit), 1e-8)
+        @test maximum(relerr) < 1e-3
+    end
+
+    @testset "(a2) independent FD check tolerates ~5e-9 noise in the objective (#1083)" begin
+        # `fit.nll` carries ~1e-9 of noise from its inner solve that differs by
+        # platform and Julia version. Second differences divide that noise by
+        # h^2, so a too-small step turns it into a relative error of several
+        # 1e-3 (CI saw 2.2e-3 once at h = 1e-3). Inject a deterministic 5e-9
+        # perturbation and require the default step to stay inside 1e-3.
+        fit = drm(FORM, Gaussian(); data = DAT, tree = TREE, method = :REML)
+        w = collect(1.0:length(fit.theta))
+        noisy = (theta = fit.theta,
+                 nll = th -> fit.nll(th) + 5e-9 * sin(1e7 * dot(th, w)))
+        V_ind = DRModels._vcov_from_hessian(_independent_fd_hessian(noisy);
+                                            context = "test_q4_reml_vcov noisy check")
+        d_fit = diag(vcov(fit))
+        relerr = abs.(d_fit .- diag(V_ind)) ./ max.(abs.(d_fit), 1e-8)
         @test maximum(relerr) < 1e-3
     end
 

@@ -127,6 +127,10 @@ function _ls_frontend_design(kind, f, lc, data)
         f.response2 === nothing &&
             error("BetaBinomial() location–scale needs a two-column response: " *
                   "bf(cbind(successes, failures) ~ … (1|tag|g), sigma ~ … (1|tag|g))")
+        _require_finite_inputs(; response=(_table_column(data, f.response), string(f.response)),
+                               response_allow_missing=false)
+        _require_finite_inputs(; response=(_table_column(data, f.response2), string(f.response2)),
+                               response_allow_missing=false)
         s = Float64.(getproperty(data, f.response))
         fl = Float64.(getproperty(data, f.response2))
         (all(si -> si ≥ 0 && isinteger(si), s) && all(fi -> fi ≥ 0 && isinteger(fi), fl)) ||
@@ -169,7 +173,9 @@ function _ls_frontend_grouping(lc, data, tree, K, A, coords)
         return _locscale_phylo_setup(tree, labels)
     else  # :relmat / :animal / :spatial
         C = _poisson_structured_cov(lc.structkind, lc.group, K, A, coords)
-        return _locscale_relmat_setup(C, labels)
+        # relmat/animal K enters RAW (native drmTMB); precomputed spatial keeps the
+        # correlation form.
+        return _locscale_relmat_setup(C, labels; normalize = lc.structkind === :spatial)
     end
 end
 

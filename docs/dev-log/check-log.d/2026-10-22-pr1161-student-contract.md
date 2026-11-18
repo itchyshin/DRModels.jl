@@ -1,0 +1,1 @@
+| 2026-10-22 | **PR #1161: fixed-effect Student accessor contract, refreshed on current main** | Julia 1.10.0, focused `test/test_student_contract.jl` 61/61; `git diff --check` | ✅ Updated the Inf-response expectation to the shared finite-input refusal now used on current main; retained NaN omission assertions. Full suite and updated-head CI were not run. | Codex |

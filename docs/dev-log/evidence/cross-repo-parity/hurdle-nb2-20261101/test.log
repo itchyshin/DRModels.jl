@@ -1,0 +1,47 @@
+julia-family-hurdle_nbinom2: ................................123
+
+══ Failed ══════════════════════════════════════════════════════════════════════
+── 1. Error ('test-julia-family-hurdle_nbinom2.R:234:3'): hurdle nbinom2 through
+<callr_status_error/callr_error/rlib_error_3_0/rlib_error/error/condition>
+Error: ! in callr subprocess.
+Caused by error in `UseMethod("fixef")`:
+! no applicable method for 'fixef' applied to an object of class "drmTMB_julia"
+Backtrace:
+    ▆
+ 1. └─drm_hurdle_nb2_live() at test-julia-family-hurdle_nbinom2.R:234:3
+ 2.   └─callr::r(...) at test-julia-family-hurdle_nbinom2.R:162:3
+ 3.     └─callr:::get_result(output = out, options)
+ 4.       └─throw(callr_remote_error_with_stack(remerr, output), parent = fix_msg(remerr[[2]]))
+
+── 2. Error ('test-julia-family-hurdle_nbinom2.R:295:3'): hurdle nbinom2 bridge 
+<callr_status_error/callr_error/rlib_error_3_0/rlib_error/error/condition>
+Error: ! in callr subprocess.
+Caused by error in `UseMethod("fixef")`:
+! no applicable method for 'fixef' applied to an object of class "drmTMB_julia"
+Backtrace:
+    ▆
+ 1. └─drm_hurdle_nb2_live() at test-julia-family-hurdle_nbinom2.R:295:3
+ 2.   └─callr::r(...) at test-julia-family-hurdle_nbinom2.R:162:3
+ 3.     └─callr:::get_result(output = out, options)
+ 4.       └─throw(callr_remote_error_with_stack(remerr, output), parent = fix_msg(remerr[[2]]))
+
+── 3. Error ('test-julia-family-hurdle_nbinom2.R:315:3'): hurdle nbinom2 through
+<callr_status_error/callr_error/rlib_error_3_0/rlib_error/error/condition>
+Error: ! in callr subprocess.
+Caused by error in `UseMethod("fixef")`:
+! no applicable method for 'fixef' applied to an object of class "drmTMB_julia"
+Backtrace:
+    ▆
+ 1. └─drm_hurdle_nb2_live() at test-julia-family-hurdle_nbinom2.R:315:3
+ 2.   └─callr::r(...) at test-julia-family-hurdle_nbinom2.R:162:3
+ 3.     └─callr:::get_result(output = out, options)
+ 4.       └─throw(callr_remote_error_with_stack(remerr, output), parent = fix_msg(remerr[[2]]))
+
+══ DONE ════════════════════════════════════════════════════════════════════════
+Error:
+! Test failures.
+Julia bridge: 3 live tests ran; bridge glue was exercised in this configuration.
+Execution halted
+real 80.70
+user 77.06
+sys 2.86

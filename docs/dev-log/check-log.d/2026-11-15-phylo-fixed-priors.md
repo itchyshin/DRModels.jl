@@ -1,0 +1,7 @@
+# Check log: phylogenetic fixed priors
+
+The isolated implementation starts from DRModels.jl `21d07c5afc920d43de3eda2466efc2ad94c4a1c4`. Normal coefficient priors target `mu` and `sigma` in complete-data, unit-weight Gaussian ML models with one phylogenetic mean intercept and matching phylogenetic SD regression. The qualified prototype uses the dense solver and refuses automatic sparse selection for more than 500 groups.
+
+A separately authored dense Gaussian oracle checked objectives, scores and full Hessians at five points. A second public-tree fixture, created after preliminary package comparisons, was independently reviewed against objective-only finite differences; the fixture and provenance are in `test/fixtures/phylo_fixed_priors/`. The Julia route matched the public-tree objective and score at five points and the full Hessian against a separate dense calculation. On the 16-tip interior fixture, its objective error was 4.55e-13, maximum coefficient error 2.21e-12 and maximum score 6.11e-11.
+
+The focused prior-table and fixed-prior regression tests passed on Totoro. The existing phylogenetic location-scale regression test passed 95 checks using StableRNGs 1.1.0 in an isolated test environment. A live R-to-Julia test matched the independent objective and data likelihood, accepted constructor and table inputs, and rejected a changed target. These are fixture-specific results. Full package checks and cross-lane reconciliation remain pending; no coverage or interval-calibration claim is made.
