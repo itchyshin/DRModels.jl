@@ -4531,10 +4531,45 @@ function _bootstrap_ci_rows(rows)
     ]
 end
 
+# A 2x2 log-Cholesky block (`:recov`, `:phylocov`) stores `L = [L11 0; L21 L22]`
+# with log diagonals (`[logL11, logL22, L21]` or `[logL11, L21, logL22]`; the
+# coefficient names say which). Unpack each draw into the intercept SD (L11),
+# slope SD (sqrt(L21^2 + L22^2)) and correlation (L21 / slope SD), and reuse the
+# natural-scale `sd_*` / `cor_*` cutoffs. Blocks of any other shape are skipped.
+function _bootstrap_cholesky_boundary_names(pp, r, nms, draws)
+    length(nms) == 3 || return String[]
+    idx = Dict{String,Int}()
+    grp = ""
+    for (j, n) in enumerate(nms)
+        parts = rsplit(String(n), ":"; limit = 2)
+        length(parts) == 2 && parts[2] in ("L11", "L21", "L22") || return String[]
+        idx[parts[2]] = j
+        grp = parts[1]
+    end
+    length(idx) == 3 || return String[]
+    c(k) = r[idx[k]]
+    L11 = exp.(@view draws[:, c("L11")])
+    L22 = exp.(@view draws[:, c("L22")])
+    L21 = @view draws[:, c("L21")]
+    slope = sqrt.(L21 .^ 2 .+ L22 .^ 2)
+    cor = L21 ./ slope
+    out = String[]
+    for (nm, vals, key) in (("sd_intercept", L11, :sd_intercept),
+                            ("sd_slope", slope, :sd_slope),
+                            ("cor", cor, :cor_slope_intercept))
+        _bootstrap_param_at_boundary(key, vals) && push!(out, string(pp, ":", grp, ":", nm))
+    end
+    return out
+end
+
 function _bootstrap_boundary_params(fit0, draws)
     names = String[]
     size(draws, 1) < _BOOTSTRAP_BOUNDARY_MIN_DRAWS && return names
     for ((pp, r), (_, nms)) in zip(fit0.blocks, fit0.coefnames)
+        if pp === :recov || pp === :phylocov
+            append!(names, _bootstrap_cholesky_boundary_names(pp, r, nms, draws))
+            continue
+        end
         for (j, col) in enumerate(r)
             _bootstrap_param_at_boundary(pp, @view draws[:, col]) || continue
             push!(names, string(pp, ":", nms[j]))
