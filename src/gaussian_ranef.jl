@@ -784,6 +784,8 @@ function _re_lbfgs_with_restart(nll, θ0::AbstractVector, θ0_restart::AbstractV
 end
 
 _sd_prior_stationary(score) = all(isfinite, score) && maximum(abs, score) <= 1e-6
+_multi_sd_prior_converged(optim_ok, score, theta, rows) = optim_ok && _sd_prior_stationary(score) &&
+    all(row -> _sd_prior_interior(theta[row.index]) && abs(theta[row.index]) < 30.0, rows)
 # Reject a numerically zero or overflowing variance even when a nearly flat
 # Gamma density makes the score alone look small. This is not an optimizer bound.
 _sd_prior_interior(eta) = isfinite(eta) && 0 < exp(2eta) < Inf && isfinite(exp(-2eta))
@@ -804,10 +806,18 @@ a single intercept only — σ-RE, slopes, and multi-ranef stay rejected.
 Worked example: `test/test_reml_ordinary_ranef.jl` (not in the default suite yet).
 """
 function _fit_ranef_gaussian(fam::Gaussian, y, Xμ, Xσ, gidx, G, w, nmμ, nmσ, grp, g_tol;
-                             reml::Bool = false, prior_rows = nothing, sd_prior = nothing, sd_specs = nothing)
+                             reml::Bool = false, prior_rows = nothing, sd_prior = nothing, sd_specs = nothing,
+                             prior_w = nothing)
     n = length(y)
     pμ, pσ = size(Xμ, 2), size(Xσ, 2)
-    const_2pi = 0.5 * n * log(2π)
+    # `prior_w` (drmTMB `weights`): row i's log-density is multiplied by prior_w[i]. For the
+    # Gaussian marginal that makes the data precision of row i prior_w[i]/σ_i² and the
+    # normalising term prior_w[i]·log(2πσ_i²) (not log(2πσ_i²/prior_w[i])). `nothing` keeps
+    # the unweighted arithmetic untouched.
+    pw = prior_w === nothing ? nothing : Vector{Float64}(prior_w)
+    pw === nothing || prior_rows === nothing ||
+        throw(ArgumentError("drm: `weights` cannot be combined with fixed-effect priors on this route"))
+    const_2pi = 0.5 * (pw === nothing ? n : sum(pw)) * log(2π)
     const_pμ = 0.5 * pμ * log(2π)
 
     # ML Woodbury nll. The quadratic form is the cancellation-free
@@ -822,14 +832,15 @@ function _fit_ranef_gaussian(fam::Gaussian, y, Xμ, Xσ, gidx, G, w, nmμ, nmσ,
         rv = Vector{T}(undef, n); invDv = Vector{T}(undef, n)
         logdetD = zero(T)
         @inbounds for i in 1:n
-            invD = exp(-2 * ησ[i])
+            pwi = pw === nothing ? 1.0 : pw[i]
+            invD = pwi * exp(-2 * ησ[i])
             r = y[i] - ημ[i]
             rv[i] = r; invDv[i] = invD
             k = gidx[i]
             wi = w[i]
             S[k] += wi * wi * invD                 # (ZᵀD⁻¹Z)_kk = Σ w_i²/D_i
             C[k] += wi * r * invD                  # (ZᵀD⁻¹r)_k  = Σ w_i r_i/D_i
-            logdetD += 2 * ησ[i]                   # log D_i
+            logdetD += pwi * 2 * ησ[i]             # log D_i (weighted: w_i · log σ_i²)
         end
         logdetCap = zero(T)
         @inbounds for k in 1:G
@@ -852,7 +863,7 @@ function _fit_ranef_gaussian(fam::Gaussian, y, Xμ, Xσ, gidx, G, w, nmμ, nmσ,
         S = zeros(T, G)
         invDv = Vector{T}(undef, n)
         @inbounds for i in 1:n
-            invD = exp(-2 * ησ[i])
+            invD = (pw === nothing ? 1.0 : pw[i]) * exp(-2 * ησ[i])
             invDv[i] = invD
             wi = w[i]
             S[gidx[i]] += wi * wi * invD
@@ -979,13 +990,14 @@ function _fit_ranef_gaussian(fam::Gaussian, y, Xμ, Xσ, gidx, G, w, nmμ, nmσ,
         ημ = Xμ * βμ; ησ = Xσ * βσ
         S = zeros(G); C = zeros(G)
         @inbounds for i in 1:n
-            invD = exp(-2 * ησ[i]); k = gidx[i]
+            invD = (pw === nothing ? 1.0 : pw[i]) * exp(-2 * ησ[i]); k = gidx[i]
             S[k] += w[i]^2 * invD
             C[k] += w[i] * (y[i] - ημ[i]) * invD
         end
         [C[k] / (1 / σb² + S[k]) for k in 1:G]
     end
     re = Dict(Symbol(grp) => blup)
+    _record_cond_fit!(scales, w .* blup[gidx])   # fitted-row modes for `fitted(fit)` (conditional default)
     # CONVERGED MEANS THE GRADIENT CRITERION HERE (#609 item 2, measured 2026-09-05).
     #
     # `Optim.converged(res)` is the OR of the x, f and g criteria. `Optim.Options(
@@ -1252,6 +1264,7 @@ function _fit_correlated_ranef_gaussian(fam::Gaussian, y, Xμ, Xσ, gidx, G, xs,
         hcat(l11 .* v1, cc .* v1 .+ l22 .* v2)
     end
     re = Dict(Symbol(grp) => blup)
+    _record_cond_fit!(scales, blup[gidx, 1] .+ xs .* blup[gidx, 2])   # fitted-row modes for `fitted(fit)`
     fit = _withranef(_withnll(DrmFit(fam, blocks, names, θ̂, V, -nll(θ̂), n, drm_optim_converged(res), means, obs, scales), nll_ml), re)
     reml && return _withreml(fit, -nll(θ̂), -nll_ml(θ̂))
     return fit
@@ -1319,13 +1332,18 @@ function vc(fit::DrmFit)
         throw(ArgumentError("vc: this fit models the random-effect SD with covariates " *
             "(`sd(group) ~ ...`); use `coef(fit, :sd)` for the log-SD coefficients."))
     d = Dict{Symbol,Matrix{Float64}}()
+    isd = _intercept_only_sd(fit)
+    isd === nothing || (d[isd.group] = fill(isd.sd^2, 1, 1))
     # q=4 phylogenetic coevolution: the raw 4×4 group-level Σ_a is stashed on
     # `ranef` (axes mu1,mu2,sigma1,sigma2); surface it here per #192.
     if fit.ranef isa NamedTuple && haskey(fit.ranef, :Sigma_a)
         d[Symbol(fit.ranef.group)] = Matrix{Float64}(fit.ranef.Sigma_a)
     end
     for (p, r) in fit.blocks
-        if p === :recov
+        if p === :recov && _recov_is_sd_corr(fit)
+            grp, _, _, Σ = _recov_sd_corr_decode(fit, r)
+            d[Symbol(grp)] = Σ
+        elseif p === :recov
             a, b, cc = fit.theta[r]
             l11 = exp(a); l22 = exp(b)
             Σ = [l11^2 cc*l11; cc*l11 cc^2+l22^2]
@@ -1404,7 +1422,8 @@ function _reml_add_restriction(nll_ml_val, XtVinvX, p::Int)
 end
 
 function _fit_multi_ranef_gaussian(fam::Gaussian, y, Xμ, Xσ, comps, nmμ, nmσ, g_tol;
-                                   reml::Bool = false)
+                                   reml::Bool = false, prior_rows=nothing,
+                                   sd_priors=nothing, prior_specs=nothing)
     n = length(y); pμ, pσ = size(Xμ, 2), size(Xσ, 2)
     K = length(comps)
     # #977: Z is kept sparse (one nonzero per component per row) and the Float64
@@ -1418,7 +1437,7 @@ function _fit_multi_ranef_gaussian(fam::Gaussian, y, Xμ, Xσ, comps, nmμ, nmσ
     cache = Ref{Any}(nothing)     # factor at the last Float64 θ: grad! reuses nll's
     Zdense = Ref{Union{Nothing,Matrix{Float64}}}(nothing)
     _zdense() = (Zdense[] === nothing && (Zdense[] = Matrix(des.Z)); Zdense[]::Matrix{Float64})
-    function nll(θ)
+    function data_nll(θ)
         βμ = θ[1:pμ]; βσ = θ[pμ+1:pμ+pσ]
         ημ = Xμ * βμ
         ησ = clamp.(Xσ * βσ, -30.0, 30.0)          # bound σ predictor: keep exp finite
@@ -1442,7 +1461,7 @@ function _fit_multi_ranef_gaussian(fam::Gaussian, y, Xμ, Xσ, comps, nmμ, nmσ
         return val
     end
 
-    function grad!(Gout, θ)
+    function data_grad!(Gout, θ)
         fill!(Gout, 0.0)
         βμ = θ[1:pμ]; βσ = θ[pμ+1:pμ+pσ]
         ημ = Xμ * βμ
@@ -1473,6 +1492,21 @@ function _fit_multi_ranef_gaussian(fam::Gaussian, y, Xμ, Xσ, comps, nmμ, nmσ
             Gout[pμ+pσ+k] = sum(1 .- dH[cols]) - sum(abs2, bscaled[cols])
         end
         return Gout
+    end
+    penalized = prior_rows !== nothing
+    nll(θ) = penalized ? data_nll(θ) + _fixed_prior_value(prior_rows, θ) +
+        sum((_sd_prior_value(row, θ) for row in sd_priors); init=zero(eltype(θ))) : data_nll(θ)
+    function grad!(Gout, θ)
+        data_grad!(Gout, θ)
+        if penalized
+            for row in prior_rows
+                Gout[row.index] += row.precision * (θ[row.index] - row.mean)
+            end
+            for row in sd_priors
+                Gout[row.index] += row.rate * exp(θ[row.index]) - (row.shape - 1)
+            end
+        end
+        Gout
     end
     βμ0 = Xμ \ y; res0 = y - Xμ * βμ0
     s0 = std(res0) / sqrt(K + 1)                   # balanced variance split: resid + K REs
@@ -1506,6 +1540,9 @@ function _fit_multi_ranef_gaussian(fam::Gaussian, y, Xμ, Xσ, comps, nmμ, nmσ
     end
     res = Optim.optimize(od, θ0, Optim.LBFGS(), Optim.Options(g_tol = g_tol))
     θ̂ = Optim.minimizer(res)
+    if penalized && any(row -> abs(θ̂[row.index]) >= 30.0, sd_priors)
+        throw(ArgumentError("targeted random-effect SD reached the likelihood clamp; no interior prior fit is available"))
+    end
     # vcov from the AD Hessian of `nll`. `nll` returns a flat 1e18 penalty when
     # the capacitance factorisation fails, so ForwardDiff's directional probes near a
     # near-singular capacitance (extreme σ ratios) can straddle that branch and
@@ -1558,7 +1595,26 @@ function _fit_multi_ranef_gaussian(fam::Gaussian, y, Xμ, Xσ, comps, nmμ, nmσ
         end
         d
     end
-    fit = _withranef(_withnll(DrmFit(fam, blocks, names, θ̂, V, -nll(θ̂), n, drm_optim_converged(res), means, obs, scales), nll, grad!), blup)
+    # Fitted-row modes for `fitted(fit)`: Z b̂ over all components (the per-factor Dict
+    # above keys a slope and an intercept on the SAME grouping factor under one name).
+    let
+        βμ = θ̂[1:pμ]; βσ = θ̂[pμ+1:pμ+pσ]
+        ησ = clamp.(Xσ * βσ, -30.0, 30.0); r = y .- Xμ * βμ
+        σk = [exp(clamp(θ̂[pμ+pσ+k], -30.0, 30.0)) for k in 1:K]
+        σcol = [σk[colcomp[c]] for c in 1:q]
+        bscaled = _multi_re_factor(des.Z * Diagonal(σcol), exp.(-ησ), r).bhat
+        _record_cond_fit!(scales, des.Z * (σcol .* bscaled))
+    end
+    converged = drm_optim_converged(res)
+    if penalized && !isempty(sd_priors)
+        score = zeros(length(θ̂)); grad!(score, θ̂)
+        converged = _multi_sd_prior_converged(converged, score, θ̂, sd_priors)
+    end
+    fit = _withranef(_withnll(DrmFit(fam, blocks, names, θ̂, V, -data_nll(θ̂), n, converged, means, obs, scales), nll, grad!), blup)
+    if penalized
+        return isempty(sd_priors) ? _with_fixed_priors(fit, prior_rows, data_nll; preserve_grad=true) :
+               _with_multi_sd_priors(fit, prior_rows, sd_priors, data_nll, prior_specs)
+    end
     # Profile intervals reuse the ML nll (same convention as the `(1 | g)` REML route).
     reml && return _withreml(fit, -nll_reml(θ̂), -nll(θ̂))
     return fit
@@ -1950,6 +2006,7 @@ function _fit_musigma_ranef_gaussian(fam::Gaussian, y, Xμ, Xσ, gidx, G, nmμ, 
         end
     end
     re = Dict(Symbol(grp) => blup_mu, Symbol("$(grp)_logsigma") => blup_sigma)
+    _record_cond_fit!(scales, blup_mu[gidx])   # fitted-row mean modes for `fitted(fit)` (Gaussian mean ignores the sigma mode)
 
     fit = _withranef(_withnll(DrmFit(fam, blocks, names, θ̂, V, -nll(θ̂), n, drm_optim_converged(res), means, obs, scales), nll), re)
     return _withmarginal(fit, :Laplace)

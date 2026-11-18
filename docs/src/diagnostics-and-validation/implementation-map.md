@@ -25,7 +25,7 @@ sparse CHOLMOD factorisation those routes rely on. The rows below differ in
 | crossed `(1\|g)+(1\|h)` | Woodbury capacitance `M = I + Z̃ᵀD⁻¹Z̃`, sparse Cholesky (sparse QR fallback), selected-inverse gradient | `_fit_multi_ranef_gaussian` |
 | scale RE `sigma ~ (1\|g)` | 32-node Gauss–Hermite marginal on log σ (default); per-group 1-D Laplace with `marginal = :Laplace` | `_fit_sigma_ranef_gaussian` |
 | `relmat` / `animal` / `phylo` | structured GLS (determinant lemma + Woodbury, known K) | `_fit_structured_gaussian` |
-| `spatial(1\|site)` | exponential kernel `K(ρ)=exp(-d/ρ)`, range estimated (drmTMB fixes it at the median pairwise distance) | `_fit_spatial_gaussian` |
+| `spatial(1\|site)` | exponential kernel, range fixed at the median pairwise distance (as drmTMB); the relmat engine with that K | `_fit_structured_gaussian` |
 | meta-analysis `meta_V(v)` | known-variance GLS + heterogeneity τ | `_fit_meta_gaussian` |
 
 ## Non-Gaussian families

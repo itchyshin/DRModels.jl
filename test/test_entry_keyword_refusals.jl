@@ -39,7 +39,7 @@ function _kw_values(kws, d)
 end
 
 # keywords each route does accept (so they must NOT be named as unsupported)
-const _KW_ACCEPTED = Dict(:LogNormal => [:tree, :K], :Student => Symbol[],
+const _KW_ACCEPTED = Dict(:LogNormal => [:tree, :K], :Student => [:coords],
                           :Tweedie => [:tree, :K, :A, :coords])
 
 # (family, keyword set) cells from crash_cells.tsv, as listed in the fuzz-gap-map README
@@ -66,6 +66,12 @@ end
     for (fam, kws) in _KW_CELLS
         kw = _kw_values(kws, d)
         f = _kw_formula(_kw_marker_of(kws))
+        if fam isa Student && kws == [:coords]
+            # Student `spatial(1 | g)` with `coords` is now a fitted route (test_student_spatial_coords.jl),
+            # so this cell no longer refuses: assert it fits.
+            @test drm(f, fam; data = d, kw...) isa DRModels.DrmFit
+            continue
+        end
         err = try
             drm(f, fam; data = d, kw...)
             nothing

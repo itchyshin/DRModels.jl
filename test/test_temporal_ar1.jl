@@ -129,8 +129,8 @@ using Distributions: MvNormal, Normal, logpdf
         @test first.(fit.blocks) == [:mu, :sigma, :resd, :temporal_phi]
         @test Dict(fit.coefnames)[:temporal_phi] == [lbl]
         @test temporal_parameters(fit).label == lbl
-        @test fitted(fit) ≈ X * coef(fit, :mu)
-        @test predict(fit, d) ≈ fitted(fit)
+        @test fitted(fit; re = :zero) ≈ X * coef(fit, :mu)
+        @test predict(fit, d) ≈ fitted(fit; re = :zero)
         @test predict(fit, (x = [0.0, 1.0],)) ≈ coef(fit, :mu)[1] .+ [0.0, 1.0] .* coef(fit, :mu)[2]
         @test re_sd(fit)[:id] ≈ temporal_parameters(fit).sd
         @test vc(fit)[:id][1, 1] ≈ temporal_parameters(fit).sd^2
@@ -147,7 +147,7 @@ using Distributions: MvNormal, Normal, logpdf
         @test length(ct.rownms) == 5
         @test isfinite(aic(fit)) && dof(fit) == 5
         pp = predict_parameters(fit, d)
-        @test pp[:mu] ≈ fitted(fit) && all(≈(temporal_parameters(fit).sigma), pp[:sigma])
+        @test pp[:mu] ≈ fitted(fit; re = :zero) && all(≈(temporal_parameters(fit).sigma), pp[:sigma])
     end
 
     @testset "persistence near ±1 with long gaps (tanh rounds to ±1)" begin
@@ -174,7 +174,7 @@ using Distributions: MvNormal, Normal, logpdf
         fit = drm(fAR, Gaussian(); data = d)
         tp = temporal_parameters(fit)
         Y = simulate(fit; nsim = 400, rng = StableRNG(62))
-        E = Y .- fitted(fit)
+        E = Y .- fitted(fit; re = :zero)
         v_model = tp.sd^2 + tp.sigma^2
         @test mean(var(E; dims = 1)) ≈ v_model rtol = 0.03
         # lag-1 pairs: same series, occasions one apart

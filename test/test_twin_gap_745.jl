@@ -116,8 +116,12 @@ end
             bf(@formula(y ~ x + (1 | g) + (1 | h)), fσ), Gaussian(); data = dh)
         @test_throws r"a single `sigma` random INTERCEPT" drm(
             bf(fμ, @formula(sigma ~ (1 | g) + (1 | h))), Gaussian(); data = dh)
-        @test_throws r"SAME grouping factor" drm(
-            bf(fμ, @formula(sigma ~ (1 | h))), Gaussian(); data = dh)
+        # A different grouping COLUMN is no longer refused (src/sigma_ranef_blocks_laplace.jl, dense Laplace
+        # with one latent field per factor). Here `h` repeats `g`'s levels, so it is the same model as the
+        # per-group 2x2 route and must give its log-likelihood.
+        fh = drm(bf(fμ, @formula(sigma ~ (1 | h))), Gaussian(); data = dh)
+        @test fh isa DrmFit && fh.converged
+        @test abs(loglik(fh) - loglik(fit)) < 1e-6
         @test_throws r"structured .* mean marker or `meta_V" drm(
             bf(@formula(y ~ x + (1 | g) + meta_V(v)), fσ), Gaussian();
             data = merge(d, (v = fill(1.0, length(d.y)),)))
