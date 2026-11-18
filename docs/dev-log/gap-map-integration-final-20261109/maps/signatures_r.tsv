@@ -1,0 +1,70 @@
+cells	outcome	subtype	exception_type	normalised_message
+1004	REFUSES	cli_abort	abort:rlang_error	`T` is implemented for univariate/bivariate Gaussian and binomial models.
+432	REFUSES	cli_abort	abort:rlang_error	`T` currently reserves only intercept and one-slope structured terms.
+144	REFUSES	cli_abort	abort:rlang_error	Only independent `T` `T` random intercepts and slopes are implemented in this slice.
+80	REFUSES	cli_abort	abort:rlang_error	Binomial `T` `T` effects currently support only an unlabelled qN intercept.
+66	REFUSES	cli_abort	abort:rlang_error	Binomial correlated random effects support one unlabelled block of size q >= N with an intercept.
+56	REFUSES	cli_abort	abort:rlang_error	Lognormal models only support `T` and `T`.
+48	REFUSES	cli_abort	abort:rlang_error	Only independent {.fn Gamma} `T` random intercepts and slopes are implemented in this slice.
+47	REFUSES	cli_abort	abort:rlang_error	Binomial `T` requires exactly one admitted ordinary unlabelled `T` random-effect term.
+43	REFUSES	cli_abort	abort:rlang_error	Only independent {.fn lognormal} `T` random intercepts and slopes are implemented in this slice.
+41	REFUSES	cli_abort	abort:rlang_error	Ordinary correlated NBN random effects support one unlabelled Poisson intercept-slope block or the matching ordinary NBN block.
+39	REFUSES	cli_abort	abort:rlang_error	Ordinary correlated Poisson random effects support one unlabelled Poisson intercept-slope block or the matching ordinary NBN block.
+31	REFUSES	cli_abort	abort:rlang_error	`T` is not implemented with direct ordinary random-effect scale formulae yet.
+31	REFUSES	cli_abort	abort:rlang_error	NBN structured `T` effects currently support only the implemented labelled covariance forms.
+28	REFUSES	cli_abort	abort:rlang_error	`T` models only support `T`, `T`, and intercept-only `T`.
+22	REFUSES	cli_abort	abort:rlang_error	Tweedie `T` `T` effects support only an unlabelled q=N intercept.
+20	REFUSES	cli_abort	abort:rlang_error	Structured random-effect scale formulas currently require one structured coefficient.
+20	REFUSES	cli_abort	abort:rlang_error	`T` `T` `T` effects currently support only unlabelled q=N intercepts.
+18	REFUSES	cli_abort	abort:rlang_error	Gaussian random-effect SD regression does not support the selected random-effect shape.
+18	REFUSES	cli_abort	abort:rlang_error	Gamma `T` `T` effects support only an unlabelled q=N intercept.
+16	REFUSES	cli_abort	abort:rlang_error	Gaussian ordinary `T` regression cannot be combined with a correlated random-effect block of five or more coefficients, a labelled block, or more than one such block.
+15	REFUSES	cli_abort	abort:rlang_error	Structured-effect syntax is planned, not implemented.
+14	REFUSES	cli_abort	abort:rlang_error	Animal-model labelled intercept-plus-slope structured covariance is only implemented for the all-four bivariate Gaussian block in this slice.
+14	REFUSES	cli_abort	abort:rlang_error	relmat labelled intercept-plus-slope structured covariance is only implemented for the all-four bivariate Gaussian block in this slice.
+14	REFUSES	cli_abort	abort:rlang_error	Phylogenetic labelled intercept-plus-slope structured covariance is only implemented for the all-four bivariate Gaussian block in this slice.
+14	REFUSES	cli_abort	abort:rlang_error	Spatial labelled intercept-plus-slope structured covariance is only implemented for the all-four bivariate Gaussian block in this slice.
+14	REFUSES	cli_abort	abort:rlang_error	NBN structured SD regression currently supports one animal, phylogenetic, related-matrix or spatial location coefficient, or an `T` intercept plus one slope with one SD f
+14	REFUSES	cli_abort	abort:rlang_error	Student-t animal random-effect SD regression is not implemented yet.
+14	REFUSES	cli_abort	abort:rlang_error	Student-t relatedness-matrix random-effect SD regression is not implemented yet.
+14	REFUSES	cli_abort	abort:rlang_error	Student-t phylogenetic random-effect SD regression is not implemented yet.
+14	REFUSES	cli_abort	abort:rlang_error	Student-t models only support `T`, `T`, and `T`.
+12	REFUSES	cli_abort	abort:rlang_error	Binomial structured intercept-slope SD regression requires one SD formula for each coefficient.
+11	REFUSES	cli_abort	abort:rlang_error	Beta relmat mu effects require an unlabelled intercept-only or intercept-plus-one-slope term.
+11	REFUSES	cli_abort	abort:rlang_error	`T` `T` `T` effects currently support only unlabelled intercept or intercept-plus-one-slope terms.
+11	REFUSES	cli_abort	abort:rlang_error	Beta coordinate-spatial mu effects require an unlabelled intercept-only or intercept-plus-one-slope term.
+10	REFUSES	cli_abort	abort:rlang_error	Beta ordinary random-effect SD regression currently supports one ordinary `T` intercept or independent slope with fixed-effect `T`.
+10	REFUSES	cli_abort	abort:rlang_error	lognormal structured `T` effects do not admit `T` in this route.
+10	REFUSES	cli_abort	abort:rlang_error	Tweedie structured `T` effects do not admit `T` in this route.
+10	REFUSES	cli_abort	abort:rlang_error	Tweedie `T` `T` effects are intercept-only in this q=N route.
+10	REFUSES	cli_abort	abort:rlang_error	Tweedie random-effect SD regression currently supports one ordinary `T` intercept or one independent numeric slope with fixed-effect `T` and `T`.
+8	REFUSES	cli_abort	abort:rlang_error	Gaussian animal intercept-slope SD regression requires one SD formula for each coefficient.
+8	REFUSES	cli_abort	abort:rlang_error	Gaussian relmat intercept-slope SD regression requires one SD formula for each coefficient.
+8	REFUSES	cli_abort	abort:rlang_error	Gaussian phylo intercept-slope SD regression requires one SD formula for each coefficient.
+8	REFUSES	cli_abort	abort:rlang_error	Gaussian spatial intercept-slope SD regression requires one SD formula for each coefficient.
+8	REFUSES	cli_abort	abort:rlang_error	Gaussian per-coefficient SD regression for a correlated block of three or four coefficients can only target that block.
+8	REFUSES	cli_abort	abort:rlang_error	Poisson structured `T` effects currently support only the implemented labelled covariance forms.
+8	REFUSES	cli_abort	abort:rlang_error	lognormal scalar SD regression cannot yet combine another random-effect coefficient on the same group.
+8	REFUSES	cli_abort	abort:rlang_error	Student-t scalar SD regression cannot yet combine another random-effect coefficient on the same group.
+6	REFUSES	cli_abort	abort:rlang_error	`T` supports phylogenetic (`T`) structured effects, scale-side `T`/`T`/`T` effects, and pure mean-side unlabelled intercept or intercept-plus-one-slope effects for those
+6	REFUSES	cli_abort	abort:rlang_error	Binomial `T` `T` effects currently support only an intercept-only qN term.
+6	REFUSES	cli_abort	abort:rlang_error	lognormal `T` `T` effects support only an unlabelled q=N intercept.
+5	REFUSES	cli_abort	abort:rlang_error	Gamma coordinate-spatial mu effects support only unlabelled independent coefficients.
+5	REFUSES	cli_abort	abort:rlang_error	Correlated q = N binomial random effects are not implemented with `T`.
+4	REFUSES	cli_abort	abort:rlang_error	Poisson animal intercept-slope SD regression requires one SD formula for each coefficient.
+4	REFUSES	cli_abort	abort:rlang_error	Poisson relmat intercept-slope SD regression requires one SD formula for each coefficient.
+4	REFUSES	cli_abort	abort:rlang_error	Poisson spatial intercept-slope SD regression requires one SD formula for each coefficient.
+4	REFUSES	cli_abort	abort:rlang_error	Gamma animal intercept-slope SD regression requires one SD formula for each coefficient.
+4	REFUSES	cli_abort	abort:rlang_error	Gamma relmat intercept-slope SD regression requires one SD formula for each coefficient.
+4	REFUSES	cli_abort	abort:rlang_error	Gamma phylo intercept-slope SD regression requires one SD formula for each coefficient.
+4	REFUSES	cli_abort	abort:rlang_error	Gamma random-effect SD regression currently supports one endpoint at a time: ordinary `T` intercept or independent slope with fixed sigma, structured mu targets, or one o
+3	REFUSES	cli_abort	abort:rlang_error	Gamma labelled structured intercept-slope correlation requires predictor-dependent SD formulas.
+2	REFUSES	cli_abort	abort:rlang_error	Poisson phylo intercept-slope SD regression requires one SD formula for each coefficient.
+2	REFUSES	cli_abort	abort:rlang_error	Gamma spatial intercept-slope SD regression requires one SD formula for each coefficient.
+2	REFUSES	cli_abort	abort:rlang_error	Beta animal intercept-slope SD regression requires one SD formula for each coefficient.
+2	REFUSES	cli_abort	abort:rlang_error	Beta relmat intercept-slope SD regression requires one SD formula for each coefficient.
+2	REFUSES	cli_abort	abort:rlang_error	Beta phylo intercept-slope SD regression requires one SD formula for each coefficient.
+2	REFUSES	cli_abort	abort:rlang_error	Beta spatial intercept-slope SD regression requires one SD formula for each coefficient.
+2	REFUSES	cli_abort	abort:rlang_error	lognormal `T` `T` effects are intercept-only in this q=N route.
+2	REFUSES	cli_abort	abort:rlang_error	Larger labelled `T`/`T` covariance blocks are not implemented yet.
+2	REFUSES	cli_abort	abort:rlang_error	Only independent NBN `T` random intercepts and slopes are implemented in this slice.

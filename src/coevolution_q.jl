@@ -401,6 +401,13 @@ function coevo_marginal_cov(prob::CoevoProblem, Q_cond::SparseMatrixCSC,
     return ℓ, û, chH, P
 end
 
+"""
+    coevo_marginal(prob::CoevoProblem, Q_cond, β, Λ, σ_res)
+
+Method of `coevo_marginal` for independent residual SDs `σ_res`; it forwards to
+`coevo_marginal_cov` with the diagonal residual covariance `Diagonal(σ_res.^2)`
+and returns the same `(ℓ, û, ch_H, P)`.
+"""
 function coevo_marginal(prob::CoevoProblem, Q_cond::SparseMatrixCSC,
                         β::AbstractMatrix, Λ::Union{AbstractMatrix,Cholesky},
                         σ_res::AbstractVector)
@@ -412,6 +419,12 @@ end
 # θ pack / unpack and the fit driver.
 # ---------------------------------------------------------------------------
 
+"""
+    coevo_theta_len(prob::CoevoProblem) -> Int
+
+Length of the packed coevolution parameter vector: `k*q` coefficients, the
+`q`-dimensional log-Cholesky block, and `q` residual log-SDs.
+"""
 coevo_theta_len(prob::CoevoProblem) = prob.k * prob.q + lc_len(prob.q) + prob.q
 
 "Unpack θ → (β::k×q, Λ::q×q, σ_res::q). Eltype follows θ."
@@ -623,8 +636,10 @@ function simulate_coevolution(phy, β::AbstractMatrix, Λ::AbstractMatrix,
                               rng = Random.default_rng())
     q = size(Λ, 1)
     Q_cond, leaf_pos, N = augmented_tree_precision(phy)
+    isposdef(Symmetric(Matrix{Float64}(Λ))) ||
+        throw(ArgumentError("simulate_coevolution: Λ must be positive definite"))
     P = prior_precision(Q_cond, inv(Λ))
-    F = cholesky(Symmetric(P))
+    F = _pd_chol_or_throw(P, "the tip-RE prior precision kron(Q_cond, Λ⁻¹)")
     u_aug = F.UP \ randn(rng, size(P, 1))         # vec(B) ~ N(0, P⁻¹), axis-inner
     p = phy.n_leaves
     species = repeat(1:p, inner = nrep)

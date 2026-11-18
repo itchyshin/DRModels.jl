@@ -80,6 +80,25 @@ function _vcov_from_hessian(H::AbstractMatrix; context::AbstractString = "")
     Hs = Matrix(Symmetric((Hs + Hs') / 2))
     isempty(Hs) && return Hs
 
+    # #1220: `eigvals` on a non-finite matrix raises LAPACK's bare "matrix contains
+    # Infs or NaNs". Throw the same exception type (callers and owner decision 14
+    # rely on it) but say what went wrong and what the user can do.
+    if !all(isfinite, Hs)
+        bad = sort!(unique!([i[1] for i in findall(!isfinite, Hs)]))
+        ctx = isempty(context) ? "" : " ($(context))"
+        throw(ArgumentError(
+            "The Hessian of the negative log-likelihood at the optimum$(ctx) contains " *
+            "Inf or NaN entries (parameter indices $(bad)), so the covariance matrix and " *
+            "Wald standard errors cannot be computed. Likely causes: missing or non-finite " *
+            "values (NaN/Inf) in the response or predictors, or a fit whose maximum " *
+            "likelihood estimate does not exist, e.g. (quasi-)complete separation in a " *
+            "binomial-type response, where a coefficient runs off towards ±Inf. What to do: " *
+            "check the data for NaN/Inf; check whether a predictor perfectly separates " *
+            "successes from failures (tabulate the response against it); simplify the model " *
+            "or rescale predictors. `se = false` skips this step, but point estimates from " *
+            "such a fit are not meaningful."))
+    end
+
     ev = eigvals(Symmetric(Hs))
     scale = maximum(abs, ev)
     # A negative eigenvalue is a saddle or a ridge, not a variance boundary.

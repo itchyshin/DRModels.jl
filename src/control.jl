@@ -32,7 +32,7 @@ drmTMB's `drm_control()`.
 | Field | Meaning |
 |:--|:--|
 | `maxit` | Iteration cap of the outer optimiser (`nothing` = the route's default cap). |
-| `start` | Starting values: a vector on the internal parameter scale, in `coef(fit)` order (see [`coefnames`](@ref) of a default fit). `nothing` = the route's own start. |
+| `start` | Starting values: a vector on the internal parameter scale, in `coef(fit)` order of a default fit. `fit.coefnames` groups its labels by parameter block. `nothing` = the route's own start. |
 | `multi_start` | Number of starts. `1` = a single start. With `k > 1`, the first start is `start` (or the route's own start), and starts `2:k` add reproducible perturbations to it. The fit with the lowest objective is kept. |
 | `se` | `false` skips the standard errors. `vcov(fit)` is then all `NaN`. |
 | `seed` | Seed of the perturbations for `multi_start` (a DRModels.jl extension). |
@@ -267,12 +267,53 @@ function _ctl_simple_gaussian_re(f, fam)
     end
 end
 
+# Latent-term shapes whose fitter reads prior `weights` (#1219, drmTMB row log-likelihood
+# multipliers): a Gaussian or Poisson mean with ONE ordinary random intercept `(1 | g)`, and a
+# Gaussian mean with `meta_V(v)`; every other axis fixed-effect only. Anything else keeps the
+# refusal below. Each admitted fitter calls `_ctl_weights`, and `_ctl_finish` still refuses a
+# fit that did not read them.
+function _ctl_weights_latent_ok(f, fam)
+    if f isa BivariateDrmFormula          # residual-only bivariate Gaussian: no latent term anywhere
+        fam isa Gaussian || return false
+        try
+            for (_, rhs) in f.forms
+                _, re, mv, st = _split_ranef(rhs; allow_phylo_slope = true, allow_temporal = true)
+                (isempty(re) && mv === nothing && st === nothing) || return false
+            end
+            return true
+        catch
+            return false
+        end
+    end
+    f isa DrmFormula && (fam isa Gaussian || fam isa Poisson) || return false
+    try
+        isempty(_sd_parts(f)) && isempty(_sdphylo_parts(f)) || return false
+        for (axis, rhs) in f.forms
+            _, re, mv, st = _split_ranef(rhs; allow_phylo_slope = true, allow_temporal = true)
+            st === nothing || return false
+            if axis === :mu
+                if mv !== nothing
+                    fam isa Gaussian && isempty(re) || return false
+                else
+                    length(re) == 1 && _re_kind(re[1][1])[1] === :intercept || return false
+                end
+            else
+                (isempty(re) && mv === nothing) || return false
+            end
+        end
+        return true
+    catch
+        return false
+    end
+end
+
 function _ctl_preflight(scope::_ControlScope, f, fam)
     c = scope.control
     wants_optim = _ctl_optim_requested(c)
     wants_w = scope.weights !== nothing
     (wants_optim || wants_w) || return nothing
     _ctl_has_latent_terms(f) || return nothing
+    wants_w && !wants_optim && _ctl_weights_latent_ok(f, fam) && return nothing
     if c.optimizer !== :default && !wants_w && c.maxit === nothing &&
        c.start === nothing && c.multi_start == 1 && c.seed == 1 && c.jitter == 0.5 &&
        _ctl_simple_gaussian_re(f, fam)
@@ -291,11 +332,147 @@ function _ctl_preflight(scope::_ControlScope, f, fam)
                               "a bivariate or multi-response model"
     throw(ArgumentError("drm: " * join(what, " and ") * " is supported only on the " *
         "fixed-effect routes of univariate families for now (#948, #994, #931). This is " *
-        kind * " ($(typeof(fam))). `control = DRMControl(se = false)` works on every route."))
+        kind * " ($(typeof(fam))), so the fit was refused before it started, not run " *
+        "with the field ignored. drmTMB's `drm_control(multi_start =)` does accept these " *
+        "fields on mixed models; the gap here is tracked in #1219. " *
+        "`control = DRMControl(se = false)` works on every route."))
+end
+
+# ---------------------------------------------------------------------------
+# Unsupported keywords: a readable refusal instead of a raw MethodError
+# ---------------------------------------------------------------------------
+# A keyword a family route does not take (`method = :REML` on LogNormal, Student or
+# Tweedie; `tree`/`K`/`A`/`ids`/`coords` on a route with no structured provider)
+# used to reach the user as `MethodError: no method matching drm(...; method=...)`,
+# while the same call without the keyword gave a model-support message. Two entry
+# points close this, neither of which changes a call that works:
+#   * `@drm_entry` gives every public `drm` method a trailing `kwargs...` and checks
+#     it first (methods that already had one are left alone);
+#   * `_drm_run_controlled` turns the keyword `MethodError` a route's inner fitter
+#     raises for a keyword it does not declare into the same refusal.
+
+# What to try, per keyword. `R` is what drmTMB 0.8.1 does for the same request, from
+# the refusal-gap map (docs/dev-log/parity-crosswalk-evidence-20261107/fuzz-gap-map).
+function _kw_advice(key::Symbol, fam, accepted = Symbol[])
+    famn = string(nameof(typeof(fam)))
+    if key === :ids && (:A in accepted || :coords in accepted)
+        return "`ids` labels the rows of `A` or `coords`, and this route reads them in the order " *
+               "the group levels first appear in the data. Drop `ids` and pass `A` (or `coords`) " *
+               "in that order." * _kw_r_note(:A, fam)
+    elseif key === :method
+        r = fam isa Union{LogNormal,Student,Tweedie} ?
+            " drmTMB 0.8.1 does not fit REML = TRUE for this family either." : ""
+        return "this route is ML-only: drop `method` (ML is the default). REML exists only on " *
+               "the routes that document it (for example Gaussian)." * r
+    elseif key === :tree
+        return "`tree` is read by a `phylo(...)` term, and $famn has no phylogenetic route for " *
+               "this model. Drop `tree` and the `phylo(...)` term, or use a family with a " *
+               "phylogenetic route." * _kw_r_note(key, fam)
+    elseif key === :K
+        return "`K` is read by a `relmat(...)` term, and $famn has no relmat route for this " *
+               "model. Drop `K` and the `relmat(...)` term, or use a family with a relmat route." *
+               _kw_r_note(key, fam)
+    elseif key === :A || key === :Ainv || key === :ids
+        return "`A`/`Ainv`/`ids` are read by an `animal(...)` term, and $famn has no animal route " *
+               "for this model. Drop them and the `animal(...)` term, or use a family with an " *
+               "animal route." * _kw_r_note(key, fam)
+    elseif key === :coords
+        return "`coords` is read by a `spatial(...)` term, and $famn has no spatial route for " *
+               "this model. Drop `coords` and the `spatial(...)` term, or use a family with a " *
+               "spatial route." * _kw_r_note(key, fam)
+    end
+    if key === :se
+        return "`se` is not a keyword of this route. Use `control = DRMControl(se = false)`, " *
+               "which works on every route."
+    end
+    return "check the spelling, or drop it."
+end
+
+# What the refusal-gap map says drmTMB 0.8.1 does for a structured term of these families:
+# (family, structured kind) => (cells drmTMB fitted, cells run). The 50 cells per entry are the
+# random-effect SD-regression grid of docs/dev-log/parity-crosswalk-evidence-20261107/fuzz-gap-map/
+# gap_map.tsv; the grid does NOT cover every model (drmTMB fits a Student `nu ~ phylo(1 | id,
+# tree = tree)`, which no cell exercises), so a refusal outside it is "not verified against drmTMB".
+const _KW_R_GRID = Dict{Tuple{Symbol,Symbol},Tuple{Int,Int}}(
+    (:Student, :phylo) => (0, 50), (:Student, :relmat) => (0, 50),
+    (:Student, :animal) => (0, 50), (:Student, :spatial) => (2, 50),
+    (:LogNormal, :phylo) => (1, 50), (:LogNormal, :relmat) => (1, 50),
+    (:LogNormal, :animal) => (0, 50), (:LogNormal, :spatial) => (0, 50),
+    (:Tweedie, :phylo) => (3, 50), (:Tweedie, :relmat) => (3, 50),
+    (:Tweedie, :animal) => (0, 50), (:Tweedie, :spatial) => (0, 50),
+    (:Binomial, :phylo) => (8, 50), (:Binomial, :relmat) => (6, 50),
+    (:Binomial, :animal) => (7, 50), (:Binomial, :spatial) => (6, 50),
+)
+
+_kw_structured_kind(key::Symbol) =
+    key === :tree ? :phylo : key === :K ? :relmat :
+    key in (:A, :Ainv, :ids) ? :animal : key === :coords ? :spatial : nothing
+
+# Only claim what the grid shows; anything else says "not verified against drmTMB".
+function _kw_r_note(key::Symbol, fam)
+    kind = _kw_structured_kind(key)
+    fn = nameof(typeof(fam))
+    (kind === nothing || !haskey(_KW_R_GRID, (fn, kind))) &&
+        return " Not verified against drmTMB for this model."
+    fits, cells = _KW_R_GRID[(fn, kind)]
+    what = "`$(kind)(...)` $(fn) cells of the refusal-gap map (a random-effect SD-regression grid)"
+    return fits == 0 ?
+        " drmTMB 0.8.1 refused all $cells $what; the grid does not cover every model " *
+        "(drmTMB does fit a Student `nu ~ phylo(1 | id, tree = tree)`), so for other models " *
+        "this is not verified against drmTMB." :
+        " drmTMB 0.8.1 fitted $fits of the $cells $what, so for those models this is a gap " *
+        "on the Julia side; for other models it is not verified against drmTMB."
+end
+
+function _refuse_unsupported_kwargs(unknown, f, fam, accepted)
+    keys_ = collect(Symbol, unknown)
+    famn = string(nameof(typeof(fam)))
+    kind = f isa DrmFormula ? "" : " (multi-response route)"
+    accepted = collect(Symbol, accepted)
+    acc = join(("`$k`" for k in sort(accepted)), ", ")
+    lines = [string("`", k, "`: ", _kw_advice(k, fam, accepted)) for k in keys_]
+    throw(ArgumentError("drm: the $famn route$kind does not accept the keyword" *
+        (length(keys_) > 1 ? "s " : " ") * join(("`$k`" for k in keys_), ", ") *
+        ". It was refused before any fitting, not run with the keyword ignored. " *
+        join(lines, " ") * " Keywords this route accepts: $acc."))
+end
+
+# Keywords any method of `fn` accepts for `(f, fam)` (without the splat marker).
+function _accepted_kwargs(fn, f, fam)
+    ks = Symbol[]
+    for m in methods(fn, Tuple{typeof(f),typeof(fam)})
+        for k in Base.kwarg_decl(m)
+            endswith(string(k), "...") || push!(ks, k)
+        end
+    end
+    # `control` and `weights` are inserted into every public `drm` method by `@drm_entry`;
+    # an inner fitter's own signature does not list them, so read them off the public method.
+    for m in methods(drm, Tuple{typeof(f),typeof(fam)})
+        for k in Base.kwarg_decl(m)
+            k in (:control, :weights) && push!(ks, k)
+        end
+    end
+    return unique!(ks)
+end
+
+# Re-raise a keyword `MethodError` from a route's fitter as the refusal above. Anything
+# else (another MethodError, a different function, a keyword the fitter does declare) is
+# left alone.
+function _refuse_kwarg_methoderror(e::MethodError, f, fam)
+    e.f === Core.kwcall && length(e.args) >= 4 || return nothing
+    kw, fn, pf, pfam = e.args[1], e.args[2], e.args[3], e.args[4]
+    (kw isa NamedTuple && fn isa Function && pf === f && typeof(pfam) === typeof(fam)) || return nothing
+    nm = string(nameof(fn))
+    (nm == "drm" || startswith(nm, "_drm_")) || return nothing
+    accepted = _accepted_kwargs(fn, f, fam)
+    isempty(accepted) && return nothing
+    unknown = [k for k in keys(kw) if !(k in accepted)]
+    isempty(unknown) && return nothing
+    _refuse_unsupported_kwargs(unknown, f, fam, accepted)
 end
 
 # Run a `drm` method body under the control scope. Called by `@drm_entry`.
-function _drm_run_controlled(body::Function, f, fam, control, weights)
+function _drm_run_controlled_inner(body::Function, f, fam, control, weights)
     outer = _active_control_scope()
     if control === nothing && weights === nothing
         outer === nothing && return body()
@@ -313,6 +490,33 @@ function _drm_run_controlled(body::Function, f, fam, control, weights)
     _ctl_preflight(scope, f, fam)
     fit = task_local_storage(body, _CTL_KEY, scope)
     return _ctl_finish(fit, scope, fam)
+end
+
+# The fixed spatial range (median positive pairwise distance between sites) is not a
+# parameter. The kernel builder leaves it in task-local storage under this key; the entry
+# wrapper below moves it onto the fit it returns.
+const _SPATIAL_RANGE_KEY = :drm_spatial_fixed_range
+
+function _drm_run_controlled(body::Function, f, fam, control, weights)
+    tls = task_local_storage()
+    old = get(tls, _SPATIAL_RANGE_KEY, nothing)
+    tls[_SPATIAL_RANGE_KEY] = nothing
+    try
+        fit = _drm_run_controlled_inner(body, f, fam, control, weights)
+        rng = tls[_SPATIAL_RANGE_KEY]
+        if fit isa DrmFit && rng !== nothing && !haskey(fit.scales, :spatial_range)
+            fit.scales[:spatial_range] = [rng]
+        end
+        return fit
+    catch e
+        e isa MethodError && _refuse_kwarg_methoderror(e, f, fam)
+        rethrow()
+    finally
+        # An enclosing `drm` call (the missing-response wrappers re-enter `drm`) keeps what this
+        # call recorded; otherwise the earlier value is restored.
+        seen = get(tls, _SPATIAL_RANGE_KEY, nothing)
+        tls[_SPATIAL_RANGE_KEY] = seen === nothing ? old : seen
+    end
 end
 
 function _ctl_finish(fit, scope::_ControlScope, fam)
@@ -399,7 +603,7 @@ function _ctl_optimize(run::Function, θ0::AbstractVector; g_tol::Real)
         length(c.start) == length(x0) ||
             throw(ArgumentError("DRMControl: `start` has $(length(c.start)) values but this " *
                 "model has $(length(x0)) parameters (in `coef(fit)` order; see " *
-                "`coefnames(fit)` of a default fit)"))
+                "`fit.coefnames` of a default fit)"))
         x0 = copy(c.start)
     end
     opts = c.maxit === nothing ? Optim.Options(g_tol = g_tol) :
@@ -480,10 +684,17 @@ function _ctl_weights(n::Integer; supported::Bool = true, route::AbstractString 
     supported || throw(ArgumentError("drm: prior `weights` are not supported on $route (#931)"))
     w = s.weights
     length(w) == n || throw(DimensionMismatch("drm: `weights` has $(length(w)) entries but " *
-        "the model uses $n rows. Give one weight per row of `data`; rows with a missing " *
-        "response are not yet supported together with `weights`."))
+        "the model uses $n rows. Give one weight per row of `data`."))
     s.used_weights = true
     return w
+end
+
+# `_ctl_weights`, but `nothing` (not `ones(n)`) when the user gave no weights, for the
+# routes whose unweighted arithmetic must stay byte-for-byte what it was.
+function _ctl_weights_or_nothing(n::Integer)
+    s = _active_control_scope()
+    (s === nothing || s.weights === nothing) && return nothing
+    return _ctl_weights(n)
 end
 
 # ---------------------------------------------------------------------------
@@ -520,6 +731,15 @@ macro drm_entry(fdef)
     insert!(params.args, insert_at, Expr(:kw, :control, nothing))
     fname = _kwname(call.args[3])
     famname = _kwname(call.args[4])
+    # A method with no `kwargs...` of its own gets one, so an unsupported keyword
+    # reaches `_refuse_unsupported_kwargs` instead of failing dispatch with a MethodError.
+    extra_check = nothing
+    if splat === nothing
+        accepted = Tuple(vcat(names, [:control, :weights]))
+        push!(params.args, Expr(:..., :_drm_extra_kw))
+        extra_check = :(isempty(_drm_extra_kw) ||
+            _refuse_unsupported_kwargs(keys(_drm_extra_kw), $fname, $famname, $accepted))
+    end
     body = fdef.args[2]
     if :se in names
         # A route's own `se = false` keyword is the same request as
@@ -530,10 +750,42 @@ macro drm_entry(fdef)
     else
         pre = nothing
     end
+    # `data` is a named keyword on some routes and travels inside `kwargs...` on others.
+    record = if :data in names
+        :(_record_factor_levels!($fname, data))
+    elseif splat !== nothing
+        # `insert!` above moved the splat, so find it again.
+        kwsplat = params.args[findfirst(a -> a isa Expr && a.head === :..., params.args)].args[1]
+        :(haskey($kwsplat, :data) && _record_factor_levels!($fname, $kwsplat[:data]))
+    else
+        # the extra-keyword splat added above is named `_drm_extra_kw`
+        :(haskey(_drm_extra_kw, :data) && _record_factor_levels!($fname, _drm_extra_kw[:data]))
+    end
+    # The fixed-effect design rank check (#1110) for every route but the Gaussian one, which
+    # makes its own call; `_apply_design_rank` flags the finished fit when the check found an alias.
+    precheck = if :data in names
+        :(_precheck_design_rank($fname, $famname, data))
+    elseif splat !== nothing
+        kwsplat2 = params.args[findfirst(a -> a isa Expr && a.head === :..., params.args)].args[1]
+        :(haskey($kwsplat2, :data) && _precheck_design_rank($fname, $famname, $kwsplat2[:data]))
+    else
+        :(haskey(_drm_extra_kw, :data) && _precheck_design_rank($fname, $famname, _drm_extra_kw[:data]))
+    end
+    # Each fit works on its own copy of the formula bundle (`_fit_formula`): the schema cache, the
+    # factor levels and the `poly` bases written at fit time belong to the fit, never to the
+    # user's `bf(...)` object, so a formula reused on other data (a second fit, a cross-validation
+    # loop, two threads) behaves like a fresh one.
     fdef.args[2] = quote
+        $extra_check
         $pre
-        return _drm_run_controlled($fname, $famname, control, weights) do
-            $body
+        let $fname = _fit_formula($fname)
+            $record
+            $precheck
+            return _apply_design_rank(task_local_storage(_FIT_FORMULA_KEY, $fname) do
+                _drm_run_controlled($fname, $famname, control, weights) do
+                    $body
+                end
+            end)
         end
     end
     return esc(:(Base.@__doc__ $fdef))

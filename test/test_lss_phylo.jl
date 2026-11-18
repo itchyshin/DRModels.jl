@@ -50,7 +50,12 @@ end
     @test any(p -> first(p) === :sdphy_species, flegacy.forms)
     # the level must be a known one, and only phylogenetic is implemented
     @test_throws ArgumentError bf(@formula(y ~ x), @formula(sd(g, bogus) ~ 1))
-    @test_throws ArgumentError bf(@formula(y ~ x), @formula(sd(g, spatial) ~ 1))
+    # spatial is a valid grammar level for other families' SD routes; the
+    # Gaussian router refuses it at fit time (structured scale level is
+    # phylogenetic only).
+    @test_throws ArgumentError drm(bf(@formula(y ~ x + (1 | species)),
+                                      @formula(sd(species, spatial) ~ 1)),
+                                   Gaussian(); data = dat)
     # sd_phylo without a phylo() mean marker
     @test_throws ArgumentError drm(bf(@formula(y ~ x + (1 | species)),
                                       @formula(sd(species, phylogenetic) ~ x)),
@@ -183,7 +188,8 @@ end
            z = [1.0, 1.0, 2.0, 2.0], g = ["a", "a", "b", "b"])
     # positional spelling — what drmTMB's `drm_julia_formula_entry` emits
     b, _ = DRModels._bridge_formula(["y ~ x + (1 | g)", "sigma ~ x", "sd(g) ~ z"], "gaussian", dat)
-    @test first.(b.forms) == [:mu, :sigma, :sd_g]
+    @test first.(b.forms)[1:2] == [:mu, :sigma]
+    @test [item.target.group for item in DRModels._sd_target_parts(b)] == [:g]
     # dict spelling — what JuliaCall marshals a named R list into. The key is the
     # marker call itself, so the value (already the full formula) passes through
     # rather than becoming `f(x) = body`, which Julia reads as a function def.

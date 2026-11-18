@@ -4,6 +4,7 @@
 # otherwise the `@docs` block breaks the docs build ("no docs found").
 using DRModels
 using Test
+using LinearAlgebra: I
 
 const _REF_DIR = joinpath(@__DIR__, "..", "docs", "src", "reference")
 
@@ -49,4 +50,34 @@ end
             end
         end
     end
+end
+
+# #985 (owner decision, 25 Oct 2026): the engine-internal exports are documented in
+# reference/engine-internals.md. Each needs a docstring and an `@docs` entry.
+@testset "#985 engine-internal exports carry a docstring and an @docs entry" begin
+    if !isdir(_REF_DIR)
+        @info "docs/src/reference not found; skipping #985 engine-internals check"
+    else
+        listed = _reference_docs_names()
+        for nm in (:AugProblem, :aug_prior_grad!, :build_Huu, :coevo_marginal,
+                   :coevo_theta_len, :estep_mode, :fit_q4_sparse_tmb,
+                   :fz_correlations, :fz_phi_to_lc, :joint_grad, :joint_nll,
+                   :lc_to_Λ, :make_problem, :prepared_joint_nll,
+                   :prior_precision, :Λ_to_lc)
+            @testset "$nm" begin
+                @test (string(nm) in listed) || ("DRModels." * string(nm) in listed)
+                @test _has_docstring(nm)
+            end
+        end
+    end
+end
+
+# #985: pin two documented return types so the docstrings cannot drift from the code.
+@testset "#985 documented return types" begin
+    lc = DRModels.Λ_to_lc(Matrix(1.0I, 4, 4))   # documented `-> Vector{Float64}`
+    @test lc isa Vector{Float64}
+    @test length(lc) == 10
+    r = DRModels.fz_correlations(zeros(10))      # documented `-> NTuple{6}`
+    @test r isa NTuple{6}
+    @test all(x -> -1 <= x <= 1, r)
 end

@@ -129,8 +129,8 @@ using Distributions: MvNormal, Normal, logpdf
         @test first.(fit.blocks) == [:mu, :sigma, :resd, :temporal_phi]
         @test Dict(fit.coefnames)[:temporal_phi] == [lbl]
         @test temporal_parameters(fit).label == lbl
-        @test fitted(fit) ≈ X * coef(fit, :mu)
-        @test predict(fit, d) ≈ fitted(fit)
+        @test fitted(fit; re = :zero) ≈ X * coef(fit, :mu)
+        @test predict(fit, d) ≈ fitted(fit; re = :zero)
         @test predict(fit, (x = [0.0, 1.0],)) ≈ coef(fit, :mu)[1] .+ [0.0, 1.0] .* coef(fit, :mu)[2]
         @test re_sd(fit)[:id] ≈ temporal_parameters(fit).sd
         @test vc(fit)[:id][1, 1] ≈ temporal_parameters(fit).sd^2
@@ -147,7 +147,7 @@ using Distributions: MvNormal, Normal, logpdf
         @test length(ct.rownms) == 5
         @test isfinite(aic(fit)) && dof(fit) == 5
         pp = predict_parameters(fit, d)
-        @test pp[:mu] ≈ fitted(fit) && all(≈(temporal_parameters(fit).sigma), pp[:sigma])
+        @test pp[:mu] ≈ fitted(fit; re = :zero) && all(≈(temporal_parameters(fit).sigma), pp[:sigma])
     end
 
     @testset "persistence near ±1 with long gaps (tanh rounds to ±1)" begin
@@ -174,7 +174,7 @@ using Distributions: MvNormal, Normal, logpdf
         fit = drm(fAR, Gaussian(); data = d)
         tp = temporal_parameters(fit)
         Y = simulate(fit; nsim = 400, rng = StableRNG(62))
-        E = Y .- fitted(fit)
+        E = Y .- fitted(fit; re = :zero)
         v_model = tp.sd^2 + tp.sigma^2
         @test mean(var(E; dims = 1)) ≈ v_model rtol = 0.03
         # lag-1 pairs: same series, occasions one apart
@@ -230,9 +230,14 @@ using Distributions: MvNormal, Normal, logpdf
         miss = merge(d, (y = Union{Missing,Float64}[i == 1 ? missing : v for (i, v) in enumerate(d.y)],))
         @test_throws ae drm(fAR, Gaussian(); data = miss)                               # missing response
         @test_throws ae drm(fAR, Gaussian(); data = merge(d, (occ = string.(d.occ),)))  # non-numeric time
-        # labelled / correlated ordinary bars beside temporal(): named refusal
-        @test_throws ae drm(bf(@formula(y ~ x + (1 | p | id) + temporal(1 | id, occ, ar1)),
+        # a correlated ordinary bar beside temporal(): named refusal
+        @test_throws ae drm(bf(@formula(y ~ x + (1 + x | id) + temporal(1 | id, occ, ar1)),
                                @formula(sigma ~ 1)), Gaussian(); data = d)
+        # a label on a single intercept `(1 | p | id)` is just `(1 | id)` (it fits since the
+        # Gaussian SD-gap wave); it must give the identical fit, not a different model.
+        fl = g(bf(@formula(y ~ x + (1 | p | id) + temporal(1 | id, occ, ar1)), @formula(sigma ~ 1)))
+        fp = g(bf(@formula(y ~ x + (1 | id) + temporal(1 | id, occ, ar1)), @formula(sigma ~ 1)))
+        @test loglik(fl) ≈ loglik(fp) atol = 1e-8
         # bivariate: refused at `bf` by name
         @test_throws ae bf(mu1 = @formula(y ~ x + temporal(1 | id, occ, ar1)), mu2 = @formula(x ~ 1))
         # occasions beyond 2^53 cannot be exact integers

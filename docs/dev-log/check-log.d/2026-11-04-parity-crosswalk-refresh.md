@@ -1,0 +1,1 @@
+| 2026-11-04 | **Parity PR crosswalk refresh** | GitHub current main/PR/check metadata; after-task, diff, and writing checks | ✅ Selected exact-head states and owner decision recorded; no package code or model checks run | Codex |

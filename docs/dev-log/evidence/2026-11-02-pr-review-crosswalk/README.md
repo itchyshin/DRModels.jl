@@ -1,0 +1,1109 @@
+# Current parity PR review notes
+
+Reviewed 2026-11-02 against DRModels.jl main `973bbb675dc6a10b436acf86175e089e38ec467e` and drmTMB main `129c09c8c8d56fa91bb09146f02dff24e65e6e7b`.
+
+## DRModels.jl #1228
+
+- Head `fe064dce02087cc69c9500f678967f6d258f848a`; base `64ccb2d8d87b329e5a43b2358fd5cb4a36cd9716`. The base is behind current main.
+- CI run [41245284485](https://github.com/itchyshin/DRModels.jl/actions/runs/41245284485): four Julia shards passed.
+- Documenter and rendered page audit [41245284449](https://github.com/itchyshin/DRModels.jl/actions/runs/41245284449): passed; preview was cancelled.
+- The NB2 hurdle numerical comparison is pinned to the older Julia source. Its receipt reports agreement in component predictions and log likelihood, but a maximum fitted mean/residual difference of 1.24. Avoid saying fitted values agree without qualifying the target.
+- BetaBinomial structured support in current Julia source is phylogenetic `phylo(1 | group)` with constant `sigma`; source refuses other structured markers. Do not imply all structured covariance providers.
+- Claims about drmTMB refusals need current R source pins and a cited route-specific test or receipt.
+- The PR remains open/draft. This review did not contact its owner or change the PR.
+
+## DRModels.jl #1247
+
+- Head `822f9b04c2d25862007141fb12d8ebde0c3bc084`; base `87a8ed4e57a9f5a4b61ca66673ca02d48515b8ee`, behind current main.
+- CI run [41493253608](https://github.com/itchyshin/DRModels.jl/actions/runs/41493253608): all four Julia 1.13.3 shards failed; Documenter run [41493253627](https://github.com/itchyshin/DRModels.jl/actions/runs/41493253627) passed.
+- Shard 1, job [125447816343](https://github.com/itchyshin/DRModels.jl/actions/runs/41493253608/job/125447816343): `test_tnb2_nan.jl:95`, timing comparison observed `0.116476224 < 0.10539398`, false.
+- Shard 2, job [125447816133](https://github.com/itchyshin/DRModels.jl/actions/runs/41493253608/job/125447816133): `test_temporal_ou.jl:59`, dense-oracle discrepancy `1.709850039e-10` exceeded `1e-10`.
+- Shard 3, job [125447816262](https://github.com/itchyshin/DRModels.jl/actions/runs/41493253608/job/125447816262): `test_gaussian_ranef.jl:59-62`, all-singleton Hessian warning, convergence, and covariance expectations failed.
+- Shard 4, job [125447816180](https://github.com/itchyshin/DRModels.jl/actions/runs/41493253608/job/125447816180): `test_ls_inv2x2_chol.jl:123`, theta tolerance `1e-8` failed; maximum observed difference was about `1.82e-8`.
+- These are exact-head CI failures on the PR merge ref, not evidence against the StableRNG test-data change itself. The J3a assertion was not separately identified in this log review. The owner should rebase onto current main and rerun exact-head CI after the unrelated test fixes land.
+
+## `meta_V` accessor parity
+
+- Current R main's `sigma.drmTMB` documentation says meta-analytic sigma is residual heterogeneity, and the method routes to the `sigma` distributional predictor (`R/methods.R:4317-4350`).
+- Current Julia main calculates `sqrt(v + tau^2)` into `fit.scales[:sigma]` (`src/gaussian_meta.jl`); `sigma(fit)` returns that field (`src/gaussian_core.jl:2143-2159`). The Julia guide says sigma is tau (`docs/src/model-guides/meta-analysis.md:36`), which conflicts with the accessor implementation. `test/test_meta.jl:17-21` checks the sigma coefficient, not the accessor.
+- This confirms a current-main accessor and documentation mismatch. A dirty candidate reportedly stores tau separately, but overlapping source ownership remains unresolved; no source changes were made.
+
+## Limits
+
+This is a read-only PR and source review. No package tests were run here, no raw workflow log was copied into this folder, and no owner was contacted. The workflow links point to the authoritative GitHub logs. No parity, interval-calibration, release, or merge claim follows from this review.
+
+## Live PR and CI refresh, 2026-11-02 21:45 UTC
+
+Read from GitHub REST API at the stated time. Current default-branch pins were DRModels.jl `973bbb675dc6a10b436acf86175e089e38ec467e` and drmTMB `129c09c8c8d56fa91bb09146f02dff24e65e6e7b`. PR base/head pins below are the API values, not inferred from a local checkout. Branch names identify the submitted lane, but do not confirm who currently owns the live process. No owner was contacted.
+
+| PR | Head branch and SHA | Base SHA | Current checks / state | Next eligible action |
+|---|---|---|---|---|
+| DRModels.jl #1249 | `claude/julia1-tolerance-fixes` · `e01e0fadb1ba7773a41f08d8a0802a2c0b018970` | `973bbb675dc6a10b436acf86175e089e38ec467e` (current main) | Julia 1 run `41519305510`: four shards still in progress. Docs-preview and docs succeeded in `41519305443`; API merge state `blocked`. | Wait for the four shards; then reconcile the separate Julia 1.10 #1114 failure before treating this as a full matrix pass. |
+| DRModels.jl #1228 | `docs/726-740-twin-notes` · `fe064dce02087cc69c9500f678967f6d258f848a` | `64ccb2d8d87b329e5a43b2358fd5cb4a36cd9716` (stale) | Julia 1 run `41245284485` and docs run `41245284449` passed; preview was cancelled; API merge state `unstable`. | Owner must refresh the stale base and address the documented claim/pin findings; rerun exact-head CI and inspect the rendered preview. |
+| DRModels.jl #1237 | `fix/bootstrap-formula-structured-stablerng` · `503b3797acdf44dba38af1096ebce7fc338f6e9b` | `64ccb2d8d87b329e5a43b2358fd5cb4a36cd9716` (stale) | Run `41401878711`: Julia 1.10 shards 1 and 2 failed; other listed shards and scaling sweep passed; aggregate failed. A prior run `41249874224` passed. | Keep with its lane owner; diagnose the exact Julia 1.10 failures and update the stale base before another exact-head run. |
+| DRModels.jl #1247 | `claude/julia110-j3a-fix` · `822f9b04c2d25862007141fb12d8ebde0c3bc084` | `87a8ed4e57a9f5a4b61ca66673ca02d48515b8ee` (stale) | Run `41493253608`: all four Julia 1 shards failed; docs run `41493253627` passed; API merge state `blocked`. | Keep with its lane owner. Rebase and separate the J3a case from the four unrelated failures before re-running. |
+| DRModels.jl #1240 | `claude/intelligent-lovelace-s0fgio` · `03b93e680266369dff10e63eb4c846826a102ec4` | `64ccb2d8d87b329e5a43b2358fd5cb4a36cd9716` (stale) | Run `41248908491`: Julia 1 shard 2 failed and the other three passed; docs and preview passed; aggregate failed. | Keep with its lane owner; attribute shard 2 and refresh the base before claiming parity. |
+| drmTMB #1657 | `fix/drm1512-snak` · `21f769d0f80f4651592dac9d80d7a7ee3dc8a049` | `129c09c8c8d56fa91bb09146f02dff24e65e6e7b` (current main) | Run `41518765724`: source-tree and OS-matrix checks passed; four Ubuntu release shards still in progress; API merge state `unstable`. | Wait for the four shards; then review exact-head results and the bridge matrix-order behavior. |
+| drmTMB #1659 | `test/drmjl-parity-fixtures-snak` · `e2d617b54b9a94b8b8e2758db9a6c80fa4bcab87` | `71ceee671aac0e4c8bedf265b3b735b1ad633390` (stale) | Current run `41512891602`: source-tree, OS matrix and macOS passed; Ubuntu and Windows release checks still in progress. Earlier run `41491401329` passed Linux/macOS but Windows was cancelled. API merge state `clean`. | Wait for current Windows/Ubuntu jobs; then refresh the stale base and rerun exact-head checks. Its evidence remains point-estimate/SE parity, not interval calibration. |
+| drmTMB #1663 | `codex/general-sd-regression` · `83bfcf3c369eace9cf8d1363440f9e11953c758f` | `b535bfbcce2a9039d869c2e34fe9da476394bf62` (stale; current main is `129c09c8c8d56fa91bb09146f02dff24e65e6e7b`) | No check runs were returned for this head; API merge state `dirty`. The shared worktree and candidate remain owner-held. | Do not edit or retarget. The owning lane must reconcile its source/base and publish fresh checks. |
+
+Queued jobs were intentionally not polled repeatedly in this snapshot. Next refresh should follow the status-receipt backoff rule, or happen sooner only after a job completion, head change, relevant notification, or a decision that needs fresh evidence. Totoro and DRAC availability was confirmed by Shinichi, but this PR-status review required no compute; neither host was used. No files in PR branches were changed, and no PR metadata was changed.
+
+## Targeted recheck, 2026-11-02 21:50 UTC
+
+After the five-minute backoff, the same exact heads were refreshed. DRModels.jl #1249 (`e01e0fadb1ba7773a41f08d8a0802a2c0b018970`, run `41519305510`) still had all four Julia 1 shards in progress. drmTMB #1659 (`e2d617b54b9a94b8b8e2758db9a6c80fa4bcab87`, run `41512891602`) still had Ubuntu and Windows in progress; macOS, OS matrix, and source-tree checks remained successful. drmTMB #1657 (`21f769d0f80f4651592dac9d80d7a7ee3dc8a049`, run `41518765724`) had advanced: Ubuntu shard 4 completed successfully while shards 1–3 remained in progress; source-tree and OS-matrix checks remained successful. Heads and bases were unchanged, so the previous base/ownership assessment still applies. No new detailed-log fetch was needed because no failure appeared in these jobs.
+
+## Targeted recheck, 2026-11-02 21:55 UTC
+
+The exact heads and bases remained unchanged. DRModels.jl #1249, run `41519305510`, still had all four Julia 1 shards in progress. drmTMB #1657, run `41518765724`, now had Ubuntu shards 3 and 4 successful and shards 1 and 2 in progress; source-tree and OS-matrix checks were successful. drmTMB #1659, run `41512891602`, now had Ubuntu and macOS successful, with Windows still in progress; source-tree and OS-matrix checks were successful. At 21:53 UTC the review API showed all three PRs authored by `itchyshin`, with no assignees, requested reviewers, or submitted reviews. This records formal review status, not live lane ownership.
+
+## Targeted recheck, 2026-11-02 22:01 UTC
+
+Fetched diagnostics pinned to the same exact PR heads. DRModels.jl #1249 (`e01e0fadb1ba7773a41f08d8a0802a2c0b018970`, base current main `973bbb675dc6a10b436acf86175e089e38ec467e`) still has all four Julia 1 shards running in run `41519305510`; docs and preview remain successful. drmTMB #1657 (`21f769d0f80f4651592dac9d80d7a7ee3dc8a049`, base current main `129c09c8c8d56fa91bb09146f02dff24e65e6e7b`) has shards 1, 3, and 4 successful and shard 2 running in run `41518765724`. A newer run `41522911628` has begun on the same head: source-tree checks are running and the OS matrix is queued. drmTMB #1659 (`e2d617b54b9a94b8b8e2758db9a6c80fa4bcab87`) remains based on stale main `71ceee671aac0e4c8bedf265b3b735b1ad633390`; Ubuntu and macOS checks passed, Windows was cancelled in run `41512891602`, and all Windows jobs in earlier attempts were also cancelled. It needs a successful Windows result after refreshing the base. No submitted reviews were present in the preceding 21:53 metadata read; no lane owner was contacted. Totoro and DRAC availability was confirmed by Shinichi, but these metadata checks required no compute. No PR is ready for merge based on this refresh.
+
+## Targeted recheck, 2026-11-02 22:06 UTC
+
+Diagnostics were pinned to the same exact heads. #1249 remains unchanged with all four Julia shards running in `41519305510`. For #1657, run `41522911628` advanced: the OS matrix passed, and its Windows, macOS, Ubuntu, and source-tree jobs are now running. The earlier run `41518765724` still reports Ubuntu shard 2 in progress, with the other three shards and source-tree/OS checks successful. #1659 remains unchanged: Windows was cancelled and its base is stale. No merge action is supported by this status; no lane owner was contacted and no compute was started.
+
+## #1659 Windows job detail, 2026-11-02 22:08 UTC
+
+Fetched steps for job `125531174791` in run `41512891602`, pinned to head `e2d617b54b9a94b8b8e2758db9a6c80fa4bcab87`. The `Run r-lib/actions/check-r-package@v2` step finished successfully, and the returned step list shows setup, cleanup, and job completion steps as successful. The parent Windows job still has conclusion `cancelled`. Therefore the log supports a successful package-check step on this Windows runner, but the overall required job is not green. Keep #1659's Windows status as cancelled until a terminal successful job-level check appears.
+
+## #1662 merge closeout, 2026-11-02 22:10 UTC
+
+GitHub reports drmTMB #1662 merged at `2026-11-02T11:30:13Z` by merge commit `71ceee671aac0e4c8bedf265b3b735b1ad633390`. The live `main` ref is `129c09c8c8d56fa91bb09146f02dff24e65e6e7b`; GitHub's compare API reports that ref is four commits ahead of the merge commit and zero behind, confirming the merge commit is in current main. The PR body reports exact-head CI run `41350326046` passed its listed checks. Current check diagnostics return no records for that PR head, and a direct job-list lookup for the cited run returns 404, so the CI result remains owner-reported/historical rather than freshly inspectable. Post-merge main check status was not established in this lookup.
+
+## R lane ownership check, 2026-11-02 22:12 UTC
+
+R-repository lane preflight on the primary checkout listed #1659's branch `test/drmjl-parity-fixtures-snak` among 31 live lanes. It reported no live lease; a read-only `git worktree list` filter found no local checkout for that branch. This identifies the branch as active in the lane census but does not identify a human task owner. No source files or PR metadata were changed. Preserve the branch and wait for a clear handoff before taking code action.
+
+## Additional DRModels.jl PRs, 2026-11-02 22:14 UTC
+
+Live main is `973bbb675dc6a10b436acf86175e089e38ec467e`. Exact-head PR metadata and diagnostics show:
+
+| PR | Head / base | Current exact-head evidence | Owner-safe next step |
+|---|---|---|---|
+| #1228 | `fe064dce02087cc69c9500f678967f6d258f848a` / `64ccb2d8d87b329e5a43b2358fd5cb4a36cd9716` | Four Julia shards and `ci-ok` passed; docs build passed; docs preview was cancelled. The base is stale. The reviewed BetaBinomial wording still needs to say phylogenetic intercept only with constant `sigma`; the hurdle-Poisson distinction is supported. | Keep draft. Owner should narrow the BetaBinomial claim, rebase, and obtain a fresh preview. |
+| #1237 | `503b3797acdf44dba38af1096ebce7fc338f6e9b` / `64ccb2d8d87b329e5a43b2358fd5cb4a36cd9716` | Latest run `41401878711` failed on Julia 1.10 shards 1 and 2; its four Julia 1 shards passed. A previous run `41249874224` passed. The base is stale. | Owner should rebase and diagnose the Julia 1.10 failures before another full claim. Stable test data alone did not make the latest workflow green. |
+| #1240 | `03b93e680266369dff10e63eb4c846826a102ec4` / `64ccb2d8d87b329e5a43b2358fd5cb4a36cd9716` | Julia 1 shard 2 and aggregate `ci-ok` fail in run `41248908491`; the other three shards, docs, and preview pass. The base is stale. The PR remains a draft. The failure is the missing `drmtmb_code_hash` fixture field; see the exact-head diagnosis below. | Keep draft until its owner adds the required provenance value (or the allowed unknown marker), rebases, and reruns. |
+| #1247 | `822f9b04c2d25862007141fb12d8ebde0c3bc084` / `87a8ed4e57a9f5a4b61ca66673ca02d48515b8ee` | All four Julia 1 shards failed in run `41493253608`; docs and preview passed. The base is stale. | Wait for current-main #1249, which targets three unrelated Julia 1 failures reported in this run. Then the owner can rebase and rerun #1247; the separate all-singleton Hessian failure still needs attribution. |
+
+For context, #1249 is based on current main `973bbb675dc6a10b436acf86175e089e38ec467e`. At the last exact-head check at 22:11:46 UTC, all four Julia shards remained active and docs/preview had passed. These findings are from GitHub metadata and diagnostics, not new local test runs. Branch authorship does not establish active task ownership; no PR branches or metadata were changed.
+
+## #1240 exact-head CI diagnosis, 2026-11-02 22:18 UTC
+
+Refreshed PR metadata and diagnostics from GitHub. PR #1240 remains open and draft at head `03b93e680266369dff10e63eb4c846826a102ec4`, based on stale main `64ccb2d8d87b329e5a43b2358fd5cb4a36cd9716`; current Julia main is `973bbb675dc6a10b436acf86175e089e38ec467e`. The exact-head Julia 1 shard 2 job [124711274391](https://github.com/itchyshin/DRModels.jl/actions/runs/41248908491/job/124711274391) fails in `test/test_fixture_provenance.jl:34`: the new `fixtures_re/gaussian-locscale-re/expected.meta.toml` lacks `drmtmb_code_hash`. The fixture records drmTMB 0.7.0 from CRAN but says the generating sandbox could not obtain a Git commit hash. Current main's #473 provenance test requires this field for every drmTMB comparison fixture and permits the explicit value `unknown (pre-#473)` when the generating build cannot be recovered ([test contract at current main](https://github.com/itchyshin/DRModels.jl/blob/973bbb675dc6a10b436acf86175e089e38ec467e/test/test_fixture_provenance.jl)). The failed provenance test occurs before the new `test_parity_gaussian_locscale_re.jl` in the shard's deterministic test order, so this CI run provides no numerical-parity result for the new fixture. `ci-ok` failed; the other three Julia 1 shards, docs, and preview passed; docs-deploy was skipped.
+
+This records a fixture-provenance contract failure. CI provides no numerical-parity result for the new fixture because the failing provenance test aborts the shard before that test runs. The PR remains based on an older main, and its local 17/17 result does not cover the full suite. The PR owner can add a permitted provenance value, rebase, and rerun exact-head CI. No PR branch, source file, or PR metadata was changed. Totoro/DRAC compute was unnecessary for this deterministic metadata check.
+
+## Active PR check refresh, 2026-11-02 22:20 UTC
+
+Refreshed GitHub metadata and check diagnostics after the prior five-minute backoff. All results below match their PR head SHAs.
+
+- DRModels.jl #1249 remains at head `e01e0fadb1ba7773a41f08d8a0802a2c0b018970`, based on current main `973bbb675dc6a10b436acf86175e089e38ec467e`. Julia 1 shard 1 passed; shards 2–4 remain in progress in run `41519305510`. Docs and preview passed. Keep it open until all shards finish and any failures are classified.
+- drmTMB #1657 remains at head `21f769d0f80f4651592dac9d80d7a7ee3dc8a049`, based on current main `129c09c8c8d56fa91bb09146f02dff24e65e6e7b`. Source-tree and OS-matrix checks passed in run `41522911628`; Windows, macOS, and Ubuntu jobs remain in progress. All four Ubuntu shards passed in earlier run `41518765724` on the same head. Keep open until the current OS matrix completes.
+- drmTMB #1659 remains at head `e2d617b54b9a94b8b8e2758db9a6c80fa4bcab87`, based on stale main `71ceee671aac0e4c8bedf265b3b735b1ad633390`. Ubuntu and macOS passed; Windows is cancelled in run `41512891602`. A successful package-check step inside that job does not change the cancelled job conclusion. It needs a current-main base refresh and successful Windows job-level check.
+
+No runner result or base changed enough to support a merge recommendation. The earlier owner caveat remains: PR author and branch name do not establish who currently holds the live lane. No PR branches, metadata, or source files were changed. This status refresh required no compute.
+
+## Active PR check refresh, 2026-11-02 22:24 UTC
+
+Refreshed PR metadata and exact-head diagnostics after the prior five-minute backoff.
+
+- DRModels.jl #1249 remains at head `e01e0fadb1ba7773a41f08d8a0802a2c0b018970`, based on current main `973bbb675dc6a10b436acf86175e089e38ec467e`. Julia 1 shards 1 and 2 passed; shards 3 and 4 remain in progress in run `41519305510`. Docs and preview passed.
+- drmTMB #1657 remains at head `21f769d0f80f4651592dac9d80d7a7ee3dc8a049`, based on current main `129c09c8c8d56fa91bb09146f02dff24e65e6e7b`. Source-tree and OS-matrix checks passed in run `41522911628`; Windows, macOS, and Ubuntu remain in progress. All four Ubuntu shards passed in earlier run `41518765724` on the same head.
+- drmTMB #1659 remains at head `e2d617b54b9a94b8b8e2758db9a6c80fa4bcab87`, based on stale main `71ceee671aac0e4c8bedf265b3b735b1ad633390`. Ubuntu and macOS passed; Windows remains cancelled in run `41512891602`.
+
+The refresh changes no owner or source attribution. #1249 and #1657 still have live runners, while #1659 needs an owner-led base refresh and successful Windows job. The current evidence does not support merging any of these PRs.
+
+## Active PR check refresh, 2026-11-02 22:40 UTC
+
+Refreshed PR metadata and exact-head check runs from GitHub. The head SHAs and
+bases are unchanged from the preceding snapshots.
+
+- DRModels.jl [#1249](https://github.com/itchyshin/DRModels.jl/pull/1249)
+  remains at head `e01e0fadb1ba7773a41f08d8a0802a2c0b018970` on current main
+  `973bbb675dc6a10b436acf86175e089e38ec467e`. In run
+  [41519305510](https://github.com/itchyshin/DRModels.jl/actions/runs/41519305510),
+  Julia 1 shards 1, 2, and 4 passed; shard 3 is still running. Docs and preview
+  passed in run 41519305443; scaling and stable docs deployment were skipped.
+  No formal review or review thread is recorded. Wait for shard 3, then
+  classify the full exact-head result.
+- drmTMB [#1657](https://github.com/itchyshin/drmTMB/pull/1657) remains at
+  head `21f769d0f80f4651592dac9d80d7a7ee3dc8a049` on current main
+  `129c09c8c8d56fa91bb09146f02dff24e65e6e7b`. In current run
+  [41522911628](https://github.com/itchyshin/drmTMB/actions/runs/41522911628),
+  source-tree and OS-matrix checks passed; Windows, macOS, and Ubuntu release
+  jobs remain in progress. All four Ubuntu shards passed on the same head in
+  run 41518765724. No formal review or review thread is recorded. Wait for the
+  current platform jobs before reviewing the exact-head check set.
+- drmTMB [#1659](https://github.com/itchyshin/drmTMB/pull/1659) remains at
+  head `e2d617b54b9a94b8b8e2758db9a6c80fa4bcab87` on stale base
+  `71ceee671aac0e4c8bedf265b3b735b1ad633390`. Its latest run
+  [41512891602](https://github.com/itchyshin/drmTMB/actions/runs/41512891602)
+  has successful Ubuntu, macOS, OS-matrix, and source-tree checks, but the
+  Windows release job is cancelled. The successful inner package-check step
+  documented above does not change the parent job's cancelled result. No
+  formal review or review thread is recorded. A base refresh and successful
+  Windows job remain owner actions.
+- drmTMB [#1664](https://github.com/itchyshin/drmTMB/pull/1664) is at head
+  `015c0e1fac9cad68e82f2711eeebad4b1b6fcd69` on current main
+  `129c09c8c8d56fa91bb09146f02dff24e65e6e7b`. Its four Ubuntu shards,
+  OS-matrix, and source-tree checks passed in run
+  [41513019278](https://github.com/itchyshin/drmTMB/actions/runs/41513019278).
+  GitHub reports it open and mergeable; no formal review or review thread is
+  recorded. The read-only code review found no blocker, so it is ready for
+  maintainer review, not merged.
+
+DRModels.jl #1240 remains open and draft at head
+`03b93e680266369dff10e63eb4c846826a102ec4` on stale base
+`64ccb2d8d87b329e5a43b2358fd5cb4a36cd9716`. The provenance failure still
+precedes the new parity test, so that exact-head CI supplies no numerical
+parity result. No PR was changed, reviewed on GitHub, or merged during this
+refresh. No compute was needed for this metadata work.
+
+## Additional parity-related PR census, 2026-11-02 22:45 UTC
+
+The following exact-head states were refreshed from GitHub after the previous
+snapshot. Worktree observations came from the local lane census; they identify
+checkouts, not human ownership.
+
+- drmTMB [#1663](https://github.com/itchyshin/drmTMB/pull/1663) advanced to
+  head `993905ff6aa53d70304b988f73be397422dcf274` on current main
+  `129c09c8c8d56fa91bb09146f02dff24e65e6e7b`. In run
+  [41532211007](https://github.com/itchyshin/drmTMB/actions/runs/41532211007),
+  source-tree and OS-matrix checks passed, Ubuntu shards 1-3 passed, and shard
+  4 is still running. GitHub reports the open PR mergeable, with no formal
+  review or requested reviewer. Its exact-head local worktree is heavily
+  modified and contains substantial untracked evidence. Preserve it. The PR
+  claims native TMB support only; it does not claim Julia parity or calibrated
+  intervals.
+- drmTMB [#1647](https://github.com/itchyshin/drmTMB/pull/1647) remains at
+  head `b55083409ffd87ea0750d2ab7731f4b967b83cf0` on current main
+  `129c09c8c8d56fa91bb09146f02dff24e65e6e7b`. Current run
+  [41522917395](https://github.com/itchyshin/drmTMB/actions/runs/41522917395)
+  has Ubuntu, macOS, OS-matrix, and source-tree checks passed; Windows remains
+  active. All four Ubuntu shards passed on the same head in run
+  [41522127422](https://github.com/itchyshin/drmTMB/actions/runs/41522127422).
+  No formal review is recorded.
+- drmTMB [#1435](https://github.com/itchyshin/drmTMB/pull/1435) is a small
+  `fixef()` dispatch change at head
+  `3f4a82f361d777f79a6bf1121af748791017d224`. Its Ubuntu, macOS, Windows,
+  OS-matrix, and source-tree checks passed in run
+  [41497247921](https://github.com/itchyshin/drmTMB/actions/runs/41497247921),
+  but its base `71ceee671aac0e4c8bedf265b3b735b1ad633390` is stale relative to
+  current main `129c09c8c8d56fa91bb09146f02dff24e65e6e7b`. A prior PR comment
+  says it was ready for a maintainer merge decision on the then-current base;
+  that is not fresh-base validation or proof of present ownership. No matching
+  current-head worktree, formal review, or review thread was found. Do not
+  rebase or merge it without resolving ownership and refreshing checks.
+- DRModels.jl [#1215](https://github.com/itchyshin/DRModels.jl/pull/1215) is a
+  one-file roadmap wording change at head
+  `1ee71530ebcd31bb62cce2fba6601ffced4f65ea` on current main
+  `973bbb675dc6a10b436acf86175e089e38ec467e`. It is a draft; the changes job
+  and docs job are queued in runs
+  [41539026157](https://github.com/itchyshin/DRModels.jl/actions/runs/41539026157)
+  and
+  [41539026225](https://github.com/itchyshin/DRModels.jl/actions/runs/41539026225).
+  The local
+  checkout is at an older commit, so wait for checks and reconcile its owner
+  before advancing it.
+- DRModels.jl [#1214](https://github.com/itchyshin/DRModels.jl/pull/1214) and
+  [#1210](https://github.com/itchyshin/DRModels.jl/pull/1210) overlap across
+  55 files. #1214 is a 55-file draft at current-main head
+  `5ba76b1cc0fdda189732011fecc4b9dc220c52b1`; its changes and docs jobs are
+  queued in runs
+  [41539113997](https://github.com/itchyshin/DRModels.jl/actions/runs/41539113997)
+  and
+  [41539114018](https://github.com/itchyshin/DRModels.jl/actions/runs/41539114018).
+  #1210 is a 57-file draft at stale-base head
+  `88b0a3d1d930528bffee292cf1c1d14d2f34c913`, with older passing CI in runs
+  [40355893345](https://github.com/itchyshin/DRModels.jl/actions/runs/40355893345)
+  and
+  [40355893421](https://github.com/itchyshin/DRModels.jl/actions/runs/40355893421).
+  Neither has formal review, and neither current head has a matching local
+  checkout. A single owner decision is needed to choose the canonical
+  overlapping patch before either proceeds.
+
+These PR checks are metadata evidence, not source review or permission to
+change an owner-held branch. No review, message, PR change, merge, or compute
+run occurred in this census.
+
+## Full open-PR inventory, 2026-11-02 22:50 UTC
+
+The complete read-only census contains 35 open drmTMB PRs and 24 open
+DRModels.jl PRs. None had a formal review or review thread. Exact head/base
+SHAs, current check counts, registered worktree evidence, and file-overlap
+groups are recorded in the [full open-PR census](../2026-11-02-open-pr-census/README.md).
+
+Since the 22:45 snapshot, drmTMB #1663 completed all six exact-head checks
+successfully at head `993905ff6aa53d70304b988f73be397422dcf274`; its exact-head
+worktree remains heavily dirty, so it stays owner-held. DRModels.jl #1249
+still has Julia 1 shard 3 running its test step. drmTMB #1657 still has its
+three platform checks running; #1647 has only Windows active. DRModels.jl
+#1215 remains queued, while #1214 has its docs build active and changes check
+queued. The full census identifies #1664 as the clearest low-risk review
+candidate, not an automatic merge. CMR #1612 remains separate from core DRM;
+its deferred interval-calibration work is not promoted by this PR inventory.
+
+## Live PR and owner refresh, 2026-11-02 23:00 UTC
+
+GitHub metadata, exact-head workflow jobs, and local worktree/coordination
+records were rechecked. The default-branch pins remain drmTMB
+`129c09c8c8d56fa91bb09146f02dff24e65e6e7b` and DRModels.jl
+`973bbb675dc6a10b436acf86175e089e38ec467e`. The latest open-PR search
+returned 34 drmTMB PRs and 24 DRModels.jl PRs. The earlier full inventory is
+a 22:50 snapshot; this section supersedes only the rows below. No PR was
+changed, merged, or reviewed on GitHub by this refresh.
+
+### drmTMB
+
+- **#1663 is merged**, not open. GitHub records merge time
+  `2026-11-02T22:50:57Z`, exact head
+  `993905ff6aa53d70304b988f73be397422dcf274`, merge commit
+  `e5cd86667c97d1b34f0ead22017a675377f46930`, and successful exact-head run
+  [41532211007](https://github.com/itchyshin/drmTMB/actions/runs/41532211007).
+  Its registered worktree
+  `/Users/z3437171/Dropbox/Github Local/drmTMB/.worktrees/general-sd-regression`
+  remains at that head with modified lane/vignette files and extensive
+  untracked evidence. The active-lane ledger assigns cross-engine SD work to
+  Shinichi in that lane. The merged PR is not evidence that the additional
+  dirty work has landed; preserve that checkout and its files.
+- **#1659 remains open** at the same head as the 22:50 census,
+  `e2d617b54b9a94b8b8e2758db9a6c80fa4bcab87`, on stale base
+  `71ceee671aac0e4c8bedf265b3b735b1ad633390`. Exact-head run
+  [41491340175](https://github.com/itchyshin/drmTMB/actions/runs/41491340175)
+  completed successfully for source-tree tests, OS matrix, and all four
+  Ubuntu release shards. GitHub reports it mergeable. Its registered audit
+  worktree is prunable and absent, so no live owner checkout was verified.
+  The PR's 14 stored-reference cells are one-dataset point-estimate and SE
+  comparisons at the older Julia pin `64ccb2d8`; the six default
+  GHQ-versus-Laplace comparisons are skipped. This does not establish
+  recovery, interval calibration, or current-pair parity.
+- **#1664** remains open at exact head
+  `015c0e1fac9cad68e82f2711eeebad4b1b6fcd69` on current main. All six checks
+  in run [41513019278](https://github.com/itchyshin/drmTMB/actions/runs/41513019278)
+  passed, but GitHub currently reports the PR non-mergeable. It has no
+  submitted formal review in the refreshed R candidate set. Keep it as a
+  small review candidate, not a merge-ready change, until mergeability and
+  review are resolved.
+- **#1657, #1647, #1646, and #1623** have successful exact-head checks in
+  runs `41518765724`, `41522127422`, `41522870646`, and `41521376664`,
+  respectively. GitHub reports each non-mergeable. **#1435** has successful
+  run `41497210984`, but remains on stale base
+  `71ceee671aac0e4c8bedf265b3b735b1ad633390` and is also reported
+  non-mergeable. These checks do not resolve source conflicts or identify a
+  current lane owner. The eight R candidates inspected in this refresh had
+  no formal review submissions.
+
+### DRModels.jl
+
+- **#1242, #1239, and #1234 are merged** at exact heads `c56ecfb3`,
+  `e8a6c20a`, and `0b85b7cf`; all recorded CI and Documenter runs succeeded.
+  Their merge commits are ancestors of the locally cached `origin/main`
+  `973bbb675dc6a10b436acf86175e089e38ec467e`. The tests retain important
+  limits: #1242 has nine default-integrator mismatches marked broken while
+  fixed effects and explicit `:Laplace` agree; #1239 has three broken
+  marginal log-likelihood comparisons with gaps 0.12, 0.06, and 0.19; #1234
+  retains four Student Gaussian-limit mismatches and skips Gamma because its
+  reference fixture has not been generated. Merging these tests does not
+  make the broken or skipped cells pass.
+- **#1240 remains an open draft** at head
+  `03b93e680266369dff10e63eb4c846826a102ec4` on stale base
+  `64ccb2d8d87b329e5a43b2358fd5cb4a36cd9716`. CI run
+  [41248908491](https://github.com/itchyshin/DRModels.jl/actions/runs/41248908491)
+  fails fixture-provenance validation because `expected.meta.toml` lacks
+  `drmtmb_code_hash`, before the new numerical fixture test runs. Documenter
+  run `41248908497` passed. This is a provenance failure, not a measured
+  model mismatch or parity result. Current review lookup found no formal
+  review submission.
+- **#1249** remains active at current-main head
+  `e01e0fadb1ba7773a41f08d8a0802a2c0b018970`: docs passed, while Julia 1
+  shard 3 was still running in
+  [41519305510](https://github.com/itchyshin/DRModels.jl/actions/runs/41519305510)
+  at 23:00 UTC. #1248 had its test run queued and docs passed; #1247's four
+  Julia 1 shards failed while docs passed; #1237's recorded CI and docs
+  passed. #1215's jobs were queued, #1214's changes job was queued and docs
+  job active, and #1210's older-base CI/docs passed. #1214 and #1210 still
+  overlap across 55 files, so keep the canonical patch decision with their
+  owner.
+- A separate detached worktree at
+  `/Users/z3437171/.codex/worktrees/capability-status-reconcile/DRM.jl`
+  contains uncommitted changes to `docs/design/capability-status.md` and
+  untracked after-task/check-log records. Its ownership was not identified
+  in the coordination board or live lease list. This refresh reviewed the
+  diff and preserves it; it does not overwrite or consolidate that page.
+
+The read-only R owner refresh and Julia owner refresh were performed in
+parallel. The R refresh found 33 live lanes in its repo census and verified
+the assigned owner record for #1663's dirty SD lane. The Julia refresh found
+no authoritative owner for the detached capability-page edit. PR authorship,
+branch names, green CI, and a merged PR were not treated as proof that adjacent
+uncommitted work had been completed or released. Totoro and DRAC were not used:
+this was metadata, source, and worktree reconciliation, not a compute task.
+
+## Owner-safe follow-up, 2026-11-02 23:10 UTC
+
+The current exact-head checks and registered worktrees were rechecked after the
+23:00 snapshot. No candidate met both conditions for safe advancement: a
+current exact-head checkout with a demonstrably live owner, and no overlapping
+lane. PR authorship and an earlier “ready” comment did not satisfy that owner
+check. No source branch or PR was changed.
+
+- **drmTMB #1657** remains at head
+  `21f769d0f80f4651592dac9d80d7a7ee3dc8a049`, based on current main. Run
+  [41522911628](https://github.com/itchyshin/drmTMB/actions/runs/41522911628)
+  has source-tree, OS-matrix, macOS, and Windows jobs successful; its Ubuntu
+  release check is still running at 23:09 UTC. The PR is reported
+  non-mergeable, has no formal review, and no registered exact-head worktree
+  was found. Keep it with its current lane pending a terminal check and owner
+  handoff.
+- **DRModels.jl #1249** remains at head
+  `e01e0fadb1ba7773a41f08d8a0802a2c0b018970` on current main. Run
+  [41519305510](https://github.com/itchyshin/DRModels.jl/actions/runs/41519305510)
+  has Julia 1 shards 1, 2, and 4 successful; shard 3 is still running at
+  23:09 UTC. Documenter passed. No formal review or exact-head checkout was
+  found, so keep it waiting for its current lane and final shard.
+- **DRModels.jl #1248** remains open at head
+  `1d7eeff21145b1ecdf598a97257db5cbb14702f9`, based on stale base
+  `87a8ed4e57a9f5a4b61ca66673ca02d48515b8ee`. CI run
+  [41511040751](https://github.com/itchyshin/DRModels.jl/actions/runs/41511040751)
+  fails on three Julia 1 shards. The inspected logs show distinct failures:
+  the temporal OU dense-oracle gap is `1.7098500393e-10` against a `1e-10`
+  bound; the coupled NB2 location-scale fixture misses its `1e-8` parameter
+  tolerance; and the all-singleton Gaussian test expects a warning,
+  non-convergence, and NaN covariance but receives a converged fit with finite
+  covariance. These are exact-head failures; the cause and relation to #1248
+  remain unattributed. Documenter passed. Do not call this a #1248 regression
+  without a current-base or owner-led reproduction.
+- Julia #1214 and #1215 remain draft documentation PRs. Their latest recorded
+  checks were queued, and neither has an exact-head checkout. #1214 overlaps
+  #1210 across 55 files. The smallest file count does not make either branch
+  safe to take.
+- In R, #1664 has six green exact-head jobs but is non-mergeable, has no formal
+  review, and lacks an exact-head checkout; #1647 overlaps its methods file.
+  #1646 overlaps the active #1529 Gamma-mixture lane. #1659 is green and
+  reported mergeable but has a stale base and no registered owner checkout.
+  The other inspected green R candidates also lack a collision-free
+  owner-and-checkout path. Leave them untouched pending lane-owner disposition.
+
+No Totoro/DRAC compute was appropriate for this API, CI-log, and worktree
+review. The next useful refresh event is completion of #1657 run 41522911628
+or #1249 run 41519305510; otherwise wait for an owner handoff rather than
+rechecking unchanged queued or running work.
+
+## #1657 terminal CI refresh, 2026-11-02 23:12 UTC
+
+Run [41522911628](https://github.com/itchyshin/drmTMB/actions/runs/41522911628)
+is now terminal and all five listed jobs passed at exact head
+`21f769d0f80f4651592dac9d80d7a7ee3dc8a049`: source-tree tests, OS matrix, and
+Ubuntu, macOS, and Windows release checks. PR #1657 remains open and
+non-draft, with no formal reviews, no registered exact-head worktree, and
+GitHub still reports `mergeable = false`. The comparison from current main
+`129c09c8c8d56fa91bb09146f02dff24e65e6e7b` to the PR head reports six commits
+ahead, zero behind, and current main as the merge base. The reason for the
+PR API's non-mergeable status is not established; do not infer a text conflict
+or merge readiness from these fields alone.
+
+DRModels.jl #1249 remains open at head
+`e01e0fadb1ba7773a41f08d8a0802a2c0b018970`; its last observed state at 23:09
+UTC was three Julia 1 shards successful and shard 3 still running, with
+Documenter passed. No new poll was needed for this update. No branch or PR
+metadata was changed, and no Totoro/DRAC compute was used.
+
+## Current-main and R-CMD-check correction, 2026-11-02 23:18 UTC
+
+Live GitHub state supersedes the R main pin in the earlier 23:12 note. drmTMB
+main advanced to `e5cd86667c97d1b34f0ead22017a675377f46930` when #1663 merged
+at 22:50:56 UTC. The latest R-CMD-check run returned by the main-branch
+workflow query is
+[40375071745](https://github.com/itchyshin/drmTMB/actions/runs/40375071745),
+created October 26 at commit
+`02095c67d7e70bbb648f45d2bbdd5aa0b1ea7be5`; its macOS release job failed,
+while the source-tree, Ubuntu, Windows, and OS-matrix jobs passed. This is not
+a check of current main. Its macOS job log now returns HTTP 410, so this
+refresh cannot attribute the failure to a particular test. No later
+R-CMD-check run appears in the 50 most recent main workflow runs. The latest
+main run is receipt-staleness run
+[41540682271](https://github.com/itchyshin/drmTMB/actions/runs/41540682271),
+queued on `e5cd866`; it is not an R-CMD-check.
+
+drmTMB #1657 remains open at head
+`21f769d0f80f4651592dac9d80d7a7ee3dc8a049`, with its five-job exact-head run
+`41522911628` green. However, its API base remains the old main
+`129c09c8c8d56fa91bb09146f02dff24e65e6e7b`. The live compare from new main
+`e5cd866` to the PR head is `diverged`, six commits ahead and 47 behind, with
+`129c09c` as merge base. GitHub reports `mergeable = false` and
+`mergeable_state = dirty`; no formal review or requested reviewer is recorded.
+Treat the green run as exact-head evidence only, not current-main validation
+or merge readiness. Leave rebasing and new CI to the owning lane.
+
+DRModels.jl #1249 remains open at head
+`e01e0fadb1ba7773a41f08d8a0802a2c0b018970` on current main
+`973bbb675dc6a10b436acf86175e089e38ec467e`. In run
+[41519305510](https://github.com/itchyshin/DRModels.jl/actions/runs/41519305510),
+shards 1, 2, and 4 passed and shard 3 remained in progress at 23:18 UTC;
+GitHub reports the PR mergeable but blocked. No formal review was recorded.
+
+Shinichi confirmed Totoro and DRAC are available again. Neither was used for
+this metadata-only refresh. Route future CPU validation to Totoro within the
+150-core cap; reserve DRAC for queued, multi-node, or larger-than-150-core
+work, with an estimate and required pre-run approval for campaigns over three
+hours.
+
+## Live CI and ownership refresh, 2026-11-02 23:36 UTC
+
+The live default-branch pins remain drmTMB `e5cd86667c97d1b34f0ead22017a675377f46930`
+and DRModels.jl `973bbb675dc6a10b436acf86175e089e38ec467e`.
+
+- **DRModels.jl #1249** remains at head
+  `e01e0fadb1ba7773a41f08d8a0802a2c0b018970`, based on current main. In run
+  [41519305510](https://github.com/itchyshin/DRModels.jl/actions/runs/41519305510),
+  Julia 1 shards 1, 2, and 4 passed; shard 3 was still running at 23:36 UTC,
+  having started at 21:19 UTC. GitHub did not provide the active job log. The
+  PR is mergeable at the graph level but remains blocked, with no formal review.
+  A fresh local worktree census found only the remote branch, not an exact-head
+  checkout. The lane owner is therefore still unconfirmed; the branch prefix is
+  not owner evidence.
+- **drmTMB #1500** is at head
+  `7630b6a4653d4ee7ffbd69ee5e6be87d330d8890` on current main. Run
+  [41542189558](https://github.com/itchyshin/drmTMB/actions/runs/41542189558)
+  had its source-tree and OS-matrix jobs pass, with all four Ubuntu test shards
+  still running. No formal review is recorded. Its `cursor/` branch name does
+  not establish the current lane owner.
+- **drmTMB #1563** is at head
+  `7881fabcccf64607b63873820a5287f8f74bb148`, with stale base
+  `129c09c8c8d56fa91bb09146f02dff24e65e6e7b`. Its exact-head run
+  [41540482150](https://github.com/itchyshin/drmTMB/actions/runs/41540482150)
+  passed the source-tree, OS-matrix, and all four Ubuntu shards. The PR remains
+  dirty against current main `e5cd866`; it has no formal review. Green exact-head
+  checks do not establish current-main validation or merge readiness.
+- **drmTMB #1659** remains green at exact head
+  `e2d617b54b9a94b8b8e2758db9a6c80fa4bcab87`, but its base
+  `71ceee671aac0e4c8bedf265b3b735b1ad633390` predates current main. It has no
+  formal review. Treat its green checks as exact-head evidence only.
+- The latest `R-CMD-check` workflow run on drmTMB `main` is still the
+  26 October failure [40375071745](https://github.com/itchyshin/drmTMB/actions/runs/40375071745)
+  at stale source `02095c67d7e70bbb648f45d2bbdd5aa0b1ea7be5`. The newer R-CMD
+  runs above are PR runs, not current-main checks.
+
+This refresh used GitHub metadata and local ref/worktree evidence only. It did
+not change a source branch or PR, contact a lane owner, or infer ownership from
+authorship or branch naming. No candidate is promoted to merge-ready by this
+refresh.
+
+## Focused source review: drmTMB #1659, 2026-11-02 23:43 UTC
+
+The exact PR head is `e2d617b54b9a94b8b8e2758db9a6c80fa4bcab87`, with base
+`71ceee671aac0e4c8bedf265b3b735b1ad633390`. GitHub reports all six listed
+checks successful, `mergeable = MERGEABLE`, and zero formal reviews. Current
+drmTMB main is `e5cd86667c97d1b34f0ead22017a675377f46930`; the green result is
+exact-head evidence on the submitted base, not a rerun on current main.
+
+The added R tests compare seven families across fixed-effect and `mu` random-
+intercept fits with stored DRModels.jl reference values. The source generator
+calls `DRModels.drm_bridge` and records commit `64ccb2d8d87b329e5a43b2358fd5cb4a36cd9716`.
+The live `engine = "julia"` comparison is conditional on JuliaCall and an
+available DRModels.jl checkout; it covers eight bridge-admitted cases, while
+non-Gaussian random-intercept bridge routes remain excluded. These are useful
+parity fixtures, with a historical Julia source pin and a conditional live
+bridge check.
+
+**Source-review finding:** `tools/drmjl-parity/make-reference.jl` calculates
+`drmjl_dirty` with `git status --porcelain --untracked-files=no`. That check
+ignores untracked files. The test asserts that the stored field equals
+`"false"`; it does not establish that the full Julia checkout was clean when
+the reference was generated. This narrows the meaning of the provenance claim
+and should be clarified or strengthened by the PR owner. It does not invalidate
+the stored numerical comparisons by itself.
+
+This was a read-only diff review. No tests were rerun, no public review or
+comment was submitted, and no source or PR metadata was changed. The current
+owner of the PR branch remains unconfirmed.
+
+## Compute and active-check refresh, 2026-11-02 23:48 UTC
+
+The Rorqual SSH ControlMaster is reachable and the user's Slurm queue is empty.
+This establishes DRAC access, not a ready R check environment. Totoro is also
+reachable, but its measured load average was about 303 across 384 cores, so no
+work was sent there.
+
+On Rorqual, R 4.6.1 loaded with the existing read-only library
+`/home/snakagaw/R/g4g5-lib` and the system site library. The library exposes 30
+installed packages. It is missing three of eight `Imports` packages
+(`cli`, `lifecycle`, and `TMB`) and both `LinkingTo` packages (`TMB` and
+`RcppEigen`); 27 of 29 `Suggests` packages are also missing. `pak` is not
+installed. The installed drmTMB tree was not changed. No R CMD check or Slurm
+job was started. A full check therefore needs a separately staged library;
+its installation time and package-build feasibility have not yet been
+measured.
+
+The exact-head state was refreshed at 23:47 UTC. DRModels.jl #1249 remains at
+head `e01e0fadb1ba7773a41f08d8a0802a2c0b018970` on current main. Julia 1
+shards 1, 2, and 4 passed, while shard 3 remains in progress in run
+[41519305510](https://github.com/itchyshin/DRModels.jl/actions/runs/41519305510).
+The run has not updated since 21:30 UTC, and its active log endpoint returned
+404. No formal review is recorded. Do not call the run failed or restart it
+based only on missing logs.
+
+drmTMB #1500 remains an open draft at head
+`7630b6a4653d4ee7ffbd69ee5e6be87d330d8890` on current main. In run
+[41542189558](https://github.com/itchyshin/drmTMB/actions/runs/41542189558),
+the source-tree and OS-matrix jobs passed and all four Ubuntu release shards
+remain in progress. The run was updated at 23:23 UTC. No formal review is
+recorded. The PR and its branch were not changed.
+
+This refresh is environment and CI evidence only. It does not validate model
+parity, resolve package-check failures, establish PR ownership, or authorize
+an install, merge, release, or deployment. The next useful step is a bounded
+preflight for an isolated R package library on `/project`, followed by an
+installation-time estimate before any full check is submitted.
+
+## Live review, CI, and compute refresh, 2026-11-02 23:58 UTC
+
+Exact-head PR metadata and Actions jobs were refreshed after Shinichi reported
+that Totoro and DRAC were available. Two independent read-only source reviews
+also completed. No package tests, simulations, installs, or Slurm jobs were
+started.
+
+- **DRModels.jl #1249** is open, non-draft, and based on current main
+  `973bbb675dc6a10b436acf86175e089e38ec467e`. Current head is
+  `b959b185d2e6940ad2c3db8e2eb4b04e889338dd`. CI run
+  [41548951015](https://github.com/itchyshin/DRModels.jl/actions/runs/41548951015)
+  is pending; Documenter run
+  [41548951145](https://github.com/itchyshin/DRModels.jl/actions/runs/41548951145)
+  is queued. A source review found no P0/P1 issue. It raised two P2 items for
+  the added Gaussian scale-collapse guard: test a valid high-variation fit and
+  constant or near-constant responses, and add the required changelog/check-log
+  record for the user-visible warning and convergence change. No GitHub review
+  was submitted.
+- **drmTMB #1667** is open, non-draft, and based on current main
+  `e5cd86667c97d1b34f0ead22017a675377f46930`. Head is
+  `c133edb86992a092b4ccaebd5606746da831d5e1`. In run
+  [41548315716](https://github.com/itchyshin/drmTMB/actions/runs/41548315716),
+  the source-tree test job is still running and the OS matrix is queued. A
+  read-only review found no P0/P1 blocker. It noted that the new regression
+  test suppresses all warnings around the bridge fit and uses one fixture per
+  family at one tree height. This is targeted regression evidence, not broad
+  parity or interval validation. No GitHub review was submitted.
+- **drmTMB #1500** remains an open draft at head
+  `7630b6a4653d4ee7ffbd69ee5e6be87d330d8890`, based on current main. Run
+  [41542189558](https://github.com/itchyshin/drmTMB/actions/runs/41542189558)
+  has source-tree and OS-matrix checks plus Ubuntu shards 1, 2, and 4 passed;
+  shard 3 remains in progress. Its check run is already doing the package work,
+  so a duplicate cluster check would add no current evidence.
+
+### Resource readiness
+
+- Totoro answered through its existing socket, but load average was about 296
+  on 384 cores. No work was sent there.
+- The existing Rorqual socket returned an MFA-required authentication error.
+  No fresh login was opened. Existing sockets to Fir, Narval, Nibi, Tamia,
+  Trillium, Vulcan, and Killarney answered read-only status requests. Fir's
+  load average was about 11 and the user's Slurm queue count was zero.
+- Fir provides R 4.6.1 as a module. In its base module library, `cli`,
+  `lifecycle`, `TMB`, `RcppEigen`, `testthat`, and `pkgdown` are absent. Its
+  quota response showed 46.88 GB user and 31.51 GB group `/project` use, with
+  no explicit byte limit reported. No package library was created and no
+  install or Slurm job was started.
+
+**Routing decision:** do not duplicate #1500's active CI. Keep Totoro idle for
+this task while its load is high. Fir is a possible later R-check target only
+after a bounded dependency plan; it is not yet a ready R CMD check environment.
+The pending exact-head checks and independent review findings are the current
+useful evidence.
+
+This refresh does not establish numerical R-Julia parity, interval calibration,
+owner identity, merge readiness, or release readiness. The two P2 findings are
+owner follow-ups, not changes made by this lane.
+
+## Exact-head follow-up, 2026-11-03 00:03 UTC
+
+The latest PR heads are unchanged. Workflow jobs were refreshed after the
+previous observation; the source reviews remain read-only.
+
+- **drmTMB #1500** (`7630b6a4653d4ee7ffbd69ee5e6be87d330d8890`, base
+  `e5cd86667c97d1b34f0ead22017a675377f46930`) now has all four Ubuntu shards,
+  the source-tree check, and the OS-matrix check passed in run
+  [41542189558](https://github.com/itchyshin/drmTMB/actions/runs/41542189558).
+  A read-only source review found no P0, P1, or P2 correctness blocker; it
+  suggested adding tests for other named `update()` replacements as P3 follow-up.
+  The PR remains a draft and has no formal review. No exact-head local worktree
+  was found, so branch ownership remains unconfirmed.
+- **drmTMB #1667** (`c133edb86992a092b4ccaebd5606746da831d5e1`, current base)
+  has its source-tree and OS-matrix jobs passed in run
+  [41548315716](https://github.com/itchyshin/drmTMB/actions/runs/41548315716).
+  All four Ubuntu shards were still running at 00:03 UTC. The review concern
+  about warning suppression remains an owner follow-up. The exact-head checkout
+  exists, but no ownership handoff or formal review is recorded.
+- **DRModels.jl #1249** (`b959b185d2e6940ad2c3db8e2eb4b04e889338dd`, current
+  base) has CI run [41548951015](https://github.com/itchyshin/DRModels.jl/actions/runs/41548951015)
+  queued at the changes job. Documenter run
+  [41548951145](https://github.com/itchyshin/DRModels.jl/actions/runs/41548951145)
+  was building documentation at 00:03 UTC. The review's two P2 follow-ups remain
+  unresolved. No exact-head checkout or formal review was found.
+- **DRModels.jl #1215** (`1ee71530ebcd31bb62cce2fba6601ffced4f65ea`, current
+  base) is an open one-file draft that labels the old roadmap phase snapshot as
+  historical and links to the current capabilities and API stability pages.
+  Both link targets exist on the exact base. The Documentation build and
+  rendered-doc audit passed in run
+  [41539026225](https://github.com/itchyshin/DRModels.jl/actions/runs/41539026225);
+  docs-preview remained pending and deployment was skipped. The Julia shard
+  jobs reported success through the prose-only fast path, which skipped Julia
+  setup, build, and tests; the aggregate `ci-ok` job was still queued. The
+  matching local branch is checked out at
+  `abda662cce362dc6108349dda96ba40ed2844142`, which differs from the PR head.
+  No formal review or current owner was found.
+
+**Next disposition:** #1500 is the closest current-main candidate for maintainer
+review after its owner resolves the draft state. #1215 is a small code-free
+change, but it is not independent: its `ROADMAP.md` change overlaps both #1214
+and #1210. Their current file lists overlap on 55 paths, including `ROADMAP.md`;
+#1214 targets current main while #1210 targets stale base
+`64ccb2d8d87b329e5a43b2358fd5cb4a36cd9716`. PR #1214 has a successful docs
+build and active CI. #1210 has older successful CI and docs runs on its stale
+base. The #1214 exact-head checkout was not found; the #1210 local branch is at
+`af4c0f4d527f3e41d4dc3cac1e1fafb891996aab`, which differs from its PR head.
+Reconcile the overlapping documentation lanes with their owners before
+considering #1215 for closure. No PR state was changed, and no merge is
+recommended from this lane.
+
+## Exact-head and resource follow-up, 2026-11-03 00:11 UTC
+
+Rechecked the same PR heads and workflow run IDs after the five-minute status
+backoff. No head or run changed, and the pending jobs remain live:
+
+| PR | Exact-head run state at 00:11 UTC | Disposition |
+|---|---|---|
+| DRModels.jl #1214, `5ba76b1cc0fdda189732011fecc4b9dc220c52b1` | CI `41539113997` in progress; Documenter `41539114018` successful | Wait for CI; docs success does not complete package checks. |
+| DRModels.jl #1215, `1ee71530ebcd31bb62cce2fba6601ffced4f65ea` | CI `41539026157` queued; Documenter `41539026225` cancelled | Keep with the overlapping documentation lanes; do not treat the earlier preview as current deployment evidence. |
+| DRModels.jl #1249, `b959b185d2e6940ad2c3db8e2eb4b04e889338dd` | CI `41548951015` queued; Documenter `41548951145` pending | Do not duplicate the owner's exact-head checks. The source-review follow-ups remain open. |
+| drmTMB #1667, `c133edb86992a092b4ccaebd5606746da831d5e1` | R-CMD-check `41548315716` in progress | Wait for the exact-head check; preserve the warning-visibility review note. |
+| drmTMB #1500, `7630b6a4653d4ee7ffbd69ee5e6be87d330d8890` | R-CMD-check `41542189558` successful | Candidate for maintainer review after its owner resolves draft state; not a merge authorization. |
+
+Resource access was checked through existing ControlMaster sockets only. Totoro
+responded, with a measured load average of about 301 across 384 CPUs, so no
+compute was sent there. The fixed DRAC status wrapper connected to most listed
+hosts and returned no job rows; Killarney's login lacked `squeue` and `sacct`,
+so its queue status is unknown. No install, test, fit, simulation, or Slurm job
+was started. This snapshot records operational reachability, not spare capacity
+or a ready package-check environment.
+
+## Additional Julia PR triage, 2026-11-03 00:15 UTC
+
+Current remote `main` is `973bbb675dc6a10b436acf86175e089e38ec467e`. Both PRs
+below target the older base `64ccb2d8d87b329e5a43b2358fd5cb4a36cd9716`.
+Their remote branch refs match the PR heads, but no matching local worktree was
+found. The GitHub author is `itchyshin`; that does not establish which active
+task lane currently owns either branch.
+
+| PR | Exact head | Checks | Review and disposition |
+|---|---|---|---|
+| DRModels.jl #1218 | `2fc48d03972f4b7ca0677c354250916f7bbb947d` | CI `41245197960` successful; Documenter `41245197961` cancelled | The PR discussion contains a conditional “ship” comment, but no submitted review. The comment leaves an explicit maintainer decision open: whether the iteration-cap veto remains when the SE-scaled step is below `1e-3`. This changes convergence flags across several fit routes. Keep draft and do not close #983 until the decision and a current-base check are resolved. |
+| DRModels.jl #1223 | `64940f742395b19e22e2936697b6f5ccb23c2b4c` | CI `41240893500` successful; Documenter `41240893497` successful | Read-only diff review found the guard and separated-data test narrowly targeted, with no clear implementation blocker. The public message generalizes that point estimates are “not meaningful” for every non-finite Hessian, while the test demonstrates separation specifically. Ask the owner to narrow or justify that broad interpretation. No formal review is recorded. Require a rebase and exact-head checks on current main before disposition. |
+
+These green runs are historical evidence on the stale base. No local Julia
+tests were run, no review or comment was submitted, and no branch or PR state
+was changed.
+
+## #1215 terminal-check follow-up, 2026-11-03 00:16 UTC
+
+At the same head (`1ee71530ebcd31bb62cce2fba6601ffced4f65ea`) and current base
+`973bbb675dc6a10b436acf86175e089e38ec467e`, CI run `41539026157` is now
+complete and successful. Its `ci-ok` job passed, but all four Julia shards
+skipped Julia setup, package build, and tests through the prose-only fast path;
+the scaling sweep was also skipped. The workflow confirms a successful
+documentation-change check; Julia tests did not execute.
+
+Documenter run `41539026225` completed the `docs` job successfully, including
+the site build, rendered-page audit, and artifact upload. The `docs-preview`
+job was cancelled and `docs-deploy` was skipped. Thus the PR has a successful
+build and audit but no preview or deployment evidence. Its PR remains a draft,
+and the `ROADMAP.md` overlap with #1214 and #1210 remains unresolved. No owner
+handoff or formal review appeared in the refreshed metadata. Other tracked PR
+heads and run states were unchanged in this refresh.
+
+## Exact-head follow-up, 2026-11-03 00:21 UTC
+
+Live PR and Actions metadata was refreshed against remote `main`
+`973bbb675dc6a10b436acf86175e089e38ec467e`:
+
+- **DRModels.jl #1215** remains at `1ee71530ebcd31bb62cce2fba6601ffced4f65ea`
+  and its exact-head CI run `41539026157` is now successful. The four Julia
+  shards completed successfully as jobs, but their `setup-julia`, package
+  build, and test steps were explicitly skipped by the prose-only fast path;
+  this is not Julia test evidence. Documenter run `41539026225` passed the docs
+  build and audit, while `docs-preview` was cancelled and deploy was skipped.
+  The PR remains draft and has no submitted review or comments.
+- **DRModels.jl #1214** remains at `5ba76b1cc0fdda189732011fecc4b9dc220c52b1`
+  on current main. Documenter build and preview passed. CI run `41539113997`
+  is still in progress: Julia shards 1/4 and 4/4 failed; shards 2/4 and 3/4
+  were still running at this refresh. The job annotation only reports exit
+  code 1; run logs were not yet available, so the cause is not attributed.
+  The PR remains draft with no submitted review or comments.
+- **DRModels.jl #1210** remains open at `88b0a3d1d930528bffee292cf1c1d14d2f34c913`
+  on stale base `64ccb2d8d87b329e5a43b2358fd5cb4a36cd9716`. Its CI, docs, and
+  preview checks passed on that historical candidate. No submitted review or
+  comments are present. Its local worktree is far behind the PR head, so it
+  does not establish a current owner checkout.
+
+The remote PR author is not evidence of the active lane owner. The Codex worktree
+inventory still has no #1214 exact-head checkout; the #1210 and #1215 local
+branches remain stale. No current owner handoff was found. Keep the three PRs
+unchanged until the lane owner and overlap disposition are explicit. No local
+Julia tests, edits to those PR branches or metadata, comments, review submissions,
+merges, or deployments were made in this refresh.
+
+## Documentation-PR file-overlap audit, 2026-11-03 00:23 UTC
+
+The current GitHub file lists show #1210 changes 57 paths and #1214 changes 55;
+all 55 #1214 paths are also changed by #1210. The two additional #1210 paths
+are `src/inference.jl` and `test/test_bootstrap_api_docstrings.jl`. #1215 changes
+only `ROADMAP.md`, which is in both larger PRs. This confirms #1210 and #1214
+are competing versions of the same 55-path documentation patch, not independent
+documentation slices. #1210 also contains two extra non-documentation changes.
+
+Patch comparison shows 44 of the 55 shared file patches are byte-identical; the
+other 11 differ: `README.md`, `docs/src/capabilities.md`,
+`docs/src/cross-family.md`, `docs/src/diagnostics-and-validation/small-sample-behaviour.md`,
+`docs/src/drmtmb-parity.md`, `docs/src/families.md`,
+`docs/src/model-guides/large-data.md`,
+`docs/src/model-guides/marginal-la-vs-va.md`,
+`docs/src/reference/model-fitting-and-postfit.md`,
+`docs/src/reference/model-specification.md`, and
+`tools/tests/test_docs_audit_semantics.py`. Therefore #1214 is not simply a
+clean rebase of #1210; owner review must reconcile these differing versions.
+
+Do not merge or close either PR based on this comparison alone. Evaluate the
+current-main-based #1214 candidate after its CI finishes, but reconcile the 11
+differing patches with #1210's owner. Separately review whether the two extra
+#1210 files contain changes that must be retained. #1215 remains dependent on
+the same `ROADMAP.md` owner decision. The exact-head PR metadata still records
+no formal reviews or comments for these three PRs.
+
+## #1214 failure attribution and related #1249 candidate, 2026-11-03 00:32 UTC
+
+The exact-head #1214 CI run `41539113997` is still in progress at head
+`5ba76b1cc0fdda189732011fecc4b9dc220c52b1` on current main
+`973bbb675dc6a10b436acf86175e089e38ec467e`. I fetched logs for the two
+finished failing Julia 1.13.3 jobs:
+
+- Shard 1 failed one assertion in `test/test_ls_inv2x2_chol.jl:123`. The fitted
+  parameter vector differs from its stored reference by up to about
+  `1.82e-8`, exceeding the test's `1e-8` absolute tolerance.
+- Shard 4 failed all three assertions in the all-singleton Gaussian
+  location-scale boundary test at `test/test_gaussian_ranef.jl:59-62`: the
+  expected warning was absent, `is_converged(fit)` was true, and `vcov(fit)`
+  was finite.
+
+Open PR #1249, head `b959b185d2e6940ad2c3db8e2eb4b04e889338dd` on the same
+current-main base, edits both relevant areas: its source change adds a
+collapsed-scale guard for Gaussian random-effects location-scale fits, and its
+test change relaxes the stored-parameter comparison to `1e-7`. This is a
+candidate response to the observed failures, not proof they are fixed. At
+00:32 UTC, #1249's docs build had passed, its docs preview was running, and its
+four Julia shards were queued or running; no complete exact-head result was
+available. The other two #1214 Julia shards were also still running. Therefore
+the #1214 run is not yet a terminal full-suite result, and no failure is
+attributed to its documentation edits.
+
+The PR metadata for #1214 and #1249 shows no submitted review or comments.
+The authorship and branch names do not identify current task ownership, so no
+owner disposition is inferred. No PR branch, PR metadata, source, or compute
+host was changed or used. Recheck both exact heads after the active runs finish;
+then compare the failures with #1249's exact-head outcomes before updating the
+owner disposition.
+
+## Exact-head runner refresh, 2026-11-03 00:34 UTC
+
+The two PR heads and base remained unchanged. #1214 shard 2/4 completed
+successfully at 00:32:21 UTC; shard 3/4 is still running. Shards 1/4 and 4/4
+remain failed with the causes above. For #1249, the docs build passed, while
+the docs preview and all four Julia shards remained in progress at 00:34 UTC.
+No completed #1249 Julia result is available to confirm whether its changes
+resolve the two #1214 failures. No owner response, formal review, or PR comment
+was present in the refreshed metadata.
+
+## Exact-head runner and failure-log refresh, 2026-11-03 00:39 UTC
+
+The PR heads and current-main base remained unchanged at refresh. #1214 remains
+open and draft at `5ba76b1cc0fdda189732011fecc4b9dc220c52b1`; its current-main
+base is `973bbb675dc6a10b436acf86175e089e38ec467e`. The docs build remains
+successful. CI run `41539113997` has shard 2 passed, shards 1 and 4 failed, and
+shard 3 still running. The retrieved logs give these exact failure causes:
+
+- Shard 1 (`test/test_ls_inv2x2_chol.jl:123`) compares a seven-element fitted
+  parameter vector with a stored reference at absolute tolerance `1e-8`. The
+  maximum observed difference is approximately `1.82e-8`; the objective still
+  agrees to approximately `3e-16`. The recorded gap is small and near the
+  optimizer's stopping scale, while the check remains failed at its stated
+  tolerance.
+- Shard 4 (`test/test_gaussian_ranef.jl:59-62`) expects a warning, a
+  non-converged fit, and an all-`NaN` covariance for an all-singleton Gaussian
+  location-scale case. On this runner the fit was marked converged and returned
+  a finite covariance, so all three expectations failed.
+
+PR #1249 remains open, non-draft, at `b959b185d2e6940ad2c3db8e2eb4b04e889338dd`
+on the same base. Its Documenter run `41548951145` succeeded. CI run `41548951015`
+has all four Julia shards still running at this refresh. Its diff changes the
+fitted-scale boundary handling in `src/gaussian_ranef.jl` and relaxes the stored
+parameter-vector tolerance in the named test. Validation of those changes by
+the candidate's exact-head suite remains pending. #1249 also changes unrelated
+tests, so its full run remains relevant.
+
+Shinichi reports Totoro and DRAC are available again. No job was started because
+the candidate's exact-head suite is already testing the proposed changes. If it
+finishes with an unresolved failure, route a focused reproduction to a suitable
+host after checking the active lane and compute requirements. The current
+crosswalk branch remains separate from another dirty crosswalk worktree; no
+files in that worktree were changed, and no owner handoff is inferred from
+branch names.
+
+No PR state, remote branch, test source, or compute host was changed. Refresh
+the same exact heads after run `41548951015` and #1214 shard 3 become terminal;
+then compare the candidate's results and review the source guard before
+recommending an owner disposition.
+
+## Cross-repository candidate refresh, 2026-11-03 00:42 UTC
+
+Refreshed the exact PR heads, bases, workflow jobs, and discussion timelines for
+three drmTMB candidates and DRModels.jl #1215. All PRs remain open. No
+discussion comments or submitted reviews were returned for these four PRs.
+
+| PR | Exact head and base | Current check evidence | Disposition |
+|---|---|---|---|
+| drmTMB [#1500](https://github.com/itchyshin/drmTMB/pull/1500) | `7630b6a4653d4ee7ffbd69ee5e6be87d330d8890`; base `e5cd86667c97d1b34f0ead22017a675377f46930` | Run `41542189558`: source-tree check, OS matrix, and all four Ubuntu shards passed. | Remains draft and changes 50 files. Prior read-only review found no P0-P2 issue and one P3 test-coverage suggestion. Current owner disposition is unknown; seek owner review before advancing it. |
+| drmTMB [#1667](https://github.com/itchyshin/drmTMB/pull/1667) | `c133edb86992a092b4ccaebd5606746da831d5e1`; base `e5cd86667c97d1b34f0ead22017a675377f46930` | Run `41548315716`: source-tree check and OS matrix passed; Ubuntu shards 1 and 4 passed, shards 2 and 3 remain in progress. | Keep open while exact-head tests finish. Prior review identified a warning-visibility concern. No owner disposition is recorded here. |
+| drmTMB [#1659](https://github.com/itchyshin/drmTMB/pull/1659) | `e2d617b54b9a94b8b8e2758db9a6c80fa4bcab87`; stale base `71ceee671aac0e4c8bedf265b3b735b1ad633390` | Run `41491340175`: source-tree check, OS matrix, and all four Ubuntu shards passed on this exact head. | Needs owner-led base refresh and exact-head checks on current main before disposition. Its parity evidence is limited to the tested point-estimate/SE fixtures. |
+| DRModels.jl [#1215](https://github.com/itchyshin/DRModels.jl/pull/1215) | `1ee71530ebcd31bb62cce2fba6601ffced4f65ea`; base `973bbb675dc6a10b436acf86175e089e38ec467e` | CI run `41539026157` passed as a workflow, but all Julia shards used the prose-only fast path and skipped Julia setup, build, and tests. Documenter run `41539026225` built and audited docs successfully; preview was cancelled and deploy skipped. | Remains draft and overlaps `ROADMAP.md` in #1210 and #1214. Keep with the documentation owner until the overlap and preview disposition are resolved. |
+
+The refresh confirms that #1500 is fully green on its current base and #1659 is
+fully green on a stale base. #1667 still has active test shards. #1215 has docs
+build evidence and a successful workflow status, with no Julia test execution
+or preview. GitHub author and branch names do not establish active lane owner;
+the available records leave disposition with the current owners. No PR state,
+branch, or source was changed. No Totoro or DRAC job was needed for these
+workflow-status checks.
+
+## Parallel crosswalk worktree inventory, 2026-11-03 00:45 UTC
+
+Read-only inspection found a second crosswalk worktree at
+`/Users/z3437171/.codex/worktrees/drm-parity-crosswalk-20261102/DRM.jl` on
+branch `codex/drm-parity-crosswalk-20261102`, head
+`347a81122f87257a221b3d30617c52b509d55877`. Its local head matches its cached
+remote branch. It has three modified tracked files and one untracked status
+receipt:
+
+- `docs/dev-log/after-task/2026-11-02-parity-crosswalk-reconciliation.assessment.json`
+- `docs/dev-log/after-task/2026-11-02-parity-crosswalk-reconciliation.md`
+- `docs/dev-log/check-log.d/2026-11-02-parity-crosswalk-reconciliation.md`
+- `docs/dev-log/evidence/parity-2026-11-02/pr-status-refresh-2026-11-02T1740Z.md`
+
+The worktree's lane lease is absent from the current lease list. The repository
+preflight still reports multiple live lanes, so lease absence does not establish
+that this work is owner-free. I left all four files untouched. Before integrating
+or superseding them, identify the lane owner and compare its PR evidence with the
+newer exact-head refreshes above. No owner message was sent.
+
+## drmTMB main-branch R-CMD-check badge, 2026-11-03 00:49 UTC
+
+The current drmTMB main head is `e5cd86667c97d1b34f0ead22017a675377f46930`.
+The README badge points to the `R-CMD-check` workflow, but the latest R-CMD-check
+run listed for `main` is
+[run 40375071745](https://github.com/itchyshin/drmTMB/actions/runs/40375071745),
+workflow-dispatch on older head `02095c67d7e70bbb648f45d2bbdd5aa0b1ea7be5`.
+Its macOS release job failed; the source-tree check, Ubuntu release job,
+OS-matrix job, and Windows release job passed. The run's overall status is
+failure, which explains the red workflow badge.
+
+The current `e5cd866` main head has no R-CMD-check run in the current Actions
+run listing. Its push-triggered `receipt-staleness` run `41540682271` failed,
+but that is a separate workflow. The R-CMD-check badge therefore reports an
+older failure, not a check of current main. The old job log endpoint now returns
+HTTP 410, and the rendered run page requires sign-in to view logs, so the
+macOS failure cause is not attributed here. No current-main R-CMD check was
+started. This remains an open verification item before describing the package
+check as green.
+
+## Exact-head CI follow-up, 2026-11-03 00:51 UTC
+
+Re-read the current exact-head checks after the prior refresh. DRModels.jl
+[#1214](https://github.com/itchyshin/DRModels.jl/pull/1214) remains at
+`5ba76b1cc0fdda189732011fecc4b9dc220c52b1`: Julia shard 1 and shard 4 failed,
+shard 2 passed, and shard 3 is still running. Its docs preview passed. The two
+failed shards reproduce the previously recorded all-singleton covariance-status
+expectations and a small stored-vector comparison outside its 1e-8 tolerance.
+
+DRModels.jl [#1249](https://github.com/itchyshin/DRModels.jl/pull/1249) remains
+at `b959b185d2e6940ad2c3db8e2eb4b04e889338dd`. All four Julia shards were still
+running; the Documenter build and preview passed. Do not treat the fixes as
+validated until this exact-head suite is terminal.
+
+drmTMB [#1667](https://github.com/itchyshin/drmTMB/pull/1667) remains at
+`c133edb86992a092b4ccaebd5606746da831d5e1`: source-tree checks, OS matrix, and
+Ubuntu shards 1, 2, and 4 passed; shard 3 is still running. drmTMB #1500
+remains green on its exact head. drmTMB #1659 remains green on its recorded head
+but has a stale base. DRModels.jl #1215's Julia shards passed, while its docs
+preview was cancelled; the earlier docs build passed.
+
+Totoro and DRAC are available, but no compute is called for: these are hosted CI
+states, and the relevant tests are already running on GitHub. Refresh the three
+pending shards before deciding whether a focused local or server reproduction is
+needed. This update does not resolve PR ownership, review, draft state, or merge
+readiness.
+
+## Post-merge and owner-state refresh, 2026-11-03 00:55 UTC
+
+GitHub now reports drmTMB [#1667](https://github.com/itchyshin/drmTMB/pull/1667)
+as merged by Shinichi at 00:52:19 UTC. Merge commit
+`abb1be417edd909df1c0c2d629096ad77d9f0536` is current `drmTMB` main. Its
+post-merge `receipt-staleness` workflow `41555918340` passed. The only workflow
+listed for that merge commit was `receipt-staleness`; this does not clear the
+older red R-CMD-check badge or establish a fresh R-CMD-check result.
+
+The two relevant Julia PRs remain unchanged at their checked heads and current
+main base. #1214 is open, draft, and blocked; #1249 is open, not draft, and
+blocked. Both PRs list Shinichi as author, but neither has formal reviews or
+conversation comments. Author identity and a remote branch name do not establish
+which active lane currently owns the work. No handoff or new owner reply was
+found in the checked local records.
+
+Registered worktree readback found the #1214 branch is not checked out in the
+primary clone. The #1249 branch is also absent from that clone's worktree list.
+The older #1210 documentation worktree is clean at `af4c0f4d5`, while its PR
+head is `88b0a3d1d`; the #1215 worktree is clean at `abda662cc`, while its PR
+head is `1ee71530e`. The #1667 refresh worktree is clean at `240488d1e`, behind
+the merged head. I left all these worktrees untouched. Their stale or missing
+local checkouts are not evidence that an active lane has released ownership.
+
+The exact-head diagnostics still show #1214 shard 3 running and all four #1249
+shards running. Review submissions, inline review threads, and conversation
+comments are empty for #1214 and #1249. No owner message was sent. Keep the
+crosswalk lane on status reconciliation only; any source or PR changes require
+an explicit owner handoff.
+
+## Runner-step refresh, 2026-11-03 00:53 UTC
+
+The drmTMB #1667 exact-head run `41548315716` is now fully green on
+`c133edb86992a092b4ccaebd5606746da831d5e1`: all four Ubuntu shards, the
+source-tree check, and the OS matrix succeeded. This resolves the pending-check
+item above, but does not resolve the PR's warning-visibility review comment or
+owner disposition.
+
+For DRModels.jl #1214 run `41539113997`, shard 3 is still executing
+`julia-runtest`; shards 1 and 4 remain failed and shard 2 passed. For #1249 run
+`41548951015`, all four shards are still executing `julia-runtest`. These are
+live test steps, not stale queued jobs. No rerun on Totoro or DRAC is needed
+while the exact-head tests continue.
+
+## Current main and exact-head PR refresh, 2026-11-04 12:58 UTC
+
+This refresh uses GitHub's current PR, check-run, merge, and main-commit
+responses. It updates the open items above where newer evidence was available;
+older sections remain historical records. No source branch, PR, issue, or CI
+run was changed.
+
+| Repository state | Current evidence | Disposition |
+|---|---|---|
+| DRModels.jl `main` | `f4fa3aed451636b6ffa442ce2632515513d23b1f`, merge of #1250 at 2026-11-04 02:56:35 UTC. PRs #1247 and #1249 merged on Nov 3 as `dfab3019f1a1ea854b1fac08b6b7ff9efc335f5c` and `f77d655c9c42a321c7300242b747313c4005e446`. | These merges supersede the old “checks still running” entries above; they do not clear unrelated open PR failures. |
+| drmTMB `main` | `8d30ed99a1d6c621dc23ce7fbb067ce7dc4cdcee`, merge of #1670 at 2026-11-04 02:57:02 UTC. PRs #1659, #1663, and #1667 are merged; #1667's merge was `abb1be417edd909df1c0c2d629096ad77d9f0536`. | #1663 and #1667 are earlier stages in the SD-regression lane; the current main SHA is the appropriate new baseline. |
+| drmTMB main R-CMD-check | The latest `R-CMD-check` run listed on `main` is failed run `40375071745` on older head `02095c67d7e70bbb648f45d2bbdd5aa0b1ea7be5` from 2026-10-26. No run for the current main SHA `8d30ed99a1d6c621dc23ce7fbb067ce7dc4cdcee` appeared in the current list. | The badge remains red from an older failed run; current main has not been certified by that workflow. PR #1671 has its own current-base checks, which have since finished green, but does not substitute for a main-branch R-CMD-check. |
+| drmTMB #1671 | Head `fc342a31f4654e95ac2434ed999fb043897ae0b1`, base exactly current main `8d30ed99a1d6c621dc23ce7fbb067ce7dc4cdcee`. Run `41826976793`: OS matrix and source-tree tests passed; Ubuntu shards 2 and 3 passed, shards 1 and 4 were still running at refresh. | Do not treat as complete until both remaining shards finish successfully and review/merge state is refreshed. |
+| DRModels.jl #1237 | Head `503b3797acdf44dba38af1096ebce7fc338f6e9b`, base `64ccb2d8d87b329e5a43b2358fd5cb4a36cd9716` (behind current main). Run `41249874224`: all four Julia shards and `ci-ok` passed; Documenter build and preview passed. The run exposes one four-shard job lane named “Julia 1”. The owner comment says ship only after Julia 1.10 and Julia 1 are green. | The recorded run does not demonstrate the owner's two-lane condition. The PR is not ready for an owner disposition until exact-current-base checks and the specified Julia-version coverage are reconciled. |
+| DRModels.jl #1248 | Head `1d7eeff21145b1ecdf598a97257db5cbb14702f9`, base `87a8ed4e57a9f5a4b61ca66673ca02d48515b8ee`. Run `41511040751`: Julia shards 2, 3, and 4 failed, `ci-ok` failed, shard 1 passed. Documenter build and preview passed. | Blocked on test failures; documentation success does not change that. |
+| DRModels.jl #1214 | Head `5ba76b1cc0fdda189732011fecc4b9dc220c52b1`, base `973bbb675dc6a10b436acf86175e089e38ec467e`. Run `41539113997`: shards 1, 3, and 4 failed; shard 2 passed; `ci-ok` failed. Docs build and preview passed. | Blocked on exact-head Julia failures and stale base. |
+| DRModels.jl #1215 | Head `1ee71530ebcd31bb62cce2fba6601ffced4f65ea`, base `973bbb675dc6a10b436acf86175e089e38ec467e`. Four Julia shard jobs and `ci-ok` passed in run `41539026157`; Documenter build passed but preview was cancelled in run `41539026225`. | Remains draft with docs overlap and stale base; successful CI alone does not establish merge readiness. |
+| DRModels.jl #1228 | Head `fe064dce02087cc69c9500f678967f6d258f848a`, base `64ccb2d8d87b329e5a43b2358fd5cb4a36cd9716`. Four Julia shards and `ci-ok` passed in run `41245284485`; docs build passed but preview was cancelled in run `41245284449`. GitHub reports merge state `DIRTY`. | Remains draft; resolve the merge conflict and owner disposition, then rerun checks on the current base. |
+
+For the current open drmTMB candidates queried, #1671 is the only one based on
+the current main SHA and it still had active tests. #1664, #1657, #1656, #1651,
+#1647, #1646, #1648, and #1033 had no check-run rollup at the queried heads;
+several also had a stale base or GitHub `DIRTY` merge state. #1653 and #1652
+were draft and had no check-run rollup. Treat “no check-run rollup” as no
+verified exact-head CI evidence, not as a pass or failure. This is a selected
+review refresh, not a claim that every open PR was audited.
+
+No Totoro or DRAC work was needed: this pass queried hosted CI and did not run
+fits, tests, or simulations locally or on a compute host. The previous Totoro
+attempt was intentionally stopped and is not a complete package check.
+
+## Handoff point, 2026-11-04
+
+The crosswalk now records the latest main SHAs, three additional merged R PRs,
+two merged Julia PRs, and the selected current-head CI dispositions above. No
+candidate in this selected set is ready for an unattended merge: #1237 still
+needs the owner's two-version condition and current-base checks; #1248 and
+#1214 have failed Julia shards; #1215 and #1228 have documentation or merge
+gates. #1671 completed its exact-main-base checks after this table; see the
+follow-up below. All other open PRs remain with their lane owners.
+
+## #1671 terminal-check follow-up, 2026-11-04 13:02 UTC
+
+Refreshed the exact head `fc342a31f4654e95ac2434ed999fb043897ae0b1` against
+base `8d30ed99a1d6c621dc23ce7fbb067ce7dc4cdcee`. Run `41826976793` is now
+terminal: source-tree tests, OS matrix, and all four Ubuntu release shards
+passed. GitHub reports the PR as non-draft, with no submitted review, no
+conversation comments, an empty review decision, and merge state `UNKNOWN`.
+
+This closes the pending CI item for #1671. It does not establish merge
+authorization or a resolved mergeability state. No review, comment, or merge
+action was made. Before another PR action, get the maintainer disposition and
+refresh GitHub's merge state.
+
+## Crosswalk branch publication boundary, 2026-11-04 13:04 UTC
+
+GitHub's compare API reports this worktree's branch
+`codex/current-main-parity-crosswalk-20261102` as 43 commits ahead and 55
+behind current DRModels.jl `main` (`f4fa3aed451636b6ffa442ce2632515513d23b1f`);
+no pull request exists for it. The local crosswalk updates are uncommitted.
+Do not push this branch as a finished change: it would publish the whole
+diverged history, not just the dated status update. Porting the two documented
+files onto an exact-current-main review branch needs a separate isolated lane
+after preserving this worktree and its evidence.
+
+## Post-merge and exact-head refresh, 2026-11-04
+
+Refreshed GitHub state after the previous snapshot:
+
+| Item | Current evidence | Disposition |
+|---|---|---|
+| drmTMB `main` and #1671 | `main` is now `9e2c03f6fdcb9091418cb629f2ca7f30da695e3d`, the merge commit for #1671 at 2026-11-04 13:02:18 UTC. PR #1671 merged at 13:02:19 UTC from head `fc342a31f4654e95ac2434ed999fb043897ae0b1`, based on `8d30ed99a1d6c621dc23ce7fbb067ce7dc4cdcee`. Its OS matrix, source-tree tests, and all four Ubuntu shards passed on run `41826976793`. | #1671 is closed and landed. This does not certify the post-merge `main` with a new R-CMD-check run. |
+| drmTMB R-CMD-check | The latest workflow run remains failed run `40375071745`, on old SHA `02095c67d7e70bbb648f45d2bbdd5aa0b1ea7be5` from October 26. No listed run targets current `main` `9e2c03f6fdcb9091418cb629f2ca7f30da695e3d`. | The badge is still historical red; the new main has no observed R-CMD-check result. |
+| DRModels.jl `main` | Still `f4fa3aed451636b6ffa442ce2632515513d23b1f` at 2026-11-04 02:56:35 UTC. | No main movement since the prior snapshot. |
+| DRModels.jl #1237 | Head `503b3797acdf44dba38af1096ebce7fc338f6e9b`, base `64ccb2d8d87b329e5a43b2358fd5cb4a36cd9716`, still open and non-draft. Latest relevant dispatch run `41401878711` failed: Julia 1.10 shards 1/4 and 2/4 failed, while the Julia 1 shards passed. | Owner's two-version gate is unmet, and the PR base is stale. Do not treat the earlier passing Julia 1 workflow as full CI acceptance. |
+| DRModels.jl #1222 | Head `d2a750e1dd97123b68b4055edf8e1f5d62de4e30`, base `64ccb2d8d87b329e5a43b2358fd5cb4a36cd9716`, open and draft; stored Julia and docs checks passed on October 31. | The checks predate current main and do not establish current-base readiness. Draft status and the unresolved docs/navigation owner decision remain. |
+| Selected open drmTMB PRs #1656, #1657, #1664 | Latest GitHub reads show all three open, `DIRTY`, with no current check rollup; their recorded bases are behind current `main`. | Not merge-ready. Existing lanes retain ownership; no rebases or check dispatches were requested here. |
+
+This was a read-only GitHub refresh followed by a local documentation update. No PR, issue, branch, check run, or remote ref was changed. The selected crosswalk remains incomplete as a full open-PR census. The current candidate branch still diverges from current Julia `main`; do not push it. A clean review branch needs separate lane ownership and source-porting work.
+
+## Current exact-head and owner-decision refresh, 2026-11-04 13:43 UTC
+
+Queried current repository refs, selected PR heads and check runs, plus issue
+#985. This section supersedes the earlier selected-PR rows where the same item
+appears. It does not claim a full census of open PRs.
+
+| Item | Current evidence | Disposition |
+|---|---|---|
+| DRModels.jl `main` | `f4fa3aed451636b6ffa442ce2632515513d23b1f`, merge of #1250. | Current baseline for the Julia candidates below. |
+| drmTMB `main` | `9e2c03f6fdcb9091418cb629f2ca7f30da695e3d`, merge of #1671. | Current baseline for the R candidates below. |
+| DRModels.jl #1222 | Head `d2a750e1dd97123b68b4055edf8e1f5d62de4e30`, base `64ccb2d8d87b329e5a43b2358fd5cb4a36cd9716`; open draft. Its latest PR checks remain successful: all four Julia shards, `ci-ok`, docs build, and docs preview. The Oct 25 owner decision on issue #985 explicitly says to document remaining engine-internal exports, add StatsModels to the docs environment for `@formula`, and set `checkdocs = :exports`, with no un-exporting. The current PR diff does not include `docs/make.jl` or `docs/Project.toml`; current main still sets `checkdocs = :none` and its docs environment lacks StatsModels. | The old PR comment that left navigation/checkdocs pending is superseded by the later owner decision. Still not ready to close: its base is stale and its diff does not complete the recorded owner decision. The owning lane should update/rebase and rerun checks. |
+| DRModels.jl #1237 | Head `503b3797acdf44dba38af1096ebce7fc338f6e9b`, base `64ccb2d8d87b329e5a43b2358fd5cb4a36cd9716`. Latest CI run `41401878711` failed; Julia 1.10 shards 1 and 2 failed, while Julia 1 shards passed. Docs build and preview passed on the head. | Still blocked by failed Julia 1.10 checks and stale base. |
+| DRModels.jl #1248 | Head `1d7eeff21145b1ecdf598a97257db5cbb14702f9`, base `87a8ed4e57a9f5a4b61ca66673ca02d48515b8ee`. CI run `41511040751`: Julia shards 2–4 and `ci-ok` failed; shard 1 passed. Docs build and preview passed. | Not ready; test failures remain despite green docs. |
+| DRModels.jl #1243 | Head `0769611adb503bb54a940190f65a39de47dea109`, base `64ccb2d8d87b329e5a43b2358fd5cb4a36cd9716`; open draft. Its four Julia shards, `ci-ok`, docs build, and preview passed on the recorded head. | Stale base and draft status remain; existing lane owns any next change. |
+| DRModels.jl #1240 | Head `03b93e680266369dff10e63eb4c846826a102ec4`, base `64ccb2d8d87b329e5a43b2358fd5cb4a36cd9716`; Julia shard 2 and `ci-ok` failed, while the other three shards and docs/preview passed. | Not ready; stale base and exact-head failure remain. |
+| drmTMB #1656, #1657, #1664 | All remain open with `DIRTY` merge state and no current check rollup. #1656 uses base `b535bfbcce2a9039d869c2e34fe9da476394bf62`; #1657 and #1664 use base `129c09c8c8d56fa91bb09146f02dff24e65e6e7b`, behind current R main. | No verified current-head CI; preserve each existing lane and owner. |
+
+No PR, issue, branch, CI run, or remote ref was modified. The crosswalk branch
+still is not a safe publication vehicle because its history diverges from
+current Julia `main`; this local update does not authorize pushing it.
+
+## Exact-main review branch, 2026-11-04
+
+The reviewed evidence and after-task report have been copied to isolated
+branch `codex/pr-crosswalk-refresh-20261104`, tracked by
+[issue #1251](https://github.com/itchyshin/DRModels.jl/issues/1251), and based
+on Julia `main` at `f4fa3aed451636b6ffa442ce2632515513d23b1f`. The original divergent
+crosswalk worktree remains preserved. The new branch contains only the
+crosswalk, its after-task report, a per-slice check-log row, and a NEWS
+fragment. The issue tracks this evidence snapshot only; it does not close the
+broader parity programme or change CMR's deferred interval-calibration work.

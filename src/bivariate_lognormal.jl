@@ -32,8 +32,8 @@
 """
     drm(f::BivariateDrmFormula, ::LogNormal; data, tree = nothing, K = nothing,
         A = nothing, coords = nothing, spatial_range = nothing, g_tol = 1e-8,
-        q4_g_tol = 1e-3, q4_iterations = 300, q4_n_newton = 40, q4_vcov = true,
-        method = :ML)
+        q4_g_tol = 1e-3, q4_f_reltol = 1e-7, q4_iterations = 300, q4_n_newton = 40,
+        q4_vcov = true, method = :ML)
 
 Fit a bivariate **lognormal** residual-correlation model — drmTMB's
 `biv_lognormal()`.
@@ -74,8 +74,9 @@ REML is also unavailable for the structured models; use `method = :ML`
 
 ```julia
 d = (; y1 = exp.(0.4 .+ randn(200)), y2 = exp.(0.1 .+ randn(200)), x = randn(200))
-fit = drm(bf(@formula(y1 ~ x), @formula(y2 ~ x),
-             @formula(sigma1 ~ 1), @formula(sigma2 ~ 1), @formula(rho12 ~ 1)),
+fit = drm(bf(mu1 = @formula(y1 ~ x), mu2 = @formula(y2 ~ x),
+             sigma1 = @formula(sigma1 ~ 1), sigma2 = @formula(sigma2 ~ 1),
+             rho12 = @formula(rho12 ~ 1)),
           LogNormal(); data = d)
 coef(fit)      # mu1/mu2 on the log scale
 corpairs(fit)  # log-residual rho12
@@ -83,8 +84,11 @@ corpairs(fit)  # log-residual rho12
 """
 @drm_entry function drm(f::BivariateDrmFormula, fam::LogNormal; data, tree = nothing,
              K = nothing, A = nothing, coords = nothing, spatial_range = nothing,
-             g_tol::Real = 1e-8, q4_g_tol::Real = 1e-3, q4_iterations::Int = 300,
-             q4_n_newton::Int = 40, q4_vcov::Bool = true, method::Symbol = :ML)
+             g_tol::Real = 1e-8, q4_g_tol::Real = 1e-3, q4_f_reltol::Real = 1e-7,
+             q4_iterations::Int = 300,
+             q4_n_newton::Int = 40, q4_vcov::Bool = true, method::Symbol = :ML,
+             missing = nothing)
+    _require_simple_bar_groups(f)   # nested `g / h` and other compound groupings: a named refusal
     _require_formula_column_lengths(f, data)   # #1022: no ragged columns under @inbounds
     method === :ML ||
         throw(ArgumentError("drm: the bivariate lognormal route implements ML only " *
@@ -92,9 +96,12 @@ corpairs(fit)  # log-residual rho12
             "random effects to integrate out, and REML for the structured (phylo/" *
             "relmat/animal/spatial) cells is a later slice."))
     data = _drop_missing_predictor_rows(f, data)   # #1089: R's na.omit, with a count
+    data = _apply_bivariate_response_policy(f, data, missing)   # drmTMB's miss_control(response =): default "drop"
     cols = NamedTuple(pairs(data))
-    y1 = Vector{Float64}(getproperty(cols, f.response1))
-    y2 = Vector{Float64}(getproperty(cols, f.response2))
+    # `missing` and `NaN` both mark an unobserved cell (a `Union{Missing,Float64}` column
+    # used to fail the `Vector{Float64}` conversion when `missing = miss_control(response = "include")`).
+    y1, _ = _coerce_response_column(getproperty(cols, f.response1); name = String(f.response1))
+    y2, _ = _coerce_response_column(getproperty(cols, f.response2); name = String(f.response2))
     obs1 = _observed_response_mask(y1)
     obs2 = _observed_response_mask(y2)
 
@@ -113,7 +120,7 @@ corpairs(fit)  # log-residual rho12
     # exactly the parallel design this family's delegation was built to avoid.
     gfit = drm(f, Gaussian(); data = logdata, tree = tree, K = K, A = A,
                coords = coords, spatial_range = spatial_range, g_tol = g_tol,
-               q4_g_tol = q4_g_tol, q4_iterations = q4_iterations,
+               q4_g_tol = q4_g_tol, q4_f_reltol = q4_f_reltol, q4_iterations = q4_iterations,
                q4_n_newton = q4_n_newton, q4_vcov = q4_vcov, method = method)
     return _lognormal_jacobian_shift(fam, gfit, y1, y2, obs1, obs2)
 end
@@ -149,6 +156,18 @@ function _lognormal_jacobian_shift(fam::LogNormal, gfit::DrmFit, y1, y2, obs1, o
                  gfit.estim_method, reml_ll, gfit.ml_loglik - jac, gfit.marginal,
                  gfit.phylo_penalty, gfit.penalty, gfit.iterations, gfit.phylo_scale,
                  gfit.uncertainty, gfit.geometry)
+end
+
+# Bivariate lognormal: the stored `means` are the log-scale locations (the fit is the
+# bivariate Gaussian on `log y`), but drmTMB's `fitted()` is `E[Y_k] = exp(mu_k + sigma_k^2 / 2)`
+# per response, the same rule as the univariate `LogNormal` row above.
+function fitted(fit::DrmFit{LogNormal}; re::Symbol = :conditional)
+    haskey(fit.means, :mu1) && haskey(fit.scales, :sigma1) || return invoke(fitted, Tuple{DrmFit}, fit; re)
+    _check_fitted_re(re, :fitted)
+    re === :conditional && _fit_mean_has_random_term(fit) &&
+        throw(ArgumentError(_fitted_no_modes_message(fit, :fitted)))
+    return Dict(k => exp.(fit.means[k] .+ fit.scales[s] .^ 2 ./ 2)
+                for (k, s) in ((:mu1, :sigma1), (:mu2, :sigma2)))
 end
 
 # Strictly-positive check on the observed cells of a bivariate lognormal response.

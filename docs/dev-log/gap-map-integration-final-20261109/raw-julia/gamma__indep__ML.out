@@ -1,0 +1,22 @@
+S	1	gamma|indep|lab0|q2|sd-none|cm0|ML
+R	1	gamma|indep|lab0|q2|sd-none|cm0|ML	FITS				-546.3427321265	true	se_finite=true;npar=7	26.22	
+S	2	gamma|indep|lab0|q2|sd-one|cm0|ML
+R	2	gamma|indep|lab0|q2|sd-one|cm0|ML	FITS				-546.3427321265	true	se_finite=true;npar=7	7.03	
+S	3	gamma|indep|lab0|q2|sd-z|cm0|ML
+R	3	gamma|indep|lab0|q2|sd-z|cm0|ML	FITS				-545.1214549594	true	se_finite=true;npar=9	3.28	
+S	4	gamma|indep|lab0|q2|sd-first|cm0|ML
+R	4	gamma|indep|lab0|q2|sd-first|cm0|ML	FITS				-546.3229636952	true	se_finite=true;npar=8	2.25	
+S	5	gamma|indep|lab0|q2|sd-last|cm0|ML
+R	5	gamma|indep|lab0|q2|sd-last|cm0|ML	FITS				-545.1444982456	true	se_finite=true;npar=8	2.16	
+S	6	gamma|indep|lab0|q3|sd-none|cm0|ML
+R	6	gamma|indep|lab0|q3|sd-none|cm0|ML	FITS				-538.5389217905	true	se_finite=true;npar=8	5.66	
+S	7	gamma|indep|lab0|q3|sd-z|cm0|ML
+R	7	gamma|indep|lab0|q3|sd-z|cm0|ML	FITS				-531.0366858484	true	se_finite=true;npar=11	9.39	
+S	8	gamma|indep|lab0|q3|sd-first|cm0|ML
+R	8	gamma|indep|lab0|q3|sd-first|cm0|ML	FITS				-538.5349108266	true	se_finite=true;npar=9	6.45	
+S	9	gamma|indep|lab0|q4|sd-none|cm0|ML
+R	9	gamma|indep|lab0|q4|sd-none|cm0|ML	FITS				-522.5045920158	true	se_finite=true;npar=9	0.87	
+S	10	gamma|indep|lab0|q4|sd-z|cm0|ML
+R	10	gamma|indep|lab0|q4|sd-z|cm0|ML	FITS				-515.4441079561	true	se_finite=true;npar=13	1.73	
+S	11	gamma|indep|lab0|q4|sd-first|cm0|ML
+R	11	gamma|indep|lab0|q4|sd-first|cm0|ML	FITS				-522.5044430602	true	se_finite=true;npar=10	8.27	

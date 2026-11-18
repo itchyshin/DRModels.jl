@@ -1,0 +1,7 @@
+suppressPackageStartupMessages(library(drmTMB)); source("r_cell.R")
+d <- read.csv("data/data_student_ordinary.csv")
+fit <- drmTMB(bf(y ~ x1+x2+x3, sigma ~ 1), family = student(), data = d)
+p <- fit$opt$par; eta <- as.numeric(cbind(1,d$x1,d$x2,d$x3) %*% p[1:4]); sg <- exp(p[5]); ll <- as.numeric(logLik(fit))
+cat("target", ll, "\n")
+for (c0 in c(1, 2, 2.0001, 3)) cat(c0, sum(dt((d$y-eta)/sg, df=c0+exp(p[6]), log=TRUE) - log(sg)), "\n")
+print(fit$opt$par); print(drmTMB::sigma(fit)[1:3]); print(names(fit$par))

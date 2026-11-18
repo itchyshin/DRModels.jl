@@ -1,0 +1,50 @@
+S	1	beta|relmat|lab0|q1|sd-none|cm0|ML
+R	1	beta|relmat|lab0|q1|sd-none|cm0|ML	FITS				120.8715998148	true	se_finite=true;npar=6	18.05	
+S	2	beta|relmat|lab0|q1|sd-one|cm0|ML
+R	2	beta|relmat|lab0|q1|sd-one|cm0|ML	FITS				120.8715998148	true	se_finite=true;npar=6	12.35	
+S	3	beta|relmat|lab0|q1|sd-z|cm0|ML
+R	3	beta|relmat|lab0|q1|sd-z|cm0|ML	FITS				123.2504770564	true	se_finite=true;npar=7	18.97	
+S	4	beta|relmat|lab0|q2|sd-none|cm0|ML
+R	4	beta|relmat|lab0|q2|sd-none|cm0|ML	FITS				120.8833800786	true	se_finite=true;npar=7	4.04	
+S	5	beta|relmat|lab1|q2|sd-none|cm0|ML
+R	5	beta|relmat|lab1|q2|sd-none|cm0|ML	ERROR	ArgumentError	ArgumentError: drm: `relmat(:((1 + x1) | p) | g)` is not implemented on the univariate routes; only the intercept form is admitted on this route	ArgumentError: drm: `relmat(:((1 + x1) | p) | g)` is not implemented on the univariate routes; only the intercept form is admitted on this route				0.09	
+S	6	beta|relmat|lab0|q2|sd-one|cm0|ML
+R	6	beta|relmat|lab0|q2|sd-one|cm0|ML	FITS				120.8833800786	true	se_finite=true;npar=7	1.67	
+S	7	beta|relmat|lab1|q2|sd-one|cm0|ML
+R	7	beta|relmat|lab1|q2|sd-one|cm0|ML	ERROR	ArgumentError	ArgumentError: Beta structured random-effect SD regression requires exactly one `sd(group, level) ~ …` formula.	ArgumentError: Beta structured random-effect SD regression requires exactly one `sd(group, level) ~ …` formula.				0.17	
+S	8	beta|relmat|lab0|q2|sd-z|cm0|ML
+R	8	beta|relmat|lab0|q2|sd-z|cm0|ML	FITS				124.8168986999	true	se_finite=true;npar=9	3.03	
+S	9	beta|relmat|lab1|q2|sd-z|cm0|ML
+R	9	beta|relmat|lab1|q2|sd-z|cm0|ML	ERROR	ArgumentError	ArgumentError: Beta structured random-effect SD regression requires exactly one `sd(group, level) ~ …` formula.	ArgumentError: Beta structured random-effect SD regression requires exactly one `sd(group, level) ~ …` formula.				0.12	
+S	10	beta|relmat|lab0|q2|sd-first|cm0|ML
+R	10	beta|relmat|lab0|q2|sd-first|cm0|ML	ERROR	ArgumentError	ArgumentError: drm: `relmat(1 + x1 | g)` is not implemented on the univariate routes; only the intercept form is admitted on this route	ArgumentError: drm: `relmat(1 + x1 | g)` is not implemented on the univariate routes; only the intercept form is admitted on this route				0.03	
+S	11	beta|relmat|lab1|q2|sd-first|cm0|ML
+R	11	beta|relmat|lab1|q2|sd-first|cm0|ML	ERROR	ArgumentError	ArgumentError: drm: `relmat(:((1 + x1) | p) | g)` is not implemented on the univariate routes; only the intercept form is admitted on this route	ArgumentError: drm: `relmat(:((1 + x1) | p) | g)` is not implemented on the univariate routes; only the intercept form is admitted on this route				0.00	
+S	12	beta|relmat|lab0|q2|sd-last|cm0|ML
+R	12	beta|relmat|lab0|q2|sd-last|cm0|ML	ERROR	ArgumentError	ArgumentError: Beta `sd(g, relmat)` SD regression targets the structured mean intercept only.	ArgumentError: Beta `sd(g, relmat)` SD regression targets the structured mean intercept only.				0.00	
+S	13	beta|relmat|lab1|q2|sd-last|cm0|ML
+R	13	beta|relmat|lab1|q2|sd-last|cm0|ML	ERROR	ArgumentError	ArgumentError: Beta `sd(g, relmat)` SD regression targets the structured mean intercept only.	ArgumentError: Beta `sd(g, relmat)` SD regression targets the structured mean intercept only.				0.00	
+S	14	beta|relmat|lab0|q3|sd-none|cm0|ML
+R	14	beta|relmat|lab0|q3|sd-none|cm0|ML	ERROR	ArgumentError	ArgumentError: drm: `relmat(1 + x1 + x2 | g)` is not implemented on the univariate routes; only the intercept form is admitted on this route	ArgumentError: drm: `relmat(1 + x1 + x2 | g)` is not implemented on the univariate routes; only the intercept form is admitted on this route				0.01	
+S	15	beta|relmat|lab1|q3|sd-none|cm0|ML
+R	15	beta|relmat|lab1|q3|sd-none|cm0|ML	ERROR	ArgumentError	ArgumentError: drm: `relmat(:((1 + x1 + x2) | p) | g)` is not implemented on the univariate routes; only the intercept form is admitted on this route	ArgumentError: drm: `relmat(:((1 + x1 + x2) | p) | g)` is not implemented on the univariate routes; only the intercept form is admitted on this route				0.00	
+S	16	beta|relmat|lab0|q3|sd-z|cm0|ML
+R	16	beta|relmat|lab0|q3|sd-z|cm0|ML	ERROR	ArgumentError	ArgumentError: Beta structured random-effect SD regression requires exactly one `sd(group, level) ~ …` formula.	ArgumentError: Beta structured random-effect SD regression requires exactly one `sd(group, level) ~ …` formula.				0.00	
+S	17	beta|relmat|lab1|q3|sd-z|cm0|ML
+R	17	beta|relmat|lab1|q3|sd-z|cm0|ML	ERROR	ArgumentError	ArgumentError: Beta structured random-effect SD regression requires exactly one `sd(group, level) ~ …` formula.	ArgumentError: Beta structured random-effect SD regression requires exactly one `sd(group, level) ~ …` formula.				0.00	
+S	18	beta|relmat|lab0|q3|sd-first|cm0|ML
+R	18	beta|relmat|lab0|q3|sd-first|cm0|ML	ERROR	ArgumentError	ArgumentError: drm: `relmat(1 + x1 + x2 | g)` is not implemented on the univariate routes; only the intercept form is admitted on this route	ArgumentError: drm: `relmat(1 + x1 + x2 | g)` is not implemented on the univariate routes; only the intercept form is admitted on this route				0.00	
+S	19	beta|relmat|lab1|q3|sd-first|cm0|ML
+R	19	beta|relmat|lab1|q3|sd-first|cm0|ML	ERROR	ArgumentError	ArgumentError: drm: `relmat(:((1 + x1 + x2) | p) | g)` is not implemented on the univariate routes; only the intercept form is admitted on this route	ArgumentError: drm: `relmat(:((1 + x1 + x2) | p) | g)` is not implemented on the univariate routes; only the intercept form is admitted on this route				0.00	
+S	20	beta|relmat|lab0|q4|sd-none|cm0|ML
+R	20	beta|relmat|lab0|q4|sd-none|cm0|ML	ERROR	ArgumentError	ArgumentError: drm: `relmat(1 + x1 + x2 + x3 | g)` is not implemented on the univariate routes; only the intercept form is admitted on this route	ArgumentError: drm: `relmat(1 + x1 + x2 + x3 | g)` is not implemented on the univariate routes; only the intercept form is admitted on this route				0.01	
+S	21	beta|relmat|lab1|q4|sd-none|cm0|ML
+R	21	beta|relmat|lab1|q4|sd-none|cm0|ML	ERROR	ArgumentError	ArgumentError: drm: `relmat(:((1 + x1 + x2 + x3) | p) | g)` is not implemented on the univariate routes; only the intercept form is admitted on this route	ArgumentError: drm: `relmat(:((1 + x1 + x2 + x3) | p) | g)` is not implemented on the univariate routes; only the intercept form is admitted on this route				0.00	
+S	22	beta|relmat|lab0|q4|sd-z|cm0|ML
+R	22	beta|relmat|lab0|q4|sd-z|cm0|ML	ERROR	ArgumentError	ArgumentError: Beta structured random-effect SD regression requires exactly one `sd(group, level) ~ …` formula.	ArgumentError: Beta structured random-effect SD regression requires exactly one `sd(group, level) ~ …` formula.				0.00	
+S	23	beta|relmat|lab1|q4|sd-z|cm0|ML
+R	23	beta|relmat|lab1|q4|sd-z|cm0|ML	ERROR	ArgumentError	ArgumentError: Beta structured random-effect SD regression requires exactly one `sd(group, level) ~ …` formula.	ArgumentError: Beta structured random-effect SD regression requires exactly one `sd(group, level) ~ …` formula.				0.00	
+S	24	beta|relmat|lab0|q4|sd-first|cm0|ML
+R	24	beta|relmat|lab0|q4|sd-first|cm0|ML	ERROR	ArgumentError	ArgumentError: drm: `relmat(1 + x1 + x2 + x3 | g)` is not implemented on the univariate routes; only the intercept form is admitted on this route	ArgumentError: drm: `relmat(1 + x1 + x2 + x3 | g)` is not implemented on the univariate routes; only the intercept form is admitted on this route				0.00	
+S	25	beta|relmat|lab1|q4|sd-first|cm0|ML
+R	25	beta|relmat|lab1|q4|sd-first|cm0|ML	ERROR	ArgumentError	ArgumentError: drm: `relmat(:((1 + x1 + x2 + x3) | p) | g)` is not implemented on the univariate routes; only the intercept form is admitted on this route	ArgumentError: drm: `relmat(:((1 + x1 + x2 + x3) | p) | g)` is not implemented on the univariate routes; only the intercept form is admitted on this route				0.00	

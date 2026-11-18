@@ -1,24 +1,24 @@
-# associate_pairs.jl — staged (frozen-margin) association, the Julia twin of
+# associate_pairs.jl: staged (frozen-margin) association, the Julia twin of
 # drmTMB's `associate_pairs()` / `latent_normal()` / `association()`.
 #
 # THIS IS A TWO-STAGE ESTIMATOR, NOT A JOINT MODEL. Two univariate models are
 # fitted independently, then FROZEN, and a single latent-normal copula
 # association is estimated conditional on them. The margins are never refitted.
 #
-# The consequence has to be stated wherever the uncertainty is reported: because
-# the margins are treated as exact, the association's standard error is
-# CONDITIONAL — it ignores margin estimation error. drmTMB bounds its own version
-# the same way (alpha-scale Wald only, an experimental-interval warning, and no
-# simultaneous eta bands or profiles), and this port must not offer intervals the
-# twin refuses.
+# Reported association standard errors here are conditional on the fitted
+# margins; they do not propagate margin-estimation uncertainty. R's drmTMB
+# separately provides a two-stage Godambe covariance on admitted pairs; that
+# does not supply such a covariance for this Julia estimator. Keep the Julia
+# qualification explicit and consult the capability guide for route-specific
+# interval evidence. The likelihood alone does not establish calibration.
 #
-# First slice: the `gaussian_bernoulli` pair class, whose likelihood is CLOSED
-# FORM. The Gaussian margin's latent is observed exactly, so the Bernoulli's
-# contribution is a conditional univariate normal CDF — no rectangle probability,
-# no quadrature, no new dependency. The four pair classes that censor BOTH
-# latents need a 1-D adaptive integral with a retained error estimate and are
-# deliberately deferred (design note
-# `docs/dev-log/design/2026-08-15-a3c-design-staged-association.md`).
+# Gaussian × Bernoulli and Gaussian × NB2 use closed-form conditional-normal
+# probabilities: the Gaussian margin's latent value is observed. Bernoulli ×
+# Bernoulli, Bernoulli × NB2, and NB2 × NB2 censor both latent values
+# and use one-dimensional adaptive rectangle integration. All five classes
+# retain frozen fitted margins; these implementation routes do not establish
+# general interval calibration. The initial staged design is recorded in
+# `docs/dev-log/design/2026-08-15-a3c-design-staged-association.md`.
 
 using Distributions: Normal, cdf, logcdf, logccdf, logpdf, pdf, quantile
 import Distributions
@@ -87,9 +87,12 @@ Bernoulli × NB2 exception.
 The margins are **frozen**: `fit_1` and `fit_2` are used as fitted and are never
 re-estimated. Reported uncertainty is therefore conditional on them.
 
-Implemented pair class: **gaussian × binomial** (`gaussian_bernoulli`). The other
-four reviewed classes need a rectangle probability and are not implemented yet;
-they error rather than silently approximating.
+Implemented pair classes are Gaussian × Bernoulli, Gaussian × NB2,
+Bernoulli × Bernoulli, Bernoulli × NB2, and NB2 × NB2. A Binomial margin must
+represent Bernoulli observations on these routes. The accepted classes have
+class-specific continuous/discrete likelihood calculations; other family
+pairs are refused. These implementation routes do not imply general interval
+calibration, and the margins remain frozen as described above.
 
 ```julia
 fg = drm(bf(@formula(y ~ x), @formula(sigma ~ 1)), Gaussian(); data = d)

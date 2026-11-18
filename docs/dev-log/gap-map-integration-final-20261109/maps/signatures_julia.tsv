@@ -1,0 +1,107 @@
+cells	outcome	subtype	exception_type	normalised_message
+168	REFUSES	ArgumentError	ArgumentError	drm (NegBinomialN): unknown `T`. NegBinomialN is ML-only; for the integrator use `T` (the documented default integrator for this route), `T` (TMB-convention Laplace, ordi
+168	REFUSES	ArgumentError	ArgumentError	drm (Gamma): unknown `T`. Gamma is ML-only; for the integrator use `T` (the documented default integrator for this route), `T` (TMB-convention Laplace, ordinary `T`), `T`
+168	REFUSES	ArgumentError	ArgumentError	drm (Beta): unknown `T`. Beta is ML-only; for the integrator use `T` (the documented default integrator for this route), `T` (TMB-convention Laplace, ordinary `T`), `T` (
+164	REFUSES	ArgumentError	ArgumentError	drm (Binomial): unknown `T`. Binomial is ML-only; for the integrator use `T` (the documented default integrator for this route), `T` (TMB-convention Laplace, ordinary `T`
+153	REFUSES	ArgumentError	ArgumentError	drm: `T` is not implemented on the univariate routes; only the intercept form is admitted on this route
+143	REFUSES	ArgumentError	ArgumentError	drm: the Tweedie route does not accept the keyword `T`. It was refused before any fitting, not run with the keyword ignored. `T`: this route is ML-only: drop `T` (ML is t
+126	REFUSES	ArgumentError	ArgumentError	Poisson `T` currently supports maximum likelihood only; the Cox–Reid correction is not implemented for SD-regression coefficients.
+118	REFUSES	ArgumentError	ArgumentError	drm: the LogNormal route does not accept the keyword `T`. It was refused before any fitting, not run with the keyword ignored. `T`: this route is ML-only: drop `T` (ML is
+110	REFUSES	ErrorException	ErrorException	unsupported random-effect term: `T`. A label `T` is accepted only when one term carries it and `T` has no random effect
+85	REFUSES	ArgumentError	ArgumentError	drm: `T` is not implemented on the univariate routes; only the intercept form is generally available, and a slope-only or independent intercept-and-slope animal term is a
+80	REFUSES	ArgumentError	ArgumentError	drm: `T` is not implemented on the univariate routes — only `T` (intercept) is, plus the one-slope `T` on the Gaussian mean (#N); slope-only `T` and multi-slope forms are
+75	REFUSES	ArgumentError	ArgumentError	drm: the Student route does not accept the keyword `T`. It was refused before any fitting, not run with the keyword ignored. `T`: `T` is read by a `T` term, and Student h
+75	REFUSES	ArgumentError	ArgumentError	drm: the Student route does not accept the keywords `T`, `T`. It was refused before any fitting, not run with the keyword ignored. `T`: this route is ML-only: drop `T` (M
+68	REFUSES	ArgumentError	ArgumentError	drm: the Student route does not accept the keyword `T`. It was refused before any fitting, not run with the keyword ignored. `T`: this route is ML-only: drop `T` (ML is t
+66	REFUSES	ErrorException	ErrorException	DRModels.jl supports `T`, `T`, `T` and the correlated blocks `T` (an intercept plus N to N slopes), which are fitted by maximum likelihood only and with no random effect
+53	REFUSES	ArgumentError	ArgumentError	Tweedie random-effect SD regression requires exactly one `T` formula.
+35	REFUSES	ArgumentError	ArgumentError	Beta random-effect SD regression requires exactly one `T` formula (ordinary, `T`, or `T`/`T`/`T`), or two coefficient formulas `T` and `T` for an independent `T`/`T`/`T`/
+32	REFUSES	ArgumentError	ArgumentError	drm: Gaussian `T` needs one SD formula for the intercept and one for the slope (`T` and `T`).
+32	REFUSES	ArgumentError	ArgumentError	drm: `T` is not implemented on the univariate routes; only the intercept or one slope-only `T` form is admitted on this route
+25	REFUSES	ArgumentError	ArgumentError	drm: the LogNormal route does not accept the keywords `T`, `T`. It was refused before any fitting, not run with the keyword ignored. `T`: `T`/`T`/`T` are read by an `T` t
+25	REFUSES	ArgumentError	ArgumentError	drm: the LogNormal route does not accept the keywords `T`, `T`, `T`. It was refused before any fitting, not run with the keyword ignored. `T`: this route is ML-only: drop
+25	REFUSES	ArgumentError	ArgumentError	drm: the LogNormal route does not accept the keyword `T`. It was refused before any fitting, not run with the keyword ignored. `T`: `T` is read by a `T` term, and LogNorm
+25	REFUSES	ArgumentError	ArgumentError	drm: the LogNormal route does not accept the keywords `T`, `T`. It was refused before any fitting, not run with the keyword ignored. `T`: this route is ML-only: drop `T`
+25	REFUSES	ArgumentError	ArgumentError	drm: the Student route does not accept the keywords `T`, `T`. It was refused before any fitting, not run with the keyword ignored. `T`: `T`/`T`/`T` are read by an `T` ter
+25	REFUSES	ArgumentError	ArgumentError	drm: the Student route does not accept the keywords `T`, `T`, `T`. It was refused before any fitting, not run with the keyword ignored. `T`: this route is ML-only: drop `
+25	REFUSES	ArgumentError	ArgumentError	drm: the Tweedie route does not accept the keyword `T`. It was refused before any fitting, not run with the keyword ignored. `T`: `T` labels the rows of `T` or `T`, and t
+25	REFUSES	ArgumentError	ArgumentError	drm: the Tweedie route does not accept the keywords `T`, `T`. It was refused before any fitting, not run with the keyword ignored. `T`: this route is ML-only: drop `T` (M
+19	REFUSES	ArgumentError	ArgumentError	NegBinomialN random-effect SD regression requires exactly one `T` formula.
+19	REFUSES	ArgumentError	ArgumentError	Tweedie uses `T` only for one `T` mean intercept and `T` only for one `T` mean intercept (each alone on `T`, with fixed `T` and `T`, optionally with `T`); this formula ha
+18	REFUSES	ArgumentError	ArgumentError	LogNormal SD regression targets one ordinary mean random-effect SD.
+16	REFUSES	ArgumentError	ArgumentError	drm: method = :REML is not implemented for a Gaussian correlated block `T` together with `T` formulas: drmTMB refuses this combination too, and no restricted objective is
+16	REFUSES	ArgumentError	ArgumentError	drm: method = :REML is not implemented for a Gaussian correlated block beside other random intercepts together with `T` formulas: drmTMB refuses this combination too, and
+16	REFUSES	ArgumentError	ArgumentError	Gamma structured SD regression requires exactly one random-effect SD formula.
+14	REFUSES	ErrorException	ErrorException	location–scale coupled random effect must be intercept-only: `T` (got `T`)
+14	REFUSES	ArgumentError	ArgumentError	Beta structured random-effect SD regression requires exactly one `T` formula.
+10	REFUSES	ArgumentError	ArgumentError	drm (Poisson): `T` is not available with crossed/multiple random intercepts. Restricted (Cox–Reid) estimation on non-Gaussian families is currently wired for Poisson scal
+10	REFUSES	ArgumentError	ArgumentError	Tweedie SD regression targets one ordinary mean coefficient, one related-matrix mean intercept, or one phylogenetic mean intercept.
+9	REFUSES	ArgumentError	ArgumentError	Gamma random-effect SD regression requires exactly one SD target.
+8	REFUSES	ArgumentError	ArgumentError	Poisson random-effect SD regression requires exactly one SD target.
+8	REFUSES	ArgumentError	ArgumentError	Poisson `T` SD regression needs one SD formula for the intercept and one for the slope.
+8	REFUSES	ArgumentError	ArgumentError	Poisson `T` SD regression needs one SD formula for the intercept and one for the slope (`T` and `T`).
+8	REFUSES	ArgumentError	ArgumentError	NegBinomialN `T` SD regression needs one SD formula for the intercept and one for the slope.
+8	REFUSES	ArgumentError	ArgumentError	NegBinomialN `T` SD regression needs one SD formula for the intercept and one for the slope (`T` and `T`).
+8	REFUSES	ArgumentError	ArgumentError	NegBinomialN `T` supports ordinary effects, an animal intercept with `T` or `T`, a relmat intercept with `T`, or a coordinate `T` slope with `T`; other structured covaria
+8	REFUSES	ArgumentError	ArgumentError	Binomial relmat SD regression currently requires exactly one `T` formula.
+8	REFUSES	ArgumentError	ArgumentError	Binomial SD regression currently supports ordinary random intercepts, numeric slopes, and correlated intercept-slope blocks only; structured covariance inputs are not use
+8	REFUSES	ArgumentError	ArgumentError	drm: independent intercept and slope terms with `T` formulas support maximum likelihood only (`T` is not implemented for this shape).
+7	REFUSES	ArgumentError	ArgumentError	Binomial SD regression requires one SD formula for each independent random-effect coefficient.
+6	REFUSES	ArgumentError	ArgumentError	drm: Gaussian `T` SD regression: method = :REML is not implemented for the labelled (correlated) `T` block; native drmTMB refuses it too. Use the unlabelled `T` or method
+6	REFUSES	ArgumentError	ArgumentError	Binomial `T` SD regression needs one SD formula for the intercept and one for the slope (`T` and `T`).
+6	REFUSES	ArgumentError	ArgumentError	Beta `T` SD regression targets the structured mean intercept only.
+6	REFUSES	ArgumentError	ArgumentError	Beta `T` currently requires exactly one ordinary random-effect term.
+6	REFUSES	ArgumentError	ArgumentError	LogNormal `T` requires one ordinary random-effect coefficient on the mean.
+6	REFUSES	ArgumentError	ArgumentError	Student random-effect SD regression currently requires exactly one `T` formula, or one per factor of crossed intercepts `T`.
+6	REFUSES	ArgumentError	ArgumentError	Tweedie SD regression requires exactly one ordinary mean random-effect term.
+5	REFUSES	ArgumentError	ArgumentError	drm: `T` is not implemented on this route — only `T` (intercept) is here. The two-SD phylogenetic random intercept + slope `T` is implemented for the Gaussian mean only (
+5	REFUSES	ArgumentError	ArgumentError	Student crossed SD regression targets the ordinary mean intercepts only.
+4	REFUSES	ArgumentError	ArgumentError	Poisson animal SD regression requires exactly one random-effect SD formula.
+4	REFUSES	ArgumentError	ArgumentError	Poisson relmat SD regression requires exactly one random-effect SD formula.
+4	REFUSES	ArgumentError	ArgumentError	Poisson SD regression currently targets one ordinary mean random-effect coefficient.
+4	REFUSES	ArgumentError	ArgumentError	Poisson spatial SD regression requires exactly one random-effect SD formula.
+4	REFUSES	ArgumentError	ArgumentError	Poisson `T` SD regression needs an SD formula for the intercept, for the slope, or for both (`T` and `T`).
+4	REFUSES	ArgumentError	ArgumentError	Binomial animal SD regression currently requires exactly one `T` formula.
+4	REFUSES	ArgumentError	ArgumentError	Binomial `T` SD regression: the labelled correlated spatial form is not supported (native drmTMB N admits labelled Binomial intercept-and-slope blocks only for `T` and fo
+4	REFUSES	ArgumentError	ArgumentError	Binomial spatial SD regression currently requires exactly one `T` formula.
+4	REFUSES	ArgumentError	ArgumentError	phylo(N + x | g) needs `T`
+4	REFUSES	ArgumentError	ArgumentError	Tweedie structured SD regression currently supports one mean intercept.
+2	REFUSES	ArgumentError	ArgumentError	Poisson `T` SD regression requires ordinary `T` mean targets.
+2	REFUSES	ArgumentError	ArgumentError	Poisson `T` SD regression requires the `T` block to be the only random-effect term.
+2	REFUSES	ArgumentError	ArgumentError	NegBinomialN `T` SD regression needs an SD formula for the intercept, for the slope, or for both (`T` and `T`).
+2	REFUSES	ArgumentError	ArgumentError	NegBinomialN `T` SD regression requires the `T` block to be the only random-effect term.
+2	REFUSES	ArgumentError	ArgumentError	Gamma `T` supports `T` or one independent numeric slope `T`; correlated blocks are not implemented on this route.
+2	REFUSES	ArgumentError	ArgumentError	Gamma `T` SD regression needs one SD formula for the intercept and one for the slope.
+2	REFUSES	ArgumentError	ArgumentError	Beta `T` supports `T` or one independent numeric slope `T`; correlated blocks are not implemented on this route.
+2	REFUSES	ArgumentError	ArgumentError	relmat(N + xN | g) needs the covariance matrix `T`
+2	REFUSES	ArgumentError	ArgumentError	relmat(N + xN | p | g) needs the covariance matrix `T`
+2	REFUSES	ArgumentError	ArgumentError	drm: random-effect `T` formulas are currently supported for Gaussian LSS models and narrow ordinary IID routes in Binomial, Poisson, NegBinomialN, Gamma, and Beta (got Lo
+2	REFUSES	ArgumentError	ArgumentError	Student SD regression supports `T` or one independent numeric `T` term; correlated blocks are not admitted.
+2	REFUSES	ArgumentError	ArgumentError	Tweedie SD regression supports one ordinary intercept or one independent numeric slope; correlated and structured effects are not implemented.
+2	REFUSES	ArgumentError	ArgumentError	drm: Gaussian mean `T` with a `T` random intercept takes exactly one mean-side `T` formula.
+2	REFUSES	ArgumentError	ArgumentError	drm: Gaussian mean `T` with a `T` random intercept supports maximum likelihood only (`T` is not implemented for this shape).
+2	REFUSES	ErrorException	ErrorException	Beta(): only the mean formula may carry a random effect
+2	REFUSES	ErrorException	ErrorException	LogNormal(): only the mean formula may carry a random effect
+2	REFUSES	ErrorException	ErrorException	Student(): only the mean formula may carry a random effect
+2	REFUSES	ErrorException	ErrorException	Tweedie() random effects are not implemented for `T`/`T`; only an ordinary `T` random intercept on `T` is supported (matches drmTMB, which rejects sigma/nu random effects
+1	REFUSES	ArgumentError	ArgumentError	drm: method = :REML is not implemented for the bare `T`: this route estimates the exponential range, while drmTMB fixes it at the median pairwise distance, so the two max
+1	REFUSES	ArgumentError	ArgumentError	drm (Poisson): `T` is not available with a correlated random slope `T`. Restricted (Cox–Reid) estimation on non-Gaussian families is currently wired for Poisson scalar `T
+1	REFUSES	ArgumentError	ArgumentError	drm (Poisson): `T` is not available with coordinate-based spatial with jointly estimated range ρ. Restricted (Cox–Reid) estimation on non-Gaussian families is currently w
+1	REFUSES	ErrorException	ErrorException	Poisson() supports multiple random effects only as crossed/nested intercepts `T` or independent intercepts and slopes `T`; a correlated `T` must be the only random-effect
+1	REFUSES	ErrorException	ErrorException	spatial(N | g) for counts needs either a precomputed spatial covariance via `T`, or site `T` (a G×N coordinate matrix) for coordinate-based exponential-kernel covariance
+1	REFUSES	ErrorException	ErrorException	NegBinomialN() supports multiple random effects only as crossed/nested intercepts `T` or independent intercepts and slopes `T`; a correlated `T` must be the only random-e
+1	REFUSES	ArgumentError	ArgumentError	NegBinomialN `T` SD regression requires ordinary `T` mean targets.
+1	REFUSES	ErrorException	ErrorException	Gamma() supports multiple random effects only as crossed/nested intercepts `T` or independent intercepts and slopes `T`; a correlated `T` must be the only random-effect t
+1	REFUSES	ArgumentError	ArgumentError	Gamma `T` currently requires exactly one ordinary independent random effect.
+1	REFUSES	ErrorException	ErrorException	Binomial() supports multiple random effects only as crossed/nested intercepts `T` or independent intercepts and slopes `T`; a correlated `T` must be the only random-effec
+1	REFUSES	ArgumentError	ArgumentError	Binomial SD regression supports independent `T`, `T` terms, or one correlated `T` block.
+1	REFUSES	ErrorException	ErrorException	Beta() supports multiple random effects only as crossed/nested intercepts `T` or independent intercepts and slopes `T`; a correlated `T` must be the only random-effect te
+1	REFUSES	ErrorException	ErrorException	LogNormal() supports multiple random effects only as crossed/nested intercepts `T` or independent intercepts and slopes `T`; a correlated `T` must be the only random-effe
+1	REFUSES	ErrorException	ErrorException	Student() supports multiple random effects on the mean only as two crossed/nested intercepts `T` or independent intercepts and slopes `T`
+1	REFUSES	ArgumentError	ArgumentError	Student crossed SD regression requires exactly two crossed intercepts `T` on the mean, each with its own `T` formula.
+1	REFUSES	ArgumentError	ArgumentError	Student random-effect SD regression currently supports exactly one ordinary random-effect coefficient.
+1	REFUSES	ErrorException	ErrorException	Tweedie() supports only an ordinary `T` random intercept or an independent `T` random slope on `T`; correlated random slopes `T` are not implemented (matches drmTMB N: "S
+1	REFUSES	ErrorException	ErrorException	Tweedie() supports multiple random effects only as crossed/nested intercepts `T` or independent intercepts and slopes `T`; a correlated `T` must be the only random-effect
+1	REFUSES	ArgumentError	ArgumentError	drm: Gaussian correlated mean + sigma random intercepts `T` supports random intercepts `T` only.
+1	REFUSES	ArgumentError	ArgumentError	NegBinomialN `T` SD regression requires a fixed `T` submodel.
+1	REFUSES	ArgumentError	ArgumentError	drm (Poisson): `T` is not available with an independent random slope `T`. Restricted (Cox–Reid) estimation on non-Gaussian families is currently wired for Poisson scalar

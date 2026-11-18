@@ -173,7 +173,9 @@ function _ls_frontend_grouping(lc, data, tree, K, A, coords)
         return _locscale_phylo_setup(tree, labels)
     else  # :relmat / :animal / :spatial
         C = _poisson_structured_cov(lc.structkind, lc.group, K, A, coords)
-        return _locscale_relmat_setup(C, labels)
+        # relmat/animal K enters RAW (native drmTMB); precomputed spatial keeps the
+        # correlation form.
+        return _locscale_relmat_setup(C, labels; normalize = lc.structkind === :spatial)
     end
 end
 

@@ -1,0 +1,11 @@
+# Slow-tier test files (measured wall time, one shard, 2 threads, loaded machine; see
+# the 2026-11-08 speed-up analysis). Used by test/shard_by_time.jl via
+# --skip-slow / --only-slow. One file name per line; `#` starts a comment.
+# Each entry is a single-fit or few-fit file dominating a shard.
+# test_crossed_tweedie.jl was 4428 s; ~22 s after the capped first LBFGS step (no longer slow tier)
+test_binomial_sd_regression.jl                       # ~468 s
+test_binomial_nonlogit_correlated_sd_regression.jl   # ~400 s
+test_binomial_nonlogit_correlated_q3_sd_regression.jl # ~366 s
+test_tweedie_sd_regression.jl                        # ~273 s
+test_reml_sigma_phylo_joint.jl                       # ~237 s
+test_tweedie_relmat_sd_regression.jl                 # ~194 s

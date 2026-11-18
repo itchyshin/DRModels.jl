@@ -4,6 +4,10 @@ Check this before editing shared files (`src/DRM.jl`, `AGENTS.md`, `CLAUDE.md`,
 `ROADMAP.md`, `test/runtests.jl`, `docs/`). Record active branches + which files
 they touch so two agents don't collide.
 
+## Active-Lane-Split (2026-11-08 — Codecov CI, Cursor cloud; isolated from scientific waves)
+
+_| **THIS LANE:** `cursor/codecov-julia-coverage-8473` — Codecov upload on the existing Julia test shards. Touches `.github/workflows/CI.yml`, `codecov.yml`, `news/codecov-ci.md`, `docs/dev-log/*`. Does **not** touch `src/`, `test/runtests.jl`, formula grammar, or parity fixtures. No merge to `main`. Scientific Claude/Codex waves (#1261–#1268 etc.) are a different lane; do not resume paused parity/test campaigns._
+
 ## Active-Lane-Split (2026-10-04 — Claude lane HANDED to Cursor; v0.7.2 release in flight)
 
 _**START HERE (Cursor):** [`docs/dev-log/handover/2026-10-04-cursor-handover.md`](handover/2026-10-04-cursor-handover.md)._

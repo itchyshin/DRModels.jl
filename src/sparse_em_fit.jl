@@ -15,6 +15,14 @@ include(joinpath(@__DIR__, "sparse_aug_plsm.jl"))
 # Build a root-conditioned problem + sparse prior Q from a phylogeny and data.
 # Returns (prob, Q_cond). leaf_node maps data row k -> position in the
 # root-removed node set.
+"""
+    make_problem(phy, y1, y2, X1, X2, Xs1, Xs2, Xr; species = 1:phy.n_leaves)
+        -> (prob, Q_cond)
+
+Build an [`AugProblem`](@ref) and the root-conditioned prior precision `Q_cond`
+from a phylogeny and data. `species[i]` is the leaf of data row `i`, so repeated
+leaves give replicate observations. `NaN` responses are masked as unobserved.
+"""
 function make_problem(phy, y1, y2, X1, X2, Xs1, Xs2, Xr; species = 1:phy.n_leaves)
     n_total = phy.n_total
     keep = setdiff(1:n_total, [phy.root_index])

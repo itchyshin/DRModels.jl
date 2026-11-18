@@ -164,9 +164,11 @@ show(stdout, MIME"text/plain"(), summary(fit)); nothing # hide
 
 ## Confidence intervals
 
-`confint(fit)` returns one row `(param, coef, estimate, lower, upper)` per
+`confint(fit)` returns one row `(param, coef, estimate, lower, upper, scale)` per
 coefficient, on each block's working scale (μ on the response scale, σ on
-`log σ`). The default is a 95% Wald interval:
+`log σ`). The `scale` field names the scale of the three numbers (`:link` for a
+coefficient, `:log_sd` for a random-effect SD on the log SD scale, `:sd` for a
+profile row that is reported on the SD scale because its lower limit is 0). The default is a 95% Wald interval:
 
 ```@example getstarted
 confint(fit)
@@ -213,8 +215,9 @@ therefore report different log-likelihoods for the same model, by about 0.001
 to 0.24 units on the count, Beta, Gamma and Student datasets compared so far.
 To reproduce drmTMB's numbers for Poisson, Binomial or Student, or for
 NegBinomial2, Gamma or Beta with `sigma ~ 1`, pass `marginal = :Laplace`. That
-option is for parity, not a better default: the adaptive quadrature is usually
-the more accurate integral. Compare `loglik`,
+option provides a matched approximation for package comparisons. The listed
+log-likelihood differences do not establish which approximation is more
+accurate. Compare `loglik`,
 `lrtest`, `aic` and `bic` only between fits that use the same approximation.
 The [drmTMB parity page](drmtmb-parity.md#Default-marginal-approximation)
 lists the defaults for the main random-effect routes and the models that

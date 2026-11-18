@@ -18,7 +18,7 @@ const _BRIDGE_TREE_CACHE_MAX = 4
 
 """
     drm_bridge(; formula, family, data, tree = nothing, K = nothing,
-               A = nothing, coords = nothing, newdata = nothing,
+               A = nothing, Ainv = nothing, coords = nothing, newdata = nothing,
                options = Dict(), K_labels = nothing, A_labels = nothing,
                structured_group = nothing)
 
@@ -55,9 +55,13 @@ per-observation distributional parameters on the response scale keyed by dpar
 name, plus `"trials"` for binomial-type families. Pass `newdata` (a column
 table) to add `"dpars_newdata"`, the same parameters evaluated on fresh rows —
 what `fitted_distribution(object, newdata = ...)` needs.
+
+For animal models, `Ainv` supplies a precision matrix directly. It is passed to
+the family fitter without covariance normalization; only routes that explicitly
+accept animal precision matrices can use it.
 """
 function drm_bridge(; formula, family::AbstractString, data, tree = nothing,
-        K = nothing, A = nothing, coords = nothing, newdata = nothing,
+        K = nothing, A = nothing, Ainv = nothing, coords = nothing, newdata = nothing,
         options = Dict{String,Any}(), K_labels = nothing, A_labels = nothing,
         structured_group = nothing)
     dat = _bridge_data(data)
@@ -68,12 +72,24 @@ function drm_bridge(; formula, family::AbstractString, data, tree = nothing,
     A = _bridge_align_labelled(A, A_labels, dat, structured_group, "A")
     bundle, dat, labels = _bridge_formula(formula, family, dat; labels = true)
     fam = _bridge_family(family)
-    opts = _bridge_options(options)
+    opts = _bridge_prior_safe_options(options)
+    version = _bridge_prior_contract(opts)
+    v2_records = version === :v2 ? _bridge_enable_priors_v2!(opts, bundle, fam, dat, labels) : nothing
+    v3_records = version === :v3 ? _bridge_enable_priors_v3!(opts, bundle, fam, dat, labels) : nothing
+    if version === :v1 && haskey(opts, :priors)
+        haskey(opts, :prior_expected) || throw(ArgumentError("drm_bridge: priors require prior_expected"))
+        opts[:priors] = _bridge_prepare_fixed_priors(bundle, fam, labels, opts[:priors], opts[:prior_expected])
+    elseif version === :v1 && haskey(opts, :prior_expected)
+        throw(ArgumentError("drm_bridge: prior_expected requires priors"))
+    end
     coef_labels = get(opts, :coef_labels, nothing)
     fit = _bridge_fit(bundle, fam, dat; tree = tree, K = K, A = A,
-                      coords = coords, options = opts)
-    return _bridge_flatten(fit; family = String(family), newdata = newdata,
-                           labels = labels, coef_labels = coef_labels)
+                      Ainv = Ainv, coords = coords, options = opts)
+    out = _bridge_flatten(fit; family = String(family), newdata = newdata,
+                          labels = labels, coef_labels = coef_labels)
+    v2_records === nothing || _bridge_attach_priors_v2!(out, fit, v2_records, labels)
+    v3_records === nothing || _bridge_attach_priors_v3!(out, fit, v3_records, labels)
+    return out
 end
 
 # Align a labelled structured matrix to the first-appearance order of the data's
@@ -376,7 +392,23 @@ function drm_bridge_inference(; formula, family::AbstractString, data,
     dat = _bridge_data(data)
     bundle, dat, labels = _bridge_formula(formula, family, dat; labels = true)
     fam = _bridge_family(family)
-    opts = _bridge_options(options)
+    opts = _bridge_prior_safe_options(options)
+    version = _bridge_prior_contract(opts)
+    if version === :v1 && haskey(opts, :priors)
+        input = opts[:priors]
+        typed = input isa AbstractVector && (eltype(input) <: AbstractDrmPrior ||
+            (!isempty(input) && all(p -> p isa AbstractDrmPrior, input)))
+        if !typed
+            haskey(opts, :prior_expected) || throw(ArgumentError("drm_bridge: priors require prior_expected"))
+            opts[:priors] = _bridge_prepare_fixed_priors(bundle, fam, labels, input, opts[:prior_expected])
+        elseif haskey(opts, :prior_expected)
+            throw(ArgumentError("drm_bridge_inference: prior_expected requires serialized prior rows"))
+        end
+    elseif version === :v1 && haskey(opts, :prior_expected)
+        throw(ArgumentError("drm_bridge: prior_expected requires priors"))
+    elseif version in (:v2, :v3)
+        throw(ArgumentError("drm_bridge_inference: SD-prior inference is not supported"))
+    end
     bridge_method = lowercase(strip(String(method)))
     is_biv = bundle isa BivariateDrmFormula
     target = parm === nothing ? nothing : _bridge_parse_inference_parm(parm)
@@ -554,10 +586,11 @@ end
 # than depending on which branches happened to fire for a given fit.
 const _BRIDGE_KNOWN_OPTION_KEYS = Set((
     :g_tol, :algorithm, :method, :marginal, :se, :profile_ci, :phylo_coupled, :sparse,
-    :q4_g_tol, :q4_iterations, :q4_n_newton, :q4_vcov, :coef_labels,
+    :q4_g_tol, :q4_f_reltol, :q4_iterations, :q4_n_newton, :q4_vcov, :coef_labels, :priors, :prior_expected,
 ))
 
-function _bridge_fit(bundle, fam, data; tree, K, A, coords, options)
+function _bridge_fit(bundle, fam, data; tree, K, A, Ainv = nothing,
+        coords, options)
     # Fail closed on an unknown option key (#527-adjacent): a typo'd or
     # not-yet-wired key must error loudly and NAME the key, rather than being
     # silently dropped and the caller left believing it took effect.
@@ -566,9 +599,11 @@ function _bridge_fit(bundle, fam, data; tree, K, A, coords, options)
         "drm_bridge: unknown option key(s) `$(join(sort(String.(unknown)), "`, `"))`; " *
         "known keys are: $(join(sort(String.(collect(_BRIDGE_KNOWN_OPTION_KEYS))), ", "))."))
     kwargs = Dict{Symbol,Any}()
+    haskey(options, :priors) && (kwargs[:priors] = options[:priors])
     tree !== nothing && (kwargs[:tree] = _bridge_tree(tree))
     K !== nothing && (kwargs[:K] = K)
     A !== nothing && (kwargs[:A] = A)
+    Ainv !== nothing && (kwargs[:Ainv] = Ainv)
     coords !== nothing && (kwargs[:coords] = coords)
     if haskey(options, :g_tol)
         kwargs[:g_tol] = Float64(options[:g_tol])
@@ -629,6 +664,11 @@ function _bridge_fit(bundle, fam, data; tree, K, A, coords, options)
     if haskey(options, :q4_g_tol)
         kwargs[:q4_g_tol] = Float64(options[:q4_g_tol])
     end
+    if haskey(options, :q4_f_reltol)
+        kwargs[:q4_f_reltol] = Float64(options[:q4_f_reltol])
+        _bridge_check_q4_f_reltol_route(bundle, fam, kwargs[:q4_f_reltol],
+            Symbol(get(options, :method, :ML)))
+    end
     if haskey(options, :q4_iterations)
         kwargs[:q4_iterations] = Int(options[:q4_iterations])
     end
@@ -637,6 +677,15 @@ function _bridge_fit(bundle, fam, data; tree, K, A, coords, options)
     end
     if haskey(options, :q4_vcov)
         kwargs[:q4_vcov] = Bool(options[:q4_vcov])
+    end
+    # The R wrapper applies drmTMB's `miss_control(response = "drop")` itself: with the
+    # default it removes incomplete rows before marshalling, so any row that arrives here
+    # with a missing response was kept on purpose (`response = "include"`). Native `drm`
+    # now defaults a bivariate fit to the same "drop", so the bridge asks for "include"
+    # to leave the rows R sent untouched.
+    if bundle isa BivariateDrmFormula && (fam isa Gaussian || fam isa LogNormal || fam isa Student) &&
+       !haskey(kwargs, :missing)
+        kwargs[:missing] = miss_control(response = "include")
     end
     # Error text only (nothing is added, dropped or defaulted): `drm` hands its kwargs
     # on to a family-specific fitter, so an option that fitter does not accept
@@ -670,6 +719,27 @@ _bridge_has_sigma_phylo(bundle, fam) =
     bundle isa DrmFormula && fam isa Gaussian &&
     haskey(Dict(bundle.forms), :sigma) &&
     (s = _split_ranef(Dict(bundle.forms)[:sigma])[4]; s !== nothing && s[1] === :phylo)
+
+# `q4_f_reltol` is the stopping rule of the q=4 ML L-BFGS fit only. The q=4 REML fit and the
+# q=2 / residual-only bivariate routes accept the keyword but never read it, so a non-default
+# value there would silently do nothing. Like an unknown option key, it is refused by name
+# (the bridge fails closed rather than warning). The default value is always accepted.
+function _bridge_check_q4_f_reltol_route(bundle, fam, value::Float64, method::Symbol)
+    value == 1e-7 && return nothing
+    (bundle isa BivariateDrmFormula && (fam isa Gaussian || fam isa LogNormal)) || return nothing
+    marker = try
+        _bivariate_q4_marker(Dict(bundle.forms))[2]
+    catch
+        return nothing                       # a malformed formula is refused by `drm` itself
+    end
+    route = marker === nothing ? "the residual-only route" :
+        marker[1] === :structured_q2 ? "the q=2 structured route" :
+        method === :REML ? "the q=4 REML route" : nothing
+    route === nothing && return nothing
+    throw(ArgumentError("drm_bridge: option `q4_f_reltol` has no effect on $route (it is the " *
+        "stopping rule of the q=4 ML fit only); omit it, or use a q=4 structured formula " *
+        "with `method = \"ML\"`."))
+end
 
 function _bridge_is_bivariate_phylo_q4(bundle, fam, tree)
     return bundle isa BivariateDrmFormula && fam isa Gaussian && tree !== nothing
@@ -727,6 +797,271 @@ function _bridge_options(options)
     throw(ArgumentError("drm_bridge: `options` must be a dictionary or named tuple"))
 end
 
+function _bridge_v2_checked_options(input)
+    (input isa NamedTuple || input isa AbstractDict) || throw(ArgumentError("drm_bridge: invalid v2 record"))
+    keys_normalized = String[String(k) for k in keys(input)]
+    length(unique(keys_normalized)) == length(keys_normalized) || throw(ArgumentError("drm_bridge: duplicate v2 field"))
+    return _bridge_options(input)
+end
+
+function _bridge_prior_safe_options(input)
+    opts = _bridge_options(input)
+    if any(k -> haskey(opts, k), (:prior_contract, :priors_v2, :prior_expected_v2, :priors_v3, :prior_expected_v3))
+        return _bridge_v2_checked_options(input)
+    end
+    return opts
+end
+
+# Separate the v1 and v2 wire protocols before any fit is attempted.
+function _bridge_prior_contract(opts)
+    v1 = any(k -> haskey(opts, k), (:priors, :prior_expected))
+    has2 = any(k -> haskey(opts,k), (:priors_v2, :prior_expected_v2))
+    has3 = any(k -> haskey(opts,k), (:priors_v3, :prior_expected_v3))
+    v1 && (has2 || has3 || haskey(opts,:prior_contract)) && throw(ArgumentError("drm_bridge: prior protocol keys cannot be combined"))
+    has2 && has3 && throw(ArgumentError("drm_bridge: prior protocol keys cannot be combined"))
+    v1 && return :v1
+    !(has2 || has3 || haskey(opts,:prior_contract)) && return :none
+    contract = get(opts,:prior_contract,nothing)
+    version = contract == "parameter_priors_v2" ? :v2 : contract == "parameter_priors_v3" ? :v3 : throw(ArgumentError("drm_bridge: unknown prior contract"))
+    ks = version === :v2 ? (:priors_v2,:prior_expected_v2) : (:priors_v3,:prior_expected_v3)
+    all(k -> haskey(opts,k),ks) && ((version === :v2 && !has3) || (version === :v3 && !has2)) || throw(ArgumentError("drm_bridge: incomplete or mixed prior request"))
+    for k in ks
+        value = opts[k]
+        value isa AbstractVector && !isempty(value) || throw(ArgumentError("drm_bridge: $k must be a nonempty vector"))
+    end
+    return version
+end
+
+function _bridge_enable_priors_v3!(opts, form, fam, data, labels)
+    uppercase(String(get(opts, :method, "ML"))) == "ML" || throw(ArgumentError("drm_bridge: v3 requires ML"))
+    _bridge_reject_duplicate_intercept_source(labels.formula_parts)
+    records = opts[:prior_expected_v3]
+    priors = _bridge_prepare_priors_v2(form, fam, data, labels, opts[:priors_v3], records; version=:v3)
+    for k in (:prior_contract, :priors_v3, :prior_expected_v3)
+        delete!(opts, k)
+    end
+    opts[:priors] = priors
+    records
+end
+
+function _bridge_attach_priors_v3!(out, fit, records, labels)
+    fit.penalty.kind === :sd_priors && fit.estim_method === :MAP || throw(ArgumentError("drm_bridge: v3 backend did not fit SD priors"))
+    names, values, _, _ = _bridge_coef_vector(fit; labels=labels)
+    blocks = Dict(fit.blocks); coefs = Dict(fit.coefnames)
+    haskey(blocks,:resd) && haskey(coefs,:resd) && length(blocks[:resd]) == 2 && length(coefs[:resd]) == 2 || throw(ArgumentError("drm_bridge: v3 expected two SD working coordinates"))
+    for (i, group) in zip(blocks[:resd],coefs[:resd])
+        names[i] = "eta_sd[mu|$(group)|(Intercept)]"
+    end
+    length(unique(names)) == length(names) || throw(ArgumentError("drm_bridge: duplicate v3 working coordinate"))
+    rows = fit.penalty.sd_rows
+    expected = [_bridge_v2_checked_options(r) for r in records if get(_bridge_v2_checked_options(r), :class, nothing) == "ranef_sd"]
+    length(rows) == length(expected) || throw(ArgumentError("drm_bridge: fitted SD targets differ from v3 records"))
+    for (row, rec) in zip(rows,expected)
+        name = "eta_sd[mu|$(row.group)|$(row.coef)]"
+        row.class === :random_effect_sd && row.dpar === :mu && row.block === :iid_intercept && row.scale === :sd &&
+            row.index in blocks[:resd] && names[row.index] == name &&
+            get(rec,:dpar,nothing) == String(row.dpar) && get(rec,:group,nothing) == row.group &&
+            get(rec,:coef,nothing) == row.coef && get(rec,:block_kind,nothing) == "iid_random_intercept" &&
+            get(rec,:measure,nothing) == "natural_sd" && get(rec,:shape,nothing) == row.shape && get(rec,:rate,nothing) == row.rate ||
+            throw(ArgumentError("drm_bridge: fitted SD target does not match v3 record or working coordinate"))
+    end
+    data_nll = fit.penalty.data_nll
+    fixed_nll = t -> _fixed_prior_value(fit.penalty.rows,t)
+    sd_nll = t -> sum((_sd_prior_value(row,t) for row in rows); init=zero(eltype(t)))
+    theta=fit.theta
+    out["prior_contract"] = "parameter_priors_v3"
+    out["resolved_priors_v3"] = records
+    out["working_coordinates"] = names; out["working_values"] = values
+    out["data_nll"] = data_nll(theta); out["data_logLik"] = -out["data_nll"]
+    out["fixed_prior_penalty"] = fixed_nll(theta); out["sd_prior_penalty"] = sd_nll(theta)
+    # JuliaCall maps Vector{Any} of dictionaries to an R list; a concretely
+    # typed Vector{Dict} remains an opaque JuliaObject in JuliaCall 1.10.
+    out["sd_prior_contributions"] = Any[Dict("dpar"=>String(row.dpar),"group"=>row.group,"coef"=>row.coef,"penalty"=>_sd_prior_value(row,theta)) for row in rows]
+    out["penalized_objective"] = fit.nll(theta)
+    out["data_gradient"] = ForwardDiff.gradient(data_nll,theta)
+    out["fixed_prior_gradient"] = ForwardDiff.gradient(fixed_nll,theta)
+    out["sd_prior_gradient"] = ForwardDiff.gradient(sd_nll,theta)
+    out["penalized_gradient"] = ForwardDiff.gradient(fit.nll,theta)
+    out["estim_method"] = "MAP"; out["infocrit_basis"] = "unavailable"
+    out
+end
+
+function _bridge_enable_priors_v2!(opts, form, fam, data, labels)
+    uppercase(String(get(opts, :method, "ML"))) == "ML" || throw(ArgumentError("drm_bridge: v2 requires ML"))
+    _bridge_reject_duplicate_intercept_source(labels.formula_parts)
+    records = opts[:prior_expected_v2]
+    priors = _bridge_prepare_priors_v2(form, fam, data, labels, opts[:priors_v2], records)
+    for k in (:prior_contract, :priors_v2, :prior_expected_v2)
+        delete!(opts, k)
+    end
+    opts[:priors] = priors
+    return records
+end
+
+function _bridge_attach_priors_v2!(out, fit, records, labels)
+    fit.penalty.kind === :sd_priors && fit.estim_method === :MAP || throw(ArgumentError("drm_bridge: v2 backend did not fit an SD prior"))
+    names, values, _, _ = _bridge_coef_vector(fit; labels=labels)
+    row = fit.penalty.sd_row
+    row.index == length(values) || throw(ArgumentError("drm_bridge: unexpected SD working coordinate"))
+    names[end] = "eta_sd[$(row.dpar)|$(row.group)|$(row.coef)]"
+    length(unique(names)) == length(names) || throw(ArgumentError("drm_bridge: duplicate v2 working coordinate"))
+    data_nll = fit.penalty.data_nll
+    fixed_nll = t -> _fixed_prior_value(fit.penalty.rows, t)
+    sd_nll = t -> _sd_prior_value(row, t)
+    theta = fit.theta
+    out["prior_contract"] = "parameter_priors_v2"
+    out["resolved_priors_v2"] = records
+    out["working_coordinates"] = names
+    out["working_values"] = values
+    out["data_nll"] = data_nll(theta)
+    out["data_logLik"] = -out["data_nll"]
+    out["fixed_prior_penalty"] = fixed_nll(theta)
+    out["sd_prior_penalty"] = sd_nll(theta)
+    out["penalized_objective"] = fit.nll(theta)
+    out["data_gradient"] = ForwardDiff.gradient(data_nll, theta)
+    out["fixed_prior_gradient"] = ForwardDiff.gradient(fixed_nll, theta)
+    out["sd_prior_gradient"] = ForwardDiff.gradient(sd_nll, theta)
+    out["penalized_gradient"] = ForwardDiff.gradient(fit.nll, theta)
+    out["estim_method"] = "MAP"
+    out["infocrit_basis"] = "unavailable"
+    return out
+end
+
+function _bridge_prepare_priors_v2(form, fam, data, labels, prior_input, expected_input; version=:v2)
+    fam isa Gaussian || throw(ArgumentError("drm_bridge: v2 requires Gaussian"))
+    prior_input isa AbstractVector && !isempty(prior_input) && expected_input isa AbstractVector && !isempty(expected_input) ||
+        throw(ArgumentError("drm_bridge: v2 records must be nonempty vectors"))
+    specs = [_bridge_v2_checked_options(p) for p in prior_input]
+    expected = [_bridge_v2_checked_options(p) for p in expected_input]
+    groups = [Dict{Symbol,Any}[] for _ in specs]
+    last_index = 0
+    for row in expected
+        for key in (:mean, :sd, :lambda, :shape, :rate)
+            if haskey(row, key)
+                value = row[key]
+                value isa Real && !(value isa Bool) || throw(ArgumentError("drm_bridge: invalid v2 record number $key"))
+                converted = try Float64(value) catch; throw(ArgumentError("drm_bridge: invalid v2 record number $key")); end
+                isfinite(converted) || throw(ArgumentError("drm_bridge: invalid v2 record number $key"))
+                row[key] = converted
+            end
+        end
+        for key in (:kind, :class, :dpar, :coef, :group, :block_kind, :measure)
+            if haskey(row, key)
+                row[key] isa AbstractString && !isempty(row[key]) || throw(ArgumentError("drm_bridge: invalid v2 record string $key"))
+            end
+        end
+        idx = get(row, :spec_index, nothing)
+        idx isa Integer && !(idx isa Bool) && 1 <= idx <= length(specs) && idx >= last_index ||
+            throw(ArgumentError("drm_bridge: invalid v2 spec index/order"))
+        push!(groups[idx], row); last_index = idx
+    end
+    all(!isempty, groups) || throw(ArgumentError("drm_bridge: missing v2 expanded records"))
+    priors = Any[]; n_sd = 0
+    for (i, p) in enumerate(specs)
+        kind = get(p, :kind, nothing)
+        for key in (:kind, :dpar, :coef, :group, :block_kind, :measure, :intercept)
+            if haskey(p, key)
+                p[key] isa AbstractString && !isempty(p[key]) || throw(ArgumentError("drm_bridge: invalid v2 string field $key"))
+            end
+        end
+        for key in (:mean, :sd, :lambda, :shape, :rate)
+            if haskey(p, key)
+                value = p[key]
+                value isa Real && !(value isa Bool) || throw(ArgumentError("drm_bridge: invalid v2 numeric field $key"))
+                converted = try Float64(value) catch; throw(ArgumentError("drm_bridge: invalid v2 numeric field $key")); end
+                isfinite(converted) || throw(ArgumentError("drm_bridge: invalid v2 numeric field $key"))
+                p[key] = converted
+            end
+        end
+        if kind in ("fixed_normal", "fixed_ridge")
+            c = get(p, :coef, nothing)
+            c isa AbstractString && !isempty(c) || throw(ArgumentError("drm_bridge: invalid fixed selector"))
+            keys_needed = kind == "fixed_normal" ? [:kind, :dpar, :coef, :mean, :sd] : [:kind, :dpar, :coef, :lambda]
+            c == "all" && push!(keys_needed, :intercept)
+            Set(keys(p)) == Set(keys_needed) || throw(ArgumentError("drm_bridge: invalid fixed specification fields"))
+            c == "all" && !(p[:intercept] in ("include", "exclude")) && throw(ArgumentError("drm_bridge: invalid intercept rule"))
+            v1 = copy(p); v1[:kind] = kind == "fixed_normal" ? "normal" : "ridge"
+            v1expected = Dict{Symbol,Any}[]
+            for row in groups[i]
+                extra = kind == "fixed_normal" ? [:mean, :sd] : [:lambda]
+                Set(keys(row)) == Set(vcat([:spec_index, :kind, :class, :dpar, :coef], extra)) || throw(ArgumentError("drm_bridge: invalid fixed record fields"))
+                get(row, :kind, nothing) == kind && get(row, :class, nothing) == "fixed" && get(row, :dpar, nothing) == p[:dpar] && all(k -> row[k] == p[k], extra) ||
+                    throw(ArgumentError("drm_bridge: fixed prior record mismatch"))
+                push!(v1expected, Dict(:dpar=>row[:dpar], :coef=>row[:coef]))
+            end
+            append!(priors, _bridge_prepare_fixed_priors(form, fam, labels, [v1], v1expected))
+        elseif kind == "ranef_sd_gamma"
+            n_sd += 1
+            keys_needed = [:kind, :dpar, :group, :coef, :block_kind, :shape, :rate, :measure]
+            Set(keys(p)) == Set(keys_needed) || throw(ArgumentError("drm_bridge: invalid SD specification fields"))
+            p[:dpar] == "mu" && p[:coef] == "(Intercept)" && p[:block_kind] == "iid_random_intercept" && p[:measure] == "natural_sd" && p[:group] isa AbstractString && !isempty(p[:group]) ||
+                throw(ArgumentError("drm_bridge: invalid SD target"))
+            length(groups[i]) == 1 || throw(ArgumentError("drm_bridge: SD prior must resolve once"))
+            canonical = merge(copy(p), Dict(:spec_index=>i, :class=>"ranef_sd"))
+            groups[i][1] == canonical || throw(ArgumentError("drm_bridge: SD prior record mismatch"))
+            push!(priors, drm_prior_sd_gamma(dpar=p[:dpar], group=p[:group], coef=p[:coef], shape=p[:shape], rate=p[:rate]))
+        else
+            throw(ArgumentError("drm_bridge: unknown v2 prior kind"))
+        end
+    end
+    (version === :v2 ? n_sd == 1 : 1 <= n_sd <= 2) || throw(ArgumentError("drm_bridge: invalid number of SD priors"))
+    combined = drm_priors(priors...)
+    resolve_priors(form, fam; data=data, priors=combined)
+    _, re, _, _ = _split_ranef(Dict(form.forms)[:mu])
+    length(re) == (version === :v2 ? 1 : 2) || throw(ArgumentError("drm_bridge: prior protocol does not match random-intercept count"))
+    return combined
+end
+
+function _bridge_prepare_fixed_priors(form, fam, labels, prior_input, expected_input)
+    form isa DrmFormula && (fam isa Gaussian || (fam isa Binomial && fam.link === :logit)) ||
+        throw(ArgumentError("drm_bridge: fixed priors require univariate Gaussian or binomial logit"))
+    prior_input isa AbstractVector && expected_input isa AbstractVector ||
+        throw(ArgumentError("drm_bridge: priors and prior_expected must be vectors of rows"))
+    forms = Dict(form.forms)
+    dpars = fam isa Gaussian ? (:mu, :sigma) : (:mu,)
+    names = Pair{Symbol,Vector{String}}[]; intercepts = Dict{Symbol,Union{Nothing,Int}}()
+    public_names = Dict{Symbol,Vector{String}}()
+    for d in dpars
+        rhs = first(_extract_offset(first(_split_ranef(forms[d]))))
+        raw, public = _bridge_render_formula_block(form, d, rhs, labels)
+        length(unique(public)) == length(public) || throw(ArgumentError("drm_bridge: ambiguous public coefficient names"))
+        push!(names, d => raw); public_names[d] = public
+        schema_data = _bridge_label_schema_data(form.response, labels.data)
+        ft = FormulaTerm(Term(form.response), rhs)
+        applied = apply_schema(ft, schema(ft, schema_data), StatisticalModel)
+        intercepts[d] = StatsModels.hasintercept(applied) ? findfirst(==("(Intercept)"), raw) : nothing
+        StatsModels.hasintercept(applied) && intercepts[d] === nothing && throw(ArgumentError("drm_bridge: cannot identify intercept"))
+    end
+    priors = FixedPrior[]
+    for item in prior_input
+        p = _bridge_options(item)
+        all(k -> haskey(p, k), (:kind, :dpar, :coef)) || throw(ArgumentError("drm_bridge: incomplete prior row"))
+        d = Symbol(p[:dpar]); haskey(public_names, d) || throw(ArgumentError("drm_bridge: unknown prior dpar $d"))
+        c = String(p[:coef]); inc = get(p, :intercept, nothing)
+        if c != "all"
+            idx = findall(==(c), public_names[d])
+            length(idx) == 1 || throw(ArgumentError("drm_bridge: prior coefficient $d:$c did not uniquely match"))
+            c = Dict(names)[d][only(idx)]
+        end
+        kind = String(p[:kind])
+        if kind == "normal"
+            haskey(p, :sd) || throw(ArgumentError("drm_bridge: normal prior requires sd"))
+            push!(priors, drm_prior_normal(dpar=d, coef=c, intercept=inc, mean=get(p, :mean, 0), sd=p[:sd]))
+        elseif kind == "ridge"
+            haskey(p, :lambda) || throw(ArgumentError("drm_bridge: ridge prior requires lambda"))
+            push!(priors, drm_prior_ridge(dpar=d, coef=c, intercept=inc, lambda=p[:lambda]))
+        else
+            throw(ArgumentError("drm_bridge: unknown prior kind $kind"))
+        end
+    end
+    rows = _resolve_fixed_priors(priors, names, intercepts)
+    raw_names = Dict(names)
+    actual = [(String(r.dpar), public_names[r.dpar][findfirst(==(r.coef), raw_names[r.dpar])]) for r in rows]
+    expected = [(String(_bridge_options(x)[:dpar]), String(_bridge_options(x)[:coef])) for x in expected_input]
+    actual == expected || throw(ArgumentError("drm_bridge: R and Julia resolved prior coordinates differ"))
+    return priors
+end
+
 # The refusal text for a failed profile endpoint search (#631). It may only
 # recommend a method `drm_bridge_inference` accepts: its dispatch has `"profile"`
 # and `"bootstrap"`, and refuses `"wald"` (#1011).
@@ -782,6 +1117,8 @@ function _bridge_family(family::AbstractString)
     fam == "beta" && return Beta()
     fam in ("beta_binomial", "betabinomial") && return BetaBinomial()
     fam == "binomial" && return Binomial()
+    fam == "binomial_probit" && return Binomial(link = :probit)
+    fam == "binomial_cloglog" && return Binomial(link = :cloglog)
     fam == "gamma" && return Gamma()
     fam == "lognormal" && return LogNormal()
     # drmTMB's `biv_lognormal()`. Bivariate-ness is a property of the FORMULA in
@@ -848,6 +1185,9 @@ struct _BridgeFormulaLabels
     # while the R source deliberately differs only by redundant parentheses.
     # Keep those labels per fitted formula parameter, never in a global map.
     function_labels::Dict{Symbol,Dict{String,String}}
+    # Preserve raw bridge input: StatsModels drops identical repeated terms
+    # before the v2 target resolver can inspect the resulting FormulaTerm.
+    formula_parts::Vector{String}
 end
 
 function _bridge_formula(formula, family::AbstractString, data; labels::Bool = false)
@@ -917,7 +1257,7 @@ function _bridge_formula(formula, family::AbstractString, data; labels::Bool = f
     for (param, _) in bundle.forms
         if haskey(keyed_labels, param)
             by_param[param] = keyed_labels[param]
-        elseif _bridge_lss_form_key(param) !== nothing
+        elseif _bridge_lss_form_key(param, bundle) !== nothing
             if lss_i <= length(lss_labels)
                 by_param[param] = lss_labels[lss_i]
                 lss_i += 1
@@ -940,8 +1280,51 @@ function _bridge_formula(formula, family::AbstractString, data; labels::Bool = f
 
     augmented = isempty(ctx.extra) ? data : merge(_bridge_ctx_cols!(ctx), NamedTuple(ctx.extra))
     return labels ? (bundle, augmented,
-                     _BridgeFormulaLabels(augmented, copy(ctx.labels), by_param)) :
+                     _BridgeFormulaLabels(augmented, copy(ctx.labels), by_param, String.(parts))) :
                     (bundle, augmented)
+end
+
+# A v2 SD request must not silently simplify repeated or algebraically
+# transformed random terms into one block. Inspect raw syntax without
+# evaluating it. Ordinary v1/no-prior calls never invoke this.
+function _bridge_reject_duplicate_intercept_source(parts)
+    seen = Set{Symbol}()
+    is_intercept_bar(e) = e isa Expr && e.head === :call && length(e.args) == 3 &&
+        e.args[1] === :| && e.args[2] isa Real && !(e.args[2] isa Bool) &&
+        e.args[2] == 1 && e.args[3] isa Symbol
+    # Descend through formula algebra only. Function arguments are fixed
+    # expressions in the bridge parser, where `|` can mean logical or
+    # bitwise OR, including an expression spelled `1 | site`.
+    formula_algebra = (:+, :-, :*, :&, :/, :^)
+    has_bar(e) = e isa Expr && (is_intercept_bar(e) ||
+        (e.head === :call && !isempty(e.args) && e.args[1] in formula_algebra && any(has_bar, e.args[2:end])))
+    function visit(e)
+        e isa Expr || return
+        has_bar(e) || return
+        if is_intercept_bar(e)
+            group = e.args[3]
+            group in seen && throw(ArgumentError("drm_bridge: v2 SD prior does not admit duplicated random intercept terms for $group"))
+            push!(seen, group)
+            return
+        end
+        # Subtracting fixed terms (including `- 1`) does not alter a random
+        # block. Removing a random term is refused before simplification.
+        if e.head === :call && length(e.args) == 3 && e.args[1] === :- && !has_bar(e.args[3])
+            visit(e.args[2])
+            return
+        end
+        e.head === :call && !isempty(e.args) && e.args[1] === :+ ||
+            throw(ArgumentError("drm_bridge: v2 SD prior does not admit random-effect algebra or transformed random terms"))
+        foreach(visit, e.args[2:end])
+    end
+    for part in parts
+        expr = Meta.parse(_bridge_translate_r_ops(part))
+        expr isa Expr && expr.head === :(=) && (expr = expr.args[2])
+        expr isa Expr && expr.head === :call && length(expr.args) == 3 && expr.args[1] === :~ ||
+            throw(ArgumentError("drm_bridge: could not parse formula specification"))
+        visit(expr.args[3])
+    end
+    return nothing
 end
 
 # Render one keyed part as a parsable string. Location-scale-scale entries
@@ -952,7 +1335,19 @@ end
 # parser cannot see through. So pass the value straight through: it is already
 # the positional spelling `bf` understands.
 function _bridge_keyed_part(k::AbstractString, v)
-    occursin(r"^sd(_phylo)?\([^()]+\)$", k) && return String(v)
+    # `coef(term)` is a nested selector in an SD target, so a no-parentheses
+    # regex mistakes this marker key for a Julia short-form function definition.
+    # The key is generated by the R bridge from a parsed SD LHS, and the value
+    # already contains the complete positional formula understood by `bf`.
+    marker = try
+        Meta.parse(String(k))
+    catch
+        nothing
+    end
+    if marker isa Expr && marker.head === :call &&
+       marker.args[1] in (:sd, :sd_phylo)
+        return String(v)
+    end
     return "$k = $v"
 end
 
@@ -1448,7 +1843,7 @@ end
 # flatten `+` themselves before doing term algebra.
 const _BRIDGE_TERM_OPS = (:+, :&, :*, :~)
 const _BRIDGE_DSL_CALLS = Set((:phylo, :relmat, :animal, :spatial, :temporal, :sd,
-    :sd_phylo, :meta_V, :cbind, :corpair, :|))
+    :sd_phylo, :coef, :meta_V, :cbind, :corpair, :|))
 
 # drmTMB's `temporal(1 | id, time = occ, structure = "ar1")` -> the positional
 # Julia spelling `temporal(1 | id, occ, ar1)` that `@formula` can parse (it
@@ -1760,6 +2155,17 @@ function _bridge_formula_from_expr(expr, ctx::_BridgeXlateCtx)
     return eval(Expr(:macrocall, Symbol("@formula"), LineNumberNode(0), expr))
 end
 
+# A failed fit must be visible across the R boundary: the stored sentinel (-1e18), a non-finite
+# value, or a runaway |ll| >= 1e15 on a non-converged fit is sent as NaN (R's `as.numeric(NaN)` is
+# `NaN`), the same rule as `loglik()` / `_loglik_is_failed`. A good fit round-trips unchanged.
+_bridge_loglik(loglik, converged) =
+    _loglik_is_failed(loglik, converged) ? NaN : loglik
+
+const _BRIDGE_FIT_FAILED_MESSAGE =
+    "DRM.jl reported a failed fit: the objective hit its failure sentinel, was non-finite, " *
+    "or ran away (|logLik| >= 1e15) without converging. The log-likelihood is withheld (NaN); " *
+    "do not use this fit."
+
 function _bridge_flatten(fit; family::AbstractString, newdata = nothing,
         labels::Union{Nothing,_BridgeFormulaLabels} = nothing, coef_labels = nothing)
     cnames, cvals, raw_cnames, public_to_raw =
@@ -1776,9 +2182,13 @@ function _bridge_flatten(fit; family::AbstractString, newdata = nothing,
         "coef" => Dict(cnames .=> cvals),
         "vcov" => V,
         "vcov_names" => cnames,
-        "loglik" => loglik(fit),
-        "aic" => aic(fit),
-        "bic" => bic(fit),
+        # NaN (not the -1e18 sentinel) for a failed fit; the raw value stays on the DrmFit.
+        "loglik" => _bridge_loglik(fit.loglik, fit.converged),
+        "fit_failed" => _loglik_is_failed(fit.loglik, fit.converged),
+        "fit_failed_message" => _loglik_is_failed(fit.loglik, fit.converged) ?
+            _BRIDGE_FIT_FAILED_MESSAGE : "",
+        "aic" => _is_fixed_prior_fit(fit) && fit.estim_method === :MAP ? NaN : aic(fit),
+        "bic" => _is_fixed_prior_fit(fit) && fit.estim_method === :MAP ? NaN : bic(fit),
         "df" => dof(fit),
         "nobs" => nobs(fit),
         # The optimiser-degeneracy-and-geometry gate, NOT `is_converged` (FX3b):
@@ -1796,8 +2206,8 @@ function _bridge_flatten(fit; family::AbstractString, newdata = nothing,
         # fit had no signal that these were REML-restricted values — only a
         # Julia-side `@warn` that never crosses the boundary.
         "estim_method" => String(fit.estim_method),
-        "ml_loglik" => fit.ml_loglik,
-        "infocrit_basis" => fit.estim_method === :REML ? "reml" : "ml",
+        "ml_loglik" => _loglik_is_failed(fit.loglik, fit.converged) ? NaN : fit.ml_loglik,
+        "infocrit_basis" => _is_fixed_prior_fit(fit) && fit.estim_method === :MAP ? "unavailable" : fit.estim_method === :REML ? "reml" : "ml",
         # Optimiser iterations actually taken. -1 means the fitter does not record
         # it yet, which the R side must read as "unknown" -- NOT as zero. Before
         # 2026-08-24 this key did not exist at all, so `fit$bridge$iterations` was
@@ -1813,21 +2223,41 @@ function _bridge_flatten(fit; family::AbstractString, newdata = nothing,
         # mean -- see `_bridge_fitted_marginal`. They are not drmTMB's values in
         # general. In particular, for ordinary random-effect, phylogenetic,
         # covariance-block and AR1 / OU `temporal()` fits drmTMB's `fitted()`
-        # adds the fitted modes and this payload does not.
+        # adds the fitted modes and this payload does not. The structured
+        # relmat / animal / spatial routes that record their conditional field
+        # also ship it as `conditional_structured` (below); drmTMB adds it to
+        # these slots on its side (b34).
         "fitted" => _bridge_plain(fitted_vals),
         "residuals" => _bridge_plain(residual_vals),
-        "sigma" => _bridge_plain(sigma(fit)),
+        "sigma" => _bridge_plain(_sigma_all_rows(fit)),   # all input rows, as `fitted` above (`sigma(fit)` is used rows)
         "corpairs" => _bridge_plain(corpairs(fit)),
         "dpars" => _bridge_dpars(fit),
     )
+    if _is_fixed_prior_fit(fit)
+        rows = fit.penalty.rows
+        out["fixed_prior_contract"] = "fixed_effect_priors_v1"
+        publicmap = Dict(raw => public for (public, raw) in public_to_raw)
+        out["resolved_priors"] = [Dict("dpar"=>String(r.dpar), "coef"=>get(publicmap, "$(r.dpar)_$(r.coef)", "$(r.dpar)_$(r.coef)")[length(String(r.dpar))+2:end], "index"=>r.index, "matrix_column"=>r.matrix_column, "mean"=>r.mean, "sd"=>r.sd, "precision"=>r.precision, "kind"=>String(r.kind), "reason"=>String(r.reason)) for r in rows]
+        out["fixed_prior_penalty"] = _fixed_prior_value(rows, fit.theta)
+        out["likelihood_gradient"] = ForwardDiff.gradient(fit.penalty.data_nll, fit.theta)
+        out["prior_gradient"] = ForwardDiff.gradient(t -> _fixed_prior_value(rows, t), fit.theta)
+        out["penalized_gradient"] = ForwardDiff.gradient(fit.nll, fit.theta)
+        out["penalized_objective"] = fit.nll(fit.theta)
+    end
     # `reml_loglik` is omitted rather than reported as NaN for an ML fit (matches
     # `trials`/`meta`/`q4_point_export` below: absent, not a sentinel, when the
     # fit genuinely does not carry it). When it IS present, also echo the same
     # AIC/BIC cross-mean-structure caveat `_reml_infocrit_warn` already prints to
     # the Julia log — as `"warnings"`, since that log line never reaches R (#624).
     if fit.estim_method === :REML
-        isnan(fit.reml_loglik) ||
-            (out["reml_loglik"] = fit.reml_loglik)
+        # A failed REML fit ships NaN (present), like `loglik` / `ml_loglik` above,
+        # not the raw failure sentinel.
+        if _loglik_is_failed(fit.loglik, fit.converged)
+            out["reml_loglik"] = NaN
+        else
+            isnan(fit.reml_loglik) ||
+                (out["reml_loglik"] = _bridge_loglik(fit.reml_loglik, fit.converged))
+        end
         out["warnings"] = String[
             _reml_infocrit_warning_text("aic"),
             _reml_infocrit_warning_text("bic"),
@@ -1849,8 +2279,13 @@ function _bridge_flatten(fit; family::AbstractString, newdata = nothing,
         length(g) == length(cnames) || error(
             "drm_bridge: internal error — gradient length $(length(g)) does not match " *
             "the $(length(cnames)) named coefficients; refusing to mislabel gradient entries.")
-        out["gradient"] = g
-        out["gradient_names"] = cnames
+        # A non-finite callback result is not a gradient (#1402). Omit the
+        # vector (and its names) rather than ship NaN/Inf. The length check
+        # above still refuses a mis-sized callback, finite or not.
+        if all(isfinite, g)
+            out["gradient"] = g
+            out["gradient_names"] = cnames
+        end
     end
     # Route-aware convergence diagnostics (#569): the Julia twin of `check_drm`,
     # reshaped for the R bridge. Kept as a nested "diagnostics" dict (rather
@@ -1858,12 +2293,30 @@ function _bridge_flatten(fit; family::AbstractString, newdata = nothing,
     # (see `bridge_diagnostics`'s docstring) stay self-contained and cannot be
     # confused with the top-level `"converged"`/`"iterations"` keys above,
     # which predate this and stay unchanged for backward compatibility.
-    # `grad_source` is ALSO echoed at the top level: it is the one field
-    # `R/julia-diagnostics.R`'s `drm_julia_gradient_source()` already reads off
-    # `object$bridge[["grad_source"]]` (the raw, un-nested payload) to attribute
-    # the "gradient"/"gradient_names" pair above to a producer.
+    #
+    # Top-level `"grad_source"` is the provenance of the `"gradient"` vector
+    # above, which drmTMB's `drm_julia_gradient_source()` reads off
+    # `object$bridge[["grad_source"]]`. That vector has one producer,
+    # `fit.nllgrad`, so the label is `"stored"` exactly when the vector is
+    # shipped. The nested `diagnostics["grad_source"]` is a different claim:
+    # which producer supplied the scalar `max_abs_grad` (`_check_max_abs_grad`).
+    # That scalar is `:locscale` when `nll` is a `LocScaleObjective` (checked
+    # first; analytic gradient in permuted order), and `:finite` or
+    # `:unavailable` when the stored callback's magnitude is non-finite and the
+    # finite-difference fallback runs — even if a non-finite `nllgrad` vector
+    # was evaluated above and then withheld. Copying the scalar label onto the
+    # vector is the contradiction this key must not make (#1402).
+    #
+    # With no finite vector: echo `"none"` or `"unavailable"` when the scalar
+    # source already says no gradient was produced; omit the key otherwise.
+    # A missing key is what drmTMB reports as `"unknown"`. `"forward"` (or
+    # `"locscale"` / `"finite"`) with no vector is the abort.
     bdiag = bridge_diagnostics(fit)
-    out["grad_source"] = String(bdiag.grad_source)
+    if haskey(out, "gradient")
+        out["grad_source"] = "stored"
+    elseif bdiag.grad_source in (:none, :unavailable)
+        out["grad_source"] = String(bdiag.grad_source)
+    end
     out["diagnostics"] = Dict{String,Any}(
         "route" => bdiag.route,
         "integrator" => String(bdiag.integrator),
@@ -1902,6 +2355,21 @@ function _bridge_flatten(fit; family::AbstractString, newdata = nothing,
         out["V_known"] = meta.v_known
     end
     newdata === nothing || (out["dpars_newdata"] = _bridge_dpars_newdata(fit, newdata))
+    # b34: conditional structured-field export. R rebuilds the conditional mean
+    # (fitted(), residuals()) as linkinv(linkfun(population mean) + eta_re).
+    cond = structured_conditional(fit)
+    if cond !== nothing
+        out["conditional_structured"] = Dict{String,Any}(
+            "kind" => "structured_eta_re_v1",
+            "eta_re" => collect(Float64, cond.eta_re),
+            "modes" => [collect(Float64, m) for m in cond.modes],
+        )
+    elseif haskey(fit.scales, :cond_failed)
+        # The route exports the field, but the conditional mode solve failed or
+        # was non-finite at the converged parameters.
+        out["conditional_structured"] = Dict{String,Any}(
+            "kind" => "structured_eta_re_v1_failed")
+    end
     q4_point_export = _bridge_q4_point_export(fit; family = family)
     if !isempty(q4_point_export)
         out["q4_point_export"] = q4_point_export
@@ -1941,6 +2409,7 @@ function _bridge_coef_vector(fit; labels::Union{Nothing,_BridgeFormulaLabels} = 
     length(unique(raw_names)) == length(raw_names) ||
         error("drm_bridge: raw coefficient labels are not unique")
     if coef_labels !== nothing
+        coef_labels = _bridge_single_sd_coef_label_alias(fit, coef_labels)
         names = _bridge_echo_coef_labels(coef_labels, block_ranges, raw_names)
         length(unique(names)) == length(names) ||
             error("drm_bridge: echoed coef_labels public names are not unique")
@@ -1966,6 +2435,27 @@ function _bridge_coef_vector(fit; labels::Union{Nothing,_BridgeFormulaLabels} = 
     Set(values(public_to_raw)) == Set(raw_names) ||
         error("drm_bridge: public coefficient map does not cover every raw coordinate")
     return names, vals, raw_names, public_to_raw
+end
+
+function _bridge_single_sd_coef_label_alias(fit, coef_labels)
+    fit.formula isa DrmFormula || return coef_labels
+    has_sd_block = any(pair -> first(pair) === :sd, fit.blocks)
+    has_sd_block || return coef_labels
+    targets = _sd_target_parts(fit.formula)
+    length(targets) == 1 || return coef_labels
+    target_dpar = String(_sd_target_block(only(targets).target))
+    source_key = findfirst(key -> String(key) == target_dpar, collect(keys(coef_labels)))
+    source_key === nothing && return coef_labels
+    source_key = collect(keys(coef_labels))[source_key]
+    String(source_key) == "sd" && return coef_labels
+    any(key -> String(key) == "sd", keys(coef_labels)) && error(
+        "drm_bridge: coef_labels supplies both the selected SD target and its single-target `sd` alias")
+    out = copy(coef_labels)
+    value = out[source_key]
+    delete!(out, source_key)
+    alias_key = source_key isa Symbol ? :sd : "sd"
+    out[alias_key] = value
+    return out
 end
 
 # Echo an R-supplied `options["coef_labels"] :: Dict{String,Vector{String}}`
@@ -2087,7 +2577,7 @@ function _bridge_rendered_regression_blocks(fit, labels::_BridgeFormulaLabels)
     forms = hasproperty(form, :forms) ? form.forms : Pair{Symbol,Any}[]
     block_names = Dict(p => ns for (p, ns) in fit.coefnames)
     for (param, rhs) in forms
-        _bridge_lss_form_key(param) === nothing || continue
+        _bridge_lss_form_key(param, form) === nothing || continue
         haskey(block_names, param) || continue
         # Coupled location-scale fits build their fixed columns after removing
         # `(1 | tag | group)`. The ordinary random-effect splitter does not
@@ -2098,7 +2588,50 @@ function _bridge_rendered_regression_blocks(fit, labels::_BridgeFormulaLabels)
         end
         # #938: an `offset(...)` term is held at coefficient 1, so it is no column.
         rhs = first(_extract_offset(rhs))
-        rendered = _bridge_render_formula_block(form, param, rhs, labels)
+        # A fitted structured q2 term (`kind(1 + x | g)` or labelled
+        # `kind(1 + x | p | g)` with its two coefficient SD targets) adds no
+        # mean columns; drop it so the label `p` is never read as data.
+        param === :mu && (rhs = _strip_fitted_q2_terms(fit, rhs))
+        param === :sigma && (rhs = _strip_sigma_struct_q2_terms(fit, rhs))   # NB2 structured sigma 1 + x term
+        # Fitting has already admitted this family-specific animal SD route.
+        # Label reconstruction only needs the matching animal-slope parser;
+        # keeping this permission Binomial-specific breaks other fitted routes
+        # such as Gamma animal-slope SD regression after optimization succeeds.
+        sd_targets_here = fit.formula isa DrmFormula ?
+            _sd_target_parts(fit.formula) : Any[]
+        animal_sd_slope = any(item -> item.target.level === :animal,
+                              sd_targets_here)
+        q2_label_ok = fit.family isa Union{Gaussian,Poisson,NegBinomial2}
+        animal_block = param === :mu ?
+            _animal_intercept_slope(rhs; allow_label = q2_label_ok) : nothing
+        animal_sd_targets = filter(item -> item.target.level === :animal,
+                                   sd_targets_here)
+        binomial_animal_q2 = fit.family isa Binomial &&
+            animal_block !== nothing && length(animal_sd_targets) == 2 &&
+            all(item -> item.target.group === animal_block.group,
+                animal_sd_targets) &&
+            Set(item.target.member for item in animal_sd_targets) ==
+                Set((:intercept, animal_block.slope))
+        animal_sd_intercept_slope = animal_block !== nothing &&
+            (fit.family isa Union{Gamma,Gaussian} || binomial_animal_q2 ||
+             (fit.family isa Union{Poisson,NegBinomial2} && length(animal_sd_targets) == 2))
+        binomial_phylo_sd_slope_only = fit.family isa Union{Binomial,Gamma} &&
+            !isempty(_sdphylo_parts(fit.formula))
+        relmat_sd_q2 = param === :mu && fit.family isa Union{Poisson,Gaussian,NegBinomial2} &&
+            _relmat_intercept_slope(rhs; allow_label = true) !== nothing
+        binomial_relmat_sd_slope_only = fit.family isa Union{Binomial,Poisson,Gaussian,Gamma,NegBinomial2} &&
+            any(item.target.level === :relmat for item in sd_targets_here)
+        gaussian_spatial_sd_slope_only = fit.family isa Union{Gaussian,Gamma,NegBinomial2} &&
+            any(item.target.level === :spatial for item in sd_targets_here)
+        rendered = _bridge_render_formula_block(
+            form, param, rhs, labels; allow_animal_slope = animal_sd_slope,
+            allow_animal_intercept_slope = animal_sd_intercept_slope,
+            allow_phylo_slope_only = binomial_phylo_sd_slope_only,
+            allow_relmat_slope = binomial_relmat_sd_slope_only,
+            allow_relmat_intercept_slope = relmat_sd_q2,
+            allow_spatial_slope = gaussian_spatial_sd_slope_only,
+            allow_labelled_intercept_slope = q2_label_ok
+        )
         rendered === nothing && continue
         raw, public = rendered
         vouched = !(public === raw)
@@ -2193,7 +2726,7 @@ function _bridge_check_lss_coef_labels_fidelity(fit, labels::_BridgeFormulaLabel
     block_names = Dict(p => ns for (p, ns) in fit.coefnames)
     position = Dict(name => i for (i, name) in enumerate(raw_names))
     for (key, rhs) in forms
-        block = _bridge_lss_form_key(key)
+        block = _bridge_lss_form_key(key, form)
         block === nothing && continue
         haskey(block_names, block) || continue
         rendered = _bridge_render_formula_block(form, block, rhs, labels; label_scope = key)
@@ -2219,7 +2752,7 @@ function _bridge_check_lss_coef_labels_fidelity(fit, labels::_BridgeFormulaLabel
         aligned || continue
         supplied == public || error(
             "drm_bridge: coef_labels[\"$block\"] does not match the design DRModels.jl built " *
-            "for the `$key` formula: R supplied $(supplied) but DRModels.jl renders $(public) " *
+            "for the `$(haskey(form.sd_targets, key) ? "sd_" * String(form.sd_targets[key].group) : String(key))` formula: R supplied $(supplied) but DRModels.jl renders $(public) " *
             "from its own model matrix (Julia raw columns: $(raw)). The two engines " *
             "disagree on the design columns of a group-level SD formula -- usually a " *
             "factor or character column whose level order differs between the R data and " *
@@ -2256,16 +2789,29 @@ function _bridge_public_to_raw_coef_map(fit, labels::_BridgeFormulaLabels,
     return public_to_raw
 end
 
-_bridge_lss_form_key(param::Symbol) = startswith(String(param), "sdphy_") ? :sd_phylo :
-                                      startswith(String(param), "sd_") ? :sd : nothing
+function _bridge_lss_form_key(param::Symbol, form = nothing)
+    name = String(param)
+    startswith(name, "sdphy_") && return :sd_phylo
+    startswith(name, "sd_") && return :sd
+    if form isa DrmFormula && haskey(form.sd_targets, param)
+        # An unselected, unique target resolves to `:sd` itself. Explicit
+        # coefficient selectors retain their hashed fitted block even when
+        # there is only one formula, so bridge label mapping must use the same
+        # target identity as fitting and prediction.
+        return _sd_target_block(form.sd_targets[param];
+                                disambiguate = length(_sd_target_parts(form)) > 1)
+    end
+    return nothing
+end
 
 function _bridge_lss_public_to_raw!(raw_to_public, form, block_names,
         labels::_BridgeFormulaLabels)
     for (key, rhs) in form.forms
-        block = _bridge_lss_form_key(key)
+        block = _bridge_lss_form_key(key, form)
         block === nothing && continue
         haskey(block_names, block) || continue
-        group = String(key)[block === :sd ? length("sd_") + 1 : length("sdphy_") + 1:end]
+        group = haskey(form.sd_targets, key) ? String(form.sd_targets[key].group) :
+            String(key)[block === :sd ? length("sd_") + 1 : length("sdphy_") + 1:end]
         rendered = _bridge_render_formula_block(form, block, rhs, labels; label_scope = key)
         rendered === nothing && continue
         raw, public = rendered
@@ -2293,7 +2839,14 @@ function _bridge_lss_public_to_raw!(raw_to_public, form, block_names,
 end
 
 function _bridge_render_formula_block(form, param::Symbol, rhs,
-        labels::_BridgeFormulaLabels; label_scope::Symbol = param)
+        labels::_BridgeFormulaLabels; label_scope::Symbol = param,
+        allow_animal_slope::Bool = false,
+        allow_animal_intercept_slope::Bool = false,
+        allow_phylo_slope_only::Bool = false,
+        allow_relmat_slope::Bool = false,
+        allow_relmat_intercept_slope::Bool = false,
+        allow_spatial_slope::Bool = false,
+        allow_labelled_intercept_slope::Bool = false)
     response = if form isa DrmFormula
         form.response
     elseif form isa BivariateDrmFormula
@@ -2304,7 +2857,17 @@ function _bridge_render_formula_block(form, param::Symbol, rhs,
     # Random/structured pieces never become ordinary coefficient columns.  The
     # fixed part is what `_design` used for their associated fixed-effect block.
     fixed_rhs = try
-        first(_split_ranef(rhs; allow_phylo_slope = true, allow_temporal = true))   # #620: a Gaussian slope formula still labels
+        first(_split_ranef(rhs; allow_phylo_slope = true, allow_temporal = true,
+                           allow_animal_slope = allow_animal_slope,
+                           allow_animal_intercept_slope =
+                               allow_animal_intercept_slope,
+                           allow_phylo_slope_only = allow_phylo_slope_only,
+                           allow_relmat_slope = allow_relmat_slope,
+                           allow_relmat_intercept_slope =
+                               allow_relmat_intercept_slope,
+                           allow_spatial_slope = allow_spatial_slope,
+                           allow_labelled_intercept_slope =
+                               allow_labelled_intercept_slope))
     catch
         rhs
     end
@@ -2561,7 +3124,7 @@ function _bridge_q2_point_export(fit; family::AbstractString = "biv_gaussian",
             "correlation" => R,
             "residual_sd" => residual_sd,
             "residual_correlation" => Float64(first(fit.scales[:rho12])),
-            "loglik" => Float64(loglik(fit)),
+            "loglik" => _bridge_loglik(Float64(fit.loglik), fit.converged),
             "converged" => fit.geometry === :ok && _converged_nondegenerate(fit),   # as the top-level key (FX3b)
             "claim_boundary" => boundary,
         )
@@ -2608,7 +3171,8 @@ function _bridge_q2_point_export(fit; family::AbstractString = "biv_gaussian",
         out["residual_correlation"] = Float64(fit.rho12)
     end
     if haskey(fit, :loglik)
-        out["loglik"] = Float64(fit.loglik)
+        out["loglik"] = _bridge_loglik(Float64(fit.loglik),
+            haskey(fit, :converged) ? Bool(fit.converged) : nothing)
     end
     return out
 end
@@ -2656,7 +3220,13 @@ function _bridge_dpars(fit::DrmFit)
     for (k, v) in pairs(fit.means)
         out[String(k)] = collect(float.(v))
     end
+    # `scales` also stores simulation context and implementation diagnostics.
+    # Those are not response-distribution parameters and must not cross the
+    # R bridge as fictitious dpars.
     for (k, v) in pairs(fit.scales)
+        (_sigma_internal_key(k) ||
+         k in (:trials, :q2_restarts, :sd, :sd_group, :sd_group_index, :aghq_nodes) ||
+         startswith(String(k), "sdtarget_") || startswith(String(k), "cond_")) && continue
         out[String(k)] = collect(float.(v))
     end
     if fit.family isa ZeroOneBeta && haskey(out, "beta_mu")
@@ -2678,16 +3248,23 @@ end
 values unchanged for every fit except a zero-inflated count fit, whose mean is
 replaced by drmTMB's unconditional one (below).
 
-**Not drmTMB's values for every fit.** DRModels.jl's `fitted` is population
-level (`Xβ̂` on the response scale) for every model. drmTMB's `fitted()`, and
+**Not drmTMB's values for every fit.** The payload is population level (`Xβ̂`,
+mapped to E[Y] since #1282) for every model, i.e. `fitted(fit; re = :zero)`.
+The native `fitted(fit)` is conditional by default (it adds the modes, as drmTMB's
+does); this function does not call it, so the payload is unchanged. drmTMB's `fitted()`, and
 so its response residuals, adds the fitted modes whenever the mean has a
 random or structured effect: ordinary random effects, phylogenetic and
 covariance-block effects, and AR1 / OU `temporal()` paths (drmTMB 07d1612ea,
 `predict.drmTMB`, `R/methods.R:2955-2986`). For those fits the payload ships
 `Xβ̂` and `y − Xβ̂`, not drmTMB's conditional values. Making it conditional
-would change what R callers receive, so it is not done here.
+would change what R callers receive, so it is not done here. The structured
+relmat / animal / spatial routes that record their conditional field are the
+exception only in what else the payload carries: it also holds
+`conditional_structured` (`_attach_conditional_structured!`), from which drmTMB
+rebuilds the conditional mean; these two slots stay population level.
 
-DRModels.jl's `fitted(fit)` is `means[:mu]`, and for a zero-inflated Poisson or NB2
+DRModels.jl's `fit.means[:mu]` (which `fitted(fit)` returned before #1282; `fitted`
+now returns the mean E[Y], see below), and for a zero-inflated Poisson or NB2
 fit that slot deliberately holds the COUNT-COMPONENT mean `exp(Xmu*betahat)`,
 because `simulate`, `marginal_parameters` and [`_bridge_dpars`](@ref) all read
 the component mean from it. drmTMB's `fitted()` for `zi_poisson`/`zi_nbinom2`
@@ -2706,8 +3283,9 @@ bridge's `1.45376964, 1.21616037, 2.56362484` -- max absolute disagreement
 coefficient or likelihood check can see.
 
 Repaired HERE, on the bridge boundary, rather than in `means[:mu]`: DRModels.jl's
-own `fitted`, `residuals`, `simulate`, `marginal_parameters` and dpar table
-keep the component mean they are built on, and only drmTMB's contract surface
+`fit.means[:mu]`, `simulate`, `marginal_parameters` and dpar table keep the
+component mean they are built on (`fitted` and `residuals` are E[Y] and
+`y - E[Y]` since #1282, and the bridge reads `means[:mu]` directly), and only drmTMB's contract surface
 changes. Same shape as the `zero_one_beta` override in
 [`_bridge_dpars`](@ref).
 
@@ -2719,13 +3297,17 @@ deliberately NOT repaired here: drmTMB's hurdle mean divides by `1 - P(0)` as
 well as scaling, and that route carries no bridge parity receipt yet.
 """
 function _bridge_fitted_marginal(fit::DrmFit)
-    fit_vals = fitted(fit)
-    fit_vals isa AbstractVector || return (fit_vals, residuals(fit))
-    (haskey(fit.scales, :zi) && haskey(fit.obs, :mu)) ||
-        return (fit_vals, residuals(fit))
+    # Built on the stored component mean, not `fitted(fit)`: `fitted` is E[Y] for
+    # the LogNormal, zero-inflated, hurdle and truncated fits, and the repair
+    # below (and the unrepaired fall-through) is the bridge's own contract.
+    haskey(fit.means, :mu) || return (fitted(fit; re = :zero), residuals(fit; re = :zero))
+    fit_vals = fit.means[:mu]
+    fit_vals isa AbstractVector || return (fit_vals, residuals(fit; re = :zero))
+    plain_resid = fit.obs[:mu] .- fit_vals
+    (haskey(fit.scales, :zi) && haskey(fit.obs, :mu)) || return (fit_vals, plain_resid)
     pz = collect(float.(fit.scales[:zi]))
     mu = collect(float.(fit_vals))
-    length(pz) == length(mu) || return (fit_vals, residuals(fit))
+    length(pz) == length(mu) || return (fit_vals, plain_resid)
     marginal = (1 .- pz) .* mu
     return (marginal, collect(float.(fit.obs[:mu])) .- marginal)
 end
@@ -2806,7 +3388,10 @@ override needed).
 function _bridge_dpars_newdata(fit::DrmFit, newdata)
     nd = _bridge_data(newdata)
     pred = predict_parameters(fit, nd; type = :response)
-    return Dict(String(k) => collect(float.(v)) for (k, v) in pairs(pred))
+    # Match `_bridge_dpars`: random-effect SD predictions are model-level
+    # outputs, not response-distribution parameters consumed by the R bridge.
+    return Dict(String(k) => collect(float.(v)) for (k, v) in pairs(pred)
+        if !(k in (:sd, :sd_group) || startswith(String(k), "sdtarget_")))
 end
 
 _bridge_plain(x::AbstractVector) = collect(x)

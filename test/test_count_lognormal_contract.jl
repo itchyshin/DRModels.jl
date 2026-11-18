@@ -43,7 +43,15 @@ function _contract_checks(fit, data, y, k, ll_ref; support)
     rq = residuals(fit; type = :quantile)
     @test length(rq) == n && all(isfinite, rq)
     @test abs(mean(rq)) < 0.25 && 0.7 < std(rq) < 1.3
-    @test_throws ArgumentError residuals(fit; type = :pearson)
+    # Pearson residuals exist for Poisson and NegBinomial2 (not for LogNormal, which stays refused by name)
+    if fit.family isa LogNormal
+        @test_throws ArgumentError residuals(fit; type = :pearson)
+    else
+        rp = residuals(fit; type = :pearson)
+        @test length(rp) == n && all(isfinite, rp)
+        @test sign.(rp) == sign.(y .- fitted(fit))
+        fit.family isa Poisson && @test rp ≈ (y .- fitted(fit)) ./ sqrt.(fitted(fit)) rtol = 1e-12
+    end
 
     s1 = simulate(fit; rng = MersenneTwister(5))
     s2 = simulate(fit; rng = MersenneTwister(5))
@@ -81,8 +89,13 @@ end
         @test pp[:mu] ≈ exp.(coef(fit, :mu)[1] .+ coef(fit, :mu)[2] .* x)
         @test all(pl[:sigma] .≈ coef(fit, :sigma)[1])
         @test pp[:sigma] ≈ exp.(pl[:sigma])
-        @test fitted(fit) ≈ pp[:mu]
-        @test predict(fit, data) ≈ fitted(fit)
+        # fitted() is the arithmetic mean exp(mu + sigma^2/2) (drmTMB); the median
+        # exp(mu) is pp[:mu] and predict(type = :median); predict(:response) is
+        # the log-scale mu, as in drmTMB.
+        @test fitted(fit) ≈ pp[:mu] .* exp.(pp[:sigma] .^ 2 ./ 2)
+        @test predict(fit, data; type = :median) ≈ pp[:mu]
+        @test predict(fit, data) ≈ pl[:mu]
+        @test predict(fit, data; type = :mean) ≈ fitted(fit)
         @test residuals(fit) ≈ y .- fitted(fit)
 
         @test_throws ErrorException("LogNormal() requires strictly positive responses") drm(

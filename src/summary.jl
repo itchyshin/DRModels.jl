@@ -140,7 +140,11 @@ end
 # nll >= 1e17 on the nll scale; loglik <= -1e15 is the same bar taken a couple of
 # decades more conservatively on the loglik scale, so no genuine fit is caught
 # (a real loglik of -1e15 would need ~1e14 observations at O(10) nats each).
-_sentinel_loglik(fit::DrmFit) = _loglik_is_sentinel(fit.loglik)
+#
+# The same rule as `loglik()` (`_loglik_is_failed`): the sentinel, a non-finite value, OR a runaway
+# magnitude (>= 1e15) on a fit with converged = false (a Gaussian q2 fit with a covariate scaled by
+# 1e6 stored +3.6e76, which would otherwise give the best-looking AIC and a huge LR statistic).
+_sentinel_loglik(fit::DrmFit) = _loglik_is_failed(fit.loglik, fit.converged)
 
 function _nondegenerate_fit(fit::DrmFit)
     _sentinel_loglik(fit) && return false
@@ -223,20 +227,39 @@ function _marginal_note(fit::DrmFit)
     return "logLik (marginal :" * String(m) * ", " * desc * ")"
 end
 
+# `max|grad nll|` at the reported optimum, from the same producer `check_drm` uses (`max_abs_grad`,
+# `grad_source`). Nothing is printed when no gradient could be produced, and a failure here never
+# stops the fit from printing. Costs one gradient evaluation, only for fits whose optimiser did not converge.
+function _final_gradient_note(io::IO, fit::DrmFit)
+    g = try _check_max_abs_grad(fit) catch; return nothing end
+    (g.source in (:none, :unavailable) || !isfinite(g.magnitude)) && return nothing
+    println(io, "  final gradient: max|grad| = ", @sprintf("%.3e", g.magnitude),
+            g.source === :finite ? " (central finite difference)" : "")
+    return nothing
+end
+
 function Base.show(io::IO, ::MIME"text/plain", fit::DrmFit)
     se = _display_se(fit)
+    fixed_map = _is_fixed_prior_fit(fit) && fit.estim_method === :MAP
     fam = _family_name(fit.family)
     println(io, "Distributional regression fit (", fam, ")")
+    fixed_map && println(io, "  MAP fit; standard errors are local penalized curvature, and z/p values are withheld.")
     status = convergence_status(fit)
     println(io, "  nobs = ", fit.nobs,
-                "   logLik = ", @sprintf("%.4f", fit.loglik),
+                "   logLik = ", @sprintf("%.4f", _display_loglik(fit)),
                 "   convergence_status = ", status,
                 "   converged = ", status === :converged)
     mnote = _marginal_note(fit)
     mnote === nothing || println(io, "  ", mnote)
+    haskey(fit.scales, :spatial_range) && println(io, "  Spatial range = ",
+        @sprintf("%.4g", first(fit.scales[:spatial_range])),
+        " (fixed at the median distance between sites, as drmTMB; not estimated)")
     # #949: show the trusted accessor; say so when the raw optimiser flag disagrees.
     (fit.converged && status !== :converged) && println(io, "  (the optimiser stopped normally, " *
         "but convergence_status is ", status, " -- see `convergence_status`)")
+    # The final gradient norm of an optimiser that did not converge, so the reader sees how far from
+    # stationary the reported point is. Printed only then: a converged fit's output is unchanged.
+    fit.converged || _final_gradient_note(io, fit)
     _wald_withheld(fit) && println(io, "  Wald SEs withheld (homogeneous Toeplitz, as drmTMB): `sigma` is the " *
         "TOTAL within-series SD; use profile intervals for mean coefficients.")
     # #1193: no Wald SEs from an unconverged fit or a non-PD Hessian.
@@ -281,15 +304,21 @@ function Base.show(io::IO, ::MIME"text/plain", fit::DrmFit)
         println(io, _block_title(p), ":")
         # One line per note, so nothing wraps in a 78-column code block (the book's
         # width; requested by the stats-hours lane 2026-09-06).
-        for note in _block_null_note(p)
+        for note in (fixed_map ? String[] : _block_null_note(p))
             println(io, "  ", note)
+        end
+        # #969: flag the Student ν Gaussian-limit boundary under the `nu` block.
+        if p === :nu && _student_nu_boundary(fit) !== nothing
+            println(io, "  boundary (limit): 1/ν < ", _STUDENT_NU_BOUNDARY_INV,
+                    " (Gaussian limit); these Std.Error / z / p values are not valid,")
+            println(io, "  a Std.Error of 0 means 'not computable'. Compare with Gaussian() by a 0.5χ²₀ + 0.5χ²₁ LRT.")
         end
         # Build the rows for this block.
         labels = String[]; c1 = String[]; c2 = String[]; c3 = String[]; c4 = String[]
         for (j, idx) in enumerate(r)
             est = fit.theta[idx]
             s = se[idx]
-            z, pval = _wald_zp(p, est, s)
+            z, pval = fixed_map ? (NaN, NaN) : _wald_zp(p, est, s)
             push!(labels, nms[j])
             push!(c1, fmt(est)); push!(c2, fmt(s)); push!(c3, fmt(z)); push!(c4, fmtp(pval))
         end
@@ -315,21 +344,23 @@ end
     summary(fit::DrmFit)
 
 Coefficient table for a fitted model — the DRModels.jl analogue of drmTMB's `summary()`.
-Returns the same `CoefTable` as [`coeftable`](@ref) (estimates, SEs, z, p, CIs).
+Returns the same `CoefTable` as [`coeftable`](@ref). Fixed-prior MAP fits
+withhold z, p and interval columns; their SEs describe local penalized curvature.
 """
 Base.summary(fit::DrmFit) = coeftable(fit)
 
 """
     coeftable(fit::DrmFit; level = 0.95) -> StatsBase.CoefTable
 
-Wald coefficient table across every parameter block: columns Estimate,
+Coefficient table across every parameter block: columns Estimate,
 Std.Error, z, Pr(>|z|), and a `level` confidence interval (Lower/Upper). Values
 are on each block's working scale (μ on the response scale; σ on log σ; ρ12 on
 atanh ρ12; random-effect SDs on log σ_b). Row names are prefixed with the block
 (e.g. `"mu: (Intercept)"`) so they stay unique across blocks.
 
 The `z` and `Pr(>|z|)` columns are the Wald `z = Estimate / Std.Error` and its
-two-sided normal p-value for **every** row with a finite standard error, and the
+two-sided normal p-value for rows with a finite standard error, except on
+fixed-prior MAP fits where z, p and interval columns are withheld. The
 null is always "coefficient = 0 **on the working scale** of that block":
 
 | block | null tested by the z and p columns |
@@ -357,13 +388,14 @@ function coeftable(fit::DrmFit; level::Real = 0.95)
     z = quantile(Normal(), 1 - (1 - level) / 2)
     est = Float64[]; ses = Float64[]; zs = Float64[]; ps = Float64[]
     lo = Float64[]; hi = Float64[]; rownms = String[]
+    fixed_map = _is_fixed_prior_fit(fit) && fit.estim_method === :MAP
     for ((p, r), (_, nms)) in zip(fit.blocks, fit.coefnames)
         for (j, idx) in enumerate(r)
             e = fit.theta[idx]; s = se[idx]
-            zval, pval = _wald_zp(p, e, s)
+            zval, pval = fixed_map ? (NaN, NaN) : _wald_zp(p, e, s)
             push!(est, e); push!(ses, s); push!(zs, zval)
             push!(ps, pval)
-            push!(lo, e - z * s); push!(hi, e + z * s)
+            push!(lo, fixed_map ? NaN : e - z * s); push!(hi, fixed_map ? NaN : e + z * s)
             push!(rownms, string(p, ": ", nms[j]))
         end
     end

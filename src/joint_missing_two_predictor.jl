@@ -176,6 +176,12 @@ function prepared_joint_rowloglik(model::PreparedTwoJointGaussianModel, theta::A
     return result
 end
 
+"""
+    prepared_joint_nll(model::PreparedTwoJointGaussianModel, theta) -> Float64
+
+Negative joint log-likelihood of the prepared two-predictor Gaussian model at
+parameter vector `theta`: minus the sum of `prepared_joint_rowloglik`.
+"""
 prepared_joint_nll(model::PreparedTwoJointGaussianModel, theta::AbstractVector) =
     -sum(prepared_joint_rowloglik(model, theta))
 

@@ -19,7 +19,7 @@ using SparseArrays: SparseArrays, SparseMatrixCSC, sparse, nonzeros, rowvals,
 Structured random-intercept marker with a user-supplied relatedness matrix:
 
 ```julia
-drm(bf(y ~ x + relmat(1 | id), sigma ~ 1), Gaussian(); data, K = K)
+drm(bf(@formula(y ~ x + relmat(1 | id)), @formula(sigma ~ 1)), Gaussian(); data, K = K)
 ```
 
 `K` is the correlation/relatedness matrix over the levels of `id`, ordered as
@@ -39,7 +39,7 @@ pass it as a table whose column names are the animal labels, or as a plain
 matrix together with `ids = [label of each row]`. Rows of `A` for labels that
 are not in the data are dropped; a level of `id` with no row in `A` is an
 `ArgumentError`. A plain matrix without `ids` is taken to be in order of first
-appearance of `id` in the data, and warns once per session. `ids` is accepted by
+appearance of `id` in the data, and warns on every call. `ids` is accepted by
 the Gaussian, Poisson, NegBinomial2, Gamma, Beta and ZeroOneBeta `drm` methods.
 """
 animal(x) = x
@@ -73,9 +73,10 @@ level). `coords` is matched to the data **by site label**: pass it as a plain
 matrix together with `ids = [site label of each row]`, or as a `Dict` keyed by site
 label. Coordinates for sites not in the data are dropped; a level of `site` with no
 coordinates is an `ArgumentError`. A plain matrix without `ids` is taken to be in order
-of first appearance of `site` in the data, and warns once per session. The spatial correlation `K(ρ) = exp(-d / ρ)` is built
-from pairwise distances and the range `ρ` is estimated jointly. Closed-form
-Gaussian marginal (K is rebuilt each evaluation since it depends on `ρ`).
+of first appearance of `site` in the data, and warns on every call. The spatial correlation `K(ρ) = exp(-d / ρ)` is built
+from pairwise distances with the range `ρ` FIXED at the median positive pairwise
+distance (plus a 1e-6 diagonal ridge), as drmTMB does; the range is not estimated.
+Closed-form Gaussian marginal, ML or REML.
 """
 spatial(x) = x
 
@@ -111,7 +112,15 @@ function _checked_relmat_symmetric(C, grp::Symbol)
     return Cm
 end
 
-function _fit_structured_gaussian(fam::Gaussian, y, Xμ, Xσ, gidx, G, K, nmμ, nmσ, grp, g_tol)
+# A square factor F with F F′ = C for a symmetric PSD C (eigen-based, so a singular-but-PSD
+# relatedness or phylo correlation is accepted). Used only by the REML restriction term.
+function _psd_factor(C::AbstractMatrix)
+    ev = eigen(Symmetric(Matrix{Float64}(C)))
+    return ev.vectors * Diagonal(sqrt.(max.(ev.values, 0.0)))
+end
+
+function _fit_structured_gaussian(fam::Gaussian, y, Xμ, Xσ, gidx, G, K, nmμ, nmσ, grp, g_tol;
+                                  reml::Bool = false)
     n = length(y)
     pμ, pσ = size(Xμ, 2), size(Xσ, 2)
     # #548: with a NON-CONSTANT residual scale the Woodbury quadratic below
@@ -180,21 +189,55 @@ function _fit_structured_gaussian(fam::Gaussian, y, Xμ, Xσ, gidx, G, K, nmμ, 
         return 0.5 * (logdetV + quad) + 0.5 * n * log(2π)
     end
 
+    # REML (exact for Gaussian): nll_ML + ½ logdet(Xμ′V⁻¹Xμ) − ½ pμ log(2π), V = σ²I + σ_s² Z K Z′.
+    # Restriction from the stacked QR of Z̃ = σ_s Z F (F F′ = K); constant residual scale only
+    # (pσ == 1 here; the pσ > 1 case was already routed to the LSS fitter above).
+    Zs = reml ? _structured_Z(gidx, G) * _psd_factor(K) : nothing
+    function nll_reml(θ)
+        val = nll(θ)
+        σs = exp(θ[pμ+pσ+1])
+        sdinv = fill(exp(-θ[pμ+1]), n)
+        return _reml_add_restriction(val, _reml_xtvinvx_qr(σs .* Zs, sdinv, Xμ), pμ)
+    end
+    nll_opt = reml ? nll_reml : nll
+
     βμ0 = Xμ \ y; res0 = y - Xμ * βμ0
     θ0 = zeros(pμ + pσ + 1)
     θ0[1:pμ] .= βμ0
     θ0[pμ+1] = log(std(res0) + eps())
     θ0[pμ+pσ+1] = log(std(res0) / 2 + eps())
-    res = Optim.optimize(nll, θ0, Optim.LBFGS(), Optim.Options(g_tol = g_tol); autodiff = :forward)
+    res = Optim.optimize(nll_opt, θ0, Optim.LBFGS(), Optim.Options(g_tol = g_tol); autodiff = :forward)
     θ̂ = Optim.minimizer(res)
-    V = _vcov_from_hessian(ForwardDiff.hessian(nll, θ̂))
+    V = _vcov_from_hessian(ForwardDiff.hessian(nll_opt, θ̂))
 
     blocks = [:mu => 1:pμ, :sigma => (pμ+1):(pμ+pσ), :resd => (pμ+pσ+1):(pμ+pσ+1)]
     names = [:mu => nmμ, :sigma => nmσ, :resd => [String(grp)]]
     means = Dict(:mu => Xμ * θ̂[1:pμ])
     obs = Dict(:mu => Vector{Float64}(y))
     scales = Dict(:sigma => exp.(Xσ * θ̂[(pμ+1):(pμ+pσ)]))
-    return _withnll(DrmFit(fam, blocks, names, θ̂, V, -nll(θ̂), n, drm_optim_converged(res), means, obs, scales), nll)
+    _record_cond_fit!(scales, _structured_gaussian_modes(y, Xμ, Xσ, gidx, G, Kinv, θ̂, pμ, pσ)[gidx])   # for `fitted(fit)`
+    fit = _withnll(DrmFit(fam, blocks, names, θ̂, V, -nll(θ̂), n, drm_optim_converged(res), means, obs, scales), nll)
+    reml && return _withreml(fit, -nll_reml(θ̂), -nll(θ̂))
+    return fit
+end
+
+# Conditional modes of the structured intercept at the fitted parameters of the dense
+# single-marker Gaussian route: the BLUP û = (σ_s⁻² K⁻¹ + ZᵀD⁻¹Z)⁻¹ ZᵀD⁻¹ (y - Xβ̂), with
+# D = diag(σ_e²) from the fitted sigma. This is the posterior mean (and mode) of the group
+# effects given β̂, σ_e and σ_s, the same quantity drmTMB reports as the random-effect modes.
+# NaN (so the conditional default refuses) when the system is not positive definite.
+function _structured_gaussian_modes(y, Xμ, Xσ, gidx, G, Kinv, θ̂, pμ, pσ)
+    ησ = Xσ * θ̂[(pμ+1):(pμ+pσ)]
+    σs² = exp(2 * θ̂[pμ+pσ+1])
+    r = y .- Xμ * θ̂[1:pμ]
+    S = zeros(G); C = zeros(G)
+    @inbounds for i in eachindex(y)
+        invD = exp(-2 * ησ[i]); k = gidx[i]
+        S[k] += invD; C[k] += r[i] * invD
+    end
+    Mfac = cholesky(Symmetric(Kinv ./ σs² + Diagonal(S)); check = false)
+    issuccess(Mfac) || return fill(NaN, G)
+    return Mfac \ C
 end
 
 # Row → level index for one structured marker on the dense Gaussian routes (the
@@ -214,7 +257,7 @@ end
 
 # Resolve one structured marker to its fixed G×G correlation/relatedness matrix
 # from the keyword args. Used by the two-component path (relmat/animal/phylo;
-# spatial estimates a range jointly and is not yet supported alongside a second
+# spatial (fixed median-distance range) is not yet supported alongside a second
 # component — tracked as a follow-up).
 function _resolve_structured_matrix(kind::Symbol, grp::Symbol, G::Int; K, A, tree, coords)
     Cmat = if kind === :relmat
@@ -228,7 +271,7 @@ function _resolve_structured_matrix(kind::Symbol, grp::Symbol, G::Int; K, A, tre
         _phylo_correlation(tree)
     else  # :spatial
         error("spatial(1 | $grp) is not yet supported as one of two structured components " *
-              "(it estimates a range jointly); use it as the only structured marker")
+              "(not yet wired for the fixed median-distance kernel); use it as the only structured marker")
     end
     size(Cmat) == (G, G) ||
         error("structured matrix for `$grp` must be $(G)×$(G) (the number of `$grp` levels)")
@@ -308,11 +351,14 @@ function _fit_two_structured_gaussian(fam::Gaussian, y, Xμ, gidx1, G1, C1, gidx
     blup = let
         βμ = θ̂[1:pμ]; σ1² = exp(2 * θ̂[pμ+2]); σ2² = exp(2 * θ̂[pμ+3])
         Vh = exp(2 * θ̂[pμ+1]) .* Iₙ .+ σ1² .* ZC1Zt .+ σ2² .* ZC2Zt
-        Vinvr = cholesky(Symmetric(Vh)) \ (y .- Xμ * βμ)
+        Vinvr = _blup_vinv_r(Vh, y .- Xμ * βμ)
         a1 = σ1² .* (C1 * (Z1' * Vinvr))
         a2 = σ2² .* (C2 * (Z2' * Vinvr))
         Dict(Symbol(grp1) => a1, Symbol(grp2) => a2)
     end
+    _flag_blup_unavailable!(scales, blup)
+    haskey(scales, :cond_blup_unavailable) ||
+        _record_cond_fit!(scales, Z1 * blup[Symbol(grp1)] .+ Z2 * blup[Symbol(grp2)])   # fitted-row modes for `fitted(fit)`
     return _withranef(_withnll(DrmFit(fam, blocks, names, θ̂, V, -nll(θ̂), n,
         drm_optim_converged(res), means, obs, scales), nll), blup)
 end
@@ -334,7 +380,7 @@ end
 # DENSE assembly (n×n), like `_fit_two_structured_gaussian`; a sparse/Woodbury
 # spine is a follow-up. θ = [βμ; βσ; log σₐ; log σ_b].
 function _fit_phylo_slope_gaussian(fam::Gaussian, y, Xμ, Xσ, gidx, G, C, xs, nmμ, nmσ,
-                                   grp, var, g_tol)
+                                   grp, var, g_tol; reml::Bool = false)
     n = length(y)
     length(xs) == n || error("drm: slope variable `$(var)` has $(length(xs)) rows, expected $n")
     pμ, pσ = size(Xμ, 2), size(Xσ, 2)
@@ -360,6 +406,20 @@ function _fit_phylo_slope_gaussian(fam::Gaussian, y, Xμ, Xσ, gidx, G, C, xs, n
         return 0.5 * (logdet(Vfac) + quad) + 0.5 * n * log(2π)
     end
 
+    # REML (exact for Gaussian): nll_ML + ½ logdet(Xμ′V⁻¹Xμ) − ½ pμ log(2π). Restriction from the
+    # stacked QR of Z̃ = [σₐ Z F, σ_b Zₓ F] (F F′ = C), D = diag(σᵢ²).
+    Fc = reml ? _psd_factor(C) : nothing
+    ZFa = reml ? Z * Fc : nothing
+    ZFb = reml ? Zx * Fc : nothing
+    function nll_reml(θ)
+        val = nll(θ)
+        βσ = θ[pμ+1:pμ+pσ]
+        σa = exp(θ[pμ+pσ+1]); σb = exp(θ[pμ+pσ+2])
+        Z̃ = hcat(σa .* ZFa, σb .* ZFb)
+        return _reml_add_restriction(val, _reml_xtvinvx_qr(Z̃, exp.(-(Xσ * βσ)), Xμ), pμ)
+    end
+    nll_opt = reml ? nll_reml : nll
+
     βμ0 = Xμ \ y; res0 = y - Xμ * βμ0
     s0 = std(res0)
     θ0 = zeros(pμ + pσ + 2)
@@ -367,9 +427,9 @@ function _fit_phylo_slope_gaussian(fam::Gaussian, y, Xμ, Xσ, gidx, G, C, xs, n
     θ0[pμ+1] = log(s0 / sqrt(3) + eps())              # balanced split: resid + 2 fields
     θ0[pμ+pσ+1] = log(s0 / sqrt(3) + eps())
     θ0[pμ+pσ+2] = log(s0 / sqrt(3) / (std(xs) + eps()) + eps())
-    res = Optim.optimize(nll, θ0, Optim.LBFGS(), Optim.Options(g_tol = g_tol); autodiff = :forward)
+    res = Optim.optimize(nll_opt, θ0, Optim.LBFGS(), Optim.Options(g_tol = g_tol); autodiff = :forward)
     θ̂ = Optim.minimizer(res)
-    Vθ = _vcov_from_hessian(ForwardDiff.hessian(nll, θ̂))
+    Vθ = _vcov_from_hessian(ForwardDiff.hessian(nll_opt, θ̂))
 
     # :resd carries the two field SDs (log σₐ, log σ_b): the intercept field keyed
     # by the bare group name (the single-structured convention), the slope field
@@ -388,13 +448,18 @@ function _fit_phylo_slope_gaussian(fam::Gaussian, y, Xμ, Xσ, gidx, G, C, xs, n
         @inbounds for i in 1:n
             Vh[i, i] += ση²[i]
         end
-        Vinvr = cholesky(Symmetric(Vh)) \ (y .- Xμ * βμ)
+        Vinvr = _blup_vinv_r(Vh, y .- Xμ * βμ)
         a = σa² .* (C * (Z' * Vinvr))
         b = σb² .* (C * (Zx' * Vinvr))
         Dict(Symbol(grp) => a, Symbol("$(grp):$(var)") => b)
     end
+    _flag_blup_unavailable!(scales, blup)
+    haskey(scales, :cond_blup_unavailable) ||
+        _record_cond_fit!(scales, Z * blup[Symbol(grp)] .+ Zx * blup[Symbol("$(grp):$(var)")])   # fitted-row modes for `fitted(fit)`
     fit = DrmFit(fam, blocks, names, θ̂, Vθ, -nll(θ̂), n, drm_optim_converged(res), means, obs, scales)
-    return _withranef(_withnll(fit, nll), blup)
+    fit = _withranef(_withnll(fit, nll), blup)
+    reml && return _withreml(fit, -nll_reml(θ̂), -nll(θ̂))
+    return fit
 end
 
 # One STRUCTURED marker (phylo / relmat / animal, fixed correlation K) PLUS one
@@ -471,6 +536,7 @@ function _fit_structured_ranef_gaussian(fam::Gaussian, y, Xμ, Xσ, comps, nmμ,
     obs = Dict(:mu => Vector{Float64}(y))
     scales = Dict(:sigma => exp.(Xσ * θ̂[(pμ+1):(pμ+pσ)]))
     # Conditional estimates (BLUPs) at θ̂: û_k = σ_k² K_k Z_kᵀ V⁻¹ r.
+    eta_rows = zeros(n)
     blup = let
         βμ = θ̂[1:pμ]; βσ = θ̂[(pμ+1):(pμ+pσ)]
         Vh = zeros(n, n)
@@ -481,16 +547,20 @@ function _fit_structured_ranef_gaussian(fam::Gaussian, y, Xμ, Xσ, comps, nmμ,
         @inbounds for i in 1:n
             Vh[i, i] += ση²[i]
         end
-        Vinvr = cholesky(Symmetric(Vh)) \ (y .- Xμ * βμ)
+        Vinvr = _blup_vinv_r(Vh, y .- Xμ * βμ)
         out = Dict{Symbol,Vector{Float64}}()
         for k in 1:m
             σk² = exp(2 * θ̂[pμ+pσ+k])
             ZtVr = Zs[k]' * Vinvr
             K = comps[k][4]
-            out[Symbol(labels[k])] = K === nothing ? σk² .* ZtVr : σk² .* (K * ZtVr)
+            uk = K === nothing ? σk² .* ZtVr : σk² .* (K * ZtVr)
+            out[Symbol(labels[k])] = uk
+            eta_rows .+= Zs[k] * uk            # fitted-row modes (labels can repeat, so summed here)
         end
         out
     end
+    _flag_blup_unavailable!(scales, blup)
+    haskey(scales, :cond_blup_unavailable) || _record_cond_fit!(scales, eta_rows)   # for `fitted(fit)`
     fit = DrmFit(fam, blocks, names, θ̂, Vθ, -nll(θ̂), n, drm_optim_converged(res), means, obs, scales)
     return _withranef(_withnll(fit, nll), blup)
 end
@@ -520,7 +590,7 @@ function _drm_gaussian_structured_plus_ranef(fam::Gaussian, structured, re, meta
             "`$(marker)` combined with an ordinary random effect; this route is the dense " *
             "closed-form marginal only (use `algorithm = :auto`)."))
     kind === :spatial &&
-        throw(ArgumentError("drm: `spatial(1 | $(sgrp))` (range estimated from `coords`) cannot " *
+        throw(ArgumentError("drm: `spatial(1 | $(sgrp))` (fixed median-distance range from `coords`) cannot " *
             "be combined with an ordinary random effect yet. Pass the fixed spatial covariance as " *
             "`relmat(1 | $(sgrp))` with `K = …` — the form drmTMB's bridge sends for native " *
             "`spatial(1 | site, coords = …)` — which this route fits together with `(1 | g)`."))
@@ -556,7 +626,8 @@ function _drm_gaussian_structured_plus_ranef(fam::Gaussian, structured, re, meta
 end
 
 # Coordinate-spatial structured intercept: K(ρ) = exp(-d/ρ) from site distances,
-# with the range ρ estimated jointly (θ gains log σ_s and log ρ). K depends on θ
+# with the range ρ estimated jointly (θ gains log σ_s and log ρ). NOT USED by `drm`
+# since the fixed median-distance range was adopted (drmTMB's kernel); kept for reference. K depends on θ
 # so it is rebuilt each evaluation; otherwise the closed-form marginal is as in
 # `_fit_structured_gaussian`.
 function _fit_spatial_gaussian(fam::Gaussian, y, Xμ, Xσ, gidx, G, coords, nmμ, nmσ, grp, g_tol)
@@ -962,7 +1033,7 @@ end
 # Sparse square-root factor B of a sparse SPD precision Q (BᵀB = Q): with the
 # CHOLMOD factorisation Q[p, p] = LLᵀ, B = Lᵀ·Π where Π a = a[p].
 function _prec_sqrt_factor(Q::SparseMatrixCSC)
-    F = cholesky(Symmetric(Q))
+    F = _pd_chol_or_throw(Q, "a structured-component precision Q")
     return sparse(sparse(F.L)'[:, invperm(F.p)])
 end
 

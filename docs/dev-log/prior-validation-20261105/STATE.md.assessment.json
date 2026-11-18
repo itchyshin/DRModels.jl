@@ -1,0 +1,44 @@
+{
+  "assessment_performed": true,
+  "draft_sha256": "46a859733a0cf071c591158b5502d41ee613574aadb5d713e22c7c0316513d8d",
+  "draft_version": "validation-plan-v1",
+  "requested_mode": "independent",
+  "assessor_type": "self",
+  "reviewer": "Codex parent",
+  "method": "Whole-draft self-review against measured CI and retained run receipts; separate scoped integration review checked the runner and partition.",
+  "genre": "Internal validation plan and recovery checkpoint",
+  "coverage": "Whole docs/dev-log/prior-validation-20261105/STATE.md",
+  "score": 4,
+  "style_status": "assessed",
+  "score_reason": "Concrete scope and measured budgets; the checkpoint keeps technical identifiers that make it denser than reader prose.",
+  "confidence": "medium",
+  "confidence_reason": "Self-assessment without held-out calibration or a human prose assessment.",
+  "examples": [
+    {
+      "location": "Line 3",
+      "line": 3,
+      "quote": "Goal: diagnose the prior full-suite timeout and finish default Julia validation.",
+      "cue": "Specific purpose or authority",
+      "impact": "Makes scope and recovery action explicit",
+      "repair": "no change needed"
+    },
+    {
+      "location": "Line 4",
+      "line": 4,
+      "quote": "The user approved this continuation on 5 November 2026. No merge or release.",
+      "cue": "Specific purpose or authority",
+      "impact": "Makes scope and recovery action explicit",
+      "repair": "no change needed"
+    }
+  ],
+  "evidence_none_reason": null,
+  "science_gate": "pass",
+  "science_gate_reason": "No new model or inference claim; baseline and candidate timing scope are distinguished.",
+  "facts_gate": "pass",
+  "facts_gate_reason": "Current source hashes, CI job durations, active run limits and environment receipts support the stated facts; completion is pending.",
+  "references_gate": "not_applicable",
+  "references_gate_reason": "No literature claim; primary run URLs and receipts provide operational evidence.",
+  "date": "2026-11-05",
+  "calibration_status": "No held-out calibration examples used.",
+  "interpretation": "perceived_style_not_authorship"
+}

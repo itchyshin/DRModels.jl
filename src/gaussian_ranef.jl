@@ -12,6 +12,49 @@
 # barrier — not Inf — because LBFGS's HagerZhang line search asserts isfinite.
 const REML_NONPD_PENALTY = 1e8
 
+# Cholesky for a step that is NOT inside an optimiser objective (a post-fit summary such
+# as BLUPs, a user-supplied covariance checked at set-up, a simulator's prior factor).
+# A bare `cholesky` there throws a raw `PosDefException` ("matrix is not positive
+# definite; Cholesky factorization failed") that names neither the matrix nor the
+# remedy; this refuses with a message that does. Objective-side calls use
+# `cholesky(...; check = false)` + `issuccess` and return `REML_NONPD_PENALTY` instead.
+# Identical to `cholesky(Symmetric(A))` whenever that succeeds.
+function _pd_chol_or_throw(A::AbstractMatrix, what::AbstractString)
+    all(isfinite, A) ||
+        throw(ArgumentError("$what contains non-finite values, so it cannot be factorised."))
+    C = cholesky(Symmetric(A); check = false)
+    issuccess(C) ||
+        throw(ArgumentError("$what is not numerically positive definite (singular or " *
+            "near-singular, e.g. coincident levels, a collapsed variance component, or a " *
+            "non-PSD user matrix); check the matrix or drop the offending term."))
+    return C
+end
+
+# Post-fit BLUP step: V⁻¹ r from the fitted marginal covariance V at θ̂. The fit has
+# already converged, so a non-PD / non-finite V must not abort it: return a NaN vector
+# (every BLUP built from it is NaN, i.e. unavailable) and warn once per session.
+function _blup_vinv_r(Vh::AbstractMatrix, r::AbstractVector)
+    C = all(isfinite, Vh) ? cholesky(Symmetric(Vh); check = false) : nothing
+    if C === nothing || !issuccess(C)
+        # The warning fires once per session, so the durable record is the flag
+        # `_flag_blup_unavailable!` sets on the returned fit (`fit.scales[:cond_blup_unavailable]`).
+        get(task_local_storage(), :drm_quiet_boundary, false) === true ||
+            @warn "The fitted marginal covariance V at θ̂ is not numerically positive definite " *
+                  "(singular or near-singular, e.g. a collapsed variance component); the fit is " *
+                  "returned but its random-effect estimates (BLUPs) are NaN (unavailable)." maxlog = 1
+        return fill(NaN, length(r))
+    end
+    return C \ r
+end
+
+# Record on the fit's `scales` that the post-fit BLUP step fell back to NaN (a later fit in a
+# loop is otherwise indistinguishable once the one-time warning has fired). The `cond_` prefix
+# keeps the key out of the R-bridge dpars and `simulate(newdata)`, like `:cond_failed`.
+function _flag_blup_unavailable!(scales::AbstractDict, blup)
+    any(v -> any(isnan, v), values(blup)) && (scales[:cond_blup_unavailable] = [1.0])
+    return scales
+end
+
 # A structured marker's (`phylo`/`relmat`/`animal`/`spatial`) random-effect
 # left-hand side must be the literal intercept `1` on every univariate route:
 # `_split_ranef` (below) — the shared RHS splitter for every univariate family
@@ -42,7 +85,16 @@ _structured_re_lhs_text(lhs) = if lhs isa ConstantTerm
 # `nothing` for the intercept form `phylo(1 | g)`. Every other lhs — and the
 # slope form on any route that did not opt in — throws, so no route can silently
 # fit the intercept-only model in place of what the formula says.
-function _check_phylo_re_lhs(lhs, grp::Symbol; allow_slope::Bool = false)
+function _check_phylo_re_lhs(lhs, grp::Symbol; allow_slope::Bool = false,
+                             allow_slope_only::Bool = false,
+                             allow_labelled_intercept_slope::Bool = false)
+    labelled = _structured_lhs_label(lhs)
+    if labelled !== nothing && allow_slope && allow_labelled_intercept_slope
+        lhs = labelled.inner
+        lhs isa FunctionTerm && lhs.f === (+) || throw(ArgumentError(
+            "drm: a labelled `phylo(... | $(labelled.label) | $grp)` term is only implemented as `phylo(1 + x | $(labelled.label) | $grp)`"))
+        allow_slope_only = false
+    end
     (lhs isa ConstantTerm && lhs.n == 1) && return nothing
     lhs_text = _structured_re_lhs_text(lhs)
     if lhs isa FunctionTerm && lhs.f === (+)
@@ -67,6 +119,9 @@ function _check_phylo_re_lhs(lhs, grp::Symbol; allow_slope::Bool = false)
                 "this formula too (\"intercept-only in this q=1 route\"), so `engine = \"tmb\"` " *
                 "is a route for Gaussian/Poisson/NegBinomial2 but not for Gamma (#620)"))
         end
+        is_slope_only = length(lhs.args) == 2 && length(consts) == 1 &&
+            consts[1].n == 0 && length(vars) == 1
+        is_slope_only && allow_slope_only && return vars[1].sym
     end
     throw(ArgumentError("drm: `phylo($lhs_text | $grp)` is not implemented on the " *
         "univariate routes — only `phylo(1 | $grp)` (intercept) is, plus the one-slope " *
@@ -74,14 +129,153 @@ function _check_phylo_re_lhs(lhs, grp::Symbol; allow_slope::Bool = false)
         "and multi-slope forms are not implemented"))
 end
 
-# relmat/animal/spatial share the identical parser gap but, unlike phylo, have
-# no verified drmTMB two-SD slope route to name as a follow-up — say only that
-# the construct is unimplemented (#620).
-function _check_structured_re_lhs(kind::Symbol, lhs, grp::Symbol)
+# Labelled (correlated) structured intercept-plus-slope `kind(1 + x | p | g)`.
+# Julia parses `1 + x | p | g` left-associatively, so the structured term's lhs
+# is `|(1 + x, p)`. Returns `(inner, label)` for that shape, else `nothing`.
+function _structured_lhs_label(lhs)
+    lhs isa FunctionTerm && lhs.f === (|) && length(lhs.args) == 2 &&
+        lhs.args[2] isa Term || return nothing
+    return (; inner = lhs.args[1], label = lhs.args[2].sym)
+end
+
+# relmat and spatial structured slopes are explicit opt-ins: their family
+# routes must provide the coefficient loading and matching covariance. Animal
+# has a separate checker because it also supports intercept-plus-slope blocks.
+function _check_structured_re_lhs(kind::Symbol, lhs, grp::Symbol;
+                                  allow_slope::Bool = false,
+                                  allow_intercept_slope::Bool = false,
+                                  allow_labelled_intercept_slope::Bool = false)
+    labelled = _structured_lhs_label(lhs)
+    if kind in (:relmat, :spatial) && labelled !== nothing && allow_intercept_slope &&
+       allow_labelled_intercept_slope
+        lhs = labelled.inner
+        lhs isa FunctionTerm && lhs.f === (+) || throw(ArgumentError(
+            "drm: a labelled `$kind(... | $(labelled.label) | $grp)` term is only implemented as `relmat(1 + x | $(labelled.label) | $grp)`"))
+    end
     (lhs isa ConstantTerm && lhs.n == 1) && return nothing
+    if kind in (:relmat, :spatial) && allow_intercept_slope &&
+       lhs isa FunctionTerm && lhs.f === (+)
+        constants = filter(t -> t isa ConstantTerm, lhs.args)
+        variables = filter(t -> t isa Term, lhs.args)
+        length(lhs.args) == 2 && length(constants) == 1 &&
+            constants[1].n == 1 && length(variables) == 1 && return variables[1].sym
+    end
+    if kind in (:relmat, :spatial) && allow_slope &&
+       lhs isa FunctionTerm && lhs.f === (+)
+        constants = filter(t -> t isa ConstantTerm, lhs.args)
+        variables = filter(t -> t isa Term, lhs.args)
+        is_slope_only = length(lhs.args) == 2 && length(constants) == 1 &&
+            constants[1].n == 0 && length(variables) == 1
+        is_slope_only && return variables[1].sym
+    end
     lhs_text = _structured_re_lhs_text(lhs)
+    allowed = kind === :spatial && allow_slope ?
+        "only the intercept or one slope-only `0 + x` form is admitted on this route" :
+        "only the intercept form is admitted on this route"
     throw(ArgumentError("drm: `$kind($lhs_text | $grp)` is not implemented on the " *
-        "univariate routes; only the intercept form is"))
+        "univariate routes; $allowed"))
+end
+
+# Family-specific animal-SD routes may admit a slope-only `0 + x`, or the
+# independent intercept-plus-slope fields in `animal(1 + x | g)`. Keep these
+# opt-ins separate from relmat/spatial and from callers that require a single
+# structured intercept.
+function _check_animal_re_lhs(lhs, grp::Symbol; allow_slope::Bool = false,
+                              allow_intercept_slope::Bool = false,
+                              allow_labelled_intercept_slope::Bool = false)
+    labelled = _structured_lhs_label(lhs)
+    if labelled !== nothing && allow_intercept_slope && allow_labelled_intercept_slope
+        lhs = labelled.inner
+        lhs isa FunctionTerm && lhs.f === (+) || throw(ArgumentError(
+            "drm: a labelled `animal(... | $(labelled.label) | $grp)` term is only implemented as `animal(1 + x | $(labelled.label) | $grp)`"))
+        allow_slope = false
+    end
+    (lhs isa ConstantTerm && lhs.n == 1) && return nothing
+    if lhs isa FunctionTerm && lhs.f === (+)
+        consts = filter(t -> t isa ConstantTerm, lhs.args)
+        vars = filter(t -> t isa Term, lhs.args)
+        is_slope_only = length(lhs.args) == 2 && length(consts) == 1 &&
+            consts[1].n == 0 && length(vars) == 1
+        is_slope_only && allow_slope && return vars[1].sym
+        is_intercept_slope = length(lhs.args) == 2 && length(consts) == 1 &&
+            consts[1].n == 1 && length(vars) == 1
+        is_intercept_slope && allow_intercept_slope && return vars[1].sym
+    end
+    lhs_text = _structured_re_lhs_text(lhs)
+    throw(ArgumentError("drm: `animal($lhs_text | $grp)` is not implemented on the " *
+        "univariate routes; only the intercept form is generally available, and " *
+        "a slope-only or independent intercept-and-slope animal term is available " *
+        "only on an explicitly supported family-specific SD route"))
+end
+
+# Return the explicitly independent animal intercept-plus-slope member from a
+# structured marker. The current public Gamma route uses this to map two SD
+# formulas to the coefficient fields; unrelated animal routes remain unchanged.
+#
+# `allow_label = true` (opt-in, Poisson/NB2/Gaussian q2 SD routes only) also
+# recognises the labelled correlated form `kind(1 + x | p | g)`; the returned
+# `label` is the correlation label (`nothing` for the independent form).
+function _animal_intercept_slope(rhs; kind = animal, allow_label::Bool = false)
+    terms = rhs isa Tuple ? rhs : (rhs,)
+    for term in terms
+        term isa FunctionTerm && term.f === kind || continue
+        lhs = term.args[1].args[1]
+        labelled = _structured_lhs_label(lhs)
+        label = nothing
+        if labelled !== nothing
+            allow_label || continue
+            lhs, label = labelled.inner, labelled.label
+        end
+        lhs isa FunctionTerm && lhs.f === (+) || continue
+        consts = filter(x -> x isa ConstantTerm, lhs.args)
+        vars = filter(x -> x isa Term, lhs.args)
+        length(lhs.args) == 2 && length(consts) == 1 && consts[1].n == 1 &&
+            length(vars) == 1 || continue
+        return (; group = term.args[1].args[2].sym, slope = vars[1].sym, label)
+    end
+    return nothing
+end
+
+# relmat analogue of `_animal_intercept_slope`: the independent intercept-plus-slope
+# `relmat(1 + x | g)` member, used by the Poisson relmat q2 SD route.
+function _relmat_intercept_slope(rhs; allow_label::Bool = false)
+    return _animal_intercept_slope(rhs; kind = relmat, allow_label)
+end
+
+# Post-fit only (predict, predict_parameters, bridge label rendering, marginal
+# simulators): drop a structured intercept-plus-slope term
+# `animal|relmat|phylo|spatial(1 + x | g)` or its labelled form
+# `kind(1 + x | p | g)` when the fit carries the two matching coefficient SD
+# targets, i.e. when a fitted q2 SD route has already admitted it. The
+# population-level design is the remaining fixed part, so no family-specific
+# parser permission is needed (the label is a pure label, never a column).
+# Fitting code must keep using `_split_ranef` with explicit opt-ins.
+_postfit_q2_markers() = ((animal, :animal), (relmat, :relmat),
+                         (phylo, :phylogenetic), (spatial, :spatial))
+
+function _strip_fitted_q2_terms(fit, rhs)
+    f = hasproperty(fit, :formula) ? fit.formula : nothing
+    f isa DrmFormula || return rhs
+    targets = _sd_target_parts(f)
+    length(targets) >= 2 || return rhs
+    terms = rhs isa Tuple ? collect(rhs) : Any[rhs]
+    keep = Any[]
+    for t in terms
+        drop = false
+        for (marker, level) in _postfit_q2_markers()
+            t isa FunctionTerm && t.f === marker || continue
+            blk = _animal_intercept_slope(t; kind = marker, allow_label = true)
+            blk === nothing && continue
+            members = Set(item.target.member for item in targets
+                          if item.target.level === level && item.target.group === blk.group &&
+                             item.target.dpar === :mu)
+            drop = members == Set((:intercept, blk.slope))
+        end
+        drop || push!(keep, t)
+    end
+    length(keep) == length(terms) && return rhs
+    isempty(keep) && return ConstantTerm(1)
+    return length(keep) == 1 ? keep[1] : Tuple(keep)
 end
 
 # Split a μ right-hand side into its fixed part and any `(lhs | g)` terms.
@@ -89,7 +283,8 @@ end
 # backward compatibility; use `_collect_structured` to retrieve the full list
 # (the Gaussian router supports two structured components in one fit).
 #
-# Returns a 5-tuple `(fixed_rhs, re, metav, structured, structured_slope)`. The
+# Returns `(fixed_rhs, re, metav, structured, structured_slope, temporal_term,
+# animal_slope)`. The
 # fifth slot is the slope variable of a `phylo(1 + x | g)` marker (#620) and is
 # `nothing` otherwise; it is only ever non-`nothing` when the caller opted in
 # with `allow_phylo_slope = true` (the Gaussian mean route and the read-only
@@ -118,13 +313,24 @@ end
 # consumers of an already-fitted Gaussian formula). Every other caller gets a
 # refusal naming the scope, so no route can treat the marker as a fixed-effect
 # term or silently drop it.
-function _split_ranef(rhs; allow_phylo_slope::Bool = false, allow_temporal::Bool = false)
+function _split_ranef(rhs; allow_phylo_slope::Bool = false,
+                      allow_phylo_slope_only::Bool = false,
+                      allow_animal_slope::Bool = false,
+                      allow_animal_intercept_slope::Bool = false,
+                      allow_relmat_slope::Bool = false,
+                      allow_relmat_intercept_slope::Bool = false,
+                      allow_spatial_slope::Bool = false,
+                      allow_spatial_intercept_slope::Bool = false,
+                      allow_temporal::Bool = false,
+                      allow_labelled_intercept_slope::Bool = false,
+                      unwrap_label::Bool = false)
     terms = rhs isa Tuple ? collect(rhs) : Any[rhs]
     fixed = Any[]
     re = Tuple{Any,Symbol}[]
     metav = nothing                                   # meta_V(v) known-variance column
     structured = nothing                              # (:relmat, grouping) — known K
     structured_slope = nothing                        # `x` of phylo(1 + x | g), Gaussian mean only
+    animal_slope = nothing                            # optional structured provider slope loading
     temporal_term = nothing                           # (group, time, structure), Gaussian mean only
     for t in terms
         if t isa FunctionTerm && t.f === temporal
@@ -135,18 +341,65 @@ function _split_ranef(rhs; allow_phylo_slope::Bool = false, allow_temporal::Bool
                     _TEMPORAL_SPELLING))
             temporal_term = tt
         elseif t isa FunctionTerm && t.f === (|)
-            push!(re, (_implicit_re_intercept(t.args[1]), t.args[2].sym))     # (re-lhs, grouping symbol)
+            lhs_t = t.args[1]
+            # `(lhs | p | g)`: a label on a block that is the only term carrying it
+            # ties nothing, so it is the unlabelled `(lhs | g)`. A label shared by
+            # several terms would tie their correlations; that is refused, not dropped.
+            if unwrap_label && lhs_t isa FunctionTerm && lhs_t.f === (|) &&
+               length(lhs_t.args) == 2 && lhs_t.args[2] isa Term
+                lab = lhs_t.args[2].sym
+                nlab = count(terms) do u
+                    u isa FunctionTerm && u.f === (|) && u.args[1] isa FunctionTerm &&
+                        u.args[1].f === (|) && length(u.args[1].args) == 2 &&
+                        u.args[1].args[2] isa Term && u.args[1].args[2].sym === lab
+                end
+                if nlab != 1
+                    grps = Symbol[u.args[2].sym for u in terms
+                                  if u isa FunctionTerm && u.f === (|) && u.args[1] isa FunctionTerm &&
+                                     u.args[1].f === (|) && length(u.args[1].args) == 2 &&
+                                     u.args[1].args[2] isa Term && u.args[1].args[2].sym === lab]
+                    hint = allequal(grps) ?
+                        " drmTMB ignores such a label on one grouping and fits independent terms; " *
+                        "write `(1 + x | $(first(grps)))` for a correlated pair or " *
+                        "`(1 | $(first(grps))) + (0 + x | $(first(grps)))` for independent terms." : ""
+                    throw(ArgumentError("drm: the label `$lab` in `(… | $lab | g)` is " *
+                        "shared by $nlab random-effect terms; a shared label ties their " *
+                        "correlations and is not implemented on this route. Use one labelled block." * hint))
+                end
+                lhs_t = lhs_t.args[1]
+            end
+            push!(re, (_implicit_re_intercept(lhs_t), t.args[2].sym))     # (re-lhs, grouping symbol)
         elseif t isa FunctionTerm && t.f === meta_V
             metav = t.args[1].sym
         elseif t isa FunctionTerm && t.f === relmat
-            _check_structured_re_lhs(:relmat, t.args[1].args[1], t.args[1].args[2].sym)
-            structured === nothing && (structured = (:relmat, t.args[1].args[2].sym))   # inner (1 | grp)
+            slope = _check_structured_re_lhs(:relmat, t.args[1].args[1],
+                t.args[1].args[2].sym; allow_slope = allow_relmat_slope,
+                allow_intercept_slope = allow_relmat_intercept_slope,
+                allow_labelled_intercept_slope)
+            if structured === nothing
+                structured = (:relmat, t.args[1].args[2].sym)
+                animal_slope = slope
+            elseif slope !== nothing
+                throw(ArgumentError("drm: `relmat(0 + $(slope) | $(t.args[1].args[2].sym))` must be " *
+                    "the only structured marker on this route"))
+            end
         elseif t isa FunctionTerm && t.f === animal
-            _check_structured_re_lhs(:animal, t.args[1].args[1], t.args[1].args[2].sym)
-            structured === nothing && (structured = (:animal, t.args[1].args[2].sym))
+            slope = _check_animal_re_lhs(t.args[1].args[1], t.args[1].args[2].sym;
+                allow_slope = allow_animal_slope,
+                allow_intercept_slope = allow_animal_intercept_slope,
+                allow_labelled_intercept_slope)
+            if structured === nothing
+                structured = (:animal, t.args[1].args[2].sym)
+                animal_slope = slope
+            elseif slope !== nothing
+                throw(ArgumentError("drm: `animal(0 + $(slope) | $(t.args[1].args[2].sym))` must be " *
+                    "the only structured marker on this route"))
+            end
         elseif t isa FunctionTerm && t.f === phylo
             slope = _check_phylo_re_lhs(t.args[1].args[1], t.args[1].args[2].sym;
-                                        allow_slope = allow_phylo_slope)
+                                        allow_slope = allow_phylo_slope,
+                                        allow_slope_only = allow_phylo_slope_only,
+                                        allow_labelled_intercept_slope)
             if structured === nothing
                 structured = (:phylo, t.args[1].args[2].sym)
                 structured_slope = slope
@@ -156,15 +409,24 @@ function _split_ranef(rhs; allow_phylo_slope::Bool = false, allow_temporal::Bool
                     "alongside the phylogenetic random slope is not implemented (#620)"))
             end
         elseif t isa FunctionTerm && t.f === spatial
-            _check_structured_re_lhs(:spatial, t.args[1].args[1], t.args[1].args[2].sym)
-            structured === nothing && (structured = (:spatial, t.args[1].args[2].sym))
+            slope = _check_structured_re_lhs(:spatial, t.args[1].args[1],
+                t.args[1].args[2].sym; allow_slope = allow_spatial_slope,
+                allow_intercept_slope = allow_spatial_intercept_slope,
+                allow_labelled_intercept_slope)
+            if structured === nothing
+                structured = (:spatial, t.args[1].args[2].sym)
+                animal_slope = slope
+            elseif slope !== nothing
+                throw(ArgumentError("drm: `spatial(0 + $(slope) | $(t.args[1].args[2].sym))` must be " *
+                    "the only structured marker on this route"))
+            end
         else
             push!(fixed, t)
         end
     end
     fixed_rhs = isempty(fixed) ? ConstantTerm(1) :
                 length(fixed) == 1 ? fixed[1] : Tuple(fixed)
-    return fixed_rhs, re, metav, structured, structured_slope, temporal_term
+    return fixed_rhs, re, metav, structured, structured_slope, temporal_term, animal_slope
 end
 
 # Collect EVERY structured marker on a right-hand side, in source order, as a
@@ -200,11 +462,17 @@ function _re_kind(re_lhs)
     elseif re_lhs isa FunctionTerm && re_lhs.f === (+)
         consts = filter(t -> t isa ConstantTerm, re_lhs.args)
         vars = filter(t -> t isa Term, re_lhs.args)
-        length(vars) == 1 || error("DRModels.jl supports `(1 | g)`, `(0 + x | g)`, `(1 + x | g)`")
+        length(vars) == 1 || error("DRModels.jl supports `(1 | g)`, `(0 + x | g)`, `(1 + x | g)` and " *
+                                   "the correlated blocks `(1 + x + z [+ w] | g)` (an intercept plus 2 to 3 slopes), which are " *
+                                   "fitted by maximum likelihood only and with no random effect on `sigma` " *
+                                   "(so method = :REML is not implemented for the q3/q4 blocks)")
         v = vars[1].sym
         any(c -> c.n == 0, consts) && return (:slope, v)      # 0 + x  → slope only
         any(c -> c.n == 1, consts) && return (:corr, v)       # 1 + x  → correlated intercept+slope
     end
+    re_lhs isa FunctionTerm && re_lhs.f === (|) &&
+        error("unsupported random-effect term: `($re_lhs | …)`. A label `(… | p | g)` is accepted " *
+              "only when one term carries it and `sigma` has no random effect")
     error("unsupported random-effect term: `($re_lhs | …)`")
 end
 
@@ -515,6 +783,13 @@ function _re_lbfgs_with_restart(nll, θ0::AbstractVector, θ0_restart::AbstractV
     return finish(res, :primary)
 end
 
+_sd_prior_stationary(score) = all(isfinite, score) && maximum(abs, score) <= 1e-6
+_multi_sd_prior_converged(optim_ok, score, theta, rows) = optim_ok && _sd_prior_stationary(score) &&
+    all(row -> _sd_prior_interior(theta[row.index]) && abs(theta[row.index]) < 30.0, rows)
+# Reject a numerically zero or overflowing variance even when a nearly flat
+# Gamma density makes the score alone look small. This is not an optimizer bound.
+_sd_prior_interior(eta) = isfinite(eta) && 0 < exp(2eta) < Inf && isfinite(exp(-2eta))
+
 # Gaussian location–scale with one random intercept (1 | g) on the mean.
 # θ = [β_μ; β_σ (log σ); log σ_b].
 # `reml=true` (#439) keeps β_μ in θ and adds the Patterson–Thompson term
@@ -531,10 +806,18 @@ a single intercept only — σ-RE, slopes, and multi-ranef stay rejected.
 Worked example: `test/test_reml_ordinary_ranef.jl` (not in the default suite yet).
 """
 function _fit_ranef_gaussian(fam::Gaussian, y, Xμ, Xσ, gidx, G, w, nmμ, nmσ, grp, g_tol;
-                             reml::Bool = false)
+                             reml::Bool = false, prior_rows = nothing, sd_prior = nothing, sd_specs = nothing,
+                             prior_w = nothing)
     n = length(y)
     pμ, pσ = size(Xμ, 2), size(Xσ, 2)
-    const_2pi = 0.5 * n * log(2π)
+    # `prior_w` (drmTMB `weights`): row i's log-density is multiplied by prior_w[i]. For the
+    # Gaussian marginal that makes the data precision of row i prior_w[i]/σ_i² and the
+    # normalising term prior_w[i]·log(2πσ_i²) (not log(2πσ_i²/prior_w[i])). `nothing` keeps
+    # the unweighted arithmetic untouched.
+    pw = prior_w === nothing ? nothing : Vector{Float64}(prior_w)
+    pw === nothing || prior_rows === nothing ||
+        throw(ArgumentError("drm: `weights` cannot be combined with fixed-effect priors on this route"))
+    const_2pi = 0.5 * (pw === nothing ? n : sum(pw)) * log(2π)
     const_pμ = 0.5 * pμ * log(2π)
 
     # ML Woodbury nll. The quadratic form is the cancellation-free
@@ -549,14 +832,15 @@ function _fit_ranef_gaussian(fam::Gaussian, y, Xμ, Xσ, gidx, G, w, nmμ, nmσ,
         rv = Vector{T}(undef, n); invDv = Vector{T}(undef, n)
         logdetD = zero(T)
         @inbounds for i in 1:n
-            invD = exp(-2 * ησ[i])
+            pwi = pw === nothing ? 1.0 : pw[i]
+            invD = pwi * exp(-2 * ησ[i])
             r = y[i] - ημ[i]
             rv[i] = r; invDv[i] = invD
             k = gidx[i]
             wi = w[i]
             S[k] += wi * wi * invD                 # (ZᵀD⁻¹Z)_kk = Σ w_i²/D_i
             C[k] += wi * r * invD                  # (ZᵀD⁻¹r)_k  = Σ w_i r_i/D_i
-            logdetD += 2 * ησ[i]                   # log D_i
+            logdetD += pwi * 2 * ησ[i]             # log D_i (weighted: w_i · log σ_i²)
         end
         logdetCap = zero(T)
         @inbounds for k in 1:G
@@ -579,7 +863,7 @@ function _fit_ranef_gaussian(fam::Gaussian, y, Xμ, Xσ, gidx, G, w, nmμ, nmσ,
         S = zeros(T, G)
         invDv = Vector{T}(undef, n)
         @inbounds for i in 1:n
-            invD = exp(-2 * ησ[i])
+            invD = (pw === nothing ? 1.0 : pw[i]) * exp(-2 * ησ[i])
             invDv[i] = invD
             wi = w[i]
             S[gidx[i]] += wi * wi * invD
@@ -606,7 +890,11 @@ function _fit_ranef_gaussian(fam::Gaussian, y, Xμ, Xσ, gidx, G, w, nmμ, nmσ,
         return nll_ml_θ + 0.5 * ldX - const_pμ
     end
 
-    nll = reml ? nll_reml : nll_ml
+    nll = if sd_prior !== nothing
+        θ -> nll_ml(θ) + _fixed_prior_value(prior_rows, θ) + _sd_prior_value(sd_prior, θ)
+    else
+        prior_rows === nothing ? (reml ? nll_reml : nll_ml) : θ -> nll_ml(θ) + _fixed_prior_value(prior_rows, θ)
+    end
 
     βμ0 = Xμ \ y
     res0 = y - Xμ * βμ0
@@ -673,14 +961,28 @@ function _fit_ranef_gaussian(fam::Gaussian, y, Xμ, Xσ, gidx, G, w, nmμ, nmσ,
     H = ForwardDiff.hessian(nll, θ̂)
     # #1114 (#968 convention): sigma running off to 0 overflows the Hessian; withhold
     # the vcov and report converged = false instead of the LAPACK ArgumentError.
+    scales = Dict(:sigma => exp.(Xσ * θ̂[(pμ+1):(pμ+pσ)]))   # residual σ (RE excluded)
     V, hess_finite = _vcov_from_hessian_checked(H, _all_finite(y, Xμ, Xσ, w);
                                                 context = "Gaussian (1 | g) location-scale")
+    # #1114: whether a collapsing residual sigma overflows the Hessian is a floating-point
+    # accident (it differs by Julia version and BLAS), so the collapse is also detected on
+    # the fitted scales and handled the same way: warn, withhold the vcov, converged = false.
+    # Unit-free: some residual SD below 1e-12 of the response SD is a collapse, not a fit.
+    # (Measured: the #1114 collapse sits at ~1e-108; the legitimate `sigma ~ x` runaway panel
+    # of test_twin_gap_747_starts.jl reaches ~2e-9 and must stay converged.)
+    # (Deliberately NOT `_scale_runoff`: its 10^4-fold spread rule also fires on the
+    # legitimate wide-spread `sigma ~ x` panel in test_ranef_varying_scale_convergence.jl.)
+    if hess_finite && _all_finite(y, Xμ, Xσ, w) && minimum(scales[:sigma]) < 1e-12 * std(y)
+        @warn "The fitted residual scale has collapsed towards 0 for some observations (e.g. " *
+              "all-singleton groups with `sigma ~ z`). Wald standard errors are withheld and " *
+              "the fit is reported as not converged." context = "Gaussian (1 | g) location-scale"
+        V = fill(NaN, size(H)); hess_finite = false
+    end
 
     blocks = [:mu => 1:pμ, :sigma => (pμ+1):(pμ+pσ), :resd => (pμ+pσ+1):(pμ+pσ+1)]
     names = [:mu => nmμ, :sigma => nmσ, :resd => [String(grp)]]
     means = Dict(:mu => Xμ * θ̂[1:pμ])
     obs = Dict(:mu => Vector{Float64}(y))
-    scales = Dict(:sigma => exp.(Xσ * θ̂[(pμ+1):(pμ+pσ)]))   # residual σ (RE excluded)
     # Conditional RE estimates (BLUPs): b̂_k = C_k / M_k, the per-group posterior
     # mean of the random intercept at θ̂. M_k = 1/σ_b² + Σ w_i²/D_i, C_k = Σ w_i r_i/D_i.
     blup = let
@@ -688,13 +990,14 @@ function _fit_ranef_gaussian(fam::Gaussian, y, Xμ, Xσ, gidx, G, w, nmμ, nmσ,
         ημ = Xμ * βμ; ησ = Xσ * βσ
         S = zeros(G); C = zeros(G)
         @inbounds for i in 1:n
-            invD = exp(-2 * ησ[i]); k = gidx[i]
+            invD = (pw === nothing ? 1.0 : pw[i]) * exp(-2 * ησ[i]); k = gidx[i]
             S[k] += w[i]^2 * invD
             C[k] += w[i] * (y[i] - ημ[i]) * invD
         end
         [C[k] / (1 / σb² + S[k]) for k in 1:G]
     end
     re = Dict(Symbol(grp) => blup)
+    _record_cond_fit!(scales, w .* blup[gidx])   # fitted-row modes for `fitted(fit)` (conditional default)
     # CONVERGED MEANS THE GRADIENT CRITERION HERE (#609 item 2, measured 2026-09-05).
     #
     # `Optim.converged(res)` is the OR of the x, f and g criteria. `Optim.Options(
@@ -716,16 +1019,20 @@ function _fit_ranef_gaussian(fam::Gaussian, y, Xμ, Xσ, gidx, G, w, nmμ, nmσ,
     # (largest norm 9.996e-9, inside `g_tol`). It is NOT unit-free: the same
     # varying-scale model at `x * 1000` stalls with `|g|∞` just above 1e-8
     # while the Newton step is a tiny fraction of an SE (drmTMB #1503). The
-    # reported flag is `Optim.converged` (the x/f/g OR, which is what fires on
-    # that plateau) and not the iteration cap, together with the Newton-step
-    # test. `g_converged` is not consulted. θ̂, the objective and logLik are
+    # reported flag is "not the iteration cap" together with the Newton-step
+    # test. Neither `g_converged` nor the x/f/g OR is consulted: both fail a
+    # line-search stall at the optimum when the response is on a tiny scale
+    # (#983). θ̂, the objective and logLik are
     # unchanged. Guard: test/test_ranef_varying_scale_convergence.jl and the
     # scaled-predictor bootstrap in test/test_triage_g_twin_inputs.jl.
     # #1114: a non-finite Hessian also means not converged.
-    converged = hess_finite && Optim.converged(res) && !Optim.iteration_limit_reached(res) &&
-        _unitfree_converged(H, ForwardDiff.gradient(nll, θ̂))
+    score = ForwardDiff.gradient(nll, θ̂)
+    converged = hess_finite && !Optim.iteration_limit_reached(res) &&
+        _unitfree_converged(H, score) &&
+        (sd_prior === nothing || (_sd_prior_interior(θ̂[end]) && _sd_prior_stationary(score)))
     # Profile intervals reuse the ML Woodbury nll (same convention as FE REML).
-    fit = _withranef(_withnll(DrmFit(fam, blocks, names, θ̂, V, -nll(θ̂), n, converged, means, obs, scales), nll_ml), re)
+    fit = _withranef(_withnll(DrmFit(fam, blocks, names, θ̂, V, -(prior_rows === nothing ? nll(θ̂) : nll_ml(θ̂)), n, converged, means, obs, scales), prior_rows === nothing ? nll_ml : nll), re)
+    sd_prior !== nothing ? (fit = _with_sd_priors(fit, prior_rows, sd_prior, nll_ml, sd_specs)) : (prior_rows === nothing || (fit = _with_fixed_priors(fit, prior_rows, nll_ml)))
     if reml
         return _withreml(fit, -nll_reml(θ̂), -nll_ml(θ̂))
     end
@@ -957,6 +1264,7 @@ function _fit_correlated_ranef_gaussian(fam::Gaussian, y, Xμ, Xσ, gidx, G, xs,
         hcat(l11 .* v1, cc .* v1 .+ l22 .* v2)
     end
     re = Dict(Symbol(grp) => blup)
+    _record_cond_fit!(scales, blup[gidx, 1] .+ xs .* blup[gidx, 2])   # fitted-row modes for `fitted(fit)`
     fit = _withranef(_withnll(DrmFit(fam, blocks, names, θ̂, V, -nll(θ̂), n, drm_optim_converged(res), means, obs, scales), nll_ml), re)
     reml && return _withreml(fit, -nll(θ̂), -nll_ml(θ̂))
     return fit
@@ -974,21 +1282,25 @@ components — drmTMB's `ranef()`.
 - Multiple components `(1 | g) + (1 | h)`: one entry per factor.
 
 Populated for the Gaussian closed-form RE paths (exact GLS conditional means)
-and the structured (phylo/relmat/animal) routes. Returns an empty `Dict` for a
-fit with **no** random-effect block at all. A non-Gaussian GLMM fitted by the
-Gauss–Hermite/Laplace marginal routes (e.g. `Binomial`/`Poisson` with `(1|g)`)
-never computes conditional modes — those routes integrate the random effect
-out of the marginal likelihood without ever forming a posterior mode — so
-calling `ranef` on such a fit throws an `ArgumentError` instead of silently
-returning an empty `Dict`.
+and structured routes that retain conditional modes. Returns an empty `Dict`
+for a fit with **no** random-effect block at all. Most non-Gaussian
+Gauss–Hermite/Laplace marginal routes (for example, ordinary Binomial or
+Poisson `(1 | g)` fits) integrate random effects without retaining conditional
+modes, so `ranef()` throws for those fits. The Tweedie related-matrix
+mean-intercept SD route is an exception: its sparse Laplace calculation retains
+the fitted conditional mode.
 """
 function ranef(fit::DrmFit)
     if fit.ranef === nothing || fit.ranef isa PhyloTipVariance   # tip variances only, no modes
-        has_re_block = any(p -> first(p) in (:resd, :recov, :sd, :sd_phylo), fit.blocks)
+        # `sdtarget_*` blocks are the coefficient-specific SD-regression random
+        # effects; without stored modes they refuse exactly like `:sd` (#759),
+        # rather than returning an empty Dict that reads as "no random effects".
+        has_re_block = any(p -> first(p) in (:resd, :recov, :sd, :sd_phylo) ||
+                                startswith(String(first(p)), "sdtarget_"), fit.blocks)
         has_re_block && throw(ArgumentError("ranef: this fit has a random-effect block " *
             "but no stored conditional modes -- the non-Gaussian GLMM marginal route " *
-            "(Gauss-Hermite quadrature / Laplace) integrates the random effect out of " *
-            "the likelihood and never computes a posterior mode. Use `re_sd(fit)` / " *
+            "(Gauss-Hermite quadrature / Laplace) does not retain a posterior mode. " *
+            "Use `re_sd(fit)` / " *
             "`vc(fit)` for the fitted variance components."))
         return Dict{Symbol,Vector{Float64}}()
     end
@@ -1016,17 +1328,22 @@ Random-effect covariance summary per grouping factor.
 function vc(fit::DrmFit)
     # Location-scale-scale fits (#544): the RE variance varies by group-level
     # covariates, so a single component matrix is ill-defined -- refuse.
-    any(p -> first(p) in (:sd, :sd_phylo), fit.blocks) &&
+    _has_sd_regression_block(fit) &&
         throw(ArgumentError("vc: this fit models the random-effect SD with covariates " *
             "(`sd(group) ~ ...`); use `coef(fit, :sd)` for the log-SD coefficients."))
     d = Dict{Symbol,Matrix{Float64}}()
+    isd = _intercept_only_sd(fit)
+    isd === nothing || (d[isd.group] = fill(isd.sd^2, 1, 1))
     # q=4 phylogenetic coevolution: the raw 4×4 group-level Σ_a is stashed on
     # `ranef` (axes mu1,mu2,sigma1,sigma2); surface it here per #192.
     if fit.ranef isa NamedTuple && haskey(fit.ranef, :Sigma_a)
         d[Symbol(fit.ranef.group)] = Matrix{Float64}(fit.ranef.Sigma_a)
     end
     for (p, r) in fit.blocks
-        if p === :recov
+        if p === :recov && _recov_is_sd_corr(fit)
+            grp, _, _, Σ = _recov_sd_corr_decode(fit, r)
+            d[Symbol(grp)] = Σ
+        elseif p === :recov
             a, b, cc = fit.theta[r]
             l11 = exp(a); l22 = exp(b)
             Σ = [l11^2 cc*l11; cc*l11 cc^2+l22^2]
@@ -1077,7 +1394,36 @@ function _multi_re_qr(Z̃::AbstractMatrix, sdinv::AbstractVector, r::AbstractVec
     return R, bhat, logdetM
 end
 
-function _fit_multi_ranef_gaussian(fam::Gaussian, y, Xμ, Xσ, comps, nmμ, nmσ, g_tol)
+# Patterson–Thompson restriction matrix X′V⁻¹X for V = D + Z̃Z̃′ from ONE stacked
+# least-squares problem (#1270 follow-up, Gaussian REML on the generic routes). With
+# A = [D^{-1/2}Z̃; I] and Xs = [D^{-1/2}X; 0], the residual E = Xs − A(A \ Xs) of
+# regressing Xs on A satisfies E′E = X′D⁻¹X − X′D⁻¹Z̃(I + Z̃′D⁻¹Z̃)⁻¹Z̃′D⁻¹X = X′V⁻¹X
+# exactly, and is PSD by construction (no Woodbury subtraction, so no cancellation as
+# σ_e → 0; the same reasoning as `_multi_re_qr`). Generic in the element type, so it
+# runs under ForwardDiff.
+function _reml_xtvinvx_qr(Z̃::AbstractMatrix, sdinv::AbstractVector, X::AbstractMatrix)
+    T = promote_type(eltype(Z̃), eltype(sdinv), eltype(X))
+    q = size(Z̃, 2)
+    A = [sdinv .* Z̃; Matrix{T}(I, q, q)]
+    Xs = [sdinv .* X; zeros(T, q, size(X, 2))]
+    E = Xs - A * (qr(A) \ Xs)
+    return Symmetric(E' * E)
+end
+
+# REML objective from an ML nll value and the restriction matrix: nll_ML + ½ logdet(X′V⁻¹X)
+# − ½ p log(2π). A non-PD or non-finite restriction gets the same large FINITE barrier as the
+# intercept route (HagerZhang asserts a finite objective).
+function _reml_add_restriction(nll_ml_val, XtVinvX, p::Int)
+    cholX = cholesky(XtVinvX; check = false)
+    issuccess(cholX) || return oftype(nll_ml_val, nll_ml_val + REML_NONPD_PENALTY)
+    ldX = logdet(cholX)
+    isfinite(ldX) || return oftype(nll_ml_val, nll_ml_val + REML_NONPD_PENALTY)
+    return nll_ml_val + 0.5 * ldX - 0.5 * p * log(2π)
+end
+
+function _fit_multi_ranef_gaussian(fam::Gaussian, y, Xμ, Xσ, comps, nmμ, nmσ, g_tol;
+                                   reml::Bool = false, prior_rows=nothing,
+                                   sd_priors=nothing, prior_specs=nothing)
     n = length(y); pμ, pσ = size(Xμ, 2), size(Xσ, 2)
     K = length(comps)
     # #977: Z is kept sparse (one nonzero per component per row) and the Float64
@@ -1091,7 +1437,7 @@ function _fit_multi_ranef_gaussian(fam::Gaussian, y, Xμ, Xσ, comps, nmμ, nmσ
     cache = Ref{Any}(nothing)     # factor at the last Float64 θ: grad! reuses nll's
     Zdense = Ref{Union{Nothing,Matrix{Float64}}}(nothing)
     _zdense() = (Zdense[] === nothing && (Zdense[] = Matrix(des.Z)); Zdense[]::Matrix{Float64})
-    function nll(θ)
+    function data_nll(θ)
         βμ = θ[1:pμ]; βσ = θ[pμ+1:pμ+pσ]
         ημ = Xμ * βμ
         ησ = clamp.(Xσ * βσ, -30.0, 30.0)          # bound σ predictor: keep exp finite
@@ -1115,7 +1461,7 @@ function _fit_multi_ranef_gaussian(fam::Gaussian, y, Xμ, Xσ, comps, nmμ, nmσ
         return val
     end
 
-    function grad!(Gout, θ)
+    function data_grad!(Gout, θ)
         fill!(Gout, 0.0)
         βμ = θ[1:pμ]; βσ = θ[pμ+1:pμ+pσ]
         ημ = Xμ * βμ
@@ -1147,6 +1493,21 @@ function _fit_multi_ranef_gaussian(fam::Gaussian, y, Xμ, Xσ, comps, nmμ, nmσ
         end
         return Gout
     end
+    penalized = prior_rows !== nothing
+    nll(θ) = penalized ? data_nll(θ) + _fixed_prior_value(prior_rows, θ) +
+        sum((_sd_prior_value(row, θ) for row in sd_priors); init=zero(eltype(θ))) : data_nll(θ)
+    function grad!(Gout, θ)
+        data_grad!(Gout, θ)
+        if penalized
+            for row in prior_rows
+                Gout[row.index] += row.precision * (θ[row.index] - row.mean)
+            end
+            for row in sd_priors
+                Gout[row.index] += row.rate * exp(θ[row.index]) - (row.shape - 1)
+            end
+        end
+        Gout
+    end
     βμ0 = Xμ \ y; res0 = y - Xμ * βμ0
     s0 = std(res0) / sqrt(K + 1)                   # balanced variance split: resid + K REs
     θ0 = zeros(pμ + pσ + K)
@@ -1155,9 +1516,33 @@ function _fit_multi_ranef_gaussian(fam::Gaussian, y, Xμ, Xσ, comps, nmμ, nmσ
     for k in 1:K
         θ0[pμ+pσ+k] = log(s0 + eps())
     end
-    od = Optim.OnceDifferentiable(nll, grad!, θ0)
+    # REML (Gaussian, exact): nll_ML + ½ logdet(Xμ′V⁻¹Xμ) − ½ pμ log(2π), the restriction
+    # from the stacked QR of the same whitened design (`_reml_xtvinvx_qr`). Dense Z̃ and a
+    # ForwardDiff gradient: O((n + q)q²) per Dual probe, so REML refuses q above the dense
+    # Hessian cap rather than silently slowing down.
+    function nll_reml(θ)
+        val = nll(θ)
+        βσ = θ[pμ+1:pμ+pσ]
+        ησ = clamp.(Xσ * βσ, -30.0, 30.0)
+        σk = [exp(clamp(θ[pμ+pσ+k], -30.0, 30.0)) for k in 1:K]
+        Z̃ = _zdense() .* [σk[colcomp[c]] for c in 1:q]'
+        return _reml_add_restriction(val, _reml_xtvinvx_qr(Z̃, exp.(-ησ), Xμ), pμ)
+    end
+    if reml
+        q <= _MULTI_RE_DENSE_HESSIAN_MAXQ ||
+            throw(ArgumentError("drm: method = :REML on several random-effect terms supports at most " *
+                "$(_MULTI_RE_DENSE_HESSIAN_MAXQ) random-effect columns in total (got $q); use method = :ML."))
+        nll_opt = nll_reml
+        od = Optim.OnceDifferentiable(nll_reml, θ0; autodiff = :forward)
+    else
+        nll_opt = nll
+        od = Optim.OnceDifferentiable(nll, grad!, θ0)
+    end
     res = Optim.optimize(od, θ0, Optim.LBFGS(), Optim.Options(g_tol = g_tol))
     θ̂ = Optim.minimizer(res)
+    if penalized && any(row -> abs(θ̂[row.index]) >= 30.0, sd_priors)
+        throw(ArgumentError("targeted random-effect SD reached the likelihood clamp; no interior prior fit is available"))
+    end
     # vcov from the AD Hessian of `nll`. `nll` returns a flat 1e18 penalty when
     # the capacitance factorisation fails, so ForwardDiff's directional probes near a
     # near-singular capacitance (extreme σ ratios) can straddle that branch and
@@ -1169,9 +1554,9 @@ function _fit_multi_ranef_gaussian(fam::Gaussian, y, Xμ, Xσ, comps, nmμ, nmσ
     # difference of the exact sparse analytic gradient (same guards below).
     V = let
         pen = oftype(sum(θ̂), 1e18)
-        Hθ = q <= _MULTI_RE_DENSE_HESSIAN_MAXQ ? ForwardDiff.hessian(nll, θ̂) :
+        Hθ = q <= _MULTI_RE_DENSE_HESSIAN_MAXQ ? ForwardDiff.hessian(nll_opt, θ̂) :
              _multi_re_fd_hessian(grad!, θ̂)
-        if nll(θ̂) >= pen || !all(isfinite, Hθ) || !isposdef(Symmetric(Hθ))
+        if nll_opt(θ̂) >= pen || !all(isfinite, Hθ) || !isposdef(Symmetric(Hθ))
             @warn "multi-RE Gaussian vcov: Hessian is not usable (near-singular " *
                   "capacitance or penalty leak); returning NaN standard errors."
             fill(NaN, length(θ̂), length(θ̂))
@@ -1210,7 +1595,29 @@ function _fit_multi_ranef_gaussian(fam::Gaussian, y, Xμ, Xσ, comps, nmμ, nmσ
         end
         d
     end
-    return _withranef(_withnll(DrmFit(fam, blocks, names, θ̂, V, -nll(θ̂), n, drm_optim_converged(res), means, obs, scales), nll, grad!), blup)
+    # Fitted-row modes for `fitted(fit)`: Z b̂ over all components (the per-factor Dict
+    # above keys a slope and an intercept on the SAME grouping factor under one name).
+    let
+        βμ = θ̂[1:pμ]; βσ = θ̂[pμ+1:pμ+pσ]
+        ησ = clamp.(Xσ * βσ, -30.0, 30.0); r = y .- Xμ * βμ
+        σk = [exp(clamp(θ̂[pμ+pσ+k], -30.0, 30.0)) for k in 1:K]
+        σcol = [σk[colcomp[c]] for c in 1:q]
+        bscaled = _multi_re_factor(des.Z * Diagonal(σcol), exp.(-ησ), r).bhat
+        _record_cond_fit!(scales, des.Z * (σcol .* bscaled))
+    end
+    converged = drm_optim_converged(res)
+    if penalized && !isempty(sd_priors)
+        score = zeros(length(θ̂)); grad!(score, θ̂)
+        converged = _multi_sd_prior_converged(converged, score, θ̂, sd_priors)
+    end
+    fit = _withranef(_withnll(DrmFit(fam, blocks, names, θ̂, V, -data_nll(θ̂), n, converged, means, obs, scales), nll, grad!), blup)
+    if penalized
+        return isempty(sd_priors) ? _with_fixed_priors(fit, prior_rows, data_nll; preserve_grad=true) :
+               _with_multi_sd_priors(fit, prior_rows, sd_priors, data_nll, prior_specs)
+    end
+    # Profile intervals reuse the ML nll (same convention as the `(1 | g)` REML route).
+    reml && return _withreml(fit, -nll_reml(θ̂), -nll(θ̂))
+    return fit
 end
 
 # Gauss–Hermite nodes/weights (Golub–Welsch) for ∫ h(x) e^{-x²} dx ≈ Σ wₖ h(xₖ).
@@ -1599,6 +2006,7 @@ function _fit_musigma_ranef_gaussian(fam::Gaussian, y, Xμ, Xσ, gidx, G, nmμ, 
         end
     end
     re = Dict(Symbol(grp) => blup_mu, Symbol("$(grp)_logsigma") => blup_sigma)
+    _record_cond_fit!(scales, blup_mu[gidx])   # fitted-row mean modes for `fitted(fit)` (Gaussian mean ignores the sigma mode)
 
     fit = _withranef(_withnll(DrmFit(fam, blocks, names, θ̂, V, -nll(θ̂), n, drm_optim_converged(res), means, obs, scales), nll), re)
     return _withmarginal(fit, :Laplace)

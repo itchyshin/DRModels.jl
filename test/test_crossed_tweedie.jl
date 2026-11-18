@@ -43,9 +43,19 @@ end
         y = [_rtweedie(μi, φ, p) for μi in μ]
         dat = (; y, x, g, h)
 
-        fit = drm(bf(@formula(y ~ x + (1 | g) + (1 | h))), Tweedie(); data = dat)
+        t_fit = @elapsed fit = drm(bf(@formula(y ~ x + (1 | g) + (1 | h))), Tweedie(); data = dat)
 
         @test fit.converged
+        # Speed regression guard. Before the capped first LBFGS step in
+        # `_fit_tweedie_crossed_laplace`, every profile-p inner fit wasted its first
+        # line-search probes at wild parameters (Dunn-Smyth window ~1e5 terms) and
+        # this single fit took over an hour on a loaded machine (4428 s as one test
+        # file); it now takes tens of seconds. The budget is ~30x the measured time
+        # (includes first-call compilation), so only a return of the blow-up trips it.
+        @test t_fit < 900
+        # The optimum itself is pinned (profile loglik is flat in p; 1e-6 is far
+        # tighter than the atol checks below and ~1e4x the observed run-to-run noise).
+        @test loglik(fit) ≈ -304.3129220 atol = 1e-6
         @test coef(fit, :mu)[1] ≈ β[1] atol = 0.20
         @test coef(fit, :mu)[2] ≈ β[2] atol = 0.20
         @test exp(2 * coef(fit, :sigma)[1]) ≈ φ atol = 0.35

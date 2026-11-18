@@ -71,7 +71,8 @@ end
     end
     msgs = [string(r.message) for r in logger.logs]
     @test length(d.y) == 300
-    @test loglik(fit) == -1.0e18
+    @test fit.loglik == -1.0e18                              # the raw stored sentinel ...
+    @test isnan(Logging.with_logger(() -> loglik(fit), Logging.NullLogger()))   # ... is never what `loglik` returns
     @test !is_converged(fit)
     @test fit.theta[3] ≈ 0.34657359027997264 atol = 1e-9   # log of the Method-of-Moments cap: never moved
     @test DRModels._CROSSED_NUISANCE_BOX_REFITS[] == 0

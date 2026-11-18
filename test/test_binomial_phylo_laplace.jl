@@ -28,7 +28,7 @@ _binom_logistic(x) = 1 / (1 + exp(-x))
     @test coef(fit, :mu)[2] ≈ β[2] atol = 0.30
     @test re_sd(fit)[:species] > 0.03
     @test isfinite(loglik(fit))
-    @test all(0 .< fitted(fit) .< 1)
+    @test all(0 .< fitted(fit; re = :zero) .< 1)
 
     @test_throws ErrorException drm(
         bf(@formula(cbind(successes, failures) ~ x + phylo(1 | species) + (1 | block))),
@@ -57,7 +57,7 @@ end
     @test coef(fit, :mu)[2] ≈ β[2] atol = 0.35
     @test re_sd(fit)[:species] > 0.02
     @test isfinite(loglik(fit))
-    @test all(0 .< fitted(fit) .< 1)
+    @test all(0 .< fitted(fit; re = :zero) .< 1)
 end
 
 @testset "Binomial phylo sparse Laplace gradient" begin
