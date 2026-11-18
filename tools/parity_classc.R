@@ -209,20 +209,31 @@ rows[[length(rows) + 1L]] <- run_cell(
 ## drm_julia_structured_family_tag), so this list is not a guess.
 ## ---------------------------------------------------------------------
 
+# Evidence-only generator; no package-engine code is imported.
+generate_relmat <- function(seed, n_id, n_each, beta, sd_known) {
+  set.seed(seed)
+  labels <- paste0("id", seq_len(n_id))
+  K <- outer(seq_len(n_id), seq_len(n_id), function(i, j) 0.35 ^ abs(i - j))
+  diag(K) <- diag(K) + 0.15
+  dimnames(K) <- list(labels, labels)
+  effects <- drop(t(chol(K)) %*% rnorm(n_id)) * sd_known
+  names(effects) <- labels
+  group <- rep(labels, each = n_each)
+  n <- length(group)
+  x <- rnorm(n)
+  eta <- beta[1] + beta[2] * x + effects[group]
+  list(K = K, effects = effects, group = group, n = n, x = x, eta = eta)
+}
+
 make_relmat_fixture <- function(seed, n_id = 12L, n_each = 8L,
                                  beta = c(0.30, 0.30), sd_known = 0.5,
                                  sigma_gauss = 0.25, size_nb = 4, shape_g = 8) {
-  set.seed(seed)
-  id_levels <- paste0("id", seq_len(n_id))
-  K <- outer(seq_len(n_id), seq_len(n_id), function(i, j) 0.35^abs(i - j))
-  diag(K) <- diag(K) + 0.15
-  dimnames(K) <- list(id_levels, id_levels)
-  known <- as.vector(t(chol(K)) %*% rnorm(n_id)) * sd_known
-  names(known) <- id_levels
-  id <- rep(id_levels, each = n_each)
-  n <- n_id * n_each
-  x <- rnorm(n)
-  eta <- beta[1] + beta[2] * x + known[id]
+  fixture <- generate_relmat(seed, n_id, n_each, beta, sd_known)
+  K <- fixture$K
+  n <- fixture$n
+  x <- fixture$x
+  id <- fixture$group
+  eta <- fixture$eta
   list(
     K = K,
     data_gauss = data.frame(y = eta + sigma_gauss * rnorm(n), x = x, id = id),
