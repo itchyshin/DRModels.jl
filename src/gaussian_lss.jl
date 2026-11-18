@@ -320,6 +320,7 @@ function _fit_ranef_gaussian_lss(fam::Gaussian, y, Xμ, Xσ, Zg, gidx, G, nmμ, 
         [C[k] / (1 / exp(2 * ησb[k]) + S[k]) for k in 1:G]
     end
     re = Dict(Symbol(grp) => blup)
+    _record_cond_fit!(scales, (w === nothing ? ones(n) : w) .* blup[gidx])   # fitted-row modes for `fitted(fit)`
     fit = _withranef(_withnll(DrmFit(fam, blocks, names, θ̂, V, -nll(θ̂), n,
                                      converged, means, obs, scales), nll_ml), re)
     if reml
@@ -410,7 +411,7 @@ end
 function _drm_gaussian_lss_phylo(f::DrmFormula, fam::Gaussian, sdpp, re, structured,
                                  structured_sigma, sigma_re, metav, has_missing_response,
                                  y, Xμ, Xσ, nmμ, nmσ, data, tree, g_tol, method, penalty;
-                                 algorithm::Symbol = :auto, sparse = nothing)
+                                 algorithm::Symbol = :auto, sparse = nothing, prior_rows = nothing)
     length(sdpp) == 1 ||
         throw(ArgumentError("drm: one `sd_phylo(group) ~ …` formula per model (got $(length(sdpp)))."))
     sgrp, srhs = sdpp[1]
@@ -463,6 +464,7 @@ function _drm_gaussian_lss_phylo(f::DrmFormula, fam::Gaussian, sdpp, re, structu
 
     use_sparse = (sparse === true) || (algorithm in (:sparse, :sparse_lbfgs)) || (algorithm === :auto && G > 500)
     if use_sparse
+        prior_rows === nothing || throw(ArgumentError("fixed priors with phylogenetic SD regression are not yet supported by the sparse route"))
         return _fit_phylo_gaussian_lss_sparse(fam, y, Xμ, Xσ, Zg, gidx, G, phy, nmμ, nmσ, nmsd,
                                               sgrp, g_tol; reml = method === :REML)
     else
@@ -470,7 +472,7 @@ function _drm_gaussian_lss_phylo(f::DrmFormula, fam::Gaussian, sdpp, re, structu
         size(Kmat) == (G, G) ||
             error("structured matrix must be $(G)×$(G) (the number of `$sgrp` levels)")
         return _fit_structured_gaussian_lss(fam, y, Xμ, Xσ, Zg, gidx, G, Kmat, nmμ, nmσ, nmsd,
-                                            sgrp, g_tol; reml = method === :REML)
+                                            sgrp, g_tol; reml = method === :REML, prior_rows)
     end
 end
 
@@ -496,7 +498,7 @@ end
 function _fit_structured_gaussian_lss(fam::Gaussian, y, Xμ, Xσ, Zg, gidx, G, K,
                                       nmμ, nmσ, nmsd, grp, g_tol;
                                       block::Symbol = :sd_phylo, reml::Bool = false,
-                                      loading = nothing, report_sd::Bool = false)
+                                      loading = nothing, report_sd::Bool = false, prior_rows = nothing)
     n = length(y)
     # `loading` is the per-observation weight of the structured effect: `nothing`
     # is a structured intercept (weight 1); a numeric vector `x` makes it the
@@ -560,7 +562,7 @@ function _fit_structured_gaussian_lss(fam::Gaussian, y, Xμ, Xσ, Zg, gidx, G, K
         return nll_ml_θ + 0.5 * logdet(chX) - const_pμ
     end
 
-    nll = reml ? nll_reml : nll_ml
+    nll = reml ? nll_reml : prior_rows === nothing ? nll_ml : θ -> nll_ml(θ) + _fixed_prior_value(prior_rows, θ)
 
     βμ0 = Xμ \ y; res0 = y - Xμ * βμ0
     θ0 = zeros(pμ + pσ + psd)
@@ -625,13 +627,15 @@ function _fit_structured_gaussian_lss(fam::Gaussian, y, Xμ, Xσ, Zg, gidx, G, K
     # conditional mean u = D b, so the row contribution is w_i * u[g(i)] and the
     # exported mode is b = u ./ sd_group, the same latent scale as every other
     # family's mode (b ~ N(0, C), effect = sd * b).
+    _record_cond_fit!(scales, w .* blup[gidx])   # fitted-row modes for `fitted(fit)`
     report_sd && !reml && _attach_conditional_structured!(
         scales, w .* blup[gidx], blup ./ exp.(Zg * θ̂[(pμ+pσ+1):end]))
-    fit = _withranef(_withnll(DrmFit(fam, blocks, names, θ̂, V, -nll(θ̂), n,
-                                     converged, means, obs, scales), nll_ml), re)
+    fit = _withranef(_withnll(DrmFit(fam, blocks, names, θ̂, V, -nll_ml(θ̂), n,
+                                     converged, means, obs, scales), prior_rows === nothing ? nll_ml : nll), re)
     if reml
         return _withreml(fit, -nll_reml(θ̂), -nll_ml(θ̂))
     end
+    prior_rows === nothing || return _with_fixed_priors(fit, prior_rows, nll_ml)
     return fit
 end
 
@@ -639,8 +643,8 @@ end
 # Matches native drmTMB (`drm_spatial_coords_precision`): exponential
 # correlation exp(-d / range) with range = the median positive pairwise
 # distance (maximum if the median is not positive), plus 1e-6 on the diagonal.
-# The range is FIXED, unlike the intercept-only `_fit_spatial_gaussian`, which
-# estimates it. Rows of `coords` follow the first-seen levels of the group.
+# The range is FIXED, on the intercept-only route too (it is never estimated).
+# Rows of `coords` follow the first-seen levels of the group.
 function _gaussian_spatial_sd_kernel(coords, G::Int, grp::Symbol)
     # A 1-D transect may be a plain vector: read it as the G-by-1 column it means.
     cmat = coords isa AbstractVector{<:Real} ? reshape(Float64.(coords), :, 1) :
@@ -655,6 +659,9 @@ function _gaussian_spatial_sd_kernel(coords, G::Int, grp::Symbol)
         "at least two sites must have distinct coordinates."))
     rng = median(pos)
     (isfinite(rng) && rng > 0) || (rng = maximum(pos))
+    # Remember the fixed range for the fit being built: `_drm_run_controlled` stores it in
+    # `fit.scales[:spatial_range]` so `summary` can print it and `coef(fit, :range)` can return it.
+    task_local_storage(_SPATIAL_RANGE_KEY, Float64(rng))
     return exp.(-Dd ./ rng) + 1e-6 * I
 end
 

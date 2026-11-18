@@ -10,6 +10,7 @@
 #
 # This drives the public path (drm(method=:ML/:REML)) on synthetic data with a real
 # among-scale signal, and asserts the property on all four axes.
+using Random, LinearAlgebra
 
 @testset "REML q4: restricted correction reaches all four axes (#18)" begin
     Random.seed!(20260614)

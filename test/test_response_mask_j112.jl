@@ -129,7 +129,9 @@ end
     @test nobs(ref) == count(keep)
     @test coef(f) ≈ coef(ref) atol = 1e-9 rtol = 1e-9
     @test loglik(f) ≈ loglik(ref) atol = 1e-9 rtol = 1e-9
-    @test length(fitted(f)) == n
+    # fitted() returns the used rows only, as drmTMB does (#1324), and equals the complete-case fit's values
+    @test length(fitted(f)) == n - length(miss)
+    @test fitted(f) ≈ fitted(ref) atol = 1e-9 rtol = 1e-9
 
     # complete-case helper keeps the right rows
     d = with_logger_quiet() do

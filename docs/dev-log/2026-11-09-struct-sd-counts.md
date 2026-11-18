@@ -29,6 +29,8 @@ Same as the Beta structured route (2026-11-08), fixed before the new fits were c
 
 R references: drmTMB 0.8.1, library `~/drm_campaign_20261108/Rlib` on Totoro, one core, `nice -n 10`, about 45 s for 14 cells. Script and output: `test/fixtures/struct_sd_counts/ref_struct_sd_counts.R`, `reference_drmtmb.csv`. Datasets are the wave-8 gap-map data (400 rows).
 
+On 2026-11-15, the original script is retained in Git history but removed from the release candidate after a license audit. The independently authored `test/fixtures/struct_sd_counts/ref_struct_sd_counts_independent.R` reproduced the 99 stored rows byte-for-byte. The drmTMB source commit used for the reproduction was not recorded; this reproduction does not validate numerical correctness. PR #1274 must reconcile this change before it merges.
+
 ## Step 2: results
 
 Julia 1.10.12, Mac, `test/test_struct_sd_counts.jl` against `reference_drmtmb.csv` (drmTMB 0.8.1). All 12 cells pass T1, T2 and T3 by several orders of magnitude.

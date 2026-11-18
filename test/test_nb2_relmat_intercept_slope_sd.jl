@@ -155,11 +155,11 @@ end
     @test maximum(abs.(theta_hat .- theta0)) > 0.05
 
     # (b) Fitted values == predict at the training data; link == X beta.
-    @test predict(fit, data) ≈ fitted(fit) atol = 1e-10
+    @test predict(fit, data) ≈ fitted(fit; re = :zero) atol = 1e-10
     @test predict(fit, data; type = :link) ≈ Xmu * beta atol = 1e-10
-    @test fitted(fit) ≈ exp.(Xmu * beta) atol = 1e-8
+    @test fitted(fit; re = :zero) ≈ exp.(Xmu * beta) atol = 1e-8
     pp = predict_parameters(fit, data)
-    @test pp[:mu] ≈ fitted(fit) atol = 1e-10
+    @test pp[:mu] ≈ fitted(fit; re = :zero) atol = 1e-10
     # New data: unseen group label, new x values; random effects at zero.
     nd = (; x = [-0.7, 0.0, 0.5, 1.1], g = fill("never_seen", 4),
           z0 = zeros(4), z1 = zeros(4))

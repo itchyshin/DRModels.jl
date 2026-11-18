@@ -85,34 +85,35 @@ find_avonet_files <- function() {
   stop("AVONET and Hackett tree files not found in sibling checkouts.", call. = FALSE)
 }
 
-make_positive_branch_lengths <- function(tree, eps = 1e-8) {
-  tree$edge.length <- pmax(tree$edge.length, eps)
-  tree
+# Independently implemented from the supplied data-preparation contract.
+prepare_avonet_subset <- function(data, tree, species_count) {
+  columns <- c('Species3', 'Mass', 'Hand-Wing.Index', 'Beak.Length_Culmen')
+  data$Species3 <- gsub(' ', '_', as.character(data$Species3), fixed=TRUE)
+  data <- data[stats::complete.cases(data[, columns, drop=FALSE]), , drop=FALSE]
+  tips <- tree$tip.label[tree$tip.label %in% data$Species3]
+  if (species_count > length(tips)) stop('requested species exceeds complete-case tree matches')
+  tips <- tips[seq_len(species_count)]
+  data <- data[match(tips, data$Species3), , drop=FALSE]
+  data$log_mass <- log(data$Mass)
+  data$hand_wing_z <- as.numeric(scale(data[['Hand-Wing.Index']]))
+  data$beak_z <- as.numeric(scale(data$Beak.Length_Culmen))
+  tree <- ape::keep.tip(tree, tips)
+  tree$edge.length <- pmax(tree$edge.length, 1e-8)
+  data <- data[match(tree$tip.label, data$Species3), , drop=FALSE]
+  data$Species3 <- factor(data$Species3, levels=tree$tip.label)
+  data <- data[, c(columns, 'log_mass', 'hand_wing_z', 'beak_z'), drop=FALSE]
+  names(data)[1:4] <- c('species', 'mass', 'hand_wing', 'beak')
+  list(data=data, tree=tree)
 }
 
 make_avonet_phylo_data <- function(n_species) {
   paths <- find_avonet_files()
-  avonet <- utils::read.csv(paths$data, check.names = FALSE)
-  tree0 <- ape::read.tree(paths$tree)
-  dat0 <- data.frame(
-    species = gsub(" ", "_", avonet$Species3, fixed = TRUE),
-    mass = avonet$Mass,
-    hand_wing = avonet[["Hand-Wing.Index"]],
-    beak = avonet[["Beak.Length_Culmen"]]
+  prepared <- prepare_avonet_subset(
+    utils::read.csv(paths$data, check.names = FALSE),
+    ape::read.tree(paths$tree), n_species
   )
-  dat0 <- dat0[stats::complete.cases(dat0), , drop = FALSE]
-  available <- tree0$tip.label[tree0$tip.label %in% dat0$species]
-  if (n_species > length(available)) {
-    stop(sprintf("Requested %d species, only %d available.", n_species, length(available)), call. = FALSE)
-  }
-  available <- available[seq_len(n_species)]
-  tree <- make_positive_branch_lengths(ape::keep.tip(tree0, available))
-  dat <- dat0[match(tree$tip.label, dat0$species), , drop = FALSE]
-  dat$species <- factor(dat$species, levels = tree$tip.label)
-  dat$log_mass <- log(dat$mass)
-  dat$hand_wing_z <- as.numeric(scale(dat$hand_wing))
-  dat$beak_z <- as.numeric(scale(dat$beak))
-  list(data = dat, tree = tree, source = paths)
+  prepared$source <- paths
+  prepared
 }
 
 time_it <- function(expr_fn) {
