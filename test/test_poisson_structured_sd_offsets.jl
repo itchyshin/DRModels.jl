@@ -60,9 +60,9 @@ end
     fit = drm(formula, Poisson(); data, A, se = false)
 
     @test fit.converged
-    @test fitted(fit) ≈ exp.(coef(fit, :mu)[1] .+
+    @test fitted(fit; re = :zero) ≈ exp.(coef(fit, :mu)[1] .+
                               coef(fit, :mu)[2] .* x .+ log_exposure)
-    @test predict_parameters(fit, data)[:mu] ≈ fitted(fit)
+    @test predict_parameters(fit, data)[:mu] ≈ fitted(fit; re = :zero)
     theta = [0.1, 0.2, alpha...]
     Q, gidx = DRModels._general_cov_setup(A, group; normalize = false)
     Zg = hcat(ones(G), z_group)
@@ -76,7 +76,15 @@ end
     precision_fit = drm(formula, Poisson(); data, Ainv, se = false)
     @test precision_fit.converged
     @test precision_fit.loglik ≈ fit.loglik atol = 2e-5
-    @test fitted(precision_fit) ≈ fitted(fit)
+    @test fitted(precision_fit; re = :zero) ≈ exp.(coef(precision_fit, :mu)[1] .+
+                                        coef(precision_fit, :mu)[2] .* x .+ log_exposure)
+    @test precision_fit.nll(theta) ≈ oracle atol = 3e-4
+    no_offset_oracle = _poisson_offset_sd_laplace_oracle(
+        theta, y, hcat(ones(length(y)), x), Zg[gidx, :], gidx, Q)
+    @test abs(oracle - no_offset_oracle) > 1e-2
+    # Near an SD boundary, equivalent optimizations can stop at slightly
+    # different points. Check fitted values alongside the shared-point oracle.
+    @test fitted(precision_fit) ≈ fitted(fit) rtol = 1e-6
 end
 
 @testset "Poisson animal-slope SD regression includes row offsets" begin
@@ -102,7 +110,7 @@ end
     fit = drm(formula, Poisson(); data, A, se = false)
 
     @test fit.converged
-    @test fitted(fit) ≈ exp.(coef(fit, :mu)[1] .+
+    @test fitted(fit; re = :zero) ≈ exp.(coef(fit, :mu)[1] .+
                               coef(fit, :mu)[2] .* x .+ log_exposure)
     theta = [0.1, 0.2, alpha...]
     Q, gidx = DRModels._general_cov_setup(A, group; normalize = false)
@@ -150,9 +158,9 @@ end
     fit = drm(formula, Poisson(); data, tree, se = false, g_tol = 1e-6)
 
     @test fit.converged
-    @test fitted(fit) ≈ exp.(coef(fit, :mu)[1] .+
+    @test fitted(fit; re = :zero) ≈ exp.(coef(fit, :mu)[1] .+
                               coef(fit, :mu)[2] .* x .+ log_exposure)
-    @test predict_parameters(fit, data)[:mu] ≈ fitted(fit)
+    @test predict_parameters(fit, data)[:mu] ≈ fitted(fit; re = :zero)
     Zobs = hcat(ones(length(z)), z)
     theta = [0.1, 0.2, alpha...]
     oracle = _poisson_offset_sd_laplace_oracle(
@@ -183,9 +191,9 @@ end
     fit = drm(formula, Poisson(); data, K, se = false)
 
     @test fit.converged
-    @test fitted(fit) ≈ exp.(coef(fit, :mu)[1] .+
+    @test fitted(fit; re = :zero) ≈ exp.(coef(fit, :mu)[1] .+
                               coef(fit, :mu)[2] .* x .+ log_exposure)
-    @test predict_parameters(fit, data)[:mu] ≈ fitted(fit)
+    @test predict_parameters(fit, data)[:mu] ≈ fitted(fit; re = :zero)
 
     theta = [0.1, 0.2, alpha...]
     Q, gidx = DRModels._general_cov_setup(K, group)

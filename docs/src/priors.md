@@ -1,4 +1,4 @@
-# Fixed-effect priors
+# Coefficient and random-intercept SD priors
 
 This interface is experimental while its supported routes are being validated.
 
@@ -40,9 +40,9 @@ unpenalized. A normal prior with mean zero and standard deviation two has the
 same quadratic term, but includes its density constant.
 
 Gaussian models may also contain one independent random intercept in the mean
-formula, for example `bf(@formula(y ~ x + (1 | site)))`. Priors still apply
-only to the fixed coefficients of `mu` and `sigma`; the random-intercept SD is
-estimated without a prior. The default `:LA` Gaussian route integrates the
+formula, for example `bf(@formula(y ~ x + (1 | site)))`. Fixed-effect priors
+apply to coefficients of `mu` and `sigma`; an SD prior is optional, as shown
+below. The default `:LA` Gaussian route integrates the
 intercept exactly and adds the fixed-effect priors once to the marginal
 negative log-likelihood. Explicit `marginal = :Laplace` is not supported for
 a mean random intercept.
@@ -57,13 +57,40 @@ resolve_priors(group_form, Gaussian(); data = grouped, priors = group_priors)
 group_fit = drm(group_form, Gaussian(); data = grouped, priors = group_priors)
 ```
 
-The supported routes are Gaussian `mu` and `sigma` (with at most that one mean
-random intercept) and fixed-effect binomial-logit `mu`. Random slopes, multiple
-or structured random effects, random-effect SD formulas, REML, existing
-phylogenetic penalties, missing responses or predictors, non-unit weights, and
-other families are refused. For separated binomial data,
+The supported routes are Gaussian `mu` and `sigma` (with up to two distinct iid
+mean random intercepts) and fixed-effect binomial-logit `mu`. Normal priors on
+Gaussian `mu` and `sigma` coefficients also support one phylogenetic mean
+intercept with matching phylogenetic SD regression and fixed residual-SD
+predictors. These priors do not target the phylogenetic SD-regression
+coefficients. This phylogenetic route currently uses the dense solver and
+refuses the automatically selected sparse route for more than 500 groups.
+Omit `weights` on this route; explicit weights are refused, including unit weights.
+Random slopes, other structured combinations, REML, existing phylogenetic
+penalties, missing responses or predictors, non-unit weights, and other
+families are refused. Supply the tree again when updating a phylogenetic fit.
+The R-to-Julia bridge for this route is still being checked. For separated
+binomial data,
 a finite optimum requires all separating directions to be regularized; a prior
 on just one coefficient does not guarantee this.
+
+For example, the following small data set demonstrates the phylogenetic route.
+Its four tips are too few for a reliable scientific analysis; use it to inspect
+the API, not to assess uncertainty.
+
+```julia
+using DRModels
+phy = DRModels.augmented_phy("((a:0.5,b:0.5):0.5,(c:0.5,d:0.5):0.5);")
+d = (y = [.2,.7,.35,1.1,.8,1.25,1.4,1.1,1.9,1.5,2.15,.5],
+     x = [-1.2,-.8,-.7,-.2,.1,.15,.4,.6,.8,1.,1.2,-.3],
+     sp = ["a","a","b","b","b","c","c","d","d","d","d","a"],
+     z = [-1.,-1.,-.35,-.35,-.35,.4,.4,1.,1.,1.,1.,-1.])
+f = bf(@formula(y ~ x + phylo(1 | sp)), @formula(sigma ~ x),
+       @formula(sd(sp, phylogenetic) ~ z))
+p = drm_priors(drm_prior_normal(dpar="mu", coef="x", mean=.1, sd=.7),
+               drm_prior_normal(dpar="sigma", coef="x", mean=-.2, sd=.5))
+resolve_priors(f, Gaussian(); data=d, priors=p)
+fit = drm(f, Gaussian(); data=d, tree=phy, priors=p)
+```
 
 Active prior fits are labelled `:MAP`. `loglik(fit)` is the data log-likelihood
 at the penalized estimate. The stored objective includes the prior. Its inverse
@@ -72,3 +99,89 @@ automatic frequentist covariance nor a full posterior interval. Likelihood
 ratio tests, AIC/BIC, confidence intervals, likelihood profiles and bootstrap
 refits are refused for these fits. Prediction standard errors and simulation are
 not yet qualified.
+
+## Gamma prior on a random-intercept SD
+
+A Gaussian ML model with one or two distinct unlabelled iid random intercepts
+in `mu` can use Gamma densities on selected natural standard deviations. Supply each exact
+name and inspect the resolved target before fitting:
+
+```julia
+sd_prior = drm_prior_sd_gamma(dpar = "mu", group = "site",
+                              coef = "(Intercept)", shape = 2, rate = 3)
+priors = drm_priors(sd_prior,
+                    drm_prior_normal(dpar = "mu", coef = "x", mean = 0, sd = 2))
+resolve_priors(group_form, Gaussian(); data = grouped, priors = priors)
+fit = drm(group_form, Gaussian(); data = grouped, priors = priors)
+```
+
+For crossed intercepts, name each group to choose which SD to regularize:
+
+```julia
+crossed = merge(grouped, (observer = [1, 2, 1, 2, 2, 1, 2, 1],))
+cross_form = bf(@formula(y ~ x + (1 | site) + (1 | observer)))
+cross_priors = drm_priors(
+    drm_prior_sd_gamma(dpar = "mu", group = "site", shape = 2, rate = 3),
+    drm_prior_sd_gamma(dpar = "mu", group = "observer", shape = 2.5, rate = 2))
+resolve_priors(cross_form, Gaussian(); data = crossed, priors = cross_priors)
+cross_fit = drm(cross_form, Gaussian(); data = crossed, priors = cross_priors)
+```
+
+`shape` must be finite and greater than one, and `rate` must be finite and
+positive. The Gamma density is with respect to the SD itself; it does not add
+a log-SD Jacobian. The normalized penalty is added once for the shared SD,
+not once per group. The fit is penalized ML, or SD-scale MAP: `loglik(fit)`
+remains the data log likelihood at the penalized estimate. The fixed and SD
+penalties and total objective are stored separately in `fit.penalty`.
+`update` repeats the prior unless explicitly replaced or dropped by changing
+the estimator.
+
+This route requires complete observations, unit weights and distinct iid
+mean random-intercept groups; random slopes, more than two or structured blocks and REML
+are outside this slice. Write the random intercept only once in the formula.
+Two grouping columns that encode the same partition are refused because their
+separate SDs cannot be identified from the likelihood.
+Currently, Julia's `@formula` collapses repeated identical terms such as
+`(1 | site) + (1 | site)` before the prior target is checked. The resolver
+therefore cannot reject that spelling as a duplicate; drmTMB in R rejects it.
+This difference remains unresolved.
+
+Confidence intervals, likelihood comparisons, AIC,
+BIC and uncertainty-dependent prediction or simulation are refused for active
+priors. An unpenalized comparison requires unpenalized refits. Choosing the
+prior depends on the response units: changing units requires changing its rate.
+
+## Specifying priors in a table
+
+A Tables.jl-compatible column table can use the `prior`, `class` and `coef`
+columns. This interface follows a documented subset of glmmTMB's prior-table
+style; it does not accept every glmmTMB prior class or distribution. For the
+crossed model above, the following table regularizes the fixed slope and the
+`site` random-intercept SD:
+
+```julia
+prior_table = (prior = ["normal(0,2)", "gamma(0.6666666666666666,2)"],
+               class = ["fixef", "ranef_sd"],
+               coef = ["x", "site"])
+resolve_priors(cross_form, Gaussian(); data = crossed, priors = prior_table)
+table_fit = drm(cross_form, Gaussian(); data = crossed, priors = prior_table)
+```
+
+For `fixef`, `normal(mean, sd)` is a normalized normal density and
+`ridge(lambda)` is an unnormalized quadratic penalty. A blank `coef` selects
+all non-intercept coefficients; use `(Intercept)` to select the intercept.
+A coefficient literally named `all` cannot be selected by a prior table,
+including through a blank selector, because that name is reserved for a
+constructor wildcard. Optional `dpar` selects `mu` or the supported Gaussian `sigma` predictor and
+defaults to `mu`.
+
+For `ranef_sd`, `gamma(mean, shape)` targets an SD on its natural scale.
+This table convention uses **mean and shape**, whereas
+`drm_prior_sd_gamma()` uses **shape and rate**: `rate = shape / mean`. The
+shape must exceed one. With no `group` column, `coef = "site"` selects the
+`site` intercept; a blank `coef` selects every supported random-intercept SD.
+Alternatively, specify `group = "site"` and `coef = "(Intercept)"`.
+Overlapping, unknown and unsupported selections are rejected. Random slopes,
+correlation priors, other structured effects and other families remain outside this
+slice. The original table is stored in `table_fit.penalty.input_table`; `update()`
+replays the resolved targets rather than expanding a blank selector again.

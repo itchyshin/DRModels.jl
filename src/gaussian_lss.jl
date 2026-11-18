@@ -92,7 +92,7 @@ function _lss_only_gaussian_guard(f::DrmFormula, fam)
     (isempty(_sd_parts(f)) && isempty(_sdphylo_parts(f))) ||
         throw(ArgumentError("drm: random-effect `sd(group) ~ …` formulas are currently " *
             "supported for Gaussian LSS models and narrow ordinary IID routes in " *
-            "Binomial, Poisson, NegBinomial2, and Gamma (got $(nameof(typeof(fam))))."))
+            "Binomial, Poisson, NegBinomial2, Gamma, and Beta (got $(nameof(typeof(fam))))."))
     return nothing
 end
 
@@ -320,6 +320,7 @@ function _fit_ranef_gaussian_lss(fam::Gaussian, y, Xμ, Xσ, Zg, gidx, G, nmμ, 
         [C[k] / (1 / exp(2 * ησb[k]) + S[k]) for k in 1:G]
     end
     re = Dict(Symbol(grp) => blup)
+    _record_cond_fit!(scales, (w === nothing ? ones(n) : w) .* blup[gidx])   # fitted-row modes for `fitted(fit)`
     fit = _withranef(_withnll(DrmFit(fam, blocks, names, θ̂, V, -nll(θ̂), n,
                                      converged, means, obs, scales), nll_ml), re)
     if reml
@@ -398,7 +399,9 @@ function _lss_phylo_group_index(tree, labels, grp::Symbol)
     present[gidx] .= true
     if !all(present)
         absent = join(phy.leaf_names[findall(.!present)], ", ")
-        throw(ArgumentError("drm: phylo LSS full input for `$grp` must contain all tree tips; absent: $absent"))
+        throw(ArgumentError("drm: phylo LSS full input for `$grp` must contain all tree tips; absent: $absent. " *
+            "The tree has tips with no row in the data; prune the tree to the species in the data " *
+            "(for example `ape::keep.tip(tree, observed_species)` in R) before fitting."))
     end
     return phy, gidx, p
 end
@@ -408,7 +411,7 @@ end
 function _drm_gaussian_lss_phylo(f::DrmFormula, fam::Gaussian, sdpp, re, structured,
                                  structured_sigma, sigma_re, metav, has_missing_response,
                                  y, Xμ, Xσ, nmμ, nmσ, data, tree, g_tol, method, penalty;
-                                 algorithm::Symbol = :auto, sparse = nothing)
+                                 algorithm::Symbol = :auto, sparse = nothing, prior_rows = nothing)
     length(sdpp) == 1 ||
         throw(ArgumentError("drm: one `sd_phylo(group) ~ …` formula per model (got $(length(sdpp)))."))
     sgrp, srhs = sdpp[1]
@@ -461,6 +464,7 @@ function _drm_gaussian_lss_phylo(f::DrmFormula, fam::Gaussian, sdpp, re, structu
 
     use_sparse = (sparse === true) || (algorithm in (:sparse, :sparse_lbfgs)) || (algorithm === :auto && G > 500)
     if use_sparse
+        prior_rows === nothing || throw(ArgumentError("fixed priors with phylogenetic SD regression are not yet supported by the sparse route"))
         return _fit_phylo_gaussian_lss_sparse(fam, y, Xμ, Xσ, Zg, gidx, G, phy, nmμ, nmσ, nmsd,
                                               sgrp, g_tol; reml = method === :REML)
     else
@@ -468,7 +472,7 @@ function _drm_gaussian_lss_phylo(f::DrmFormula, fam::Gaussian, sdpp, re, structu
         size(Kmat) == (G, G) ||
             error("structured matrix must be $(G)×$(G) (the number of `$sgrp` levels)")
         return _fit_structured_gaussian_lss(fam, y, Xμ, Xσ, Zg, gidx, G, Kmat, nmμ, nmσ, nmsd,
-                                            sgrp, g_tol; reml = method === :REML)
+                                            sgrp, g_tol; reml = method === :REML, prior_rows)
     end
 end
 
@@ -494,7 +498,7 @@ end
 function _fit_structured_gaussian_lss(fam::Gaussian, y, Xμ, Xσ, Zg, gidx, G, K,
                                       nmμ, nmσ, nmsd, grp, g_tol;
                                       block::Symbol = :sd_phylo, reml::Bool = false,
-                                      loading = nothing, report_sd::Bool = false)
+                                      loading = nothing, report_sd::Bool = false, prior_rows = nothing)
     n = length(y)
     # `loading` is the per-observation weight of the structured effect: `nothing`
     # is a structured intercept (weight 1); a numeric vector `x` makes it the
@@ -558,7 +562,7 @@ function _fit_structured_gaussian_lss(fam::Gaussian, y, Xμ, Xσ, Zg, gidx, G, K
         return nll_ml_θ + 0.5 * logdet(chX) - const_pμ
     end
 
-    nll = reml ? nll_reml : nll_ml
+    nll = reml ? nll_reml : prior_rows === nothing ? nll_ml : θ -> nll_ml(θ) + _fixed_prior_value(prior_rows, θ)
 
     βμ0 = Xμ \ y; res0 = y - Xμ * βμ0
     θ0 = zeros(pμ + pσ + psd)
@@ -623,13 +627,15 @@ function _fit_structured_gaussian_lss(fam::Gaussian, y, Xμ, Xσ, Zg, gidx, G, K
     # conditional mean u = D b, so the row contribution is w_i * u[g(i)] and the
     # exported mode is b = u ./ sd_group, the same latent scale as every other
     # family's mode (b ~ N(0, C), effect = sd * b).
+    _record_cond_fit!(scales, w .* blup[gidx])   # fitted-row modes for `fitted(fit)`
     report_sd && !reml && _attach_conditional_structured!(
         scales, w .* blup[gidx], blup ./ exp.(Zg * θ̂[(pμ+pσ+1):end]))
-    fit = _withranef(_withnll(DrmFit(fam, blocks, names, θ̂, V, -nll(θ̂), n,
-                                     converged, means, obs, scales), nll_ml), re)
+    fit = _withranef(_withnll(DrmFit(fam, blocks, names, θ̂, V, -nll_ml(θ̂), n,
+                                     converged, means, obs, scales), prior_rows === nothing ? nll_ml : nll), re)
     if reml
         return _withreml(fit, -nll_reml(θ̂), -nll_ml(θ̂))
     end
+    prior_rows === nothing || return _with_fixed_priors(fit, prior_rows, nll_ml)
     return fit
 end
 
@@ -637,10 +643,12 @@ end
 # Matches native drmTMB (`drm_spatial_coords_precision`): exponential
 # correlation exp(-d / range) with range = the median positive pairwise
 # distance (maximum if the median is not positive), plus 1e-6 on the diagonal.
-# The range is FIXED, unlike the intercept-only `_fit_spatial_gaussian`, which
-# estimates it. Rows of `coords` follow the first-seen levels of the group.
+# The range is FIXED, on the intercept-only route too (it is never estimated).
+# Rows of `coords` follow the first-seen levels of the group.
 function _gaussian_spatial_sd_kernel(coords, G::Int, grp::Symbol)
-    cmat = Matrix{Float64}(coords)
+    # A 1-D transect may be a plain vector: read it as the G-by-1 column it means.
+    cmat = coords isa AbstractVector{<:Real} ? reshape(Float64.(coords), :, 1) :
+           Matrix{Float64}(coords)
     size(cmat, 1) == G ||
         throw(ArgumentError("coords must have $G rows (one per `$grp` level)"))
     all(isfinite, cmat) || throw(ArgumentError("coords must be finite"))
@@ -651,6 +659,9 @@ function _gaussian_spatial_sd_kernel(coords, G::Int, grp::Symbol)
         "at least two sites must have distinct coordinates."))
     rng = median(pos)
     (isfinite(rng) && rng > 0) || (rng = maximum(pos))
+    # Remember the fixed range for the fit being built: `_drm_run_controlled` stores it in
+    # `fit.scales[:spatial_range]` so `summary` can print it and `coef(fit, :range)` can return it.
+    task_local_storage(_SPATIAL_RANGE_KEY, Float64(rng))
     return exp.(-Dd ./ rng) + 1e-6 * I
 end
 
@@ -689,8 +700,23 @@ function _drm_gaussian_structured_sd_slope(f::DrmFormula, fam::Gaussian, structu
             "coefficient with fixed-effect `sigma` only (no ordinary or sigma random effects, `meta_V`, or structured `sigma`)."))
     has_missing_response && throw(ArgumentError(
         "drm: Gaussian structured $what SD regression requires observed responses; remove incomplete rows first."))
-    method === :REML && throw(ArgumentError(
-        "drm: Gaussian structured $what SD regression supports maximum likelihood only."))
+    reml = method === :REML
+    if reml
+        # REML is admitted for the structured INTERCEPT with its own `sd(g, <level>) ~ …` formula
+        # and a constant residual scale: exact (the marginal is Gaussian-linear in beta_mu) and
+        # the cells drmTMB 0.8.1 fits with REML = TRUE. The slope-only form and a `sigma`
+        # predictor have no R reference here, so they stay refused.
+        slope === nothing || throw(ArgumentError(
+            "drm: Gaussian structured $what SD regression supports maximum likelihood only for " *
+            "`$term`: method = :REML is validated for the structured intercept " *
+            "`$kind(1 | $grp)` with `sd($grp, $kind) ~ …` only."))
+        size(Xσ, 2) == 1 || throw(ArgumentError(
+            "drm: Gaussian `$term` SD regression: method = :REML requires a constant residual " *
+            "scale (`sigma ~ 1`); a `sigma` predictor is not validated against drmTMB there. " *
+            "Use `sigma ~ 1` or method = :ML."))
+        rank(Xμ) == size(Xμ, 2) || throw(ArgumentError(
+            "drm: method = :REML requires a full-rank `mu` fixed-effect design."))
+    end
     algorithm === :auto || throw(ArgumentError(
         "drm: `algorithm = :$algorithm` is not implemented for Gaussian structured $what SD regression."))
     for (pname, _) in f.forms
@@ -724,7 +750,261 @@ function _drm_gaussian_structured_sd_slope(f::DrmFormula, fam::Gaussian, structu
     loading = slope === nothing ? nothing :
         _poisson_animal_slope_loading(data, slope, length(y); label = "Gaussian $kind")
     return _fit_structured_gaussian_lss(fam, y, Xμ, Xσ, Zg, gidx, G, Cmat, nmμ, nmσ, nmsd,
-                                        grp, g_tol; block = :sd, loading, report_sd = true)
+                                        grp, g_tol; block = :sd, loading, report_sd = true, reml)
+end
+
+# Independent two-field structured intercept-plus-slope with one SD formula per
+# coefficient: `y ~ x + animal|relmat(1 + x | g)`, `sd(g, <level>, coef(intercept)) ~ z0`,
+# `sd(g, <level>, coef(x)) ~ z1`. Model (rho fixed at 0):
+#   y_i = X_i b + s0_{g(i)} f0_{g(i)} + x_i s1_{g(i)} f1_{g(i)} + e_i,
+#   f0, f1 ~ iid N(0, C) (C RAW, not normalised), s_k = exp(Z_k alpha_k).
+# Exact marginal: y ~ N(X b, sigma_i^2 I + sum_k (w_k w_k') o (D_k C D_k)[g, g]),
+# w_0 = 1, w_1 = x. Dense n x n Cholesky, ForwardDiff, ML only, n <= 5000.
+function _drm_gaussian_structured_q2_sd(f::DrmFormula, fam::Gaussian, kind::Symbol,
+                                        structured, re, sigma_re, metav, structured_sigma,
+                                        has_missing_response, y, Xμ, Xσ, nmμ, nmσ, data,
+                                        K, A, coords, g_tol, method, algorithm;
+                                        tree = nothing)
+    fn = _q2_marker(kind)
+    level = _q2_target_level(kind)
+    block = _animal_intercept_slope(Dict(f.forms)[:mu]; kind = fn,
+                                    allow_label = true)
+    grp, slope = block.group, block.slope
+    correlated = block.label !== nothing
+    term = correlated ? "$kind(1 + $slope | $(block.label) | $grp)" : "$kind(1 + $slope | $grp)"
+    structured == (kind, grp) || throw(ArgumentError(
+        "drm: Gaussian `$term` SD regression requires it to be the only structured term."))
+    _collect_structured(Dict(f.forms)[:mu]) == [(kind, grp)] || throw(ArgumentError(
+        "drm: Gaussian `$term` SD regression requires exactly one structured term."))
+    targets = _sd_target_parts(f)
+    length(targets) == 2 || throw(ArgumentError(
+        "drm: Gaussian `$term` needs one SD formula for the intercept and one for the slope " *
+        "(`sd($grp, $level, coef(intercept)) ~ …` and `sd($grp, $level, coef($slope)) ~ …`)."))
+    all(item -> item.target.level === level && item.target.group === grp &&
+        item.target.dpar === :mu && item.target.block === nothing, targets) ||
+        throw(ArgumentError("drm: Gaussian `$term` SD regression requires two matching `$level` mean targets."))
+    isempty(_sdphylo_parts(f)) || throw(ArgumentError(
+        "drm: Gaussian `$term` SD regression cannot be combined with an intercept-only " *
+        "`sd($grp, phylogenetic) ~ …` formula."))
+    Set(item.target.member for item in targets) == Set((:intercept, slope)) ||
+        throw(ArgumentError("drm: Gaussian `$term` SD formulas must select " *
+            "`coef(intercept)` and `coef($slope)` exactly once."))
+    isempty(re) && isempty(sigma_re) && metav === nothing && structured_sigma === nothing ||
+        throw(ArgumentError("drm: Gaussian `$term` SD regression takes fixed-effect `sigma` only " *
+            "(no ordinary or sigma random effects, `meta_V`, or structured `sigma`)."))
+    has_missing_response && throw(ArgumentError(
+        "drm: Gaussian `$term` SD regression requires observed responses; remove incomplete rows first."))
+    reml = method === :REML
+    if reml
+        # Native drmTMB admits REML for the structured q2 SD cells it has validated:
+        # `phylo` (labelled or not, any fixed-effect `sigma`), and `animal` / `relmat` /
+        # `spatial` only UNLABELLED with a constant residual scale (`sigma ~ 1`).
+        # The gate mirrors that exactly (drmTMB `drm_validate_reml_spec`,
+        # `drm_reml_admits_mean_structured_provider`); everything else stays refused
+        # rather than being relabelled ML.
+        if kind !== :phylo
+            correlated && throw(ArgumentError(
+                "drm: Gaussian `$term` SD regression: method = :REML is not implemented for the " *
+                "labelled (correlated) `$kind` block; native drmTMB refuses it too. Use the " *
+                "unlabelled `$kind(1 + $slope | $grp)` or method = :ML."))
+            size(Xσ, 2) == 1 || throw(ArgumentError(
+                "drm: Gaussian `$term` SD regression: method = :REML requires a constant residual " *
+                "scale (`sigma ~ 1`) for `$kind`; native drmTMB refuses heteroscedastic sigma here " *
+                "too. Use `sigma ~ 1` or method = :ML."))
+        end
+        rank(Xμ) == size(Xμ, 2) || throw(ArgumentError(
+            "drm: method = :REML requires a full-rank `mu` fixed-effect design."))
+    end
+    algorithm === :auto || throw(ArgumentError(
+        "drm: `algorithm = :$algorithm` is not implemented for Gaussian `$term` SD regression."))
+    allowed = Set(vcat([:mu, :sigma], [item.key for item in targets]))
+    all(first(pair) in allowed for pair in f.forms) || throw(ArgumentError(
+        "drm: Gaussian `$term` SD regression supports only `mu`, `sigma` and its two SD formulas."))
+    gidx, G = kind in (:phylo, :spatial) ? (Int[], 0) : _group_index(getproperty(data, grp))
+    Cmat = if kind in (:phylo, :spatial)
+        Ck, gidx, G = _structured_q2_kernel(kind, grp, getproperty(data, grp);
+            tree, K, A, coords, who = "drm: Gaussian `$term` SD regression")
+        Ck
+    elseif kind === :relmat
+        (A === nothing && coords === nothing && tree === nothing) || throw(ArgumentError(
+            "drm: Gaussian relmat SD regression uses `K = …` only."))
+        K === nothing && throw(ArgumentError("$term needs the covariance matrix `K = …`"))
+        Matrix{Float64}(K)
+    else
+        (K === nothing && coords === nothing && tree === nothing) || throw(ArgumentError(
+            "drm: Gaussian animal SD regression uses `A = …` only."))
+        A === nothing && throw(ArgumentError("$term needs the relatedness matrix `A = …`"))
+        Matrix{Float64}(A)
+    end
+    size(Cmat) == (G, G) || throw(ArgumentError(
+        "structured matrix must be $(G)×$(G) (the number of `$grp` levels)"))
+    all(isfinite, Cmat) || throw(ArgumentError("structured matrix must be finite"))
+    ordered = map((:intercept, slope)) do member
+        only(filter(item -> item.target.member === member, targets))
+    end
+    Zgs = Matrix{Float64}[]
+    nmsds = Vector{String}[]
+    for item in ordered
+        Zg, names = _sd_group_design(f.response, item.rhs, data, gidx, G, grp;
+                                     schema_cache = f.schema_cache, schema_key = item.key)
+        size(Zg, 2) <= G && rank(Zg) == size(Zg, 2) || throw(ArgumentError(
+            "drm: Gaussian `$term` SD target `coef($(item.target.member))` has a rank-deficient group-level design."))
+        push!(Zgs, Matrix{Float64}(Zg)); push!(nmsds, names)
+    end
+    x = _poisson_animal_slope_loading(data, slope, length(y); label = "Gaussian $kind")
+    if all(==(first(x)), x) && isequal(Zgs[1], Zgs[2])
+        throw(ArgumentError("drm: Gaussian `$term` SD regression cannot separate the intercept and " *
+            "slope variances when `$slope` is constant and both SD formulas have identical group-level designs."))
+    end
+    blocks = Symbol[_sd_target_block(item.target; disambiguate = true) for item in ordered]
+    return _fit_structured_gaussian_q2_sd(fam, y, Xμ, Xσ, Zgs, gidx, G, Cmat, x,
+                                          nmμ, nmσ, nmsds, blocks, grp, g_tol; correlated, reml)
+end
+
+# `correlated = true` (labelled `kind(1 + x | p | g)`) adds drmTMB's
+# `eta_cor_phylo` as the last parameter: rho = 0.999999 tanh(eta) and
+# Cov(b0_g, b1_h) = rho s0_g s1_h C[g, h], so the marginal gains
+#   rho (s0_g s1_h x_j + x_i s1_g s0_h) C[g(i), g(j)].
+function _fit_structured_gaussian_q2_sd(fam::Gaussian, y, Xμ, Xσ, Zgs, gidx, G, C, x,
+                                        nmμ, nmσ, nmsds, blocks, grp, g_tol;
+                                        correlated::Bool = false, reml::Bool = false)
+    n = length(y)
+    n ≤ 5000 || throw(ArgumentError("drm: the Gaussian structured intercept-and-slope SD route " *
+        "assembles a $(n)×$(n) marginal covariance and is limited to 5000 rows."))
+    pμ, pσ = size(Xμ, 2), size(Xσ, 2)
+    ps = size.(Zgs, 2)
+    r0 = (pμ + pσ + 1):(pμ + pσ + ps[1])
+    r1 = (pμ + pσ + ps[1] + 1):(pμ + pσ + ps[1] + ps[2])
+    Csym = Symmetric(_finite_user_matrix(C, "C"))
+    const_2pi = 0.5 * n * log(2π)
+    const_pμ = 0.5 * pμ * log(2π)
+    # One objective for ML and REML. REML (Patterson-Thompson, the restriction native
+    # drmTMB gets by moving `beta_mu` into the Laplace block, exact here because the
+    # likelihood is quadratic in beta_mu) adds `0.5 logdet(Xμ' V^-1 Xμ) - 0.5 pμ log 2π`
+    # to the ML negative log-likelihood; the optimiser still carries βμ in θ, and at the
+    # optimum it equals the GLS estimate because the added term does not depend on βμ.
+    # Marginal covariance V(θ) = diag(σ²) + the structured field(s) (β_μ plays no part).
+    function build_V(θ)
+        βσ = θ[pμ+1:pμ+pσ]
+        ησ = Xσ * βσ
+        T = eltype(θ)
+        s0 = exp.(Zgs[1] * θ[r0]); s1 = exp.(Zgs[2] * θ[r1])
+        Σ0 = (s0 * s0') .* Csym; Σ1 = (s1 * s1') .* Csym
+        Vm = Matrix{T}(undef, n, n)
+        @inbounds for j in 1:n, i in 1:n
+            gi, gj = gidx[i], gidx[j]
+            Vm[i, j] = Σ0[gi, gj] + x[i] * x[j] * Σ1[gi, gj]
+        end
+        if correlated
+            ρ = _Q2_RHO_BOUND * tanh(θ[end])
+            Σ01 = (s0 * s1') .* Csym          # Cov(b0_g, b1_h) / ρ
+            @inbounds for j in 1:n, i in 1:n
+                gi, gj = gidx[i], gidx[j]
+                Vm[i, j] += ρ * (x[j] * Σ01[gi, gj] + x[i] * Σ01[gj, gi])
+            end
+        end
+        @inbounds for i in 1:n
+            Vm[i, i] += exp(2 * ησ[i])
+        end
+        return Vm
+    end
+    # ML (`restricted = false`) or REML negative log-likelihood. REML (Patterson-Thompson, the
+    # restriction native drmTMB gets by moving `beta_mu` into the Laplace block, exact here
+    # because the likelihood is quadratic in beta_mu) adds `0.5 logdet(Xμ' V^-1 Xμ) -
+    # 0.5 pμ log 2π` to the ML value. With `profile = true` the mean is the GLS estimate at
+    # θ (the first pμ entries of θ are ignored): the restricted likelihood as a function of
+    # the variance parameters alone, which is what TMB optimises once beta_mu is integrated.
+    function nll_full(θ, restricted::Bool; profile::Bool = false)
+        T = eltype(θ)
+        Vfac = cholesky(Symmetric(build_V(θ)); check = false)
+        issuccess(Vfac) || return convert(T, 1e18)
+        XtVinvX = Xμ' * (Vfac \ Xμ)
+        chX = cholesky(Symmetric(XtVinvX); check = false)
+        βμ = profile ? (chX \ (Xμ' * (Vfac \ y))) : θ[1:pμ]
+        r = y .- Xμ * βμ
+        nll_ml_θ = 0.5 * (logdet(Vfac) + dot(r, Vfac \ r)) + const_2pi
+        restricted || return nll_ml_θ
+        issuccess(chX) || return nll_ml_θ + convert(T, REML_NONPD_PENALTY)
+        return nll_ml_θ + 0.5 * logdet(chX) - const_pμ
+    end
+    nll_ml(θ) = nll_full(θ, false)
+    nll_reml(θ) = nll_full(θ, true)
+    nll = reml ? nll_reml : nll_ml
+    βμ0 = Xμ \ y; res0 = y - Xμ * βμ0
+    θ0 = zeros(pμ + pσ + sum(ps) + (correlated ? 1 : 0))
+    θ0[1:pμ] .= βμ0
+    θ0[pμ+1] = log(std(res0) / sqrt(2) + eps())
+    s_int = std(res0) / sqrt(2)
+    s_slp = s_int / max(sqrt(sum(abs2, x) / n), eps())
+    θ0[r0] .= Zgs[1] \ fill(log(s_int + eps()), G)
+    θ0[r1] .= Zgs[2] \ fill(log(s_slp + eps()), G)
+    opts = Optim.Options(g_tol = g_tol, x_abstol = NaN, x_reltol = NaN,
+                         f_abstol = NaN, f_reltol = NaN)
+    res = if reml
+        # Optimise the restricted likelihood over the variance parameters only, with β_μ
+        # profiled out by GLS (as TMB does after integrating it). Carrying β_μ as a free
+        # coordinate made the fit stop in a poorer basin than native drmTMB's on a relmat
+        # fixture (5 log-lik units short); the profile has no such coordinate.
+        nll_prof(φ) = nll_full(vcat(zeros(eltype(φ), pμ), φ), true; profile = true)
+        rφ = Optim.optimize(nll_prof, θ0[(pμ+1):end], Optim.LBFGS(), opts; autodiff = :forward)
+        φ̂ = Optim.minimizer(rφ)
+        Vfaĉ = _pd_chol_or_throw(build_V(vcat(zeros(pμ), φ̂)), "the REML-optimum covariance V (GLS step)")
+        β̂ = Symmetric(Xμ' * (Vfaĉ \ Xμ)) \ (Xμ' * (Vfaĉ \ y))
+        # Same return shape as the unrestricted route: the full vector, finished by a
+        # zero-step LBFGS (the gradient in β_μ vanishes at the GLS value).
+        Optim.optimize(nll, vcat(β̂, φ̂), Optim.LBFGS(), opts; autodiff = :forward)
+    else
+        # Same unguarded-probe hazard as the ordinary q2/q3/q4 route (see
+        # `_fit_gaussian_ordinary_q34_sd`): the first L-BFGS step is the raw gradient, so a
+        # probe can overflow `exp(2 eta_sigma)` or the SD scales, the objective or its AD
+        # gradient is NaN, and HagerZhang asserts. Sentinel + BackTracking retry, optimiser
+        # only; the reported value, Hessian and gradient check use the raw `nll`.
+        _optimize_with_fallback(nll, θ0, g_tol; opts = opts)
+    end
+    θ̂ = Optim.minimizer(res)
+    H = ForwardDiff.hessian(nll, θ̂)
+    V = _vcov_from_hessian(H)
+    converged = !Optim.iteration_limit_reached(res) &&
+        _unitfree_converged(H, ForwardDiff.gradient(nll, θ̂))
+    block_list = Pair{Symbol,UnitRange{Int}}[:mu => 1:pμ, :sigma => (pμ+1):(pμ+pσ),
+                                             blocks[1] => r0, blocks[2] => r1]
+    name_list = Pair{Symbol,Vector{String}}[:mu => nmμ, :sigma => nmσ,
+                                            blocks[1] => nmsds[1], blocks[2] => nmsds[2]]
+    if correlated
+        push!(block_list, :recov => length(θ̂):length(θ̂))
+        push!(name_list, :recov => ["$(grp):atanh_rho"])
+    end
+    sd0 = exp.(Zgs[1] * θ̂[r0]); sd1 = exp.(Zgs[2] * θ̂[r1])
+    scales = Dict{Symbol,Vector{Float64}}(
+        :sigma => exp.(Xσ * θ̂[(pμ+1):(pμ+pσ)]),
+        blocks[1] => sd0[gidx], blocks[2] => sd1[gidx],
+        Symbol(string(blocks[1]), "_group") => sd0,
+        Symbol(string(blocks[2]), "_group") => sd1)
+    # Conditional modes at θ̂ (closed form: the model is Gaussian). With V = Σ_re + D,
+    # D = diag(σ²), E[random part | y] = Σ_re V⁻¹ r = r − D V⁻¹ r, and the unit-scale
+    # field modes are E[z_k | y] = Cov(z_k, y) V⁻¹ r (z0, z1 ~ N(0, C), Cov(z0, z1) = ρ C).
+    # `build_V` already carries the residual diagonal D.
+    let Vfull = build_V(θ̂), σ2 = exp.(2 .* (Xσ * θ̂[(pμ+1):(pμ+pσ)])),
+        r = y .- Xμ * θ̂[1:pμ]
+        Vfac = cholesky(Symmetric(Vfull); check = false)
+        if issuccess(Vfac)
+            w = Vfac \ r
+            eta_re = r .- σ2 .* w
+            ρ = correlated ? _Q2_RHO_BOUND * tanh(θ̂[end]) : 0.0
+            Cm = Matrix(Csym)
+            s0, s1 = sd0[gidx], sd1[gidx]
+            Cz0 = Cm[:, gidx] .* (s0 .+ ρ .* x .* s1)'     # Cov(z0_g, y_i)
+            Cz1 = Cm[:, gidx] .* (x .* s1 .+ ρ .* s0)'     # Cov(z1_g, y_i)
+            _attach_conditional_structured!(scales, eta_re, Cz0 * w, Cz1 * w)
+        else
+            _mark_cond_failed!(scales)
+        end
+    end
+    fit = DrmFit(fam, block_list, name_list, θ̂, V, -nll(θ̂), n, converged,
+                 Dict(:mu => Xμ * θ̂[1:pμ]), Dict(:mu => Vector{Float64}(y)), scales)
+    fit = _withiterations(_withnll(fit, nll), Optim.iterations(res))
+    reml && return _withreml(fit, -nll_reml(θ̂), -nll_ml(θ̂))
+    return fit
 end
 
 # ---------------------------------------------------------------------------
@@ -758,7 +1038,9 @@ struct _LssComp
     nm::Vector{String}
     K::Union{Nothing,Matrix{Float64},_LazyPhyloK}   # nothing = iid; matrix = phylo correlation; _LazyPhyloK = phylo, not yet materialised
     label::String
+    w::Union{Nothing,Vector{Float64}}                # per-row loading of an iid component (an independent slope `(0 + x | g)`); nothing = intercept
 end
+_LssComp(gidx, G, Zg, nm, K, label) = _LssComp(gidx, G, Zg, nm, K, label, nothing)
 
 function _fit_gaussian_lss_multi(fam::Gaussian, y, Xμ, Xσ, comps::Vector{_LssComp},
                                  nmμ, nmσ, g_tol; reml::Bool = false)
@@ -783,7 +1065,7 @@ function _fit_gaussian_lss_multi(fam::Gaussian, y, Xμ, Xσ, comps::Vector{_LssC
                 # iid: Z Diagonal(σa²) Z' adds σa[g]² wherever rows share a group
                 @inbounds for j in 1:n, i in 1:n
                     if c.gidx[i] == c.gidx[j]
-                        Vm[i, j] += σa[c.gidx[i]]^2
+                        Vm[i, j] += σa[c.gidx[i]]^2 * (c.w === nothing ? 1.0 : c.w[i] * c.w[j])
                     end
                 end
             else
@@ -813,7 +1095,7 @@ function _fit_gaussian_lss_multi(fam::Gaussian, y, Xμ, Xσ, comps::Vector{_LssC
             if c.K === nothing
                 @inbounds for j in 1:n, i in 1:n
                     if c.gidx[i] == c.gidx[j]
-                        Vm[i, j] += σa[c.gidx[i]]^2
+                        Vm[i, j] += σa[c.gidx[i]]^2 * (c.w === nothing ? 1.0 : c.w[i] * c.w[j])
                     end
                 end
             else
@@ -998,7 +1280,10 @@ function _drm_gaussian_lss_multi(f::DrmFormula, fam::Gaussian, sdp, sdpp, re, re
                                  algorithm::Symbol = :auto, sparse = nothing)
     for (kind, _) in re_kinds
         kind === :intercept ||
-            throw(ArgumentError("drm: sd() supports random INTERCEPT terms only."))
+            throw(ArgumentError("drm: sd() with several random-effect terms supports random intercepts " *
+                "`(1 | g)` here. Independent slopes `(0 + x | g)` take `sd(g, coef(x)) ~ …` on ordinary " *
+                "groupings, and one correlated block `(1 + x | g)` beside random intercepts on other " *
+                "groupings is supported; this combination is not implemented."))
     end
     re_groups = Symbol[grp for (_, grp) in re]
     for (sgrp, _) in sdp

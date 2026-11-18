@@ -81,10 +81,16 @@ using Test, Random, LinearAlgebra, Statistics
     y1 = β_mu1[1] .+ β_mu1[2] .* x .+ U[sp, 1] .+ exp.(β_s1 .+ U[sp, 3]) .* randn(n)
     y2 = β_mu2[1] .+ β_mu2[2] .* x .+ U[sp, 2] .+ exp.(β_s2 .+ U[sp, 4]) .* randn(n)
 
+    # Missing rows are literal indices, NOT `randperm(MersenneTwister(seed), n)`:
+    # `randperm` draws a different permutation from the same seed on Julia 1.10
+    # and 1.12, so the old fixture was two different datasets (REML converged on
+    # one and stalled on the other). These are the 1.12 draws of seeds 20260903 /
+    # 20260904; on this pattern the pre-fix REML line search accepted uncertified
+    # (u, beta) modes and stopped at a point ~5.6 log-lik units below the optimum.
     n_miss = max(1, round(Int, 0.10n))
-    miss1 = randperm(MersenneTwister(20260903), n)[1:n_miss]
-    pool2 = setdiff(1:n, miss1)
-    miss2 = pool2[randperm(MersenneTwister(20260904), length(pool2))[1:n_miss]]
+    miss1 = [6, 8, 10, 11, 18, 21, 26, 54, 60]
+    miss2 = [43, 49, 56, 66, 69, 71, 76, 79, 82]
+    @test length(miss1) == n_miss && length(miss2) == n_miss
     @test isempty(intersect(miss1, miss2))    # constructed disjoint: masks differ
 
     y1m = copy(y1); y2m = copy(y2)
@@ -201,10 +207,13 @@ using Test, Random, LinearAlgebra, Statistics
                   sigma2 = @formula(sigma2 ~ 1 + phylo(1 | species)),
                   rho12  = @formula(rho12 ~ 1))
 
+        # The partly observed rows enter the likelihood only under
+        # `miss_control(response = "include")`; drmTMB's default (and now Julia's) drops them.
+        inc = miss_control(response = "include")
         fit_ml   = drm(form, Gaussian(); data = data, tree = phy,
-                       method = :ML, q4_vcov = false)
+                       method = :ML, q4_vcov = false, missing = inc)
         fit_reml = drm(form, Gaussian(); data = data, tree = phy,
-                       method = :REML, q4_vcov = false)
+                       method = :REML, q4_vcov = false, missing = inc)
 
         @test fit_ml.converged
         @test fit_reml.converged

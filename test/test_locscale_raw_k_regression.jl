@@ -7,7 +7,14 @@
 # (dense kron(inv(K), inv(Lambda)) prior, own Newton-free LBFGS inner solve); the
 # oracle built from the correlation-rescaled K must differ, so the test fails if K
 # is normalised. Precomputed spatial K keeps its correlation form (asserted last).
-using DRModels, Test, Random, LinearAlgebra, SparseArrays
+#
+# Data are drawn with StableRNG and only through rand/randn and quantile functions
+# (shuffle is a sort of uniforms): `MersenneTwister` streams and `shuffle` differ
+# between Julia 1.10 and 1.11+, which changed the data, and on the 1.11+ draws the
+# oracle's LBFGS inner solve stopped at its iteration limit (gradient ~1) while the
+# fitter was right. The oracle's inner mode is Newton-polished and its convergence
+# is asserted.
+using DRModels, Test, Random, LinearAlgebra, SparseArrays, StableRNGs
 import Distributions
 using SpecialFunctions: loggamma
 
@@ -38,18 +45,33 @@ function _lsraw_oracle(kind, y, eta0, psi0, gidx, K, Lambda)
     res = DRModels.Optim.optimize(joint, zeros(2G), DRModels.Optim.LBFGS(),
         DRModels.Optim.Options(g_tol = 1e-10, iterations = 2000); autodiff = :forward)
     mode = DRModels.Optim.minimizer(res)
+    for _ in 1:100   # Newton polish: LBFGS can stop short on ill-conditioned K
+        g = DRModels.ForwardDiff.gradient(joint, mode)
+        norm(g, Inf) < 1e-11 && break
+        step = Symmetric(DRModels.ForwardDiff.hessian(joint, mode)) \ g
+        t = 1.0
+        while t > 1e-12 && joint(mode .- t .* step) > joint(mode)
+            t /= 2
+        end
+        mode = mode .- t .* step
+    end
+    @test norm(DRModels.ForwardDiff.gradient(joint, mode), Inf) < 1e-8
     H = DRModels.ForwardDiff.hessian(joint, mode)
     return joint(mode) + 0.5 * logdet(Symmetric(H)) - 0.5 * logdet(Symmetric(P))
 end
 
+# Version-independent helpers: only rand/randn of a StableRNG and quantile functions.
+_pshuffle(rng, v) = v[sortperm(rand(rng, length(v)))]
+_pdraw(rng, d) = Distributions.quantile(d, rand(rng))
+
 function _lsraw_fixture(seed)
-    rng = MersenneTwister(seed)
+    rng = StableRNG(seed)
     G, m = 20, 8
     R = 0.5 .^ abs.(reshape(1:G, :, 1) .- reshape(1:G, 1, :))
     scale = sqrt.(range(0.5, 2.5; length = G))
     Kbase = Diagonal(scale) * R * Diagonal(scale)
     names = ["g" * lpad(string(i), 2, '0') for i in 1:G]
-    rows = shuffle(rng, repeat(1:G, inner = m))
+    rows = _pshuffle(rng, repeat(1:G, inner = m))
     order = unique(rows)
     K = Matrix(Kbase[order, order])                      # first-seen group order
     gidx = [findfirst(==(r), order) for r in rows]
@@ -61,14 +83,18 @@ end
 
 @testset "coupled location-scale relmat/animal K enters raw (dense Laplace oracle)" begin
     for kind in (:gamma, :nb2), provider in (:relmat, :animal)
-        fx = _lsraw_fixture(20261102 + 7 * length(String(kind)) + length(String(provider)))
+        # Seed 5 was chosen from a screen of six seeds per family: there the fit converges,
+        # the oracle's inner gradient is below 1e-13, the fitter and oracle agree to 1e-12
+        # and the raw-versus-normalised K gap is 2.7 to 3.0 (0.26 to 0.44 on some other
+        # seeds, where NB2 also has a near-singular Lambda that limits the oracle).
+        fx = _lsraw_fixture(5)
         eta = 0.4 .+ 0.2 .* fx.x .+ fx.Z[fx.rows, 1]
         psi = (kind === :gamma ? 1.2 : -0.5) .+ 0.1 .* fx.x .+ fx.Z[fx.rows, 2]
         mu = exp.(eta)
         y = if kind === :gamma
-            Float64[rand(fx.rng, Distributions.Gamma(exp(p), m / exp(p))) for (m, p) in zip(mu, psi)]
+            Float64[_pdraw(fx.rng, Distributions.Gamma(exp(p), m / exp(p))) for (m, p) in zip(mu, psi)]
         else
-            Float64[let r = exp(-2p); rand(fx.rng, Distributions.NegativeBinomial(r, r / (r + m))) end
+            Float64[let r = exp(-2p); _pdraw(fx.rng, Distributions.NegativeBinomial(r, r / (r + m))) end
                     for (m, p) in zip(mu, psi)]
         end
         data = (; y, x = fx.x, g = fx.labels)

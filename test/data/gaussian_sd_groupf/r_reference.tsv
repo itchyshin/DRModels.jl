@@ -1,0 +1,421 @@
+dataset	model	key	estimate	se
+gsf_s1	g_blk_slope	ll	-379.836712927091	NA
+gsf_s1	g_blk_slope	conv	1	NA
+gsf_s1	g_blk_slope	pdhess	1	NA
+gsf_s1	g_blk_slope	mu:(Intercept)	0.125507093900927	0.0834296281749001
+gsf_s1	g_blk_slope	mu:x1	0.39066927035972	0.0932833552258115
+gsf_s1	g_blk_slope	mu:x2	-0.26498746018607	0.115598505466563
+gsf_s1	g_blk_slope	mu:x3	0.159372162051711	0.0460934259805631
+gsf_s1	g_blk_slope	sigma:(Intercept)	-0.340033774435211	0.0473235988789392
+gsf_s1	g_blk_slope	sd:mu:(1 + x1 | g):(Intercept)	0.388877685128764	0.18492868478127
+gsf_s1	g_blk_slope	sd:mu:(1 + x1 | g):x1	0.447416437040735	0.167383423807976
+gsf_s1	g_blk_slope	sd:mu:(0 + x2 | g2)	0.40755176375718	0.216008245244186
+gsf_s1	g_blk_slope	cor:mu:cor((Intercept),x1 | g)	0.38395646543696	NA
+gsf_s1	g_blk_slope_sd	ll	-379.834274905504	NA
+gsf_s1	g_blk_slope_sd	conv	1	NA
+gsf_s1	g_blk_slope_sd	pdhess	1	NA
+gsf_s1	g_blk_slope_sd	mu:(Intercept)	0.12533428880762	0.083509240705217
+gsf_s1	g_blk_slope_sd	mu:x1	0.390642994167069	0.0932776821308133
+gsf_s1	g_blk_slope_sd	mu:x2	-0.266235260929989	0.116994051574698
+gsf_s1	g_blk_slope_sd	mu:x3	0.159172497951161	0.0461794928900739
+gsf_s1	g_blk_slope_sd	sigma:(Intercept)	-0.340073895264016	0.0473239134073251
+gsf_s1	g_blk_slope_sd	sdf:sd(g2, coef = "x2"):(Intercept)	-0.89793731014179	0.216101287721676
+gsf_s1	g_blk_slope_sd	sdf:sd(g2, coef = "x2"):z2	0.0213605453991791	0.306145337681587
+gsf_s1	g_blk_slope_sd	sd:mu:(1 + x1 | g):(Intercept)	0.389152116307318	0.185108545557177
+gsf_s1	g_blk_slope_sd	sd:mu:(1 + x1 | g):x1	0.447378707784496	0.167386477438064
+gsf_s1	g_blk_slope_sd	cor:mu:cor((Intercept),x1 | g)	0.384342157551436	NA
+gsf_s1	g_blk_indep	ll	-394.678414788413	NA
+gsf_s1	g_blk_indep	conv	1	NA
+gsf_s1	g_blk_indep	pdhess	1	NA
+gsf_s1	g_blk_indep	mu:(Intercept)	0.139726485199868	0.0743067770673734
+gsf_s1	g_blk_indep	mu:x1	0.373455058739519	0.0992454677442322
+gsf_s1	g_blk_indep	mu:x2	-0.345728370705601	0.0513732430647569
+gsf_s1	g_blk_indep	mu:x3	0.192091492111421	0.0781791107460686
+gsf_s1	g_blk_indep	sigma:(Intercept)	-0.272681384434404	0.0485964238210652
+gsf_s1	g_blk_indep	sd:mu:(1 + x1 | g):(Intercept)	0.313164441670499	0.222592187223207
+gsf_s1	g_blk_indep	sd:mu:(1 + x1 | g):x1	0.472878061085275	0.17166566291727
+gsf_s1	g_blk_indep	sd:mu:(0 + x3 | g)	0.326034931714043	0.227018724227105
+gsf_s1	g_blk_indep	cor:mu:cor((Intercept),x1 | g)	0.312906180922054	NA
+gsf_s1	g_blk_indep_sd	error	NA	NA
+gsf_s1	g_blk_indep_sd2	error	NA	NA
+gsf_s1	g_two_blk	ll	-346.795105833959	NA
+gsf_s1	g_two_blk	conv	1	NA
+gsf_s1	g_two_blk	pdhess	1	NA
+gsf_s1	g_two_blk	mu:(Intercept)	0.132118518221804	0.140241676872916
+gsf_s1	g_two_blk	mu:x1	0.390001126003108	0.0932344333598129
+gsf_s1	g_two_blk	mu:x2	-0.254548935326951	0.111366716978254
+gsf_s1	g_two_blk	mu:x3	0.182369606413055	0.0384211128966122
+gsf_s1	g_two_blk	sigma:(Intercept)	-0.562576359210795	0.0489767402348972
+gsf_s1	g_two_blk	sd:mu:(1 + x1 | g):(Intercept)	0.445296699521778	0.158632682793871
+gsf_s1	g_two_blk	sd:mu:(1 + x1 | g):x1	0.468686977095141	0.153766327174694
+gsf_s1	g_two_blk	sd:mu:(1 + x2 | g2):(Intercept)	0.420780321726977	0.205344490291178
+gsf_s1	g_two_blk	sd:mu:(1 + x2 | g2):x2	0.402695288532049	0.207597515554315
+gsf_s1	g_two_blk	cor:mu:cor((Intercept),x1 | g)	0.366086219240889	NA
+gsf_s1	g_two_blk	cor:mu:cor((Intercept),x2 | g2)	0.101156882153283	NA
+gsf_s1	g_two_blk_sd	ll	-343.063184465304	NA
+gsf_s1	g_two_blk_sd	conv	1	NA
+gsf_s1	g_two_blk_sd	pdhess	1	NA
+gsf_s1	g_two_blk_sd	mu:(Intercept)	0.148879727778071	0.138195662042359
+gsf_s1	g_two_blk_sd	mu:x1	0.425749999885726	0.0756852629929927
+gsf_s1	g_two_blk_sd	mu:x2	-0.249596441120219	0.104007065366165
+gsf_s1	g_two_blk_sd	mu:x3	0.17755869070574	0.0385190947826092
+gsf_s1	g_two_blk_sd	sigma:(Intercept)	-0.557970609867978	0.0494061708619569
+gsf_s1	g_two_blk_sd	sdf:sd(g, coef = "x1"):(Intercept)	-0.919960215931469	0.178922281004069
+gsf_s1	g_two_blk_sd	sdf:sd(g, coef = "x1"):z	0.401994978779631	0.163765843230399
+gsf_s1	g_two_blk_sd	sdf:sd(g2, coef = "x2"):(Intercept)	-0.945684257383109	0.210969760359386
+gsf_s1	g_two_blk_sd	sdf:sd(g2, coef = "x2"):z2	-0.243042542446175	0.311353166666668
+gsf_s1	g_two_blk_sd	sd:mu:(1 + x1 | g):(Intercept)	0.439837269864183	0.159493889990211
+gsf_s1	g_two_blk_sd	sd:mu:(1 + x2 | g2):(Intercept)	0.415768142268676	0.206143587733943
+gsf_s1	g_two_blk_sd	cor:mu:cor((Intercept),x1 | g)	0.455430922145017	NA
+gsf_s1	g_two_blk_sd	cor:mu:cor((Intercept),x2 | g2)	0.0453325724393872	NA
+gsf_s1	g_blk_int_slope	ll	-346.856021155225	NA
+gsf_s1	g_blk_int_slope	conv	1	NA
+gsf_s1	g_blk_int_slope	pdhess	1	NA
+gsf_s1	g_blk_int_slope	mu:(Intercept)	0.131959755267521	0.140114932533536
+gsf_s1	g_blk_int_slope	mu:x1	0.389971502230133	0.0933574733307912
+gsf_s1	g_blk_int_slope	mu:x2	-0.254711693548072	0.111305686156451
+gsf_s1	g_blk_int_slope	mu:x3	0.181791779934435	0.0383850057952613
+gsf_s1	g_blk_int_slope	sigma:(Intercept)	-0.562631800786991	0.0489728175627079
+gsf_s1	g_blk_int_slope	sd:mu:(1 + x1 | g):(Intercept)	0.445015084477504	0.158671472188253
+gsf_s1	g_blk_int_slope	sd:mu:(1 + x1 | g):x1	0.469424526665833	0.153606048868207
+gsf_s1	g_blk_int_slope	sd:mu:(1 | g2)	0.420302271933186	0.205367545361016
+gsf_s1	g_blk_int_slope	sd:mu:(0 + x2 | g2)	0.402449375240247	0.207618429313622
+gsf_s1	g_blk_int_slope	cor:mu:cor((Intercept),x1 | g)	0.365170075327341	NA
+gsf_s1	g_blk_int_slope_sd	ll	-346.381367455582	NA
+gsf_s1	g_blk_int_slope_sd	conv	1	NA
+gsf_s1	g_blk_int_slope_sd	pdhess	1	NA
+gsf_s1	g_blk_int_slope_sd	mu:(Intercept)	0.123199256988861	0.141540048637348
+gsf_s1	g_blk_int_slope_sd	mu:x1	0.390222722037387	0.093384170325359
+gsf_s1	g_blk_int_slope_sd	mu:x2	-0.252379375429478	0.104044543626262
+gsf_s1	g_blk_int_slope_sd	mu:x3	0.18360534801022	0.0384379279944463
+gsf_s1	g_blk_int_slope_sd	sigma:(Intercept)	-0.563363757457489	0.048917279085113
+gsf_s1	g_blk_int_slope_sd	sdf:sd(g2, coef = "(Intercept)"):(Intercept)	-0.867276827602852	0.206749500633495
+gsf_s1	g_blk_int_slope_sd	sdf:sd(g2, coef = "(Intercept)"):z2	-0.106622559335831	0.250324231128147
+gsf_s1	g_blk_int_slope_sd	sdf:sd(g2, coef = "x2"):(Intercept)	-0.937794452748232	0.211114473358285
+gsf_s1	g_blk_int_slope_sd	sdf:sd(g2, coef = "x2"):z2	-0.26229244514346	0.304683584302465
+gsf_s1	g_blk_int_slope_sd	sd:mu:(1 + x1 | g):(Intercept)	0.44305415964141	0.158955974211786
+gsf_s1	g_blk_int_slope_sd	sd:mu:(1 + x1 | g):x1	0.469676124629731	0.153633501390327
+gsf_s1	g_blk_int_slope_sd	cor:mu:cor((Intercept),x1 | g)	0.360949445116398	NA
+gsf_s1	g_q3_slope	ll	-398.350705356808	NA
+gsf_s1	g_q3_slope	conv	0	NA
+gsf_s1	g_q3_slope	pdhess	1	NA
+gsf_s1	g_q3_slope	mu:(Intercept)	0.132589506731991	0.0728250517344412
+gsf_s1	g_q3_slope	mu:x1	0.391217257660585	0.102203927023981
+gsf_s1	g_q3_slope	mu:x2	-0.307930362278309	0.0673274203622965
+gsf_s1	g_q3_slope	mu:x3	0.171970461270849	0.0502655260573728
+gsf_s1	g_q3_slope	sigma:(Intercept)	-0.225822387913232	0.0472378279651188
+gsf_s1	g_q3_slope	sd:mu:(0 + x3 | g2)	5.1974548213315e-06	12333.0679547834
+gsf_s1	g_q3_slope	sd:mu:(1 + x1 + x2 | g):(Intercept)	0.291929254410034	0.256017193565027
+gsf_s1	g_q3_slope	sd:mu:(1 + x1 + x2 | g):x1	0.488909032320422	0.16863021023256
+gsf_s1	g_q3_slope	sd:mu:(1 + x1 + x2 | g):x2	0.223980800083778	0.32654914337556
+gsf_s1	g_q3_slope	cor:re_cov:cor((Intercept),x1 | g)	0.395509861868669	NA
+gsf_s1	g_q3_slope	cor:re_cov:cor((Intercept),x2 | g)	-0.405475308752156	NA
+gsf_s1	g_q3_slope	cor:re_cov:cor(x1,x2 | g)	0.325051639084943	NA
+gsf_s1	f_corr	ll	-289.647033866536	NA
+gsf_s1	f_corr	conv	1	NA
+gsf_s1	f_corr	pdhess	1	NA
+gsf_s1	f_corr	mu:(Intercept)	0.342489580468036	0.0954959845511249
+gsf_s1	f_corr	mu:x1	0.53274572192002	0.0261085824499256
+gsf_s1	f_corr	sigma:(Intercept)	-0.64986463642868	0.0968445227749044
+gsf_s1	f_corr	sdf:sd(g):(Intercept)	-0.646445292409169	0.141511250351503
+gsf_s1	f_corr	sdf:sd(g):z	0.302612068897057	0.118145834193519
+gsf_s1	f_corr	sd:sigma:(1 | p | g)	0.474251755406727	0.161381946634253
+gsf_s1	f_corr	cor:mu_sigma:cor(mu:(Intercept),sigma:(Intercept) | p | g)	0.556244913609129	NA
+gsf_s1	f_indep	ll	-293.167464994327	NA
+gsf_s1	f_indep	conv	1	NA
+gsf_s1	f_indep	pdhess	1	NA
+gsf_s1	f_indep	mu:(Intercept)	0.310470464225637	0.0942953023255934
+gsf_s1	f_indep	mu:x1	0.535726301018145	0.026261266204733
+gsf_s1	f_indep	sigma:(Intercept)	-0.650571240795117	0.0965027691193034
+gsf_s1	f_indep	sdf:sd(g):(Intercept)	-0.654510904270796	0.14183427680058
+gsf_s1	f_indep	sdf:sd(g):z	0.312489162406046	0.125889108271404
+gsf_s1	f_indep	sd:sigma:(1 | g)	0.465828228630681	0.164779625756453
+gsf_s1	f_cross	ll	-298.416860670182	NA
+gsf_s1	f_cross	conv	1	NA
+gsf_s1	f_cross	pdhess	1	NA
+gsf_s1	f_cross	mu:(Intercept)	0.299362495432095	0.0845521475016961
+gsf_s1	f_cross	mu:x1	0.525131211359649	0.0292450772027465
+gsf_s1	f_cross	sigma:(Intercept)	-0.596631306133514	0.113293853159845
+gsf_s1	f_cross	sdf:sd(g):(Intercept)	-0.743197613460622	0.146883639015868
+gsf_s1	f_cross	sdf:sd(g):z	0.360396761531491	0.131361623975478
+gsf_s1	f_cross	sd:sigma:(1 | g2)	0.403269366470012	0.213776615134223
+gsf_s2	g_blk_slope	ll	-367.76126786381	NA
+gsf_s2	g_blk_slope	conv	1	NA
+gsf_s2	g_blk_slope	pdhess	1	NA
+gsf_s2	g_blk_slope	mu:(Intercept)	0.421876637420434	0.0914688200522113
+gsf_s2	g_blk_slope	mu:x1	0.686219448292624	0.0838969589286106
+gsf_s2	g_blk_slope	mu:x2	-0.272449910846506	0.0869499929643242
+gsf_s2	g_blk_slope	mu:x3	0.0969543571022372	0.044002710873661
+gsf_s2	g_blk_slope	sigma:(Intercept)	-0.379169613298418	0.0465187615802884
+gsf_s2	g_blk_slope	sd:mu:(1 + x1 | g):(Intercept)	0.444590374354387	0.16586454629054
+gsf_s2	g_blk_slope	sd:mu:(1 + x1 | g):x1	0.397547771535123	0.176191546525818
+gsf_s2	g_blk_slope	sd:mu:(0 + x2 | g2)	0.278892335060187	0.261245645329513
+gsf_s2	g_blk_slope	cor:mu:cor((Intercept),x1 | g)	0.0139252752871243	NA
+gsf_s2	g_blk_slope_sd	ll	-367.748442769311	NA
+gsf_s2	g_blk_slope_sd	conv	1	NA
+gsf_s2	g_blk_slope_sd	pdhess	1	NA
+gsf_s2	g_blk_slope_sd	mu:(Intercept)	0.421868800696841	0.0914085244235451
+gsf_s2	g_blk_slope_sd	mu:x1	0.686044182268203	0.0838701884520592
+gsf_s2	g_blk_slope_sd	mu:x2	-0.279632038388594	0.0969117331015923
+gsf_s2	g_blk_slope_sd	mu:x3	0.0966115379820214	0.044056747959485
+gsf_s2	g_blk_slope_sd	sigma:(Intercept)	-0.379104561001235	0.0465239843229115
+gsf_s2	g_blk_slope_sd	sdf:sd(g2, coef = "x2"):(Intercept)	-1.27849594211121	0.261615634831512
+gsf_s2	g_blk_slope_sd	sdf:sd(g2, coef = "x2"):z2	-0.0397018312293875	0.246773026556708
+gsf_s2	g_blk_slope_sd	sd:mu:(1 + x1 | g):(Intercept)	0.444229325373252	0.165986044294892
+gsf_s2	g_blk_slope_sd	sd:mu:(1 + x1 | g):x1	0.397351354120254	0.176254065680417
+gsf_s2	g_blk_slope_sd	cor:mu:cor((Intercept),x1 | g)	0.0150071649203206	NA
+gsf_s2	g_blk_indep	ll	-361.580478520515	NA
+gsf_s2	g_blk_indep	conv	1	NA
+gsf_s2	g_blk_indep	pdhess	1	NA
+gsf_s2	g_blk_indep	mu:(Intercept)	0.421676229230855	0.0994440584319566
+gsf_s2	g_blk_indep	mu:x1	0.652142130307627	0.083931516545542
+gsf_s2	g_blk_indep	mu:x2	-0.192161624361453	0.044874378769203
+gsf_s2	g_blk_indep	mu:x3	0.126685782464731	0.0747431652932606
+gsf_s2	g_blk_indep	sigma:(Intercept)	-0.444863705607888	0.0482932777544574
+gsf_s2	g_blk_indep	sd:mu:(1 + x1 | g):(Intercept)	0.496072687845984	0.156124796393257
+gsf_s2	g_blk_indep	sd:mu:(1 + x1 | g):x1	0.401172554704708	0.169772367332014
+gsf_s2	g_blk_indep	sd:mu:(0 + x3 | g)	0.331404019516499	0.188819515124012
+gsf_s2	g_blk_indep	cor:mu:cor((Intercept),x1 | g)	0.0971654549144493	NA
+gsf_s2	g_blk_indep_sd	error	NA	NA
+gsf_s2	g_blk_indep_sd2	error	NA	NA
+gsf_s2	g_two_blk	ll	-344.542652307117	NA
+gsf_s2	g_two_blk	conv	1	NA
+gsf_s2	g_two_blk	pdhess	1	NA
+gsf_s2	g_two_blk	mu:(Intercept)	0.423156736105482	0.127179884714232
+gsf_s2	g_two_blk	mu:x1	0.704454850879544	0.0784800125108255
+gsf_s2	g_two_blk	mu:x2	-0.281398557875562	0.0808847191015072
+gsf_s2	g_two_blk	mu:x3	0.0799331633677533	0.039809133970793
+gsf_s2	g_two_blk	sigma:(Intercept)	-0.51512278462941	0.0480634160394298
+gsf_s2	g_two_blk	sd:mu:(1 + x1 | g):(Intercept)	0.471465535555748	0.15507494388352
+gsf_s2	g_two_blk	sd:mu:(1 + x1 | g):x1	0.37791374991378	0.169611181880317
+gsf_s2	g_two_blk	sd:mu:(1 + x2 | g2):(Intercept)	0.333363454358241	0.218725889599965
+gsf_s2	g_two_blk	sd:mu:(1 + x2 | g2):x2	0.264334142152062	0.256281545288597
+gsf_s2	g_two_blk	cor:mu:cor((Intercept),x1 | g)	0.125805204773741	NA
+gsf_s2	g_two_blk	cor:mu:cor((Intercept),x2 | g2)	-0.733520209660557	NA
+gsf_s2	g_two_blk_sd	ll	-343.671183817945	NA
+gsf_s2	g_two_blk_sd	conv	1	NA
+gsf_s2	g_two_blk_sd	pdhess	1	NA
+gsf_s2	g_two_blk_sd	mu:(Intercept)	0.445924770395632	0.129131786995893
+gsf_s2	g_two_blk_sd	mu:x1	0.674901533863232	0.0818730435795993
+gsf_s2	g_two_blk_sd	mu:x2	-0.322768623408488	0.0844922827869605
+gsf_s2	g_two_blk_sd	mu:x3	0.0773869574222454	0.0397749883625213
+gsf_s2	g_two_blk_sd	sigma:(Intercept)	-0.515273109152628	0.0480876534227939
+gsf_s2	g_two_blk_sd	sdf:sd(g, coef = "x1"):(Intercept)	-0.984351182800191	0.169302873424072
+gsf_s2	g_two_blk_sd	sdf:sd(g, coef = "x1"):z	0.198656344272498	0.215208523697345
+gsf_s2	g_two_blk_sd	sdf:sd(g2, coef = "x2"):(Intercept)	-1.36198125164553	0.26556925599796
+gsf_s2	g_two_blk_sd	sdf:sd(g2, coef = "x2"):z2	-0.211430768822026	0.224858303403206
+gsf_s2	g_two_blk_sd	sd:mu:(1 + x1 | g):(Intercept)	0.468305021583465	0.155416518817116
+gsf_s2	g_two_blk_sd	sd:mu:(1 + x2 | g2):(Intercept)	0.335883788297617	0.219323349156698
+gsf_s2	g_two_blk_sd	cor:mu:cor((Intercept),x1 | g)	0.132150640860691	NA
+gsf_s2	g_two_blk_sd	cor:mu:cor((Intercept),x2 | g2)	-0.789468594503734	NA
+gsf_s2	g_blk_int_slope	ll	-347.201554184194	NA
+gsf_s2	g_blk_int_slope	conv	1	NA
+gsf_s2	g_blk_int_slope	pdhess	1	NA
+gsf_s2	g_blk_int_slope	mu:(Intercept)	0.423104457323458	0.127893025189709
+gsf_s2	g_blk_int_slope	mu:x1	0.702532008981351	0.0777681990054816
+gsf_s2	g_blk_int_slope	mu:x2	-0.283135141710914	0.0815058105227322
+gsf_s2	g_blk_int_slope	mu:x3	0.0735596851075451	0.0396026358052402
+gsf_s2	g_blk_int_slope	sigma:(Intercept)	-0.516181677801928	0.0479626324556436
+gsf_s2	g_blk_int_slope	sd:mu:(1 + x1 | g):(Intercept)	0.473006177832885	0.155181735745153
+gsf_s2	g_blk_int_slope	sd:mu:(1 + x1 | g):x1	0.373141546223175	0.170899955616456
+gsf_s2	g_blk_int_slope	sd:mu:(1 | g2)	0.336225038365697	0.21879675894939
+gsf_s2	g_blk_int_slope	sd:mu:(0 + x2 | g2)	0.26641710055745	0.254160450559047
+gsf_s2	g_blk_int_slope	cor:mu:cor((Intercept),x1 | g)	0.0797347340459114	NA
+gsf_s2	g_blk_int_slope_sd	ll	-346.858388297502	NA
+gsf_s2	g_blk_int_slope_sd	conv	1	NA
+gsf_s2	g_blk_int_slope_sd	pdhess	1	NA
+gsf_s2	g_blk_int_slope_sd	mu:(Intercept)	0.422514341227363	0.125583427961753
+gsf_s2	g_blk_int_slope_sd	mu:x1	0.702676873896986	0.077662894133082
+gsf_s2	g_blk_int_slope_sd	mu:x2	-0.306034236143063	0.0872818399897172
+gsf_s2	g_blk_int_slope_sd	mu:x3	0.0720815763138395	0.0395804095744101
+gsf_s2	g_blk_int_slope_sd	sigma:(Intercept)	-0.516454804561943	0.047938566523053
+gsf_s2	g_blk_int_slope_sd	sdf:sd(g2, coef = "(Intercept)"):(Intercept)	-1.10419318501199	0.220912785249567
+gsf_s2	g_blk_int_slope_sd	sdf:sd(g2, coef = "(Intercept)"):z2	0.207188836771486	0.336578276432595
+gsf_s2	g_blk_int_slope_sd	sdf:sd(g2, coef = "x2"):(Intercept)	-1.3452816903988	0.260315736638437
+gsf_s2	g_blk_int_slope_sd	sdf:sd(g2, coef = "x2"):z2	-0.131941541117374	0.235880945298259
+gsf_s2	g_blk_int_slope_sd	sd:mu:(1 + x1 | g):(Intercept)	0.472736812456674	0.155116245152482
+gsf_s2	g_blk_int_slope_sd	sd:mu:(1 + x1 | g):x1	0.372591993720163	0.171074365742619
+gsf_s2	g_blk_int_slope_sd	cor:mu:cor((Intercept),x1 | g)	0.0826606037958074	NA
+gsf_s2	g_q3_slope	ll	-372.45994353343	NA
+gsf_s2	g_q3_slope	conv	0	NA
+gsf_s2	g_q3_slope	pdhess	1	NA
+gsf_s2	g_q3_slope	mu:(Intercept)	0.398257687166995	0.0977668719876207
+gsf_s2	g_q3_slope	mu:x1	0.667270186087181	0.0836734418568383
+gsf_s2	g_q3_slope	mu:x2	-0.21707770572904	0.0549239752326619
+gsf_s2	g_q3_slope	mu:x3	0.118143274463643	0.0482278593021667
+gsf_s2	g_q3_slope	sigma:(Intercept)	-0.338063180141957	0.0464699915574654
+gsf_s2	g_q3_slope	sd:mu:(0 + x3 | g2)	0.0577169464697224	1.65579411962546
+gsf_s2	g_q3_slope	sd:mu:(1 + x1 + x2 | g):(Intercept)	0.479895027184851	0.163289458037101
+gsf_s2	g_q3_slope	sd:mu:(1 + x1 + x2 | g):x1	0.391192290704661	0.182817315403263
+gsf_s2	g_q3_slope	sd:mu:(1 + x1 + x2 | g):x2	0.149840037522073	0.351692462413289
+gsf_s2	g_q3_slope	cor:re_cov:cor((Intercept),x1 | g)	0.100159898823529	NA
+gsf_s2	g_q3_slope	cor:re_cov:cor((Intercept),x2 | g)	-0.501909485343032	NA
+gsf_s2	g_q3_slope	cor:re_cov:cor(x1,x2 | g)	0.810298788724107	NA
+gsf_s2	f_corr	ll	-272.168093700006	NA
+gsf_s2	f_corr	conv	1	NA
+gsf_s2	f_corr	pdhess	1	NA
+gsf_s2	f_corr	mu:(Intercept)	0.26198851975678	0.102431148976346
+gsf_s2	f_corr	mu:x1	0.498050575593103	0.0265282774607269
+gsf_s2	f_corr	sigma:(Intercept)	-0.669536778400469	0.0817392172662718
+gsf_s2	f_corr	sdf:sd(g):(Intercept)	-0.605555338738402	0.149090420918125
+gsf_s2	f_corr	sdf:sd(g):z	0.334537502643906	0.179473653941601
+gsf_s2	f_corr	sd:sigma:(1 | p | g)	0.35930910429034	0.213711493843171
+gsf_s2	f_corr	cor:mu_sigma:cor(mu:(Intercept),sigma:(Intercept) | p | g)	0.622554517568511	NA
+gsf_s2	f_indep	ll	-275.931355573135	NA
+gsf_s2	f_indep	conv	1	NA
+gsf_s2	f_indep	pdhess	1	NA
+gsf_s2	f_indep	mu:(Intercept)	0.231068449640599	0.101840520926044
+gsf_s2	f_indep	mu:x1	0.49742311440892	0.0259452898833332
+gsf_s2	f_indep	sigma:(Intercept)	-0.700571500111093	0.083687940054609
+gsf_s2	f_indep	sdf:sd(g):(Intercept)	-0.601118059789217	0.14742224489939
+gsf_s2	f_indep	sdf:sd(g):z	0.332795069361803	0.198967399763622
+gsf_s2	f_indep	sd:sigma:(1 | g)	0.38136597396837	0.202086881922963
+gsf_s2	f_cross	ll	-280.122386775123	NA
+gsf_s2	f_cross	conv	1	NA
+gsf_s2	f_cross	pdhess	1	NA
+gsf_s2	f_cross	mu:(Intercept)	0.248005770767672	0.0916117460301319
+gsf_s2	f_cross	mu:x1	0.493652890267934	0.0282152018854193
+gsf_s2	f_cross	sigma:(Intercept)	-0.65878061014298	0.0953285489889411
+gsf_s2	f_cross	sdf:sd(g):(Intercept)	-0.651525377856794	0.142662265129153
+gsf_s2	f_cross	sdf:sd(g):z	0.416695685865513	0.208814147848461
+gsf_s2	f_cross	sd:sigma:(1 | g2)	0.326028845309611	0.243171867751526
+gsf_s3	g_blk_slope	ll	-395.273901816663	NA
+gsf_s3	g_blk_slope	conv	1	NA
+gsf_s3	g_blk_slope	pdhess	1	NA
+gsf_s3	g_blk_slope	mu:(Intercept)	0.394752546828748	0.0817970376128155
+gsf_s3	g_blk_slope	mu:x1	0.384593558148234	0.0940157589763016
+gsf_s3	g_blk_slope	mu:x2	-0.155453619275087	0.079333266592684
+gsf_s3	g_blk_slope	mu:x3	0.142443304253453	0.0508881425814594
+gsf_s3	g_blk_slope	sigma:(Intercept)	-0.243303175770398	0.0466655824987918
+gsf_s3	g_blk_slope	sd:mu:(1 + x1 | g):(Intercept)	0.361769655916555	0.197322486794074
+gsf_s3	g_blk_slope	sd:mu:(1 + x1 | g):x1	0.428707101400584	0.182340864999064
+gsf_s3	g_blk_slope	sd:mu:(0 + x2 | g2)	0.236053077657058	0.287496420755716
+gsf_s3	g_blk_slope	cor:mu:cor((Intercept),x1 | g)	0.210487750127313	NA
+gsf_s3	g_blk_slope_sd	ll	-393.463760198348	NA
+gsf_s3	g_blk_slope_sd	conv	1	NA
+gsf_s3	g_blk_slope_sd	pdhess	1	NA
+gsf_s3	g_blk_slope_sd	mu:(Intercept)	0.399370483705145	0.0808752154670294
+gsf_s3	g_blk_slope_sd	mu:x1	0.393808837331239	0.094527893481347
+gsf_s3	g_blk_slope_sd	mu:x2	-0.093377729586855	0.0664304552832265
+gsf_s3	g_blk_slope_sd	mu:x3	0.143738854353105	0.0507683320339923
+gsf_s3	g_blk_slope_sd	sigma:(Intercept)	-0.240009185119055	0.0465693571058485
+gsf_s3	g_blk_slope_sd	sdf:sd(g2, coef = "x2"):(Intercept)	-2.045400992348	0.713305943498975
+gsf_s3	g_blk_slope_sd	sdf:sd(g2, coef = "x2"):z2	0.83413774573379	0.590823091893687
+gsf_s3	g_blk_slope_sd	sd:mu:(1 + x1 | g):(Intercept)	0.35604988867003	0.200282004309692
+gsf_s3	g_blk_slope_sd	sd:mu:(1 + x1 | g):x1	0.430606789964675	0.182041590417626
+gsf_s3	g_blk_slope_sd	cor:mu:cor((Intercept),x1 | g)	0.264506077466739	NA
+gsf_s3	g_blk_indep	ll	-390.556843117753	NA
+gsf_s3	g_blk_indep	conv	1	NA
+gsf_s3	g_blk_indep	pdhess	1	NA
+gsf_s3	g_blk_indep	mu:(Intercept)	0.415370208962777	0.0830184205237603
+gsf_s3	g_blk_indep	mu:x1	0.427441084970222	0.0906806556580447
+gsf_s3	g_blk_indep	mu:x2	-0.174908706610543	0.048992479998159
+gsf_s3	g_blk_indep	mu:x3	0.0964845296861932	0.0817162042608034
+gsf_s3	g_blk_indep	sigma:(Intercept)	-0.289022435438543	0.0482803566666803
+gsf_s3	g_blk_indep	sd:mu:(1 + x1 | g):(Intercept)	0.37003166162192	0.191016605001275
+gsf_s3	g_blk_indep	sd:mu:(1 + x1 | g):x1	0.406568082512407	0.189929674781513
+gsf_s3	g_blk_indep	sd:mu:(0 + x3 | g)	0.348767031638553	0.21129028483998
+gsf_s3	g_blk_indep	cor:mu:cor((Intercept),x1 | g)	0.171583851590256	NA
+gsf_s3	g_blk_indep_sd	error	NA	NA
+gsf_s3	g_blk_indep_sd2	error	NA	NA
+gsf_s3	g_two_blk	ll	-347.960325619626	NA
+gsf_s3	g_two_blk	conv	1	NA
+gsf_s3	g_two_blk	pdhess	1	NA
+gsf_s3	g_two_blk	mu:(Intercept)	0.403992416850225	0.155345233749398
+gsf_s3	g_two_blk	mu:x1	0.367310796676812	0.0863827522218777
+gsf_s3	g_two_blk	mu:x2	-0.136009082632658	0.0861279102790277
+gsf_s3	g_two_blk	mu:x3	0.106394203466725	0.0407521615813978
+gsf_s3	g_two_blk	sigma:(Intercept)	-0.53092955779728	0.0483628230633791
+gsf_s3	g_two_blk	sd:mu:(1 + x1 | g):(Intercept)	0.420431762537696	0.159602097164217
+gsf_s3	g_two_blk	sd:mu:(1 + x1 | g):x1	0.416861900127328	0.163623720918381
+gsf_s3	g_two_blk	sd:mu:(1 + x2 | g2):(Intercept)	0.50323947673218	0.198250012313492
+gsf_s3	g_two_blk	sd:mu:(1 + x2 | g2):x2	0.295753512245941	0.225018009455764
+gsf_s3	g_two_blk	cor:mu:cor((Intercept),x1 | g)	0.273449846380485	NA
+gsf_s3	g_two_blk	cor:mu:cor((Intercept),x2 | g2)	-0.08333191340904	NA
+gsf_s3	g_two_blk_sd	ll	-345.617780730765	NA
+gsf_s3	g_two_blk_sd	conv	1	NA
+gsf_s3	g_two_blk_sd	pdhess	1	NA
+gsf_s3	g_two_blk_sd	mu:(Intercept)	0.397935302984708	0.155917234932521
+gsf_s3	g_two_blk_sd	mu:x1	0.335933529172027	0.0853349262706799
+gsf_s3	g_two_blk_sd	mu:x2	-0.0727064654787676	0.0724895247295181
+gsf_s3	g_two_blk_sd	mu:x3	0.104880607236759	0.0405720838982152
+gsf_s3	g_two_blk_sd	sigma:(Intercept)	-0.528334468180541	0.0488399960991968
+gsf_s3	g_two_blk_sd	sdf:sd(g, coef = "x1"):(Intercept)	-0.932730478700955	0.173483629669815
+gsf_s3	g_two_blk_sd	sdf:sd(g, coef = "x1"):z	0.244471310233937	0.199574698258745
+gsf_s3	g_two_blk_sd	sdf:sd(g2, coef = "x2"):(Intercept)	-1.46414001553473	0.344222245787946
+gsf_s3	g_two_blk_sd	sdf:sd(g2, coef = "x2"):z2	0.442077925117404	0.312590567153633
+gsf_s3	g_two_blk_sd	sd:mu:(1 + x1 | g):(Intercept)	0.418754731975596	0.15998163951879
+gsf_s3	g_two_blk_sd	sd:mu:(1 + x2 | g2):(Intercept)	0.503409151630493	0.198240077758315
+gsf_s3	g_two_blk_sd	cor:mu:cor((Intercept),x1 | g)	0.285218905788069	NA
+gsf_s3	g_two_blk_sd	cor:mu:cor((Intercept),x2 | g2)	-0.010755871522374	NA
+gsf_s3	g_blk_int_slope	ll	-347.999641452913	NA
+gsf_s3	g_blk_int_slope	conv	1	NA
+gsf_s3	g_blk_int_slope	pdhess	1	NA
+gsf_s3	g_blk_int_slope	mu:(Intercept)	0.404370486919744	0.155311221732628
+gsf_s3	g_blk_int_slope	mu:x1	0.36744259075332	0.0864242610795607
+gsf_s3	g_blk_int_slope	mu:x2	-0.135301648426958	0.0861274896218781
+gsf_s3	g_blk_int_slope	mu:x3	0.106614884081705	0.0407379038073215
+gsf_s3	g_blk_int_slope	sigma:(Intercept)	-0.531067261768873	0.0483479492439616
+gsf_s3	g_blk_int_slope	sd:mu:(1 + x1 | g):(Intercept)	0.420413342670635	0.159597733207054
+gsf_s3	g_blk_int_slope	sd:mu:(1 + x1 | g):x1	0.417137326375245	0.163524559920858
+gsf_s3	g_blk_int_slope	sd:mu:(1 | g2)	0.503120535124757	0.198260823086694
+gsf_s3	g_blk_int_slope	sd:mu:(0 + x2 | g2)	0.295919416619232	0.22504785171453
+gsf_s3	g_blk_int_slope	cor:mu:cor((Intercept),x1 | g)	0.271277952553448	NA
+gsf_s3	g_blk_int_slope_sd	ll	-344.242448086297	NA
+gsf_s3	g_blk_int_slope_sd	conv	1	NA
+gsf_s3	g_blk_int_slope_sd	pdhess	1	NA
+gsf_s3	g_blk_int_slope_sd	mu:(Intercept)	0.464719870245891	0.120029889616757
+gsf_s3	g_blk_int_slope_sd	mu:x1	0.372299597275901	0.0860384227119221
+gsf_s3	g_blk_int_slope_sd	mu:x2	-0.0766973878612449	0.0682088144220387
+gsf_s3	g_blk_int_slope_sd	mu:x3	0.102199172165688	0.0406019378992047
+gsf_s3	g_blk_int_slope_sd	sigma:(Intercept)	-0.523333023212044	0.049504372252066
+gsf_s3	g_blk_int_slope_sd	sdf:sd(g2, coef = "(Intercept)"):(Intercept)	-0.899635280410154	0.240852761238064
+gsf_s3	g_blk_int_slope_sd	sdf:sd(g2, coef = "(Intercept)"):z2	0.675551589406417	0.367037035759319
+gsf_s3	g_blk_int_slope_sd	sdf:sd(g2, coef = "x2"):(Intercept)	-1.55642200821783	0.417068789084126
+gsf_s3	g_blk_int_slope_sd	sdf:sd(g2, coef = "x2"):z2	0.534934345346916	0.391659757216745
+gsf_s3	g_blk_int_slope_sd	sd:mu:(1 + x1 | g):(Intercept)	0.41670855886862	0.160030562271075
+gsf_s3	g_blk_int_slope_sd	sd:mu:(1 + x1 | g):x1	0.413571215566429	0.165293330462703
+gsf_s3	g_blk_int_slope_sd	cor:mu:cor((Intercept),x1 | g)	0.314965899095206	NA
+gsf_s3	g_q3_slope	ll	-400.285752609295	NA
+gsf_s3	g_q3_slope	conv	0	NA
+gsf_s3	g_q3_slope	pdhess	0	NA
+gsf_s3	g_q3_slope	mu:(Intercept)	0.387136767186012	NA
+gsf_s3	g_q3_slope	mu:x1	0.387598624020573	NA
+gsf_s3	g_q3_slope	mu:x2	-0.177998917176998	NA
+gsf_s3	g_q3_slope	mu:x3	0.142748138733413	NA
+gsf_s3	g_q3_slope	sigma:(Intercept)	-0.199179617355268	NA
+gsf_s3	g_q3_slope	sd:mu:(0 + x3 | g2)	0.100112882602531	NA
+gsf_s3	g_q3_slope	sd:mu:(1 + x1 + x2 | g):(Intercept)	0.350473047386627	NA
+gsf_s3	g_q3_slope	sd:mu:(1 + x1 + x2 | g):x1	0.41684596411636	NA
+gsf_s3	g_q3_slope	sd:mu:(1 + x1 + x2 | g):x2	0.015655798732827	NA
+gsf_s3	g_q3_slope	cor:re_cov:cor((Intercept),x1 | g)	0.18590967283296	NA
+gsf_s3	g_q3_slope	cor:re_cov:cor((Intercept),x2 | g)	-0.966790012993519	NA
+gsf_s3	g_q3_slope	cor:re_cov:cor(x1,x2 | g)	0.0713810018168831	NA
+gsf_s3	f_corr	ll	-300.580593031426	NA
+gsf_s3	f_corr	conv	1	NA
+gsf_s3	f_corr	pdhess	1	NA
+gsf_s3	f_corr	mu:(Intercept)	0.160980217950625	0.0824011854734701
+gsf_s3	f_corr	mu:x1	0.467288386108601	0.031593284599175
+gsf_s3	f_corr	sigma:(Intercept)	-0.59535336567431	0.0892325820403324
+gsf_s3	f_corr	sdf:sd(g):(Intercept)	-0.85178248468523	0.168749472811169
+gsf_s3	f_corr	sdf:sd(g):z	0.3763468976085	0.184121568369748
+gsf_s3	f_corr	sd:sigma:(1 | p | g)	0.418881733252669	0.185495841913261
+gsf_s3	f_corr	cor:mu_sigma:cor(mu:(Intercept),sigma:(Intercept) | p | g)	0.152408977589812	NA
+gsf_s3	f_indep	ll	-300.777370054954	NA
+gsf_s3	f_indep	conv	1	NA
+gsf_s3	f_indep	pdhess	1	NA
+gsf_s3	f_indep	mu:(Intercept)	0.158337979022664	0.0821886190870426
+gsf_s3	f_indep	mu:x1	0.464933682629862	0.0315120274140449
+gsf_s3	f_indep	sigma:(Intercept)	-0.596207783468378	0.0896897972590321
+gsf_s3	f_indep	sdf:sd(g):(Intercept)	-0.855493622712386	0.169736014775617
+gsf_s3	f_indep	sdf:sd(g):z	0.380431063072525	0.187233949864414
+gsf_s3	f_indep	sd:sigma:(1 | g)	0.421291311436709	0.185187604339929
+gsf_s3	f_cross	ll	-309.485577157885	NA
+gsf_s3	f_cross	conv	1	NA
+gsf_s3	f_cross	pdhess	1	NA
+gsf_s3	f_cross	mu:(Intercept)	0.198350433050818	0.0874150851438049
+gsf_s3	f_cross	mu:x1	0.492242705709349	0.0338070160278218
+gsf_s3	f_cross	sigma:(Intercept)	-0.534889655613507	0.0945902928344644
+gsf_s3	f_cross	sdf:sd(g):(Intercept)	-0.785583820415989	0.152824098591309
+gsf_s3	f_cross	sdf:sd(g):z	0.247965426776104	0.158820173730267
+gsf_s3	f_cross	sd:sigma:(1 | g2)	0.322114020805527	0.24168297854648

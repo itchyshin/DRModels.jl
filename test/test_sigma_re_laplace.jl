@@ -193,10 +193,10 @@ _srl_design(d, sigx) = (hcat(ones(length(d.y)), d.x),
         # send a user to `:LA` as "Laplace".
         @test_throws r"Gauss–Hermite quadrature, not Laplace" drm(f, Gaussian(); data = dm, marginal = :VA)
         # The σ route does not claim the non-Gaussian families: a Poisson model
-        # outside the ordinary `(1 | g)` Laplace route is refused by that route.
-        dp = (y = round.(Int, abs.(d.y)), x = d.x, g = d.g)
+        # outside the covered Laplace shapes (here a three-coefficient block) is refused by that route.
+        dp = (y = round.(Int, abs.(d.y)), x = d.x, z = cos.(1:length(d.y)), g = d.g)
         @test_throws r"marginal = :Laplace is not available for Poisson\(\) with" drm(
-            bf(@formula(y ~ x + (1 + x | g))), Poisson(); data = dp, marginal = :Laplace)
+            bf(@formula(y ~ x + (1 + x + z | g))), Poisson(); data = dp, marginal = :Laplace)
         # The shared refusal names both `:Laplace` routes.
         errL = @test_throws ArgumentError _SRL._marginal_method(:Laplace)
         @test occursin(r"ordinary random intercept `\(1 \| g\)` on Poisson", sprint(showerror, errL.value))
@@ -229,7 +229,7 @@ _srl_design(d, sigx) = (hcat(ones(length(d.y)), d.x),
             formula = "y ~ x + (1 | g); sigma ~ 1", family = "gaussian", data = dm,
             options = Dict{String,Any}("marginal" => "Laplace"))
         # A family whose `drm` method has no `marginal` keyword (Student gained one in #714).
-        @test_throws r"option `marginal` is not available for SkewNormal\(\)" drm_bridge(
+        @test_throws r"SkewNormal route does not accept the keyword `marginal`" drm_bridge(
             formula = "y ~ x", family = "skewnormal", data = dm,
             options = Dict{String,Any}("marginal" => "Laplace"))
         # Only "LA" and "Laplace" are forwarded. "VA" and "AGHQ" have no drmTMB

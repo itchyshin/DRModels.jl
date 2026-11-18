@@ -183,7 +183,7 @@ hurdle model.
 !!! note "Differs from drmTMB: `hu` on `Poisson()`"
     DRModels.jl accepts `hu` on a plain `Poisson()` and fits the hurdle Poisson.
     drmTMB currently refuses it: `poisson()` supports only `mu` and an optional
-    `zi`, and `hu` raises "Poisson models only support mu and optional zi".
+    `zi`, and `hu` raises "Poisson models only support `mu` and optional `zi`. Unsupported parameter" (drmTMB message, checked against its source, not run for `hu`).
     There is therefore no drmTMB spelling for this model, and no R-parity
     comparison is available for it (twin track, #726). For a hurdle count model
     that exists on both sides, use `NegBinomial2()` + `hu`, which agrees
@@ -279,7 +279,8 @@ fitzob = drm(bf(@formula(y ~ x), @formula(sigma ~ 1), @formula(zoi ~ 1), @formul
 
 ### Cumulative-logit — `CumulativeLogit()`
 
-Ordered categories coded `1, 2, …, K` (Likert ratings, severity classes):
+Ordered categories coded `1, 2, …, K`, with every code in that range observed
+(Likert ratings, severity classes):
 `Pr(y ≤ k) = logistic(θ_k − η)` with ordered cutpoints. The single linear
 predictor comes from the `mu` formula **with its intercept dropped** (the
 cutpoints absorb the level), so `coef(fit, :mu)` is the slope.

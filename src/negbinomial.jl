@@ -145,8 +145,26 @@ function _drm_negbinomial2_fit(f::DrmFormula, fam::NegBinomial2; data, tree = no
              g_tol::Real = 1e-8, se::Bool = true,
              marginal::Symbol = :LA, method = nothing,
              nAGQ::Union{Nothing,Int} = nothing, ids = nothing)
+    f = _default_structured_q2_sd(f, fam)   # bare structured (1 + x | g): default `sd(…, coef(·)) ~ 1`
+    ssq = _sigma_struct_q2_block(f)
+    if Ainv !== nothing && (ssq !== nothing || _ss_has_sigma_structured_sd(f))
+        # Structured-sigma routes (shapes A and B) take the covariance `A`; an animal
+        # precision `Ainv` is converted exactly as the Gamma route does (A = inv(Ainv),
+        # labelled by the first-seen levels), so both give the same fit.
+        A, ids = _ainv_as_labelled_A(f, data, A, Ainv, ids)
+        Ainv = nothing
+    end
     _drm_entry_guard(f, fam, data; tree = tree, K = K, A = A, Ainv = Ainv, coords = coords)   # #1027 #1022 #1010
     _reject_method_as_marginal(fam, method)
+    if ssq !== nothing        # NB2 structured sigma intercept + slope, fixed SDs (native drmTMB fits it)
+        marginal === :LA || throw(ArgumentError(
+            "NegBinomial2 structured sigma `$(ssq[1])(1 + $(ssq[2].slope) | $(ssq[2].group))` supports `marginal = :LA` only."))
+        nAGQ === nothing || throw(ArgumentError(
+            "NegBinomial2 structured sigma `$(ssq[1])(1 + $(ssq[2].slope) | $(ssq[2].group))` does not use `nAGQ`."))
+        A = _resolve_relatedness_labels(f, data, A, ids; coords = coords)
+        coords = _resolve_coords_labels(f, data, coords, ids)
+        return _drm_sigma_struct_q2_laplace(f, fam, ssq...; data, tree, K, A, coords, g_tol, se, method)
+    end
     if !isempty(_sd_parts(f)) || !isempty(_sdphylo_parts(f))
         nAGQ === nothing || nAGQ >= 1 || throw(ArgumentError(
             "nAGQ must be ≥ 1; got $nAGQ"))
@@ -194,6 +212,10 @@ function _drm_negbinomial2_fit(f::DrmFormula, fam::NegBinomial2; data, tree = no
                           "intercepts `(1 | g) + (1 | h)` only, #761)")
     mv === nothing ||
         error("NegBinomial2() does not support meta_V markers")
+    let sigre = _drm_sigma_ranef_laplace_family(f, fam; data, g_tol, se, fixed_mu, re, mv, st,
+                                                offset_term = offset_term, isva = isva, isaghq = isaghq)
+        sigre === nothing || return sigre
+    end
     for (pname, r) in f.forms          # only the mean may carry a random effect
         pname === :mu && continue
         _, re2, mv2, st2 = _split_ranef(r)
@@ -226,10 +248,27 @@ function _drm_negbinomial2_fit(f::DrmFormula, fam::NegBinomial2; data, tree = no
         # `sigma ~ 1` keeps the scalar-dispersion spine; a covariate `sigma`
         # formula routes to the per-observation log-dispersion path (#164).
         kind, grp = st
+        # `_split_ranef` reports only the FIRST structured marker. Without this check a second one
+        # (`spatial(1 | g) + animal(1 | h)`, `phylo(1 | g) + relmat(1 | h)`, ...) is dropped and the
+        # one-term fit is returned as if both had been fitted. Refuse it by name instead.
+        structured_all = _collect_structured(rhs[:mu])
+        length(structured_all) == 1 || throw(ArgumentError(
+            "NegBinomial2() fits one structured random effect (`phylo`, `relmat`, `animal` or `spatial`) " *
+            "on the mean, but the formula has $(length(structured_all)): " *
+            join(("$k(1 | $gname)" for (k, gname) in structured_all), ", ") *
+            ". A second structured term is not implemented here (it would be dropped, not fitted), " *
+            "so it is refused. Keep one structured term, or use `Gaussian()`, which fits two."))
         labels = getproperty(data, grp)
         if kind === :phylo
             tree === nothing && error("phylo(1 | $grp) needs `tree = …`")
             return _withformula(_fit_nb2_phylo_laplace(fam, y, Xμ, Xσ, labels, tree, nmμ, nmσ, grp, g_tol; se = se), f)
+        elseif kind === :spatial && K === nothing && coords !== nothing
+            # Coordinate spatial intercept: drmTMB's fixed-range kernel, exp(-d / r) + 1e-6 I with
+            # r the median positive pairwise distance, exactly as the Poisson and Gamma routes.
+            _, Gsp = _group_index(labels)
+            Csp = _spatial_covariance_from_coords(grp, Gsp, coords, nothing)
+            return _withformula(_fit_nb2_relmat_laplace(fam, y, Xμ, Xσ, Csp, labels, nmμ, nmσ, grp, g_tol;
+                                                          se = se, normalize = true), f)
         elseif kind === :relmat || kind === :animal || kind === :spatial
             # General user-supplied PD covariance C on the mean intercept
             # (relatedness / animal model / precomputed spatial), with the NB2
@@ -245,12 +284,23 @@ function _drm_negbinomial2_fit(f::DrmFormula, fam::NegBinomial2; data, tree = no
     if !isempty(re)                                       # random effect on the mean → GHQ/Laplace or VA (#136)
         isva && (haskey(rhs, :zi) || haskey(rhs, :hu)) &&
             _va_reject(fam, "`zi`/`hu` combined with a random effect")
-        (haskey(rhs, :zi) || haskey(rhs, :hu)) &&
-            error("NegBinomial2() random effects cannot be combined with `zi`/`hu` yet")
+        if haskey(rhs, :zi) || haskey(rhs, :hu)
+            # One ordinary `(1 | g)` with `zi` / `hu`: drmTMB's Laplace objective (`zi_re_laplace.jl`).
+            # Laplace is the only integrator on this route (`:AGHQ` is refused above, REML earlier).
+            return _drm_zi_re_laplace(f, fam; data = data, g_tol = g_tol)
+        end
         if length(re) > 1
             isva && _va_reject(fam, "crossed/multiple random intercepts")
+            if _has_indep_slopes(re)
+                isaghq && _aghq_reject(fam, "independent random slopes `(0 + x | g)` (Laplace only)")
+                return _withformula(_fit_indep_re_laplace(fam, Val(:nb2), y, Xμ, Xσ, nothing,
+                                                          _indep_slope_comps(re, data, length(y)),
+                                                          nmμ, nmσ, String[], g_tol), f)
+            end
             all(_re_kind(r[1])[1] === :intercept for r in re) ||
-                error("NegBinomial2() supports multiple random effects only as crossed/nested intercepts, e.g. `(1 | g) + (1 | h)`")
+                error("NegBinomial2() supports multiple random effects only as crossed/nested intercepts " *
+                      "`(1 | g) + (1 | h)` or independent intercepts and slopes `(1 | g) + (0 + x | g)`; " *
+                      "a correlated `(1 + x | g)` must be the only random-effect term")
             comps = map(re) do r
                 grp = r[2]; gidx, G = _group_index(getproperty(data, grp); col = grp)
                 (ones(length(y)), gidx, G, String(grp))
@@ -271,8 +321,15 @@ function _drm_negbinomial2_fit(f::DrmFormula, fam::NegBinomial2; data, tree = no
         elseif rk === :corr                               # (1 + x | g) → 2-D GHQ
             isva && _va_reject(fam, "a correlated random slope `(1 + x | g)`")
             return _withformula(_fit_negbin2_corr_ranef(fam, y, Xμ, Xσ, Float64.(getproperty(data, var)), gidx, G, nmμ, nmσ, grp, g_tol), f)
+        elseif rk === :slope                              # (0 + x | g) → TMB-convention Laplace (independent route)
+            isva && _va_reject(fam, "an independent random slope `(0 + x | g)`")
+            isaghq && _aghq_reject(fam, "an independent random slope `(0 + x | g)` (Laplace only)")
+            _require_finite_data_column(data, var)
+            return _withformula(_fit_indep_re_laplace(fam, Val(:nb2), y, Xμ, Xσ, nothing,
+                                                      _indep_slope_comps(re, data, length(y)),
+                                                      nmμ, nmσ, String[], g_tol), f)
         else
-            error("NegBinomial2() supports (1|g) or (1+x|g) on the mean")
+            error("NegBinomial2() supports (1|g), (0+x|g) or (1+x|g) on the mean")
         end
     end
     isva && _va_reject(fam, "no random intercept (fixed-effects-only / zi / hu)")
@@ -300,8 +357,33 @@ function _drm_negbin2_sd_regression(f::DrmFormula, fam::NegBinomial2; data,
                                     g_tol::Real = 1e-8,
                                     se::Bool = true, marginal::Symbol = :LA,
                                     nAGQ::Union{Nothing,Int} = nothing)
+    laplace_fit = _laplace_sd_route(f, fam, Val(:nb2), marginal; data, g_tol)
+    laplace_fit === nothing || return laplace_fit
     marginal === :LA || throw(ArgumentError(
         "NegBinomial2 `sd(group) ~ …` currently supports `marginal = :LA` only."))
+    if _ss_has_sigma_structured_sd(f)
+        nAGQ === nothing || throw(ArgumentError(
+            "nAGQ is not used by the structured-sigma Laplace route; omit it."))
+        Ainv === nothing || throw(ArgumentError(
+            "NegBinomial2 structured sigma SD regression does not use `Ainv`."))
+        return _drm_structured_sigma_sd_laplace(f, fam; data, tree, K, A, coords, g_tol, se)
+    end
+    q2ps = _phylo_spatial_q2_block(f)
+    q2ps === nothing || return _drm_count_phylo_spatial_q2_sd(f, fam, q2ps...;
+        data, tree, K, A, Ainv, coords, g_tol, se, nAGQ)
+    ordq2 = _ordinary_q2_sd_block(f, fam)
+    ordq2 === nothing || return _drm_count_ordinary_q2_sd(f, fam, ordq2;
+        data, tree, K, A, Ainv, coords, g_tol, se, nAGQ)
+    isempty(_sdphylo_parts(f)) || return _drm_negbin2_phylo_sd_regression(
+        f, fam; data, tree, K, A, Ainv, coords, g_tol, se, nAGQ)
+    # Same check as the no-`sd()` route: a second structured term would be dropped, so refuse it.
+    structured_all = _collect_structured(Dict(f.forms)[:mu])
+    length(structured_all) <= 1 || throw(ArgumentError(
+        "NegBinomial2() fits one structured random effect (`phylo`, `relmat`, `animal` or `spatial`) " *
+        "on the mean, but the formula has $(length(structured_all)): " *
+        join(("$k(1 | $gname)" for (k, gname) in structured_all), ", ") *
+        ". A second structured term is not implemented here (it would be dropped, not fitted), " *
+        "so it is refused. Keep one structured term, or use `Gaussian()`, which fits two."))
     spatial_sd_target = any(t.target.level === :spatial for t in _sd_target_parts(f))
     (tree === nothing && (coords === nothing || spatial_sd_target)) ||
         throw(ArgumentError("NegBinomial2 `sd(group) ~ …` supports ordinary effects, " *
@@ -309,6 +391,35 @@ function _drm_negbin2_sd_regression(f::DrmFormula, fam::NegBinomial2; data,
     isempty(_sdphylo_parts(f)) || throw(ArgumentError(
         "NegBinomial2 `sd(group, phylogenetic) ~ …` is not implemented by the ordinary random-intercept route."))
     targets = _sd_target_parts(f)
+    animal_block = _animal_intercept_slope(get(Dict(f.forms), :mu, nothing);
+                                           allow_label = true)
+    if animal_block !== nothing
+        return _drm_negbin2_animal_intercept_slope_sd(
+            f, fam, targets, animal_block; data, tree, K, A, Ainv, coords,
+            g_tol, se, nAGQ)
+    end
+    relmat_block = _relmat_intercept_slope(get(Dict(f.forms), :mu, nothing);
+                                           allow_label = true)
+    if relmat_block !== nothing
+        return _drm_negbin2_relmat_intercept_slope_sd(
+            f, fam, targets, relmat_block; data, tree, K, A, Ainv, coords,
+            g_tol, se, nAGQ)
+    end
+    if length(targets) == 2 && count(item -> item.target.dpar === :sigma, targets) == 1
+        # Joint mean + sigma ordinary intercepts, each with an SD formula (dense Laplace).
+        (Ainv === nothing) || throw(ArgumentError(
+            "drm: NegBinomial2 joint `mu` + `sigma` SD regression does not use `Ainv`."))
+        return _drm_joint_sigma_sd_laplace(f, fam; data, tree, K, A, coords, g_tol, se)
+    end
+    if nAGQ === nothing
+        twofield = _drm_twofield_sd_route(f, fam; data, tree, K, A, Ainv, coords, g_tol, se)
+        twofield === nothing || return twofield
+    end
+    if nAGQ === nothing
+        indep_shape = _indep_sd_shape(f)
+        indep_shape === nothing ||
+            return _drm_indep_sd_laplace(f, fam, Val(:nb2), indep_shape; data, g_tol)
+    end
     length(targets) == 1 || throw(ArgumentError(
         "NegBinomial2 random-effect SD regression requires exactly one `sd(group) ~ …` formula."))
     target = only(targets)
@@ -330,8 +441,6 @@ function _drm_negbin2_sd_regression(f::DrmFormula, fam::NegBinomial2; data,
         kind, grp = st
         kind in (:animal, :relmat, :spatial) || throw(ArgumentError(
             "NegBinomial2 predictor-dependent SD currently supports only an animal or relmat intercept, or a coordinate spatial slope, among structured effects."))
-        kind === :spatial && animal_slope === nothing && throw(ArgumentError(
-            "NegBinomial2 spatial SD regression supports only the slope-only `spatial(0 + x | $grp)` term with `coords = …`."))
         isempty(re) || throw(ArgumentError(
             "NegBinomial2 $kind SD regression cannot yet be combined with ordinary random effects."))
         if kind === :animal
@@ -343,7 +452,7 @@ function _drm_negbin2_sd_regression(f::DrmFormula, fam::NegBinomial2; data,
             (A === nothing && Ainv === nothing && K === nothing) || throw(ArgumentError(
                 "NegBinomial2 spatial slope SD regression uses `coords = …` only, not `K`, `A` or `Ainv`."))
             coords === nothing && throw(ArgumentError(
-                "spatial(0 + $animal_slope | $grp) needs `coords = …`"))
+                "spatial($(animal_slope === nothing ? "1" : "0 + $animal_slope") | $grp) needs `coords = …`"))
         else
             (A === nothing && Ainv === nothing) || throw(ArgumentError(
                 "NegBinomial2 relmat SD regression uses `K = …` only; do not also supply `A` or `Ainv`."))
@@ -474,6 +583,72 @@ function _drm_negbin2_sd_regression(f::DrmFormula, fam::NegBinomial2; data,
         fit = _fit_negbin2_sd_regression(fam, y, Xmu, Xsigma, Zg,
             gidx, G, nmmu, nmsigma, nmsd, grp, g_tol; K = nodes, se, w)
     end
+    return _withformula(fit, f)
+end
+
+# NB2 intercept SD regression on a phylogenetic covariance: `y ~ … + phylo(1 | g)` with
+# `sd(g, phylogenetic) ~ z`. The animal q1 Laplace objective is reused with the tip
+# correlation matrix (`_structured_q2_kernel`, the native correlation scale) as the
+# covariance, as the Beta structured route does. Kernel rows are re-ordered to the
+# first-seen order of the data groups, which `_general_cov_setup` assumes.
+function _drm_negbin2_phylo_sd_regression(f::DrmFormula, fam::NegBinomial2; data,
+                                          tree, K = nothing, A = nothing,
+                                          Ainv = nothing, coords = nothing,
+                                          g_tol::Real = 1e-8, se::Bool = true,
+                                          nAGQ::Union{Nothing,Int} = nothing)
+    who = "NegBinomial2 `sd(group, phylogenetic)` SD regression"
+    (K === nothing && A === nothing && Ainv === nothing && coords === nothing) || throw(ArgumentError(
+        "$who takes its covariance from `tree`; do not also supply `K`, `A`, `Ainv` or `coords`."))
+    nAGQ === nothing || throw(ArgumentError("nAGQ is not used by the sparse-Laplace phylogenetic SD route; omit it."))
+    sdpp = _sdphylo_parts(f)
+    length(sdpp) == 1 || throw(ArgumentError(
+        "$who requires exactly one `sd(group, phylogenetic) ~ …` formula."))
+    isempty(_sd_parts(f)) && isempty(_sd_target_parts(f)) || throw(ArgumentError(
+        "$who cannot yet be combined with other `sd(group)` formulas."))
+    sgrp, srhs = only(sdpp)
+    rhs = Dict(f.forms)
+    fixed_mu, re, mv, st = _split_ranef(rhs[:mu])
+    mv === nothing || throw(ArgumentError("$who cannot use meta_V()."))
+    st !== nothing && first(st) === :phylo || throw(ArgumentError(
+        "NegBinomial2 `sd($sgrp, phylogenetic)` requires `phylo(1 | $sgrp)` in the location formula."))
+    tree === nothing && throw(ArgumentError("phylo(1 | $sgrp) needs `tree = …`"))
+    isempty(re) || throw(ArgumentError(
+        "$who currently requires a phylogenetic random intercept without additional random effects."))
+    last(st) === sgrp || throw(ArgumentError(
+        "NegBinomial2 `sd($sgrp, phylogenetic)` must name the group in `phylo(1 | $(last(st)))`."))
+    sigma_rhs = get(rhs, :sigma, nothing)
+    sigma_rhs isa ConstantTerm && sigma_rhs == ConstantTerm(1) || throw(ArgumentError(
+        "$who requires a fixed `sigma ~ 1` submodel."))
+    (haskey(rhs, :zi) || haskey(rhs, :hu)) && throw(ArgumentError(
+        "$who cannot yet be combined with `zi` or `hu`."))
+    fixed_mu, offset_term = _extract_offset(fixed_mu)
+    offset_term === nothing || throw(ArgumentError("$who does not yet support `offset(...)`."))
+    for (pname, _) in f.forms
+        pname in (:mu, :sigma, Symbol("sdphy_", sgrp)) && continue
+        throw(ArgumentError("$who supports only `mu`, fixed `sigma ~ 1`, and one phylogenetic SD formula."))
+    end
+    all(_formula_response_observed_mask(f, data)) || throw(ArgumentError(
+        "$who requires observed responses; remove incomplete rows before fitting."))
+    y, Xmu, nmmu = _design(f.response, fixed_mu, data)
+    _, Xsigma, nmsigma = _design(f.response, sigma_rhs, data)
+    all(yi -> yi ≥ 0 && isinteger(yi), y) || throw(ArgumentError(
+        "NegBinomial2() requires non-negative integer counts as the response"))
+    labels = getproperty(data, sgrp)
+    C, leaf_index, _ = _structured_q2_kernel(:phylo, sgrp, labels; tree, K = nothing,
+        A = nothing, coords = nothing, who)
+    gidx, G = _group_index(labels)
+    tip_of = zeros(Int, G)
+    @inbounds for i in eachindex(gidx)
+        tip_of[gidx[i]] == 0 || tip_of[gidx[i]] == leaf_index[i] || error("phylogenetic group indexing changed unexpectedly")
+        tip_of[gidx[i]] = leaf_index[i]
+    end
+    Zg, nmsd = _sd_group_design(f.response, srhs, data, gidx, G, sgrp;
+                                schema_cache = f.schema_cache, schema_key = :sd_phylo)
+    size(Zg, 2) <= G && rank(Zg) == size(Zg, 2) || throw(ArgumentError(
+        "$who: the SD group-level design is rank deficient; use predictors that vary independently across groups."))
+    fit = _fit_nb2_animal_sd_laplace(fam, y, Xmu, Xsigma, Zg, gidx,
+        Matrix{Float64}(C)[tip_of, tip_of], labels, nmmu, nmsigma, nmsd, sgrp, g_tol;
+        se, normalize = false)
     return _withformula(fit, f)
 end
 
@@ -628,8 +803,11 @@ function _fit_negbin2_sigma_sd_regression(fam::NegBinomial2, y, Xmu,
     theta0[1:pmu] .= Xmu \ fill(log(positive_mean), n)
     theta0[(pmu+1):(pmu+psigma)] .= Xsigma \ fill(-0.5, n)
     theta0[(pmu+psigma+pzi+1):end] .= Wsd \ fill(log(0.4), G)
-    result = Optim.optimize(nll, theta0, Optim.LBFGS(),
-                            Optim.Options(g_tol = g_tol); autodiff = :forward)
+    # HagerZhang asserts (`B > A`) on the near-flat plateau that the hard shape clamp
+    # above creates (|2 log sigma| > 8): about 2% of fuzz draws threw out of `drm()`
+    # (seeds 9, 94, 95 of test/fixtures/nb2_sigma_sd_line_search). Retry with
+    # BackTracking, which has no such assertion; `converged` stays honest.
+    result = _optimize_with_fallback(nll, theta0, g_tol)
     theta_hat = Optim.minimizer(result)
     V = se ? _vcov_from_hessian(ForwardDiff.hessian(nll, theta_hat)) :
              fill(NaN, length(theta_hat), length(theta_hat))
@@ -961,7 +1139,7 @@ function _fit_nb2_animal_sd_laplace(fam::NegBinomial2, y, Xmu, Xsigma, Zg,
         _attach_conditional_structured!(
             scales, Float64.(weight) .* sd_group[gidx] .* u_hat[gidx], u_hat)
     else
-        scales[:cond_failed] = 1.0
+        _mark_cond_failed!(scales)
     end
     blocks = [:mu => (1:pmu), :sigma => ((pmu + 1):(pmu + 1)),
               :sd => sd_range]
@@ -1077,6 +1255,7 @@ function _fit_negbin2_ranef(fam::NegBinomial2, y, Xμ, Xσ, gidx, G, nmμ, nmσ,
     names = [:mu => nmμ, :sigma => nmσ, :resd => [String(grp)]]
     means = Dict(:mu => exp.(_eta_with_offset(Xμ, θ̂[1:pμ], offset))); obs = Dict(:mu => Vector{Float64}(y))   # population μ (b=0)
     scales = Dict(:sigma => _reported_sigma(Xσ * θ̂[(pμ+1):(pμ+pσ)], -20.0, 20.0, 3.0))
+    _record_cond_fit_aghq!(scales, nll, θ̂, bcache, gidx, Zre)   # fitted-row modes for `fitted(fit)`
     return _withiterations(
         _withnll(DrmFit(fam, blocks, names, θ̂, V, -nll(θ̂), n, Optim.converged(res), means, obs, scales), nll),
         Optim.iterations(res))
@@ -1117,6 +1296,7 @@ function _fit_negbin2_corr_ranef(fam::NegBinomial2, y, Xμ, Xσ, xs, gidx, G, nm
     names = [:mu => nmμ, :sigma => nmσ, :recov => ["$(grp):L11", "$(grp):L22", "$(grp):L21"]]
     means = Dict(:mu => exp.(Xμ * θ̂[1:pμ])); obs = Dict(:mu => Vector{Float64}(y))   # population μ (b=0)
     scales = Dict(:sigma => _reported_sigma(Xσ * θ̂[(pμ+1):(pμ+pσ)], -20.0, 20.0, 3.0))
+    _record_cond_fit_aghq!(scales, nll, θ̂, bcache, gidx, Zre)   # fitted-row modes for `fitted(fit)`
     return _withiterations(
         _withnll(DrmFit(fam, blocks, names, θ̂, V, -nll(θ̂), n, Optim.converged(res), means, obs, scales), nll),
         Optim.iterations(res))
@@ -1350,16 +1530,24 @@ struct TruncatedNegBinomial2 end
 
 @drm_entry function drm(f::DrmFormula, fam::TruncatedNegBinomial2; data,
              g_tol::Real = 1e-8, se::Bool = true,
-             nAGQ::Union{Nothing,Int} = nothing)
+             nAGQ::Union{Nothing,Int} = nothing,
+             marginal::Union{Nothing,Symbol} = nothing)
     _drm_entry_guard(f, fam, data)   # #1027 #1022
+    # `marginal` exists only so that `update` / `bootstrap` can repeat a fit of the one-`(1 | g)`
+    # Laplace route (its fit is tagged `:Laplace`); it is refused everywhere else, never ignored.
+    marginal === nothing || marginal === :Laplace || throw(ArgumentError(
+        "TruncatedNegBinomial2() accepts `marginal = :Laplace` only (its random-intercept route); " *
+        "got `marginal = :$marginal`."))
     if !isempty(_sd_parts(f)) || !isempty(_sdphylo_parts(f))
+        marginal === nothing ||
+            _refuse_unsupported_kwargs((:marginal,), f, fam, (:control, :data, :g_tol, :nAGQ, :se, :weights))
         nodes = nAGQ === nothing ? _SD_IID_AGHQ_K : nAGQ
         nodes >= 1 || throw(ArgumentError("nAGQ must be ≥ 1; got $nodes"))
         return _drm_truncated_negbin2_sd_regression(f, fam; data, g_tol, se,
                                                     nAGQ = nodes)
     end
     missing_fit = _fit_observed_response_rows(f, data) do data_observed
-        drm(f, fam; data = data_observed, g_tol = g_tol)
+        drm(f, fam; data = data_observed, g_tol = g_tol, marginal = marginal)
     end
     missing_fit !== nothing && return missing_fit
 
@@ -1367,11 +1555,16 @@ struct TruncatedNegBinomial2 end
         "nAGQ is currently supported for TruncatedNegBinomial2 random-effect SD regression only."))
     _lss_only_gaussian_guard(f, fam)   # #544: refuse, never silently drop, sd() parts
     rhs = Dict(f.forms)
-    for (_, r) in f.forms
+    for (pname, r) in f.forms
         _, re, mv, st = _split_ranef(r)
-        (isempty(re) && mv === nothing && st === nothing) ||
-            error("TruncatedNegBinomial2() currently supports fixed effects only")
+        (isempty(re) && mv === nothing && st === nothing) && continue
+        # One ordinary `(1 | g)` on `mu`: drmTMB's Laplace objective (`zi_re_laplace.jl`); every
+        # other random-effect shape stays refused (the route re-checks and names it).
+        pname === :mu && return _drm_zi_re_laplace(f, fam; data = data, g_tol = g_tol)
+        error("TruncatedNegBinomial2() currently supports fixed effects only")
     end
+    marginal === nothing ||
+        _refuse_unsupported_kwargs((:marginal,), f, fam, (:control, :data, :g_tol, :nAGQ, :se, :weights))
     # Refuse, never silently drop, a formula part this family does not consume.
     # Before this guard `drm(bf(y ~ x, sigma ~ 1, zi ~ w), TruncatedNegBinomial2())`
     # dropped `zi` from the likelihood without a word and fitted the plain
@@ -1572,4 +1765,374 @@ function _fit_truncated_negbin2(fam::TruncatedNegBinomial2, y, Xμ, Xσ, nmμ, n
     return _withiterations(
         _withnll(DrmFit(fam, blocks, names, θ̂, V, -nll(θ̂), n, Optim.converged(res), means, obs, scales), nll),
         Optim.iterations(res))
+end
+
+
+# Independent animal intercept-and-slope q2 block with one SD formula per
+# coefficient: `y ~ x + animal(1 + x | g)`, `sigma ~ 1`,
+# `sd(g, animal, coef(intercept)) ~ z0`, `sd(g, animal, coef(x)) ~ z1`.
+# Mirrors the Poisson and Gamma routes. The NB2 dispersion keeps the
+# parameterisation of `_fit_nb2_animal_sd_laplace` (log sigma, size
+# exp(-2 log sigma) clamped inside `_nb2_laplace_setup`), so
+# theta = (beta, log sigma, alpha0, alpha1).
+function _drm_negbin2_animal_intercept_slope_sd(f::DrmFormula, fam::NegBinomial2,
+        targets, animal_block; data, tree, K, A, Ainv, coords, g_tol, se, nAGQ)
+    length(targets) == 2 || throw(ArgumentError(
+        "NegBinomial2 `animal(1 + x | group)` SD regression needs one SD formula for the intercept and one for the slope."))
+    group, slope = animal_block.group, animal_block.slope
+    all(item -> item.target.level === :animal && item.target.group === group &&
+        item.target.dpar === :mu && item.target.block === nothing, targets) ||
+        throw(ArgumentError("NegBinomial2 independent animal intercept-and-slope SD regression requires two matching `animal` mean targets."))
+    Set(item.target.member for item in targets) == Set((:intercept, slope)) ||
+        throw(ArgumentError(
+            "NegBinomial2 animal SD formulas must select `coef(intercept)` and `coef($slope)` exactly once."))
+    (tree === nothing && K === nothing && coords === nothing) || throw(ArgumentError(
+        "NegBinomial2 animal SD regression uses `A = …` or `Ainv = …`; do not also supply `tree`, `K`, or `coords`."))
+    (A === nothing) == (Ainv === nothing) && throw(ArgumentError(
+        "NegBinomial2 animal SD regression requires exactly one of `A = …` or `Ainv = …`."))
+    nAGQ === nothing || throw(ArgumentError(
+        "nAGQ is not used by the sparse-Laplace animal SD route; omit it."))
+    rhs = Dict(f.forms)
+    correlated = animal_block.label !== nothing
+    fixed_mu, re, metav, structured, _, _, parsed_slope = _split_ranef(
+        rhs[:mu]; allow_animal_intercept_slope = true,
+        allow_labelled_intercept_slope = correlated)
+    metav === nothing && isempty(re) && structured == (:animal, group) &&
+        parsed_slope === slope || throw(ArgumentError(
+        "NegBinomial2 animal SD regression requires one matching `animal(1 + $slope | $group)` " *
+        "or labelled `animal(1 + $slope | p | $group)` term."))
+    _collect_structured(rhs[:mu]) == [(:animal, group)] || throw(ArgumentError(
+        "NegBinomial2 animal intercept-and-slope SD regression requires exactly one structured term, with no additional structured effects."))
+    sigma_rhs = get(rhs, :sigma, nothing)
+    sigma_rhs isa ConstantTerm && sigma_rhs == ConstantTerm(1) || throw(ArgumentError(
+        "NegBinomial2 animal SD regression requires a fixed `sigma ~ 1` submodel."))
+    (haskey(rhs, :zi) || haskey(rhs, :hu)) && throw(ArgumentError(
+        "NegBinomial2 animal SD regression cannot yet be combined with `zi` or `hu`."))
+    fixed_mu, offset_term = _extract_offset(fixed_mu)
+    offset_term === nothing || throw(ArgumentError(
+        "NegBinomial2 random-effect SD regression does not yet support `offset(...)`."))
+    allowed = Set(vcat([:mu, :sigma], [item.key for item in targets]))
+    all(first(pair) in allowed for pair in f.forms) || throw(ArgumentError(
+        "NegBinomial2 animal intercept-and-slope SD regression supports only `mu`, fixed `sigma ~ 1`, and its two SD formulas."))
+    all(_formula_response_observed_mask(f, data)) || throw(ArgumentError(
+        "NegBinomial2 animal SD regression requires observed responses; remove incomplete rows before fitting."))
+    y, Xmu, nmmu = _design(f.response, fixed_mu, data)
+    _, Xsigma, nmsigma = _design(f.response, sigma_rhs, data)
+    all(yi -> isfinite(yi) && yi >= 0 && isinteger(yi), y) || throw(ArgumentError(
+        "NegBinomial2() requires non-negative integer counts as the response"))
+    labels = getproperty(data, group)
+    Q, gidx = Ainv === nothing ? _general_cov_setup(A, labels; normalize = false) :
+        _nb2_animal_precision_setup(Ainv, labels, group)
+    G = size(Q, 1)
+    ordered = map((:intercept, slope)) do member
+        only(filter(item -> item.target.member === member, targets))
+    end
+    Zgs = Matrix{Float64}[]
+    nmsds = Vector{String}[]
+    for item in ordered
+        Zg, names = _sd_group_design(f.response, item.rhs, data, gidx, G, group;
+            schema_cache = f.schema_cache, schema_key = item.key)
+        size(Zg, 2) <= G && rank(Zg) == size(Zg, 2) || throw(ArgumentError(
+            "NegBinomial2 animal SD target `coef($(item.target.member))` has a rank-deficient group-level design."))
+        push!(Zgs, Matrix{Float64}(Zg))
+        push!(nmsds, names)
+    end
+    x = _poisson_animal_slope_loading(data, slope, length(y);
+        label = "NegBinomial2 animal")
+    if all(==(first(x)), x) && isequal(Zgs[1], Zgs[2])
+        throw(ArgumentError(
+            "NegBinomial2 animal intercept-and-slope SD regression cannot separate the intercept and slope variances when `$slope` is constant and both SD formulas have identical group-level designs."))
+    end
+    blocks = Symbol[_sd_target_block(item.target; disambiguate = true)
+                    for item in ordered]
+    return _withformula(_fit_nb2_animal_intercept_slope_laplace(
+        fam, y, Xmu, Xsigma, Zgs, gidx, Q, nmmu, nmsigma, nmsds, blocks,
+        group, x, g_tol; se, correlated), f)
+end
+
+# Independent relmat intercept-and-slope q2 block, `relmat(1 + x | g)` with one
+# SD formula per coefficient and `sigma ~ 1`. Thin driver over the animal fit
+# helper; K enters RAW (normalize = false), as in the Poisson relmat route.
+function _drm_negbin2_relmat_intercept_slope_sd(f::DrmFormula, fam::NegBinomial2,
+        targets, relmat_block; data, tree, K, A, Ainv, coords, g_tol, se, nAGQ)
+    length(targets) == 2 || throw(ArgumentError(
+        "NegBinomial2 `relmat(1 + x | group)` SD regression needs one SD formula for the intercept and one for the slope."))
+    group, slope = relmat_block.group, relmat_block.slope
+    all(item -> item.target.level === :relmat && item.target.group === group &&
+        item.target.dpar === :mu && item.target.block === nothing, targets) ||
+        throw(ArgumentError("NegBinomial2 independent relmat intercept-and-slope SD regression requires two matching `relmat` mean targets."))
+    Set(item.target.member for item in targets) == Set((:intercept, slope)) ||
+        throw(ArgumentError(
+            "NegBinomial2 relmat SD formulas must select `coef(intercept)` and `coef($slope)` exactly once."))
+    (tree === nothing && A === nothing && Ainv === nothing && coords === nothing) ||
+        throw(ArgumentError(
+            "NegBinomial2 relmat SD regression uses `K = …` only; do not also supply `tree`, `A`, `Ainv`, or `coords`."))
+    K === nothing && throw(ArgumentError(
+        "relmat(1 + $slope | $group) needs the relatedness/covariance matrix `K = …`"))
+    nAGQ === nothing || throw(ArgumentError(
+        "nAGQ is not used by the sparse-Laplace relmat SD route; omit it."))
+    rhs = Dict(f.forms)
+    correlated = relmat_block.label !== nothing
+    fixed_mu, re, metav, structured, _, _, parsed_slope = _split_ranef(
+        rhs[:mu]; allow_relmat_intercept_slope = true,
+        allow_labelled_intercept_slope = correlated)
+    metav === nothing && isempty(re) && structured == (:relmat, group) &&
+        parsed_slope === slope || throw(ArgumentError(
+        "NegBinomial2 relmat SD regression requires one matching `relmat(1 + $slope | $group)` " *
+        "or labelled `relmat(1 + $slope | p | $group)` term."))
+    _collect_structured(rhs[:mu]) == [(:relmat, group)] || throw(ArgumentError(
+        "NegBinomial2 relmat intercept-and-slope SD regression requires exactly one structured term, with no additional structured effects."))
+    sigma_rhs = get(rhs, :sigma, nothing)
+    sigma_rhs isa ConstantTerm && sigma_rhs == ConstantTerm(1) || throw(ArgumentError(
+        "NegBinomial2 relmat SD regression requires a fixed `sigma ~ 1` submodel."))
+    (haskey(rhs, :zi) || haskey(rhs, :hu)) && throw(ArgumentError(
+        "NegBinomial2 relmat SD regression cannot yet be combined with `zi` or `hu`."))
+    fixed_mu, offset_term = _extract_offset(fixed_mu)
+    offset_term === nothing || throw(ArgumentError(
+        "NegBinomial2 random-effect SD regression does not yet support `offset(...)`."))
+    allowed = Set(vcat([:mu, :sigma], [item.key for item in targets]))
+    all(first(pair) in allowed for pair in f.forms) || throw(ArgumentError(
+        "NegBinomial2 relmat intercept-and-slope SD regression supports only `mu`, fixed `sigma ~ 1`, and its two SD formulas."))
+    all(_formula_response_observed_mask(f, data)) || throw(ArgumentError(
+        "NegBinomial2 relmat SD regression requires observed responses; remove incomplete rows before fitting."))
+    y, Xmu, nmmu = _design(f.response, fixed_mu, data)
+    _, Xsigma, nmsigma = _design(f.response, sigma_rhs, data)
+    all(yi -> isfinite(yi) && yi >= 0 && isinteger(yi), y) || throw(ArgumentError(
+        "NegBinomial2() requires non-negative integer counts as the response"))
+    labels = getproperty(data, group)
+    Q, gidx = _general_cov_setup(K, labels; normalize = false)
+    G = size(Q, 1)
+    ordered = map((:intercept, slope)) do member
+        only(filter(item -> item.target.member === member, targets))
+    end
+    Zgs = Matrix{Float64}[]
+    nmsds = Vector{String}[]
+    for item in ordered
+        Zg, names = _sd_group_design(f.response, item.rhs, data, gidx, G, group;
+            schema_cache = f.schema_cache, schema_key = item.key)
+        size(Zg, 2) <= G && rank(Zg) == size(Zg, 2) || throw(ArgumentError(
+            "NegBinomial2 relmat SD target `coef($(item.target.member))` has a rank-deficient group-level design."))
+        push!(Zgs, Matrix{Float64}(Zg))
+        push!(nmsds, names)
+    end
+    x = _poisson_animal_slope_loading(data, slope, length(y);
+        label = "NegBinomial2 relmat")
+    if all(==(first(x)), x) && isequal(Zgs[1], Zgs[2])
+        throw(ArgumentError(
+            "NegBinomial2 relmat intercept-and-slope SD regression cannot separate the intercept and slope variances when `$slope` is constant and both SD formulas have identical group-level designs."))
+    end
+    blocks = Symbol[_sd_target_block(item.target; disambiguate = true)
+                    for item in ordered]
+    return _withformula(_fit_nb2_animal_intercept_slope_laplace(
+        fam, y, Xmu, Xsigma, Zgs, gidx, Q, nmmu, nmsigma, nmsds, blocks,
+        group, x, g_tol; se, correlated), f)
+end
+
+function _nb2_animal_intercept_slope_mode(y, eta0, load0, load1, gidx, Q, aux;
+                                          b0 = nothing, maxiter::Int = 80,
+                                          tol::Real = 1e-10, rho::Real = 0.0)
+    G = size(Q, 1)
+    Qjoint = _q2_joint_precision(Q, rho)
+    b = b0 === nothing ? zeros(2G) : copy(b0)
+    function joint(bb)
+        value = 0.5 * dot(bb, Qjoint * bb)
+        b0v, b1v = @view(bb[1:G]), @view(bb[(G + 1):(2G)])
+        @inbounds for i in eachindex(y)
+            eta = eta0[i] + load0[i] * b0v[gidx[i]] + load1[i] * b1v[gidx[i]]
+            value += first(_laplace_v123(Val(:nb2_fixed), aux, i, eta))
+        end
+        value
+    end
+    for _ in 1:maxiter
+        b0v, b1v = @view(b[1:G]), @view(b[(G + 1):(2G)])
+        grad = Qjoint * b
+        h00, h11, h01 = zeros(G), zeros(G), zeros(G)
+        @inbounds for i in eachindex(y)
+            gi = gidx[i]
+            eta = eta0[i] + load0[i] * b0v[gi] + load1[i] * b1v[gi]
+            _, d1, d2, _ = _laplace_v123(Val(:nb2_fixed), aux, i, eta)
+            grad[gi] += load0[i] * d1
+            grad[G + gi] += load1[i] * d1
+            h00[gi] += load0[i]^2 * d2
+            h11[gi] += load1[i]^2 * d2
+            h01[gi] += load0[i] * load1[i] * d2
+        end
+        hessian = Qjoint + [spdiagm(0 => h00) spdiagm(0 => h01);
+                            spdiagm(0 => h01) spdiagm(0 => h11)]
+        ch = cholesky(Symmetric(hessian); check = false)
+        issuccess(ch) || return b, ch, false
+        step = ch \ grad
+        norm(step) <= tol * (1 + norm(b)) && return b, ch, true
+        if norm(step) <= 1e-3 * (1 + norm(b))
+            b .-= step
+            continue
+        end
+        f0 = joint(b)
+        amount, accepted = 1.0, false
+        while amount >= 1e-5
+            trial = b .- amount .* step
+            if joint(trial) <= f0
+                b = trial
+                accepted = true
+                break
+            end
+            amount *= 0.5
+        end
+        accepted || return b, ch, false
+    end
+    return b, nothing, false
+end
+
+function _nb2_animal_intercept_slope_laplace(y, Xmu, Z0, Z1, gidx, Q, logdetQ,
+        theta, aux_from, x; b0 = nothing, correlated::Bool = false)
+    pmu = size(Xmu, 2)
+    p0, p1 = size(Z0, 2), size(Z1, 2)
+    beta = @view theta[1:pmu]
+    aux = aux_from(theta[pmu + 1])
+    a0 = @view theta[(pmu + 2):(pmu + 1 + p0)]
+    a1 = @view theta[(pmu + 2 + p0):(pmu + 1 + p0 + p1)]
+    rho = correlated ? _Q2_RHO_BOUND * tanh(theta[pmu + 2 + p0 + p1]) : 0.0
+    eta0 = Xmu * beta
+    load0 = exp.(Z0[gidx, :] * a0)
+    load1 = x .* exp.(Z1[gidx, :] * a1)
+    (all(isfinite, load0) && all(isfinite, load1)) ||
+        return 1e18, zeros(2 * size(Q, 1)), false
+    b, ch, ok = _nb2_animal_intercept_slope_mode(
+        y, eta0, load0, load1, gidx, Q, aux; b0, rho)
+    ok || return 1e18, b, false
+    G = size(Q, 1)
+    b0v, b1v = @view(b[1:G]), @view(b[(G + 1):(2G)])
+    value = 0.5 * dot(b, _q2_joint_precision(Q, rho) * b) + 0.5 * G * log1p(-rho^2)
+    @inbounds for i in eachindex(y)
+        eta = eta0[i] + load0[i] * b0v[gidx[i]] + load1[i] * b1v[gidx[i]]
+        value += first(_laplace_v123(Val(:nb2_fixed), aux, i, eta))
+    end
+    return value - logdetQ + 0.5 * logdet(ch), b, true
+end
+
+function _fit_nb2_animal_intercept_slope_laplace(fam, y, Xmu, Xsigma, Zgs, gidx,
+        Q, nmmu, nmsigma, nmsds, blocks, group, x, g_tol;
+        se::Bool = true, maxiter::Int = 250, correlated::Bool = false,
+        force_restarts::Bool = false)
+    length(Zgs) == 2 || throw(ArgumentError("expected two NegBinomial2 animal SD designs"))
+    size(Xsigma, 2) == 1 || throw(ArgumentError(
+        "NegBinomial2 animal SD regression requires `sigma ~ 1`."))
+    qchol = cholesky(Symmetric(Q); check = false)
+    issuccess(qchol) || throw(ArgumentError(
+        "NegBinomial2 animal covariance matrix must be positive definite"))
+    logdetQ = logdet(qchol)
+    aux_from, beta0, logsigma0 = _nb2_laplace_setup(y, Xmu)
+    pmu = size(Xmu, 2)
+    psd = size.(Zgs, 2)
+    ranges = (pmu + 2):(pmu + 1 + psd[1]), (pmu + 2 + psd[1]):(pmu + 1 + sum(psd))
+    theta0 = zeros(pmu + 1 + sum(psd) + (correlated ? 1 : 0))
+    theta0[1:pmu] .= beta0
+    theta0[pmu + 1] = logsigma0
+    theta0[ranges[1]] .= Zgs[1] \ fill(log(0.4), size(Zgs[1], 1))
+    theta0[ranges[2]] .= Zgs[2] \ fill(log(0.25), size(Zgs[2], 1))
+    last_b = zeros(2 * size(Q, 1))
+    function nll(theta)
+        value, b, ok = _nb2_animal_intercept_slope_laplace(
+            y, Xmu, Zgs[1], Zgs[2], gidx, Q, logdetQ, theta, aux_from, x;
+            b0 = last_b, correlated)
+        if !ok
+            value, b, ok = _nb2_animal_intercept_slope_laplace(
+                y, Xmu, Zgs[1], Zgs[2], gidx, Q, logdetQ, theta, aux_from, x;
+                b0 = zeros(length(last_b)), correlated)
+        end
+        ok || return 1e18
+        last_b .= b
+        value
+    end
+    function grad!(g, theta)
+        for j in eachindex(theta)
+            h = 2e-4 * (1 + abs(theta[j]))
+            e = zeros(length(theta)); e[j] = h
+            g[j] = (nll(theta .+ e) - nll(theta .- e)) / (2h)
+        end
+        return g
+    end
+    function run_lbfgs(start)
+        od = Optim.OnceDifferentiable(nll, grad!, start)
+        res = Optim.optimize(od, start,
+            Optim.LBFGS(linesearch = Optim.LineSearches.BackTracking()),
+            Optim.Options(g_tol = g_tol, iterations = maxiter))
+        return res, Optim.minimizer(res), Optim.minimum(res)
+    end
+    result, theta, fmin = run_lbfgs(theta0)
+    # Same plateau guard as `_fit_nb2_animal_sd_laplace`: the clamped NB2 size
+    # makes the likelihood flat in log sigma below about -3.5.
+    if theta[pmu + 1] < _NB2_SIGMA_PLATEAU_LOGSIGMA
+        restart = copy(theta0)
+        restart[pmu + 1] = log(0.5)
+        last_b .= 0
+        result2, theta2, fmin2 = run_lbfgs(restart)
+        if fmin2 < fmin
+            result, theta, fmin = result2, theta2, fmin2
+        end
+    end
+    # Boundary restarts (see `_q2_boundary_restarts`): NB2 phylo seed 55 of the
+    # scale-extension study stopped on the slope-SD ridge at the boundary.
+    # `force_restarts` (labelled spatial `sd-z`) runs the two-block tilt starts even from a
+    # converged, interior fit: the likelihood in the SD coefficients has a second interior mode
+    # and the default start can stop at the lower one (wave-10 gap map, NB2 spatial `sd-z`).
+    n_obs = length(y)
+    converged_at(r) = begin
+        th = Optim.minimizer(r); g = zeros(length(th)); grad!(g, th)
+        _laplace_outer_converged(r, Optim.minimum(r), g, th, n_obs, g_tol)
+    end
+    sd_floor(th) = min(minimum(exp.(Zgs[1] * th[ranges[1]])), minimum(exp.(Zgs[2] * th[ranges[2]])))
+    restarted = _q2_boundary_restarts(
+        start -> first(run_lbfgs(start)), last_b, result,
+        (sd0, sd1, het) -> _q2_alt_theta(theta0, ranges, Zgs, sd0, sd1, het),
+        sd_floor, converged_at)
+    if force_restarts   # spatial `sd-z`: also try the two-block tilts from an interior fit
+        restarted = _q2_boundary_restarts(
+            start -> first(run_lbfgs(start)), last_b, restarted,
+            (sd0, sd1, het1, het0) -> _q2_alt_theta(theta0, ranges, Zgs, sd0, sd1, het1, het0),
+            sd_floor, converged_at; force = true, starts = _NB2_SPATIAL_ALT_STARTS)
+    end
+    if restarted !== result
+        result, theta, fmin = restarted, Optim.minimizer(restarted), Optim.minimum(restarted)
+    end
+    nll_hat = nll(theta)
+    gf = zeros(length(theta)); grad!(gf, theta)
+    V = se ? _vcov_from_fd_hessian(
+        _finite_hessian(nll, theta; h = _fd_hessian_step(length(y)));
+        context = "NegBinomial2 animal intercept-and-slope SD regression") :
+        fill(NaN, length(theta), length(theta))
+    block_list = Pair{Symbol,UnitRange{Int}}[
+        :mu => 1:pmu, :sigma => (pmu + 1):(pmu + 1),
+        blocks[1] => ranges[1], blocks[2] => ranges[2]]
+    name_list = Pair{Symbol,Vector{String}}[
+        :mu => nmmu, :sigma => nmsigma,
+        blocks[1] => nmsds[1], blocks[2] => nmsds[2]]
+    if correlated
+        push!(block_list, :recov => length(theta):length(theta))
+        push!(name_list, :recov => ["$(group):atanh_rho"])
+    end
+    sd0 = exp.(Zgs[1] * theta[ranges[1]])
+    sd1 = exp.(Zgs[2] * theta[ranges[2]])
+    scales = Dict{Symbol,Vector{Float64}}(:sigma => fill(exp(theta[pmu + 1]), length(y)))
+    scales[blocks[1]] = sd0[gidx]
+    scales[blocks[2]] = sd1[gidx]
+    scales[Symbol(string(blocks[1]), "_group")] = sd0
+    scales[Symbol(string(blocks[2]), "_group")] = sd1
+    # Conditional modes at theta_hat (fresh inner solve); see the Poisson twin.
+    _, bhat, okhat = _nb2_animal_intercept_slope_laplace(
+        y, Xmu, Zgs[1], Zgs[2], gidx, Q, logdetQ, theta, aux_from, x;
+        b0 = zeros(2 * size(Q, 1)), correlated)
+    if okhat
+        Gq = size(Q, 1)
+        eta_re = (exp.(Zgs[1][gidx, :] * theta[ranges[1]]) .* bhat[1:Gq][gidx]) .+
+                 (x .* exp.(Zgs[2][gidx, :] * theta[ranges[2]]) .* bhat[(Gq + 1):(2Gq)][gidx])
+        _attach_conditional_structured!(scales, eta_re, bhat[1:Gq], bhat[(Gq + 1):(2Gq)])
+    else
+        _mark_cond_failed!(scales)
+    end
+    fit = DrmFit(fam, block_list, name_list, theta, Matrix(V), -nll_hat,
+        length(y), _laplace_outer_converged(result, nll_hat, gf, theta,
+        length(y), g_tol), Dict(:mu => exp.(Xmu * theta[1:pmu])),
+        Dict(:mu => Vector{Float64}(y)), scales)
+    return _withiterations(_withnll(fit, _nll_pinned(nll, theta, nll_hat)), Optim.iterations(result))
 end
