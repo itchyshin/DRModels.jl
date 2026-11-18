@@ -2798,6 +2798,9 @@ end
 # default refuses instead of returning the population values.
 function _fitted_nonunivariate(fit::DrmFit, re::Symbol)
     if re === :conditional && _fit_mean_has_random_term(fit)
+        # Bivariate ordinary `(1 | p | g)`: `fit.means` is fixed effects only; BLUPs sit in
+        # `ranef`. Marginal response residuals (y - X b) match the other bivariate routes.
+        _is_biv_ordinary_re_fit(fit) && return fit.means
         throw(ArgumentError(_fitted_no_modes_message(fit, :fitted)))
     end
     return fit.means
