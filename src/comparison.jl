@@ -147,6 +147,7 @@ function lrtest(reduced::DrmFit, full::DrmFit; mixture::Bool = false)
     _marginal_compare_guard(reduced, full, "lrtest")
     _map_compare_guard(reduced, full, "lrtest")
     _nobs_compare_guard(reduced, full, "lrtest")
+    _unconverged_compare_warn(reduced, full, "lrtest")
     Δdof = dof(full) - dof(reduced)
     Δdof > 0 || throw(ArgumentError(
         "lrtest: `full` must have more parameters than `reduced` " *
@@ -800,6 +801,21 @@ function _nobs_compare_guard(a::DrmFit, b::DrmFit, verb::AbstractString)
         "($detail). A likelihood-ratio comparison " *
         "requires the same observations, which a missing-response or imputed " *
         "`update` does not guarantee. Refit both on the same rows."))
+end
+
+# Convergence caveat (#1002): a finite log-likelihood from a fit whose optimiser
+# reported `converged = false` is still compared (the sentinel guard refuses the
+# plateau), but its LR statistic can be off in either direction. Warn, naming the
+# fit. A boundary fit (a variance pinned at its floor) has its own status from
+# `convergence_status` and is not "unconverged", so it is skipped here.
+function _unconverged_compare_warn(reduced::DrmFit, full::DrmFit, verb::AbstractString)
+    bad = String[nm for (nm, f) in (("reduced", reduced), ("full", full))
+                 if !f.converged && convergence_status(f) !== :boundary]
+    isempty(bad) && return nothing
+    @warn "$verb: the $(join(bad, " and ")) fit did not converge (`converged = false`). " *
+          "The likelihood-ratio statistic may be wrong in either direction; refit " *
+          "(different start values, optimiser, or tolerance) before relying on the p-value."
+    return nothing
 end
 
 # A fit whose formula has no random effect integrates nothing, so its `loglik` is
