@@ -2485,8 +2485,9 @@ function _marginal_simulator(fit::DrmFit, data; K=nothing, A=nothing, tree=nothi
     return sim
 end
 
-# True when the mean formula carries an ordinary, structured or `meta_V` random effect, so a
-# `nothing` marginal simulator means a conditional draw that drops it (#997).
+# True when the mean formula carries an ordinary or structured random effect, so a `nothing` marginal
+# simulator means a conditional draw that drops it (#997). `meta_V` alone is not one: the conditional
+# draw N(Xb, v + sigma^2) is already the marginal, and `meta_V` + RE throws earlier.
 function _mu_has_random_effect(fit::DrmFit)
     fit.formula isa DrmFormula || return false
     rhs = Dict(fit.formula.forms)
@@ -2494,10 +2495,10 @@ function _mu_has_random_effect(fit::DrmFit)
     _, re, metav, structured, _ = try
         _split_ranef(rhs[:mu]; allow_phylo_slope = true)
     catch e
-        e isa InterruptException && rethrow()
+        e isa ArgumentError || rethrow()
         return false
     end
-    return !isempty(re) || metav !== nothing || structured !== nothing
+    return !isempty(re) || structured !== nothing
 end
 
 # The ordinary random-effect bars of a fit that has no fresh-draw simulator, or `nothing` when the fit has

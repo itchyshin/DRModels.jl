@@ -47,4 +47,18 @@ _threw(f) = try; f(); false catch e; e isa ArgumentError; end
         @test_logs (:warn, r"conditional `simulate`") ms(f, data)
         @test_broken _threw(() -> ms(f, data))
     end
+
+    @testset "meta_V-only fit: no warning (the conditional draw is the marginal)" begin
+        v = fill(0.1, n)
+        fm = drm(bf(@formula(y ~ x + meta_V(v)), @formula(sigma ~ 1)), Gaussian(); data = (; y, x, v))
+        @test sd(fm, (; y, x, v)) === nothing
+        @test DRModels._mu_has_random_effect(fm) == false
+        @test_logs min_level = Base.CoreLogging.Warn ms(fm, (; y, x, v))
+    end
+
+    @testset "valid fit with a simulator is silent" begin
+        f = drm(bf(@formula(y ~ x + (1 | g1)), @formula(sigma ~ 1)), Gaussian(); data)
+        sim = @test_logs min_level = Base.CoreLogging.Warn ms(f, data)
+        @test sim isa Function
+    end
 end
