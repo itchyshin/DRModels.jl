@@ -503,7 +503,8 @@ end
 # Gaussian and LogNormal closed-form marginals (#1103 / #1102) return the
 # exact z-score and skip Φ⁻¹(Φ(z)), which otherwise loses upper-tail
 # precision and caps |r| at about 8.13.
-function _quantile_residuals(fit::DrmFit, rng)
+function _quantile_residuals(fit::DrmFit, rng; reference::Symbol = :marginal)
+    plugin = reference === :plugin
     _refuse_multi_re_laplace(fit, "residuals(type = :quantile)")
     haskey(fit.means, :mu) ||
         throw(ArgumentError("residuals(type=:quantile) is univariate-only"))
@@ -516,6 +517,10 @@ function _quantile_residuals(fit::DrmFit, rng)
     lo = eps(); hi = 1 - eps()
     std_normal = Distributions.Normal()
 
+    if plugin && (fam isa ZeroOneBeta || fam isa CumulativeLogit) && _fit_mean_has_random_term(fit)
+        throw(ArgumentError("residuals(type=:quantile, quantile_reference=:plugin): not available " *
+            "for $(nameof(typeof(fam))) fits with a random effect; use the default :marginal."))
+    end
     if fam isa ZeroOneBeta
         return _quantile_residuals_zeroonebeta(fit, rng, lo, hi)
     elseif fam isa CumulativeLogit
@@ -537,14 +542,22 @@ function _quantile_residuals(fit::DrmFit, rng)
     # or, Gaussian only, on log σ (#923) over its fitted SD; `nothing` for a
     # fixed-effects-only fit (unchanged behaviour) or a random-effect
     # shape/family this does not cover.
-    mix = _ranef_marginal_mix(fit, fam, μ)
+    mix = plugin ? nothing : _ranef_marginal_mix(fit, fam, μ)
+    if plugin
+        # drmTMB-style plug-in: F at the fitted-row parameters with the modes included
+        # (`fitted(fit)`'s component mean); no averaging over the random effect.
+        _fit_sigma_has_random_term(fit) && throw(ArgumentError(
+            "residuals(type=:quantile, quantile_reference=:plugin): a random effect on `sigma` " *
+            "is not supported; use the default :marginal."))
+        μ = _fitted_component_mu(fit, :conditional, :residuals)
+    end
     # Fits that recorded their conditional random-effect contribution at θ̂
     # (`scales[:cond_eta_re]`, the Laplace modes: the SD-regression q2 / two-field
     # / structured routes) are judged against the distribution CONDITIONAL on
     # those modes, as drmTMB's `drm_quantile_residuals()` is (it evaluates F at
     # `predict()`'s fitted-row parameters, which include the modes). The σ_b-marginal
     # `mix` above has priority and is unchanged for fits that have one.
-    μ = _conditional_mean_at_modes(fit, fam, μ, mix)
+    plugin || (μ = _conditional_mean_at_modes(fit, fam, μ, mix))
     u = Vector{Float64}(undef, n)
     # #1103: N(η, σ² + v_b) is closed form. Returning z = (y − η) / √(σ² + v_b)
     # (or the log-y form for LogNormal) avoids Φ⁻¹(clamp(Φ(z), eps, 1−eps)).

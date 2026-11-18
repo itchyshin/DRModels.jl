@@ -3079,9 +3079,18 @@ quantile residuals are the same numbers):
 `type = :response` is `y − fitted(fit)` (see [`fitted`](@ref)); on these temporal fits
 `fitted(fit)` includes the fitted temporal path, as drmTMB's `fitted()` does, so the
 response residuals are the conditional ones. `re = :zero` gives `y − Xβ̂`.
+
+`quantile_reference` (only `type = :quantile`) chooses how a mean random effect enters the
+quantile residual. `:marginal` (the default, unchanged) averages the random effect out of the
+reference distribution (the σ_b-marginal PIT). `:plugin` is drmTMB's `residuals(type = "quantile")`:
+the reference distribution is the family CDF at the fitted-row parameters with the random-effect
+modes plugged in (the same mean as `fitted(fit)`), with no averaging. Without a random effect on
+the mean the two agree. `:plugin` throws where the modes are not kept per row (as `fitted(fit)`
+does), for a random effect on `sigma`, and for `ZeroOneBeta` / `CumulativeLogit` with a random effect.
+AR1 / OU fits are already plug-in under both settings.
 """
 function residuals(fit::DrmFit; type::Symbol = :response, rng = Random.default_rng(),
-                   re::Symbol = :conditional)
+                   re::Symbol = :conditional, quantile_reference::Symbol = :marginal)
     if type === :response
         _check_fitted_re(re, :residuals)
         if haskey(fit.means, :mu)
@@ -3094,6 +3103,8 @@ function residuals(fit::DrmFit; type::Symbol = :response, rng = Random.default_r
         fv = fitted(fit; re)
         return Dict(k => fit.obs[k] .- fv[k] for k in keys(fit.means))
     elseif type === :quantile
+        quantile_reference in (:marginal, :plugin) || throw(ArgumentError(
+            "residuals: `quantile_reference` must be :marginal (default) or :plugin (got :$quantile_reference)"))
         re === :conditional || throw(ArgumentError(
             "residuals: `re = :$re` only applies to `type = :response`; quantile residuals have one " *
             "definition per route and do not take a random-effect level (leave `re` at its default)."))
@@ -3104,7 +3115,7 @@ function residuals(fit::DrmFit; type::Symbol = :response, rng = Random.default_r
         # AR1 / OU (and the paired phylo() + OU fit): drmTMB's residual is
         # conditional on the fitted modes, (y − Xβ̂ − modes)/σ̂.
         _is_temporal_fit(fit) && return _on_used_rows(fit, _temporal_conditional_residuals(fit))
-        return _quantile_residuals(_used_rows_view(fit), rng)
+        return _quantile_residuals(_used_rows_view(fit), rng; reference = quantile_reference)
     elseif type === :pearson
         return _on_used_rows(fit, _pearson_residuals(fit))
     else
