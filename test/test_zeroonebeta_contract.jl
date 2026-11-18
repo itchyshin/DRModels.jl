@@ -130,7 +130,7 @@ const _ZOB_F = bf(@formula(y ~ x), @formula(sigma ~ 1), @formula(zoi ~ 1), @form
     end
 
     @testset "row-order invariance" begin
-        p = randperm(MersenneTwister(3), length(d.y))
+        p = vcat(1:2:length(d.y), 2:2:length(d.y))
         fitp = drm(_ZOB_F, ZeroOneBeta(); data = (; y = d.y[p], x = d.x[p]))
         @test loglik(fitp) ≈ loglik(fit) atol = 1e-8
     end
