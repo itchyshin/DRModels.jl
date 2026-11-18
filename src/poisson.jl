@@ -1423,7 +1423,8 @@ function _fit_poisson_ranef_aghq(fam::Poisson, y, Xμ, gidx, G, nmμ, grp, g_tol
         "Use the default marginal = :LA or marginal = :Laplace for this model.")
     blocks = [:mu => 1:pμ, :resd => (pμ+1):(pμ+1)]
     names = [:mu => nmμ, :resd => [String(grp)]]
-    scales = Dict{Symbol,Vector{Float64}}()
+    # #1377: store the node count so `update` and bootstrap refits repeat it.
+    scales = Dict{Symbol,Vector{Float64}}(:aghq_nodes => [Float64(nAGQ)])
     V = _vcov_from_hessian(ForwardDiff.hessian(nll, θ̂))
     means = Dict(:mu => exp.(Xμ * θ̂[1:pμ] .+ off)); obs = Dict(:mu => Vector{Float64}(y))
     return _withiterations(
