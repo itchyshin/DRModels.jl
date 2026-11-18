@@ -17,7 +17,7 @@
 #
 # Every message names the offending argument.
 
-using StatsModels: StatsModels
+using StatsModels: StatsModels, FunctionTerm, ConstantTerm
 
 # ── #1027: secondary parameters each family models ──────────────────────────
 #
@@ -284,6 +284,7 @@ column lengths (#1022) and unused structured keywords (#1010).
 """
 function _drm_entry_guard(f::DrmFormula, fam, data; tree = nothing, K = nothing,
                           A = nothing, Ainv = nothing, coords = nothing)
+    _require_no_r_minus_one(f)
     _require_simple_bar_groups(f)
     _require_family_dpars(f, fam)
     _require_supported_random_terms(f, data)
@@ -361,6 +362,30 @@ function _require_supported_random_terms(f::DrmFormula, data)
                     "or put the factor in the fixed effects and keep `(1 | g)`."))
             end
         end
+    end
+    return nothing
+end
+
+# ── #1349: R's `y ~ x - 1` parses as minus, not "drop intercept" ───────────
+function _is_r_minus_one_term(t)
+    return t isa FunctionTerm && t.f === (-) && length(t.args) == 2 &&
+           t.args[2] isa ConstantTerm && isequal(t.args[2].n, 1)
+end
+
+function _refuse_r_minus_one(rhs, param::Symbol)
+    terms = rhs isa Tuple ? rhs : (rhs,)
+    for t in terms
+        _is_r_minus_one_term(t) || continue
+        throw(ArgumentError(
+            "drm: the `$param` formula uses `$(t)` (R's `x - 1` spelling); StatsModels " *
+            "does not treat that as 'no intercept'. Write `0 + x` or `-1 + x` instead."))
+    end
+    return nothing
+end
+
+function _require_no_r_minus_one(f::DrmFormula)
+    for (p, rhs) in f.forms
+        _refuse_r_minus_one(rhs, p)
     end
     return nothing
 end
