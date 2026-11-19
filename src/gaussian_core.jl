@@ -4010,9 +4010,26 @@ ys  = simulate(fit; newdata = (x = [0.0, 1.0],))  # one row per newdata row
 parameters. Omit it to draw for the training design. Temporal fits refuse
 `newdata`.
 """
-function simulate(fit::DrmFit; nsim::Integer = 1, rng = default_rng(), newdata = nothing,
-                  re::Symbol = :marginal, data = nothing, K = nothing, A = nothing,
-                  tree = nothing, coords = nothing)
+function simulate(fit::DrmFit; newdata = nothing, kwargs...)
+    out = _simulate_all_rows(fit; newdata, kwargs...)
+    # Training-design draws cover the rows used in the fit, as `nobs`, `fitted` and
+    # `residuals` do (#1352); a `newdata` draw has its own rows.
+    newdata === nothing || return out
+    out isa AbstractVector && return _on_used_rows(fit, out)
+    out isa AbstractMatrix && return _on_used_rows_cols(fit, out)
+    return out
+end
+
+function _on_used_rows_cols(fit::DrmFit, M::AbstractMatrix)
+    m = _used_row_mask(fit)
+    (m === nothing || size(M, 1) != length(m)) && return M
+    return M[m, :]
+end
+
+# One value per input row (NaN-marked rows kept): what the bootstrap refit data needs.
+function _simulate_all_rows(fit::DrmFit; nsim::Integer = 1, rng = default_rng(), newdata = nothing,
+                            re::Symbol = :marginal, data = nothing, K = nothing, A = nothing,
+                            tree = nothing, coords = nothing)
     _is_fixed_prior_fit(fit) && fit.estim_method === :MAP && throw(ArgumentError("simulate: simulation from a $(_prior_kind_label(fit)) fit is not yet qualified"))
     nsim >= 1 || throw(ArgumentError("simulate requires nsim >= 1, got $nsim"))
     re in (:marginal, :zero) || throw(ArgumentError(
