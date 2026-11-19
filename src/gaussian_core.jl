@@ -1219,7 +1219,9 @@ end
 # the response. Returns `(formula, kwargs, offset)`, the inputs unchanged (and
 # `nothing`) without an offset. Only the fixed-effects mean (with an optional
 # `meta_V(v)`) is covered: a random or structured term, an `sd()` part, a joint `mi()` model, missing
-# responses or a non-default `marginal` refuse it by name.
+# a non-default `marginal` refuse it by name. Missing/NaN responses are
+# listwise-dropped with a warning (`_drop_missing_response_rows`), like other
+# Gaussian routes.
 # True when a right-hand side carries any `(… | g)` random-effect term.
 function _rhs_has_bar(rhs)
     terms = rhs isa Tuple ? collect(rhs) : Any[rhs]
@@ -1258,10 +1260,9 @@ function _gaussian_offset_shift(f::DrmFormula, fam, kwargs)
         _refuse_offset_route(fam, "`marginal = :$(kwargs[:marginal])`")
     rhs_fixed, offset_term = _extract_offset(mu_rhs)
     offset_term === nothing && return f, kwargs, nothing  # nested only: the `_design` backstop refuses it
-    data = kwargs[:data]
+    data = _drop_missing_response_rows(f, kwargs[:data])
+    kwargs = merge((; kwargs...), (; data = data))
     raw = _table_column(data, f.response)
-    (any(ismissing, raw) || any(v -> v isa Real && isnan(v), raw)) &&
-        _refuse_offset_route(fam, "missing or `NaN` responses (drop those rows first)")
     off = _offset_for_fit(fam, offset_term, data, length(raw))
     forms = Pair{Symbol,Any}[p => (p === :mu ? rhs_fixed : r) for (p, r) in f.forms]
     f_shift = DrmFormula(f.response, forms, f.response2, f.schema_cache)
