@@ -233,7 +233,7 @@ end
 
 # Parse a formula rhs for a structured correlated slope:
 #   `relmat(1 + x | g)`, `animal(1 + x | g)`, `phylo(1 + x | g)`,
-#   `spatial(1 + x | g)`.
+#   `spatial(1 + x | g)`, `temporal(1 + x | g)`.
 # Returns `(struct_kind::Symbol, slope_var::Symbol, grp_sym::Symbol)` or
 # `nothing`. Does NOT consume ordinary `(1 + x | g)` terms (those are handled
 # by the `re` path).
@@ -241,8 +241,7 @@ function _parse_structured_slope(rhs)
     terms = rhs isa Tuple ? collect(rhs) : Any[rhs]
     for t in terms
         t isa FunctionTerm || continue
-        f = t.f
-        (f === relmat || f === animal || f === phylo || f === spatial) || continue
+        _is_structured_or_temporal_marker(t) || continue
         length(t.args) == 1 || continue
         inner = t.args[1]                              # should be `(1 + x | g)`
         inner isa FunctionTerm && inner.f === (|) || continue
@@ -252,9 +251,8 @@ function _parse_structured_slope(rhs)
         try
             rk, var = _re_kind(lhs)
             rk === :corr || continue                   # only correlated slope
-            struct_kind = f === relmat  ? :relmat  :
-                          f === animal  ? :animal  :
-                          f === phylo   ? :phylo   : :spatial
+            struct_kind = _structured_marker_kind_symbol(t)
+            struct_kind === nothing && continue
             return (struct_kind, var, grp_term.sym)
         catch
             continue

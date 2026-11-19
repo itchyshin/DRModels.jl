@@ -217,8 +217,7 @@ end
 function _joint_validate_fixed_term(term, label::AbstractString)
     if term isa FunctionTerm
         forbidden = term.f === mi || term.f === (|) || term.f === meta_V ||
-            term.f === phylo || term.f === relmat || term.f === animal || term.f === spatial ||
-            nameof(term.f) === :offset
+            _is_structured_or_temporal_marker(term) || nameof(term.f) === :offset
         forbidden && throw(ArgumentError("joint missing-predictor frontend: $label cannot contain mi(), offset(), random effects, structured effects, or meta_V()"))
         foreach(arg -> _joint_validate_fixed_term(arg, label), term.args)
     elseif hasproperty(term, :terms)

@@ -53,7 +53,7 @@ function _predictor_columns(f::Union{DrmFormula,BivariateDrmFormula})
                     lhs = lhs.args[1]
                 end
                 append!(cols, StatsModels.termvars(lhs))
-            elseif !(t isa FunctionTerm && t.f in (meta_V, relmat, animal, phylo, spatial, temporal))
+            elseif !(t isa FunctionTerm && (t.f === meta_V || _is_structured_or_temporal_marker(t)))
                 append!(cols, StatsModels.termvars(t))
             end
         end
