@@ -1212,6 +1212,15 @@ them.
     # the fit of `y ~ x + offset(z)` is exactly the fit of `y - z ~ x` (the same
     # likelihood and the same estimates). Fit the shifted response, then put the
     # offset back into the fitted means and the observed response.
+    # #936: the simple fixed-effect / `(1 | g)` ML fit of a response whose SD is far from 1
+    # is fitted on y / sd(y) and mapped back (src/rescale_response.jl); `nothing` = not that slice.
+    plan = _y_rescale_plan(f, fam, kwargs, (:data, :g_tol))
+    if plan !== nothing
+        kw_s = merge((; kwargs...), (; data = plan.data))
+        fit_s = _apply_design_rank(_warn_variance_boundary(_drm_gaussian_fit(f, fam; kw_s...)))
+        fit_r = _y_rescale_restore(fit_s, plan)
+        fit_r === nothing || return _with_prior_table_input(fit_r, get(kwargs, :priors, nothing))
+    end
     f_fit, kw_fit, off = _gaussian_offset_shift(f, fam, kwargs)
     # The residual-variance / structured-variance BOUNDARY advisory (#724, #697) is
     # attached here, once, rather than in each of the fitter's return paths.
