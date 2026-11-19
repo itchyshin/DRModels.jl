@@ -4118,7 +4118,7 @@ end
 # rows, and `_simulate_once` reads none of them (it draws from `:sigma` / `:zi` / ...),
 # so newdata simulation is population level, as for every other fit.
 _simulate_newdata_bookkeeping_key(k::Symbol) =
-    _sigma_internal_key(k) && k !== :spatial_range
+    _sigma_internal_key(k) && k !== :spatial_range && k !== :trials
 
 function _fit_for_simulate_newdata(fit::DrmFit, newdata)
     _is_temporal_fit(fit) && throw(ArgumentError(
