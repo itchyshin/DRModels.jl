@@ -3779,7 +3779,12 @@ function predict_parameters(fit::DrmFit, newdata; type::Symbol = :response,
             end
             continue
         end
-        haskey(forms, p) || continue          # skip RE-SD / cutpoint blocks (:resd, :recov, :cutpoints, …)
+        if !haskey(forms, p)
+            # Fitted distributional parameters omitted from `bf()` (e.g. implicit
+            # `nu ~ 1` on Student) still live in `fit.blocks`; fitters use
+            # `get(rhs, p, ConstantTerm(1))`. RE / cutpoint blocks stay skipped.
+            (p in _UNIVARIATE_DPARS || p in _BIVARIATE_DPARS) || continue
+        end
         resp = bivar ? (p === :mu2 ? f.response2 : f.response1) : f.response
         allow_sd_animal_slope = fit.family isa Union{Binomial,Gamma} && f isa DrmFormula &&
             any(item.target.level === :animal for item in _sd_target_parts(f))
@@ -3796,8 +3801,13 @@ function predict_parameters(fit::DrmFit, newdata; type::Symbol = :response,
         allow_binomial_spatial_slope = fit.family isa Union{Binomial,Gaussian,Gamma,NegBinomial2} &&
             f isa DrmFormula && any(
                 item.target.level === :spatial for item in _sd_target_parts(f))
-        parameter_rhs = p === :mu ? _strip_fitted_q2_terms(fit, forms[p]) :
-                        p === :sigma ? _strip_sigma_struct_q2_terms(fit, forms[p]) : forms[p]
+        parameter_rhs = if p === :mu
+            _strip_fitted_q2_terms(fit, forms[p])
+        elseif p === :sigma
+            _strip_sigma_struct_q2_terms(fit, forms[p])
+        else
+            get(forms, p, ConstantTerm(1))
+        end
         if p === :mu && fit.family isa Binomial
             interaction = _binomial_phylo_interaction_parts(parameter_rhs)
             interaction === nothing || (parameter_rhs = interaction.fixed_rhs)
