@@ -1187,6 +1187,23 @@ function _joint_finite_prediction_se(X::AbstractMatrix, V::AbstractMatrix,
     return result
 end
 
+function predict(fit::JointFiniteDrmFit; dpar = :mu, type = :response, se = false)
+    dpar isa Symbol && dpar in (:mu, :sigma) || throw(ArgumentError(
+        "joint missing-predictor frontend: `dpar` must be :mu or :sigma"))
+    type isa Symbol && type in (:response, :link) || throw(ArgumentError(
+        "joint missing-predictor frontend: `type` must be :response or :link"))
+    se && throw(ArgumentError(
+        "joint missing-predictor frontend: pass the training `newdata` for standard errors"))
+    if dpar === :mu
+        pred = fitted(fit)
+        return type === :response ? pred : collect(Float64, pred)
+    end
+    sigma = get(fit.prepared.fit.scales, :sigma, nothing)
+    sigma === nothing && throw(ArgumentError(
+        "joint missing-predictor frontend: this fit has no `:sigma` scale"))
+    return type === :response ? sigma : log.(sigma)
+end
+
 """
     predict(fit::JointFiniteDrmFit, newdata; dpar = :mu, type = :response, se = false)
 

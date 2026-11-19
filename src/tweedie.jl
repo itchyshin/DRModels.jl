@@ -786,6 +786,13 @@ function _fit_tweedie_relmat_sd_laplace(fam, y, Xmu, Xsigma, Xnu, Zg,
     return _withiterations(_withnll(fit, nll_final), Optim.iterations(result))
 end
 
+function predict_parameters(fit::DrmFit{Tweedie}; type::Symbol = :response,
+                            se::Bool = false, K = nothing)
+    K !== nothing && throw(ArgumentError(
+        "predict_parameters: pass the training `newdata` when requesting `K`"))
+    return invoke(predict_parameters, Tuple{DrmFit}, fit; type, se)
+end
+
 """
     predict_parameters(fit::DrmFit{Tweedie}, newdata;
                        type = :response, se = false, K = nothing)

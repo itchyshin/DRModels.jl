@@ -3280,8 +3280,10 @@ drmTMB's `predict()` with `newdata` also sets the random effects to zero, so for
 GLM-type families above the two packages' predictions compare like with like
 (drmTMB's LogNormal prediction is the log-scale `μ`, which `type = :response` and
 `type = :link` both return). Without `newdata`, drmTMB's `predict()`, and so its `fitted()`, add
-the fitted random-effect modes for the fitted rows; DRModels.jl's `predict` always
-takes `newdata`, and the in-sample conditional value is `fitted(fit)`.
+the fitted random-effect modes for the fitted rows. `predict(fit)` (no `newdata`)
+matches that contract: `type = :response` returns `fitted(fit)`, and
+`type = :link` returns the fitted location linear predictor on the used rows.
+Population-level values at the training data remain `predict(fit, data)`.
 
 A factor in `newdata` is coded with the levels and contrasts of the fitted data
 (`drm` records them), so `newdata` may hold any subset of the fitted levels, in
@@ -3325,10 +3327,93 @@ function _predict_ignore_label_response(nd::NamedTuple, response::Symbol)
     return merge(nd, NamedTuple{(response,)}((zeros(length(col)),)))
 end
 
-function predict(fit::DrmFit; type::Symbol = :response, se::Bool = false)
+function _predict_se_requires_newdata(who::AbstractString)
     throw(ArgumentError(
-        "predict: pass the data as `predict(fit, data; type = :$type)`, or use `fitted(fit)` " *
-        "for the fitted response mean."))
+        "$who: standard errors for in-sample prediction require the training `newdata` table; " *
+        "call `$(who)(fit, data; se = true)` instead."))
+end
+
+# Map stored parameter values (response scale) to the linear predictor used at
+# fit time — the inverse of `_param_response`.
+function _stored_to_link(fam, p::Symbol, val::AbstractVector{<:Real})
+    if p === :mu || p === :mu1 || p === :mu2
+        lk = _fitted_link(fam)
+        lk === nothing && throw(ArgumentError(
+            "predict_parameters: cannot recover the fitted `$p` link on this route"))
+        g = first(lk)
+        return g.(val)
+    elseif p === :sigma || p === :sigma1 || p === :sigma2
+        return log.(val)
+    elseif p === :rho12
+        ρ = val ./ RHO_GUARD
+        return atanh.(clamp.(ρ, -1 + 1e-12, 1 - 1e-12))
+    elseif p === :nu
+        fam isa Tweedie && return log.(clamp.((val .- 1) ./ (2 .- val), 1e-12, floatmax(Float64)))
+        fam isa Student && return log.(val .- 2)
+        fam isa SkewNormal && return collect(Float64, val)
+        throw(ArgumentError("predict_parameters: cannot recover the fitted `:nu` link on $(typeof(fam))"))
+    elseif p === :zi || p === :hu || p === :zoi || p === :coi
+        v = clamp.(val, 1e-12, 1 - 1e-12)
+        return log.(v ./ (1 .- v))
+    elseif p === :sd
+        return log.(val)
+    else
+        throw(ArgumentError("predict_parameters: cannot recover the fitted `$p` link without `newdata`"))
+    end
+end
+
+function _predict_fitted_link(fit::DrmFit)
+    lk = _fitted_link(fit.family)
+    lk === nothing && throw(ArgumentError(_fitted_no_modes_message(fit, :predict)))
+    g = first(lk)
+    resp = fitted(fit)
+    if fit.formula isa BivariateDrmFormula
+        resp isa AbstractDict || throw(ArgumentError(
+            "predict: bivariate in-sample link prediction expects a dictionary of means"))
+        return Dict(k => g.(resp[k]) for k in keys(resp))
+    end
+    resp isa AbstractVector || throw(ArgumentError(
+        "predict: in-sample link prediction expects a vector mean"))
+    return g.(resp)
+end
+
+function _predict_parameters_insample(fit::DrmFit; type::Symbol = :response)
+    f = fit.formula
+    forms = f isa DrmFormula ? Dict(f.forms) : Dict(f.forms)
+    out = Dict{Symbol,Vector{Float64}}()
+    for (p, _) in fit.blocks
+        haskey(forms, p) || continue
+        p in (:cutpoints, :resd, :recov) && continue
+        val = if haskey(fit.means, p)
+            collect(Float64, fit.means[p])
+        elseif haskey(fit.scales, p)
+            collect(Float64, fit.scales[p])
+        else
+            continue
+        end
+        if type === :link
+            val = _stored_to_link(fit.family, p, val)
+        end
+        out[p] = val
+    end
+    return out
+end
+
+function predict(fit::DrmFit; type::Symbol = :response, se::Bool = false)
+    se && return _predict_se_requires_newdata("predict")
+    type in (:response, :link) ||
+        throw(ArgumentError("predict: without `newdata`, `type` must be :response or :link"))
+    if type === :response
+        return fitted(fit)
+    end
+    return _predict_fitted_link(fit)
+end
+
+function predict_parameters(fit::DrmFit; type::Symbol = :response, se::Bool = false)
+    se && return _predict_se_requires_newdata("predict_parameters")
+    type in (:response, :link) ||
+        throw(ArgumentError("predict_parameters: `type` must be :response or :link"))
+    return _predict_parameters_insample(fit; type)
 end
 
 function predict(fit::DrmFit, newdata; type::Symbol = :response, se::Bool = false)
