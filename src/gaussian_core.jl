@@ -1213,9 +1213,11 @@ them.
     # likelihood and the same estimates). Fit the shifted response, then put the
     # offset back into the fitted means and the observed response.
     f_fit, kw_fit, off = _gaussian_offset_shift(f, fam, kwargs)
+    # `se` is handled by `@drm_entry` / `_withuncertainty`, not by `_drm_gaussian_fit`.
+    kw_inner = (; (p for p in pairs(kw_fit) if p.first !== :se)...)
     # The residual-variance / structured-variance BOUNDARY advisory (#724, #697) is
     # attached here, once, rather than in each of the fitter's return paths.
-    fit = _apply_design_rank(_warn_variance_boundary(_drm_gaussian_fit(f_fit, fam; kw_fit...)))
+    fit = _apply_design_rank(_warn_variance_boundary(_drm_gaussian_fit(f_fit, fam; kw_inner...)))
     fit = off === nothing ? fit : _gaussian_offset_restore(fit, f, off)
     return _with_prior_table_input(fit, get(kwargs, :priors, nothing))
 end
@@ -1242,8 +1244,12 @@ function _gaussian_offset_shift(f::DrmFormula, fam, kwargs)
     _, re, mv, st = _split_ranef(mu_rhs; allow_phylo_slope = true, allow_temporal = true)
     # `meta_V(v)` on its own is admitted: the known sampling variances do not involve
     # the response, so the shifted-response fit is the same likelihood (drmTMB cell H|meta|offset).
-    (isempty(re) && st === nothing) ||
-        _refuse_offset_route(fam, "a random or structured term on the mean")
+    # One ordinary `(1 | g)` is the same shift with the group integral unchanged (#1337).
+    if !isempty(re)
+        _refuse_offset_unless_ordinary_intercept!(fam, re, st, mv)
+    elseif st !== nothing
+        _refuse_offset_route(fam, "a structured term on the mean")
+    end
     # `meta_V` + offset under REML is not verified against drmTMB, so it is refused here
     # (plain `meta_V` REML is itself refused on the generic route).
     mv === nothing || get(kwargs, :method, :ML) === :ML ||
