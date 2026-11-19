@@ -2474,7 +2474,39 @@ function _marginal_simulator(fit::DrmFit, data; K=nothing, A=nothing, tree=nothi
     if sim === nothing && _is_no_fresh_draw_slope_fit(fit)
         throw(ArgumentError(_no_fresh_draw_message(fit)))
     end
+    if sim === nothing && _mu_has_random_effect(fit)
+        @warn "bootstrap: could not build the marginal simulator for this fit with a random effect " *
+              "on the mean (a missing grouping column or covariance input, or an unsupported " *
+              "random-effect shape). Falling back to the conditional `simulate`, which reuses the " *
+              "fitted random effects, so random-effect SD and correlation intervals from this " *
+              "bootstrap are too narrow (#459, #997). Pass the same `data` and covariance " *
+              "provider used to fit, or use `profile` intervals for the variance components."
+    end
     return sim
+end
+
+# True when the mean formula carries an ordinary or structured random effect, so a `nothing` marginal
+# simulator means a conditional draw that drops it (#997). `meta_V` alone is not one: the conditional
+# draw N(Xb, v + sigma^2) is already the marginal, and `meta_V` + RE throws earlier.
+function _mu_has_random_effect(fit::DrmFit)
+    fit.formula isa DrmFormula || return false
+    rhs = Dict(fit.formula.forms)
+    haskey(rhs, :mu) || return false
+    _, re, metav, structured, _, temporal = try
+        # Every `allow_*` flag on: animal / relmat / spatial slopes, temporal and labelled terms all
+        # parse (the fit route enables them case by case), so none is mistaken for "no random effect".
+        _split_ranef(rhs[:mu]; allow_phylo_slope = true, allow_temporal = true,
+                     allow_animal_slope = true, allow_animal_intercept_slope = true,
+                     allow_relmat_slope = true, allow_relmat_intercept_slope = true,
+                     allow_spatial_slope = true, allow_spatial_intercept_slope = true,
+                     allow_labelled_intercept_slope = true)
+    catch e
+        e isa ArgumentError || rethrow()
+        # The fit already parsed this formula; an unparseable shape here is a random-effect shape
+        # this helper does not know, so keep the warning rather than silence it.
+        return true
+    end
+    return !isempty(re) || structured !== nothing || temporal !== nothing
 end
 
 # The ordinary random-effect bars of a fit that has no fresh-draw simulator, or `nothing` when the fit has
