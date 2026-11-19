@@ -4027,8 +4027,8 @@ end
 # `fit.ranef.temporal.keep` rather than by `NaN` in `fit.obs`.
 function _simulate_used_mask(fit::DrmFit)
     if _is_temporal_fit(fit)
-        keep = fit.ranef.temporal.keep
-        return keep === nothing ? nothing : keep
+        info = fit.ranef.temporal       # only the homtoep metadata has `keep`
+        return hasproperty(info, :keep) ? info.keep : nothing
     end
     return _used_row_mask(fit)
 end
