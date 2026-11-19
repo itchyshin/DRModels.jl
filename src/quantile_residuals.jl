@@ -483,10 +483,10 @@ end
 # verified link pair.
 function _conditional_mean_at_modes(fit::DrmFit, fam, μ, mix)
     mix === nothing || return μ
-    ηre = get(fit.scales, :cond_eta_re, get(fit.scales, :cond_fit_eta_re, nothing))
-    ηre === nothing && return μ
+    haskey(fit.scales, :cond_eta_re) || return μ
     lk = _ranef_link(fam)
     lk === nothing && return μ
+    ηre = fit.scales[:cond_eta_re]
     length(ηre) == length(μ) || return μ
     return [lk[2](lk[1](μ[i]) + ηre[i]) for i in eachindex(μ)]
 end
