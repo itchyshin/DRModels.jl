@@ -259,3 +259,21 @@ end
     @test convergence_status(fit) === :converged
     @test all(isfinite, DRModels._display_se(fit))
 end
+
+@testset "inflated-SE rule is unit-free: y, 1000 y and 1e-6 y agree (drmTMB #1781)" begin
+    @test !_twin_inflated_se([152.0, 0.09], [1000.0, 1.0])
+    @test _twin_inflated_se([8e5, 0.09], [1000.0, 1.0])
+    @test _twin_inflated_se([152.0, 0.09])              # unscaled: 152 >= 50 and >= 1000 * 0.09
+    rng = Random.Xoshiro(20261119)
+    n = 80
+    x = randn(rng, n)
+    y0 = randn(rng, n) .+ x
+    x2 = x .+ 1e-4 .* randn(rng, n)
+    status(f, s) = convergence_status(
+        with_logger(NullLogger()) do
+            drm(bf(f, @formula(sigma ~ 1)), Gaussian(); data = (; y = y0 .* s, x, x2))
+        end)
+    scales = (1.0, 1e3, 1e-6)
+    @test [status(@formula(y ~ x), s) for s in scales] == fill(:converged, 3)
+    @test [status(@formula(y ~ x + x2), s) for s in scales] == fill(:degenerate, 3)
+end

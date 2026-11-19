@@ -9,7 +9,8 @@
 #      collapse (`_nondegenerate_fit`)                                      :degenerate
 #   3  covariance square, finite, positive definite                         else :degenerate
 #   4  every diagonal SE finite                                             else :degenerate
-#   5  inflated SE: SE >= 50 and SE >= 1000 x median(SEs < 50)              :degenerate
+#   5  inflated SE: with SE* = SE / sd(y) for identity-link mu coefficients (1 otherwise),
+#      SE* >= 50 and SE* >= 1000 x median(SE* < 50)                          :degenerate
 #   6  design rank: an aliased fixed-effect column (#1110) is caught in step 2
 #      via `_nondegenerate_fit` (`_design_rank_deficient`), as :degenerate
 #   7  any finite |rho12| > 0.98                                            :boundary
@@ -43,16 +44,39 @@ function _twin_vcov_positive_definite(V::AbstractMatrix)
     return all(isfinite, ev) && minimum(ev) > 0
 end
 
-# drmTMB `drm_twin_inflated_se_is_true`. The reference is the median of the
-# finite SEs below the floor; when every finite SE is at or above the floor it
-# is the smallest finite SE.
-function _twin_inflated_se(se::AbstractVector)
+# drmTMB `drm_twin_inflated_se_is_true` (drmTMB #1781, unit-free). Each SE is first divided by
+# its coefficient's reference scale `se_scale` (default 1), then the absolute floor and the
+# median ratio apply, so rescaling y by c leaves the verdict unchanged. The reference is the
+# median of the finite scaled SEs below the floor; when every finite scaled SE is at or above
+# the floor it is the smallest finite one.
+function _twin_inflated_se(se::AbstractVector, se_scale = 1.0)
+    se = se ./ se_scale
     finite_se = filter(isfinite, se)
     isempty(finite_se) && return false
     reference = filter(s -> s < _TWIN_INFLATED_SE_FLOOR, finite_se)
     median_se = isempty(reference) ? minimum(finite_se) : median(reference)
     return any(s -> isfinite(s) && s >= _TWIN_INFLATED_SE_FLOOR &&
                     s >= _TWIN_INFLATED_SE_RATIO * median_se, se)
+end
+
+# drmTMB `drm_se_reference_scales`: sd(y) for the coefficients of an identity-link location
+# block (`mu`, `mu1`, `mu2`; Gaussian, Student, SkewNormal), 1 for every link-scale one. The sd is
+# over the finite observed responses; a non-finite or zero sd falls back to 1. Non-intercept
+# `mu` slopes still carry y/x units: they are scaled by sd(y) only, as in drmTMB.
+function _twin_se_reference_scales(fit::DrmFit)
+    sc = ones(size(fit.vcov, 1))
+    fit.family isa Union{Gaussian,Student,SkewNormal} || return sc
+    for (blk, r) in fit.blocks
+        blk in (:mu, :mu1, :mu2) || continue
+        y = filter(isfinite, get(fit.obs, blk, Float64[]))
+        length(y) > 1 || continue
+        sy = std(y)
+        (isfinite(sy) && sy > 0) || continue
+        for k in r
+            k <= length(sc) && (sc[k] = sy)
+        end
+    end
+    return sc
 end
 
 # #1190: the sparse-Laplace routes clamp every random-effect log SD to [-8, 3] and, at the
@@ -188,7 +212,8 @@ function _convergence_report(fit::DrmFit)
         V = isempty(floor_fixed) ? fit.vcov : fit.vcov[keep, keep]
         se = _twin_standard_errors(V)
         pd = _twin_vcov_positive_definite(V)
-        ses_ok = !isempty(se) && all(isfinite, se) && !_twin_inflated_se(se)
+        ses_ok = !isempty(se) && all(isfinite, se) &&
+                 !_twin_inflated_se(se, _twin_se_reference_scales(fit)[keep])
     end
     # `fit.converged` already folds in a non-finite or sentinel log-likelihood (`_report_converged`).
     code = optok ? 0 : 1
@@ -251,8 +276,12 @@ matching rule wins and every status is a warning, never an error:
    separation (#1186), or an aliased fixed-effect column (#1110).
 5. `:degenerate` unless `vcov(fit)` is square, finite and positive definite.
 6. `:degenerate` unless every standard error is finite.
-7. `:degenerate` when a standard error is at least 50 **and** at least 1000 times the
-   median of the standard errors below 50 (the smallest when none is below 50).
+7. `:degenerate` when a scaled standard error `SE* = SE / s` is at least 50 **and** at least
+   1000 times the median of the scaled standard errors below 50 (the smallest when none is
+   below 50), with `s = sd(y)` for the coefficients of an identity-link location block
+   (`mu`, `mu1`, `mu2` of Gaussian, Student, SkewNormal) and `s = 1` for link-scale ones, so
+   the verdict does not change under `y -> c y` (drmTMB #1781). Non-intercept `mu` slopes
+   still carry y/x units and are scaled by sd(y) only, as in drmTMB.
 8. `:converged` otherwise.
 
 Rules 5 to 7 are skipped when standard errors were turned off (`se = false`, or
