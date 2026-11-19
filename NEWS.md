@@ -6,6 +6,8 @@ human-readable changelog.
 
 ## Development
 
+- `bootstrap_ci`, `bootstrap_summary` and `bootstrap_result` now default to `failures = :skip`: a refit that throws is recorded, the successful draws are kept, and the result has `status = "bootstrap_incomplete"` with a warning, as in drmTMB. Pass `failures = :error` for the old abort (#1052). All replicates failing still errors.
+
 ## v0.8.2
 
 - **`bridge_diagnostics` no longer labels every counted fit `Optim.LBFGS` (#1260).** The optimizer field follows the **kept** selected-stage method (`actual_optimizer`, not the last `optimizer_runs` entry): `Optim.LBFGS` / `Optim.BFGS` / `Optim.Newton` when recorded. A nonnegative `niterations` count is the accepted final stage, not total work, and is not itself evidence of LBFGS. Unrecorded counted BFGS-first Laplace routes (Gamma/Student independent slopes; Gaussian random-slope mean plus sigma random intercept) stay `missing`, as does an unrecorded Beta Newton polish. Default LBFGS is labelled only on known-LBFGS unrecorded fingerprints (including `Fminbox(LBFGS)`, reported as `Optim.LBFGS`). Fitted values, likelihoods, and solver defaults are unchanged.
