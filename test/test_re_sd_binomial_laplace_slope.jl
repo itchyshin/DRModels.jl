@@ -66,4 +66,20 @@ using Test, DRModels, DelimitedFiles, LinearAlgebra
         @test sd[:g_x1] ≈ sds[2] rtol = 1e-12
         @test sd[:g_x2] ≈ sds[3] rtol = 1e-12
     end
+
+    # #1364: Poisson and NegBinomial2 `:Laplace` keep log SD, log SD, atanh rho as two
+    # one-coefficient SD blocks plus `g:atanh_rho`. re_sd / vc used to refuse them.
+    @testset "Poisson / NegBinomial2 (1 + x | g), marginal = :Laplace ($nm)" for (nm, fam2) in
+            (("Poisson", DRModels.Poisson()), ("NegBinomial2", DRModels.NegBinomial2()))
+        d2 = merge(d, (; y = round.(Int, d.s)))
+        fit = drm(bf(@formula(y ~ x1 + (1 + x1 | g))), fam2; data = d2, marginal = :Laplace)
+        names = Dict(fit.coefnames)
+        @test names[:recov] == ["g:atanh_rho"]
+        th = fit.theta
+        sd1, sd2, rho = exp(th[end-2]), exp(th[end-1]), tanh(th[end])
+        sd = re_sd(fit)
+        @test sd[:g_intercept] ≈ sd1 rtol = 1e-12
+        @test sd[:g_slope] ≈ sd2 rtol = 1e-12
+        @test vc(fit)[:g] ≈ [sd1^2 rho*sd1*sd2; rho*sd1*sd2 sd2^2] rtol = 1e-12
+    end
 end
