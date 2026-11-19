@@ -562,12 +562,19 @@ function _fit_betabinomial(fam::BetaBinomial, s, ntr, Xμ, Xσ, nmμ, nmσ, g_to
     res = _ctl_optimize((x0, opts, method) -> Optim.optimize(nll, x0, method, opts; autodiff = :forward),
                        θ0; g_tol = g_tol)   # control: maxit / start / multi_start (#948 #994)
     θ̂ = Optim.minimizer(res); V = _ctl_se(() -> _vcov_from_hessian(ForwardDiff.hessian(nll, θ̂)), θ̂)
+    # (quasi-)complete separation of the mean block (#1220): the MLE does not exist,
+    # so the converged rule reports :degenerate whether or not SEs were computed.
+    sep = try _detect_separation(Xμ, s, ntr) catch; nothing end
+    separated = sep !== nothing && sep.separated
+    separated && !(get(task_local_storage(), :drm_quiet_boundary, false) === true) &&
+        @warn "BetaBinomial fixed-effect fit shows (quasi-)complete separation: the maximum-likelihood estimate does not exist, the affected coefficients are an arbitrary stopping point, and `convergence_status` is `:degenerate`." separation = :complete_or_quasi
     blocks = [:mu => 1:pμ, :sigma => (pμ+1):(pμ+pσ)]
     names = [:mu => nmμ, :sigma => nmσ]
     means = Dict(:mu => _logistic.(_eta_with_offset(Xμ, θ̂[1:pμ], offset)))           # fitted mean success probability
     obs = Dict(:mu => s ./ ntr)                             # observed proportion (for residuals)
     scales = Dict(:sigma => exp.(Xσ * θ̂[(pμ+1):(pμ+pσ)]), :trials => Float64.(nint))
-    return _withiterations(
+    fit = _withiterations(
         _withnll(DrmFit(fam, blocks, names, θ̂, V, -nll(θ̂), n, drm_optim_converged(res), means, obs, scales), nll),
         Optim.iterations(res))
+    return separated ? _withgeometry(fit, :betabinomial_separation) : fit
 end
