@@ -373,17 +373,43 @@ function _is_r_minus_one_term(t)
 end
 
 function _refuse_r_minus_one(rhs, param::Symbol)
-    terms = rhs isa Tuple ? rhs : (rhs,)
-    for t in terms
-        _is_r_minus_one_term(t) || continue
-        throw(ArgumentError(
-            "drm: the `$param` formula uses `$(t)` (R's `x - 1` spelling); StatsModels " *
-            "does not treat that as 'no intercept'. Write `0 + x` or `-1 + x` instead."))
+    for t in _rhs_terms(rhs)
+        if _is_r_minus_one_term(t)
+            throw(ArgumentError(
+                "drm: the `$param` formula uses `$(t)` (R's `x - 1` spelling); StatsModels " *
+                "does not treat that as 'no intercept'. Write `0 + x` instead."))
+        end
+        t isa FunctionTerm || continue
+        bar = if t.f === (|)
+            t
+        elseif t.f in (phylo, relmat, animal, spatial, temporal) && !isempty(t.args) &&
+               t.args[1] isa FunctionTerm && t.args[1].f === (|)
+            t.args[1]
+        else
+            nothing
+        end
+        bar === nothing || _refuse_r_minus_one_bar(bar, param)
     end
     return nothing
 end
 
-function _require_no_r_minus_one(f::DrmFormula)
+# Inside a random-effect bar the slope-only spelling is `0 + x` (`_re_kind`); `-1 + x`
+# is not read as dropping the intercept there, so the hint names `0 + x` only.
+function _refuse_r_minus_one_bar(bar::FunctionTerm, param::Symbol)
+    lhs = bar.args[1]
+    if _is_r_minus_one_term(lhs)
+        throw(ArgumentError(
+            "drm: the random-effect term `($lhs | $(_bar_text(bar.args[2])))` in the `$param` " *
+            "formula uses R's `x - 1` spelling on the left of the bar; StatsModels does not " *
+            "treat that as 'no intercept'. For a slope without a random intercept write " *
+            "`(0 + x | g)` instead."))
+    elseif lhs isa FunctionTerm && lhs.f === (|)
+        _refuse_r_minus_one_bar(lhs, param)
+    end
+    return nothing
+end
+
+function _require_no_r_minus_one(f::Union{DrmFormula,BivariateDrmFormula})
     for (p, rhs) in f.forms
         _refuse_r_minus_one(rhs, p)
     end
