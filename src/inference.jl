@@ -2514,7 +2514,7 @@ end
 # Binomial: every shape except a single `(1 | g)` and several intercept-only terms. Gamma, Beta, Student, LogNormal: two or more ordinary
 # terms, or a single `(0 + x | g)` / `(1 + x | g)`.
 function _no_fresh_draw_bars(fit::DrmFit)
-    fit.family isa Union{Gamma,Binomial,Beta,Student,LogNormal} && fit.formula isa DrmFormula || return nothing
+    fit.family isa Union{Gamma,Binomial,Beta,Student,LogNormal,Poisson,NegBinomial2,Gaussian} && fit.formula isa DrmFormula || return nothing
     rhs = Dict(fit.formula.forms)
     haskey(rhs, :mu) || return nothing
     _, re, metav, structured, _ = _split_ranef(rhs[:mu]; allow_phylo_slope = true)

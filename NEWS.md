@@ -6,6 +6,8 @@ human-readable changelog.
 
 ## Development
 
+- `bootstrap_summary`, `bootstrap_result`, `bootstrap_ci` and the default `simulate(fit; data = data)` now refuse by name for Poisson, NegBinomial2 and Gaussian fits whose random-effect shape has no fresh-draw simulator (for example `(1 + x | g)`). They used to draw responses with the random effects at zero, which collapsed the variance-component interval without a message (#1387). Use `simulate(fit; data = data, re = :zero)` for a conditional draw.
+
 ## v0.8.2
 
 - **`bridge_diagnostics` no longer labels every counted fit `Optim.LBFGS` (#1260).** The optimizer field follows the **kept** selected-stage method (`actual_optimizer`, not the last `optimizer_runs` entry): `Optim.LBFGS` / `Optim.BFGS` / `Optim.Newton` when recorded. A nonnegative `niterations` count is the accepted final stage, not total work, and is not itself evidence of LBFGS. Unrecorded counted BFGS-first Laplace routes (Gamma/Student independent slopes; Gaussian random-slope mean plus sigma random intercept) stay `missing`, as does an unrecorded Beta Newton polish. Default LBFGS is labelled only on known-LBFGS unrecorded fingerprints (including `Fminbox(LBFGS)`, reported as `Optim.LBFGS`). Fitted values, likelihoods, and solver defaults are unchanged.
