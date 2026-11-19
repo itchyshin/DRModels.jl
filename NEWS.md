@@ -6,6 +6,8 @@ human-readable changelog.
 
 ## Development
 
+- Poisson and NB2 bootstrap and default simulation now refuse a random slope without an intercept `(0 + x | g)`, a correlated `(1 + x | g)` block and an independent intercept-plus-slope on the same group, and Gaussian bootstrap and default simulation refuse `(1 + x | g)` and the same intercept-plus-slope shape (#1387). These had no fresh random-effect draw: `bootstrap_summary`, `bootstrap_result` and `bootstrap_ci` fell back to drawing responses with every random effect at zero (and printed a warning), so fixed-effect intervals were far too narrow and variance-component intervals unusable. The error now names the fitted terms and the SD at zero, and points to `simulate(fit; data = data, re = :zero)`. A single `(1 | g)`, crossed random intercepts and a Gaussian `(0 + x | g)` keep their fresh draws and are unchanged; code that relied on the silent fallback now needs a different interval route (for example `profile`).
+
 ## v0.8.2
 
 - **`bridge_diagnostics` no longer labels every counted fit `Optim.LBFGS` (#1260).** The optimizer field follows the **kept** selected-stage method (`actual_optimizer`, not the last `optimizer_runs` entry): `Optim.LBFGS` / `Optim.BFGS` / `Optim.Newton` when recorded. A nonnegative `niterations` count is the accepted final stage, not total work, and is not itself evidence of LBFGS. Unrecorded counted BFGS-first Laplace routes (Gamma/Student independent slopes; Gaussian random-slope mean plus sigma random intercept) stay `missing`, as does an unrecorded Beta Newton polish. Default LBFGS is labelled only on known-LBFGS unrecorded fingerprints (including `Fminbox(LBFGS)`, reported as `Optim.LBFGS`). Fitted values, likelihoods, and solver defaults are unchanged.
