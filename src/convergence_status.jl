@@ -93,13 +93,13 @@ end
 
 # SHINICHI-1753-1118: the converged rule shared by drmTMB, DRModels.jl, GLLVModels.jl
 # and gllvmTMB. `converged` needs ALL of: the optimiser finished at a finite
-# log-likelihood; a near-zero RELATIVE gradient; no parameter at a boundary; a positive
+# log-likelihood; a Newton step of at most 1e-3 standard errors; no parameter at a boundary; a positive
 # definite Hessian with finite, non-inflated standard errors. The statuses, first match
 # wins, are all warnings (never errors):
 #
 #   :not_converged  the optimiser did not finish, the log-likelihood is not finite (or is
-#                   the failed-objective sentinel), or the relative gradient is not near
-#                   zero (the gradient is read only when no parameter is at a boundary: a
+#                   the failed-objective sentinel), or the Newton step in SE units exceeds
+#                   1e-3 (the gradient is read only when no parameter is at a boundary: a
 #                   boundary coordinate has no interior stationary point to test)
 #   :boundary       SD ~ 0, |cor| ~ 1, a Heywood case (a Gaussian residual scale collapsed
 #                   onto the data) or a parameter at the end of its search interval. Tested
@@ -108,30 +108,38 @@ end
 #                   (quasi-)complete separation, a non-existent count MLE
 #   :converged      otherwise
 #
-# The relative gradient is max|grad nll| / max(1, |logLik|): unit-free in the response and
-# in the sample size. It is NaN (and not scored) when the fit stores no objective.
-# UNCALIBRATED placeholder. Measured on the DRModels test suite (2026-11-18), fits that the
-# suite asserts are converged have a relative gradient of up to 2e-2 (REML fits, whose stored
-# objective is the ML one; the q4 phylogenetic and AGHQ-diagnostic objectives), so a cut of
-# 1e-4 would flip about a dozen test files on an objective that is not a stationarity oracle on
-# those routes. 0.1 only catches an optimiser stopped far from a stationary point. A tighter
-# number needs a per-route oracle or Shinichi's decision (see the pull request).
-const _TWIN_REL_GRADIENT_TOL = 0.1
+# "Gradient near zero" is the Newton step in standard-error units (Shinichi, 19 Nov 2026,
+# CONV-GRADIENT-CUT; the same rule as drmTMB): with g the gradient of the objective at the
+# optimum and H its Hessian, V = H^-1 = `vcov(fit)` and SE_i = sqrt(V_ii),
+#
+#     max_i |(V g)_i| / SE_i  <=  1e-3.
+#
+# It is unit-free in the response, in the sample size and in the parameter scale: it says how
+# far, in standard errors, one more Newton step would still move any parameter.
+const _TWIN_NEWTON_STEP_TOL = 1e-3
 
+# The Newton step in SE units, or `(value = NaN, reason)` when it cannot be scored:
+#   :no_objective  the fit stores no objective
+#   :reml          a REML fit stores the ML objective (its gradient there is not zero at the
+#                  REML optimum), so it is not the objective `vcov` inverts: skipped
+#   :no_vcov       standard errors were turned off, or `vcov` is not square, finite and
+#                  positive definite over `fit.theta` (the covariance rules report that)
+#   :no_gradient   no gradient could be produced
 # Cost control: the gradient of a stored objective is up to 2p objective evaluations, and
 # `convergence_status` is read by `show`, `coeftable` and bootstrap filters.
-function _relative_max_gradient(fit::DrmFit)
-    fit.nll === nothing && return NaN
-    # A REML fit stores the ML objective, so its gradient there is not zero at the REML optimum
-    # (b_sxz of test_reml_location_se_r_parity reads 0.1012 at a clean optimum): not scored.
-    fit.estim_method === :REML && return NaN
-    g = try
-        _check_max_abs_grad(fit)
-    catch err
-        err isa InterruptException && rethrow()
-        return NaN
-    end
-    return isfinite(g.magnitude) ? g.magnitude / max(1.0, abs(fit.loglik)) : NaN
+function _newton_step_se_units(fit::DrmFit)
+    fit.nll === nothing && return (value = NaN, reason = :no_objective)
+    fit.estim_method === :REML && return (value = NaN, reason = :reml)
+    V = fit.vcov
+    (fit.uncertainty === :skipped || size(V, 1) != size(V, 2) ||
+     size(V, 1) != length(fit.theta) || !_twin_vcov_positive_definite(V)) &&
+        return (value = NaN, reason = :no_vcov)
+    g = _check_grad_vector(fit).grad
+    g === nothing && return (value = NaN, reason = :no_gradient)
+    step = Symmetric(Matrix{Float64}(V), :L) * g
+    se = _twin_standard_errors(V)
+    val = all(isfinite, se) && all(>(0), se) ? maximum(abs.(step) ./ se) : NaN
+    return isfinite(val) ? (value = val, reason = :scored) : (value = NaN, reason = :no_gradient)
 end
 
 # Boundary parameters as `(name, kind)`; kind is :sd, :cor, :heywood or :bound.
@@ -202,8 +210,8 @@ function _convergence_report(fit::DrmFit)
         return (status = :boundary, boundary_params = bparams, pd_hessian = pd,
                 max_gradient = NaN, optimiser_code = code, optimiser_message = msg)
     end
-    grad = _relative_max_gradient(fit)
-    status = if isfinite(grad) && grad > _TWIN_REL_GRADIENT_TOL
+    grad = _newton_step_se_units(fit).value
+    status = if isfinite(grad) && grad > _TWIN_NEWTON_STEP_TOL
         :not_converged
     elseif !(fit.geometry === :ok && !_design_rank_deficient(fit))
         :degenerate
@@ -232,8 +240,12 @@ matching rule wins and every status is a warning, never an error:
    below `1e-4` (also a log SD within `1e-3` of the sparse-Laplace floor of `-8`, whose
    standard error is `NaN`, #1190); a Gaussian residual scale has collapsed onto the data
    (Heywood); or a Tweedie power ended at an end of its search interval.
-3. `:not_converged` when the relative gradient `max|grad nll| / max(1, |logLik|)` exceeds
-   `0.1` (an uncalibrated placeholder, see `_TWIN_REL_GRADIENT_TOL`; not scored when the fit stores no objective).
+3. `:not_converged` when the Newton step in standard-error units,
+   `max_i |(H⁻¹ g)_i| / SE_i` with `H⁻¹ = vcov(fit)`, `SE_i = sqrt((H⁻¹)_ii)` and `g` the
+   gradient of the objective at the optimum, exceeds `1e-3`. It is not scored (and the rule
+   passes) when the fit stores no objective, when standard errors are off or `vcov` is not
+   positive definite (rules 5 to 7 then speak), or for a REML fit, whose stored objective is
+   the ML one and so is not the objective `vcov` inverts.
 4. `:degenerate` when a geometry screen fired: a Poisson or NegBinomial2 fixed-effect MLE
    that does not exist (#1109), a fixed-effect-only Binomial fit with (quasi-)complete
    separation (#1186), or an aliased fixed-effect column (#1110).
@@ -263,8 +275,9 @@ The converged rule's whole record, with the field names shared with drmTMB:
 - `boundary_params` — a vector of `(name, kind)`; `kind` is `:sd`, `:cor`, `:heywood`
   or `:bound`. Empty unless the status is `:boundary`.
 - `pd_hessian` — `true` / `false`, or `missing` when standard errors were turned off.
-- `max_gradient` — the relative gradient `max|grad nll| / max(1, |logLik|)`; `NaN` when it
-  was not read (no stored objective, or the status was settled before the gradient).
+- `max_gradient` — the Newton step in standard-error units `max_i |(H⁻¹ g)_i| / SE_i` (not
+  the raw gradient); `NaN` when it was not scored (no stored objective, a REML fit, no usable
+  `vcov`, or the status was settled before the gradient).
 - `optimiser_code` — `0` finished at a finite log-likelihood, `1` did not (including a non-finite
   or sentinel log-likelihood).
 - `optimiser_message` — a short plain-language message. `DrmFit` stores only the optimiser's

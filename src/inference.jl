@@ -4720,6 +4720,79 @@ function _check_max_abs_grad(fit::DrmFit)
     return _check_grad_fallback(nll, fit.theta)
 end
 
+# The gradient VECTOR behind `_check_max_abs_grad`, in `fit.theta` coordinates (the order
+# `fit.vcov` uses), with the producer that supplied it. `grad = nothing` is the NaN case.
+function _check_grad_vector_attempt(producer)
+    try
+        g = producer()
+        return (g isa AbstractVector && all(isfinite, g)) ? Vector{Float64}(g) : nothing
+    catch err
+        err isa InterruptException && rethrow()
+        return nothing
+    end
+end
+
+function _check_fd_gradient_vector(nll, theta::Vector{Float64}; h::Real = _CHECK_GRAD_FD_STEP)
+    isfinite(nll(theta)) || return nothing
+    x = copy(theta)
+    g = zeros(length(x))
+    for i in eachindex(x)
+        xi = x[i]
+        s = h * max(abs(xi), 1.0)
+        x[i] = xi + s; fp = nll(x)
+        x[i] = xi - s; fm = nll(x)
+        x[i] = xi
+        g[i] = (fp - fm) / (2 * s)
+        isfinite(g[i]) || return nothing
+    end
+    return g
+end
+
+function _check_grad_vector_fallback(nll, theta::Vector{Float64})
+    g = _check_grad_vector_attempt(() -> _check_fd_gradient_vector(nll, theta))
+    g === nothing && return (grad = nothing, source = :unavailable)
+    return (grad = g, source = :finite)
+end
+
+function _check_grad_vector(fit::DrmFit)
+    nll = fit.nll
+    nll === nothing && return (grad = nothing, source = :none)
+    if nll isa _AGHQDiagnosticObjective && fit.nllgrad === nothing
+        snapshot = copy(nll.bcache)
+        isolated = θ -> nll.diagnostic(θ, copy(snapshot))
+        g = _check_grad_vector_attempt(() -> ForwardDiff.gradient(isolated, fit.theta))
+        g === nothing || return (grad = g, source = :forward)
+        return _check_grad_vector_fallback(isolated, fit.theta)
+    end
+    if nll isa LocScaleObjective
+        base = size(nll.Xμ, 2) + size(nll.Xψ, 2)
+        perm = vcat(collect(1:base), [base + 1, base + 3, base + 2])  # recov->engine
+        theta = fit.theta[perm]
+        ge = _check_grad_vector_attempt(() -> _ls_objective_gradient(nll, theta))
+        if ge !== nothing
+            g = similar(ge)
+            g[perm] = ge                      # back to fit.theta order
+            return (grad = g, source = :locscale)
+        end
+        r = _check_grad_vector_fallback(nll, theta)
+        r.grad === nothing && return r
+        g = similar(r.grad); g[perm] = r.grad
+        return (grad = g, source = r.source)
+    end
+    if fit.nllgrad !== nothing
+        g = _check_grad_vector_attempt(function ()
+            g = zeros(length(fit.theta))
+            fit.nllgrad(g, fit.theta)
+            return g
+        end)
+        g === nothing || return (grad = g, source = :stored)
+        return _check_grad_vector_fallback(nll, fit.theta)
+    end
+    g = _check_grad_vector_attempt(() -> ForwardDiff.gradient(nll, fit.theta))
+    g === nothing || return (grad = g, source = :forward)
+    return _check_grad_vector_fallback(nll, fit.theta)
+end
+
 """
     check_drm(fit) -> NamedTuple
 
@@ -4733,8 +4806,8 @@ Returns a `NamedTuple` and logs a short report:
   :converged`. A Gaussian fit whose scale collapsed is reported `false` here even
   when `fit.converged` is `true` (#949), and so is a `:boundary` fit (FX3b).
 - `boundary_params`, `pd_hessian`, `max_gradient`, `optimiser_code`, `optimiser_message` — the
-  remaining fields of [`convergence_info`](@ref) (`max_gradient` is the RELATIVE gradient
-  there; `max_abs_grad` below is the absolute one).
+  remaining fields of [`convergence_info`](@ref) (`max_gradient` is the Newton step in SE
+  units there; `max_abs_grad` below is the absolute one).
 - `max_abs_grad` — `max|∇nll|` at the optimum (≈ 0 at a clean interior optimum;
   `NaN` when no gradient could be produced: see `grad_source` for which of the
   two reasons applies).

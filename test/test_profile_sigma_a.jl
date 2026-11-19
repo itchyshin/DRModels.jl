@@ -30,7 +30,11 @@ using DRModels, Test, Random, LinearAlgebra
               sigma2 = @formula(sigma2 ~ 1 + phylo(1 | species)),
               rho12 = @formula(rho12 ~ 1))
     fit = drm(form, Gaussian(); data = dat, tree = phy)
-    @test is_converged(fit)
+    # Moved by the Newton-step rule (CONV-GRADIENT-CUT): this q4 sparse-phylo fit stops with a
+    # Newton step of about 0.018 SE, above 1e-3, so it is :not_converged by the converged rule
+    # while the optimiser's own flag is true. The test needs the fit, not that verdict.
+    @test fit.converged
+    @test convergence_status(fit) === :not_converged
     @test haskey(fit.ranef, :prob)              # the fit stashes the problem for profiling
 
     pr = profile_sigma_a(fit; level = 0.90)

@@ -237,8 +237,9 @@ end
     @test d.convergence_status === :degenerate && d.pd_hessian === false
     @test ismissing(convergence_info(_withuncertainty(_cs_fit(), false)).pd_hessian)
 
-    # relative gradient: a stored objective with a clearly non-stationary point is
-    # :not_converged, a stationary one is :converged
+    # Newton step in SE units (max_i |(V g)_i| / SE_i <= 1e-3, V = vcov = 0.01 I so SE = 0.1):
+    # a stored objective with a clearly non-stationary point is :not_converged, a stationary
+    # one is :converged. g = (c, 0), so the step is 0.1 c SE.
     fitg(c) = begin
         f = _cs_fit(loglik = -100.0)
         DRModels._withnll(f, th -> 100.0 + c * th[1] + (th[2] - 0.2)^2)
@@ -246,7 +247,9 @@ end
     @test convergence_status(fitg(0.0)) === :converged
     @test convergence_info(fitg(0.0)).max_gradient < 1e-6
     @test convergence_status(fitg(50.0)) === :not_converged
-    @test convergence_info(fitg(50.0)).max_gradient > 0.1
+    @test convergence_info(fitg(50.0)).max_gradient ≈ 5.0 atol = 1e-6
+    @test convergence_status(fitg(0.005)) === :converged       # 5e-4 SE
+    @test convergence_status(fitg(0.05)) === :not_converged    # 5e-3 SE
 end
 
 @testset "REML fit: stored ML objective is not a stationarity oracle (b_sxz regression)" begin
