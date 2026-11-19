@@ -4615,7 +4615,7 @@ function _split_logsd_decode(fit)
         (length(nm) == 1 && startswith(nm[1], grp * ":log_sd_")) || return nothing
         push!(sds, exp(fit.theta[first(r)]))
     end
-    rho = tanh(fit.theta[first(last(fit.blocks[findfirst(pb -> pb[1] === :recov, fit.blocks)]))])
+    rho = _Q2_RHO_BOUND * tanh(fit.theta[first(last(fit.blocks[findfirst(pb -> pb[1] === :recov, fit.blocks)]))])
     Σ = [sds[1]^2 rho*sds[1]*sds[2]; rho*sds[1]*sds[2] sds[2]^2]
     return grp, ["intercept", "slope"], sds, Σ
 end

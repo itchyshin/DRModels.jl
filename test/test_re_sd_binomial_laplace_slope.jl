@@ -76,10 +76,18 @@ using Test, DRModels, DelimitedFiles, LinearAlgebra
         names = Dict(fit.coefnames)
         @test names[:recov] == ["g:atanh_rho"]
         th = fit.theta
-        sd1, sd2, rho = exp(th[end-2]), exp(th[end-1]), tanh(th[end])
         sd = re_sd(fit)
-        @test sd[:g_intercept] ≈ sd1 rtol = 1e-12
-        @test sd[:g_slope] ≈ sd2 rtol = 1e-12
-        @test vc(fit)[:g] ≈ [sd1^2 rho*sd1*sd2; rho*sd1*sd2 sd2^2] rtol = 1e-12
+        V = vc(fit)[:g]
+        # drmTMB 0.8.1 reference (same file, y = round(s), y ~ x1 + (1 + x1 | g), convergence 0;
+        # NegBinomial2 collapses to Poisson, log sigma = -12.2): logLik -453.430495557,
+        # log SD = -1.2428489876, -1.0282558899, atanh(rho) = 0.1971334836.
+        @test abs(log(sd[:g_intercept]) + 1.2428489876) < 5e-3
+        @test abs(log(sd[:g_slope]) + 1.0282558899) < 5e-3
+        @test abs(atanh(V[1, 2] / sqrt(V[1, 1] * V[2, 2])) - 0.1971334836) < 5e-3
+        @test sqrt.(diag(V)) ≈ [sd[:g_intercept], sd[:g_slope]] rtol = 1e-12
+        # rho is bounded: rho = _Q2_RHO_BOUND * tanh(theta), as negbinomial.jl / inference.jl
+        @test V[1, 2] / sqrt(V[1, 1] * V[2, 2]) ≈ DRModels._Q2_RHO_BOUND * tanh(th[end]) rtol = 1e-10
+        # the layout is not an SD regression: heritability refuses with the slope message
+        @test_throws ErrorException heritability(fit)
     end
 end
