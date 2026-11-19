@@ -122,6 +122,9 @@ const _TWIN_REL_GRADIENT_TOL = 0.1
 # `convergence_status` is read by `show`, `coeftable` and bootstrap filters.
 function _relative_max_gradient(fit::DrmFit)
     fit.nll === nothing && return NaN
+    # A REML fit stores the ML objective, so its gradient there is not zero at the REML optimum
+    # (b_sxz of test_reml_location_se_r_parity reads 0.1012 at a clean optimum): not scored.
+    fit.estim_method === :REML && return NaN
     g = try
         _check_max_abs_grad(fit)
     catch err

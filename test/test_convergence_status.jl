@@ -248,3 +248,11 @@ end
     @test convergence_status(fitg(50.0)) === :not_converged
     @test convergence_info(fitg(50.0)).max_gradient > 0.1
 end
+
+@testset "REML fit: stored ML objective is not a stationarity oracle (b_sxz regression)" begin
+    i = 1:40; x = sin.(i); z = cos.(1.3 .* i); u = mod.(0.7548776662 .* i, 1)
+    d = (; y = 1 .+ 0.6 .* x .- 0.4 .* z .+ exp.(0.5 .* x .- 0.3 .* z) .* 0.8 .* (2 .* u .- 1), x, z)
+    fit = drm(bf(@formula(y ~ x + z), @formula(sigma ~ x + z)), Gaussian(); data = d, method = :REML)
+    @test convergence_status(fit) === :converged
+    @test all(isfinite, DRModels._display_se(fit))
+end
