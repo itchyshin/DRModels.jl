@@ -35,3 +35,14 @@ using DRModels, Test, Random
     @test length(simulate(fc; rng = MersenneTwister(2))) == n
     @test simulate(fc; rng = MersenneTwister(2)) == DRModels._simulate_all_rows(fc; rng = MersenneTwister(2))
 end
+
+@testset "#1352 zero-trial Binomial rows are fitted rows and stay in simulate" begin
+    n = 40; x = [sin(i) for i in 1:n]
+    s = [round(Int, 10 / (1 + exp(-0.3x[i]))) for i in 1:n]; fl = 10 .- s
+    s[1:3] .= 0; fl[1:3] .= 0
+    fz = drm(bf(@formula(cbind(s, fl) ~ x)), Binomial(); data = (; s, fl, x))
+    @test nobs(fz) == n
+    @test length(simulate(fz; rng = MersenneTwister(1))) == n
+    @test size(simulate(fz; nsim = 3, rng = MersenneTwister(1))) == (n, 3)
+    @test all(==(0), simulate(fz; nsim = 3, rng = MersenneTwister(1))[1:3, :])
+end

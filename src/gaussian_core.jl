@@ -4030,7 +4030,19 @@ function _simulate_used_mask(fit::DrmFit)
         info = fit.ranef.temporal       # only the homtoep metadata has `keep`
         return hasproperty(info, :keep) ? info.keep : nothing
     end
-    return _used_row_mask(fit)
+    m = _used_row_mask(fit)
+    # A Binomial row with zero trials has `NaN` for the observed proportion (0 / 0) but it IS a
+    # fitted row (it counts in `nobs` and contributes nothing); only rows dropped by the
+    # missing-data policy are cut. The draw there is zero.
+    if m !== nothing && haskey(fit.scales, :trials)
+        tr = fit.scales[:trials]
+        length(tr) == length(m) && (m = m .| (tr .== 0))
+    end
+    # A fit that does not keep the trials (rebuilt from `data`) cannot tell a zero-trial row from a
+    # dropped one by `fit.obs`; the rows used are exactly `nobs` of them, so a mask that does not
+    # count to `nobs` is not the missing-data policy and cuts nothing.
+    (m !== nothing && count(m) != fit.nobs) && return nothing
+    return m
 end
 function _simulate_on_used_rows(fit::DrmFit, out::AbstractVector{<:Real})
     m = _simulate_used_mask(fit)
