@@ -1190,8 +1190,8 @@ _laplace_nuisance_d2(::Val{:tweedie_fixed}, aux, i, η) =
 # (_logit12(-6), _logit12(6)). A fitted power within `_TWEEDIE_POWER_EDGE_TOL` of either end,
 # measured in p itself, is the end of the window, not an interior optimum. The tolerance is the one
 # the sister R package uses for the same warning (1e-5 in p). Such a fit is flagged
-# (`geometry = :power_at_bound`, which `convergence_status` reads as `:degenerate`, as it does for
-# every crossed Tweedie fit, whose `nu` variance is NaN) and warned about once.
+# (`geometry = :power_at_bound`, which `convergence_status` reads as `:boundary`, kind `:bound`)
+# and warned about once.
 # The window, the search and the estimate are not changed.
 const _TWEEDIE_POWER_SEARCH_BOUND = 6.0
 const _TWEEDIE_POWER_EDGE_TOL = 1e-5

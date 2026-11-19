@@ -21,9 +21,20 @@ check_drm(fit)
 
 The report is a `NamedTuple`:
 
-- `convergence_status` reports `:converged`, `:boundary`, or `:degenerate`.
-  `converged` is `true` exactly when this status is `:converged`, matching
-  [`is_converged`](@ref). The raw optimiser flag is `fit.converged`.
+- `convergence_status` reports `:converged`, `:not_converged`, `:boundary`, or
+  `:degenerate` (first match wins; every one is a warning, not an error):
+  `:not_converged` when the optimiser did not finish, the log-likelihood is not
+  finite, or the relative gradient `max|grad nll| / max(1, |logLik|)` is above
+  `0.1` (an uncalibrated placeholder); `:boundary` when an SD is near 0, a correlation near +-1, a Gaussian
+  residual scale has collapsed (Heywood) or a parameter sits at the end of its
+  search interval (tested before the Hessian); `:degenerate` for a singular
+  Hessian, non-finite or inflated standard errors, an aliased design or
+  separation. `converged` is `true` exactly when this status is `:converged`,
+  matching [`is_converged`](@ref). The raw optimiser flag is `fit.converged`.
+  [`convergence_info`](@ref)`(fit)` returns the whole record (`converged`,
+  `convergence_status`, `boundary_params` as `(name, kind)`, `pd_hessian`,
+  `max_gradient`, `optimiser_code`, `optimiser_message`); `check_drm` carries the
+  same fields.
 - `max_abs_grad` — `max|∇nll|` at the solution, the largest slope of the
   negative log-likelihood. Near a clean interior optimum this is ≈ 0; a large
   value means the optimiser stopped early.

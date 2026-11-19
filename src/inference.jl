@@ -4727,10 +4727,14 @@ Post-fit convergence / identifiability diagnostics — drmTMB's `check_drm()`.
 Returns a `NamedTuple` and logs a short report:
 
 - `convergence_status` — [`convergence_status`](@ref)`(fit)`: `:converged`,
-  `:boundary` or `:degenerate`, by the same rules as drmTMB (FX3b).
+  `:not_converged`, `:boundary` or `:degenerate`, by the converged rule shared with drmTMB
+  (SHINICHI-1753-1118).
 - `converged` — [`is_converged`](@ref)`(fit)`, i.e. `convergence_status ===
   :converged`. A Gaussian fit whose scale collapsed is reported `false` here even
   when `fit.converged` is `true` (#949), and so is a `:boundary` fit (FX3b).
+- `boundary_params`, `pd_hessian`, `max_gradient`, `optimiser_code`, `optimiser_message` — the
+  remaining fields of [`convergence_info`](@ref) (`max_gradient` is the RELATIVE gradient
+  there; `max_abs_grad` below is the absolute one).
 - `max_abs_grad` — `max|∇nll|` at the optimum (≈ 0 at a clean interior optimum;
   `NaN` when no gradient could be produced: see `grad_source` for which of the
   two reasons applies).
@@ -4833,11 +4837,17 @@ function check_drm(fit::DrmFit; grad_tol::Real=1e-3)
     snw = _skew_normal_nu_wald(fit)   # #1060: `nothing` unless SkewNormal
     frd = _fixed_effect_rank_deficiency(fit)   # #1110: `nothing` unless a design is aliased
     conv = status === :converged       # is_converged(fit)
+    cinfo = convergence_info(fit)
     fixed_prior = _is_fixed_prior_fit(fit) && penalized
     ok = _converged_nondegenerate(fit) && ((penalized && !fixed_prior) || isnan(mag) || mag <= grad_tol) && pd && frd === nothing
     report = (
         convergence_status=status,
         converged=conv,
+        boundary_params=cinfo.boundary_params,
+        pd_hessian=cinfo.pd_hessian,
+        max_gradient=cinfo.max_gradient,
+        optimiser_code=cinfo.optimiser_code,
+        optimiser_message=cinfo.optimiser_message,
         max_abs_grad=mag,
         grad_source=grad.source,
         vcov_complete=vcov_complete,

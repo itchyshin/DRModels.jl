@@ -77,11 +77,11 @@ end
     @test is_converged(base) && converged(base)
 
     # 1. optimiser gate and the -1e15 sentinel (strictly above)
-    @test convergence_status(_cs_fit(converged = false)) === :degenerate
-    @test convergence_status(_cs_fit(loglik = -1e15)) === :degenerate
+    @test convergence_status(_cs_fit(converged = false)) === :not_converged
+    @test convergence_status(_cs_fit(loglik = -1e15)) === :not_converged
     @test convergence_status(_cs_fit(loglik = -9.99e14)) === :converged
-    @test convergence_status(_cs_fit(loglik = NaN)) === :degenerate
-    @test convergence_status(_cs_fit(loglik = Inf)) === :degenerate
+    @test convergence_status(_cs_fit(loglik = NaN)) === :not_converged
+    @test convergence_status(_cs_fit(loglik = Inf)) === :not_converged
 
     # 2. geometry: a Poisson / NB2 MLE that does not exist
     @test convergence_status(_withgeometry(base, :count_mle_nonexistent)) === :degenerate
@@ -101,8 +101,11 @@ end
     @test convergence_status(_cs_fit(rho12 = [0.98, -0.98])) === :converged
     @test convergence_status(_cs_fit(rho12 = [NaN, 0.5])) === :converged       # non-finite ignored
 
-    # degenerate wins over boundary
-    @test convergence_status(_cs_fit(V = fill(NaN, 2, 2), resd = 5e-5)) === :degenerate
+    # boundary is tested BEFORE the Hessian (SHINICHI-1753-1118): a boundary fit with an
+    # unusable covariance is :boundary, never :degenerate
+    @test convergence_status(_cs_fit(V = fill(NaN, 2, 2), resd = 5e-5)) === :boundary
+    # an unfinished optimiser wins over everything
+    @test convergence_status(_cs_fit(converged = false, resd = 5e-5)) === :not_converged
 
     # is_converged / converged are `status === :converged`; the internal
     # optimiser-and-degeneracy gate keeps boundary fits
@@ -124,7 +127,7 @@ end
     # rules 3-5 are skipped, rules 1, 2 and 6 are not
     @test convergence_status(_withuncertainty(_cs_fit(V = [0.01 0.0; 0.0 1.0e6]), false)) === :converged
     @test convergence_status(_withuncertainty(_cs_fit(V = fill(NaN, 2, 2), resd = 5e-5), false)) === :boundary
-    @test convergence_status(_withuncertainty(_cs_fit(V = fill(NaN, 2, 2), converged = false), false)) === :degenerate
+    @test convergence_status(_withuncertainty(_cs_fit(V = fill(NaN, 2, 2), converged = false), false)) === :not_converged
     @test convergence_status(_withgeometry(skipped, :count_mle_nonexistent)) === :degenerate
     # the record survives the copy helpers the fitters chain
     @test DRModels._withiterations(skipped, 7).uncertainty === :skipped
@@ -132,11 +135,13 @@ end
     @test DRModels._withformula(_withuncertainty(g, false), nothing).geometry === :count_mle_nonexistent
 end
 
-@testset "Gaussian scale collapse is degenerate (geometry rule)" begin
+@testset "Gaussian scale collapse is a Heywood boundary (SHINICHI-1753-1118)" begin
     collapsed = _cs_fit(family = Gaussian(),
                         scales = Dict(:sigma => fill(1e-12, 10)))
-    @test convergence_status(collapsed) === :degenerate
-    @test convergence_status(_withuncertainty(collapsed, false)) === :degenerate
+    @test convergence_status(collapsed) === :boundary
+    @test convergence_status(_withuncertainty(collapsed, false)) === :boundary
+    @test DRModels.convergence_info(collapsed).boundary_params ==
+          [(name = "sigma", kind = :heywood)]
 end
 
 @testset "real fits" begin
@@ -208,4 +213,38 @@ end
     @test convergence_status(ctl_on) === :converged
     # the guard still sets the Inf SE that it set before
     @test any(isinf, diag(on.vcov))
+end
+
+@testset "convergence_info record (SHINICHI-1753-1118)" begin
+    info = convergence_info(_cs_fit())
+    @test keys(info) == (:converged, :convergence_status, :boundary_params, :pd_hessian,
+                         :max_gradient, :optimiser_code, :optimiser_message)
+    @test info.converged && info.convergence_status === :converged
+    @test isempty(info.boundary_params) && info.pd_hessian === true
+    @test isnan(info.max_gradient)            # a hand-built fit stores no objective
+    @test info.optimiser_code == 0 && info.optimiser_message isa String
+
+    nc = convergence_info(_cs_fit(converged = false))
+    @test !nc.converged && nc.convergence_status === :not_converged && nc.optimiser_code == 1
+    @test convergence_info(_cs_fit(loglik = NaN)).optimiser_code == 1
+    @test occursin("not finite", convergence_info(_cs_fit(loglik = NaN)).optimiser_message)
+
+    b = convergence_info(_cs_fit(resd = 5e-5, rho12 = [0.99]))
+    @test b.convergence_status === :boundary
+    @test Set(b.boundary_params) == Set([(name = "sd:g", kind = :sd), (name = "rho12", kind = :cor)])
+
+    d = convergence_info(_cs_fit(V = [1.0 1.0; 1.0 1.0]))
+    @test d.convergence_status === :degenerate && d.pd_hessian === false
+    @test ismissing(convergence_info(_withuncertainty(_cs_fit(), false)).pd_hessian)
+
+    # relative gradient: a stored objective with a clearly non-stationary point is
+    # :not_converged, a stationary one is :converged
+    fitg(c) = begin
+        f = _cs_fit(loglik = -100.0)
+        DRModels._withnll(f, th -> 100.0 + c * th[1] + (th[2] - 0.2)^2)
+    end
+    @test convergence_status(fitg(0.0)) === :converged
+    @test convergence_info(fitg(0.0)).max_gradient < 1e-6
+    @test convergence_status(fitg(50.0)) === :not_converged
+    @test convergence_info(fitg(50.0)).max_gradient > 0.1
 end
