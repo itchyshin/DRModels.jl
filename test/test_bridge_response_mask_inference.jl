@@ -87,8 +87,10 @@ using DRModels: is_converged, _nondegenerate_fit, niterations
     # because `means`/`scales` are length 60. The mask is re-imposed one step
     # later, when `_bootstrap_data` builds the replicate table, so every
     # replicate refits on the same rows the seed fit observed (drmTMB #1188).
-    ysim = DRModels.simulate(fit; rng = MersenneTwister(1))
+    # The bootstrap draws through `_simulate_all_rows`; public `simulate(fit)` returns the used rows only (#1352).
+    ysim = DRModels._simulate_all_rows(fit; rng = MersenneTwister(1))
     @test length(ysim) == n
+    @test length(DRModels.simulate(fit; rng = MersenneTwister(1))) == count(obs)
     @test all(isfinite, ysim)
 
     # drmTMB #1188: mask-preserving replicates. Before this fix the replicate
