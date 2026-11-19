@@ -3986,6 +3986,10 @@ Return value (univariate / random-effect / meta models):
 - `nsim == 1` → a length-`nobs` response `Vector` (back-compatible).
 - `nsim  > 1` → a `nobs × nsim` `Matrix`, one independent replicate per column.
 
+Only the rows used in the fit are simulated, as in drmTMB (#1352): a row dropped
+for a missing response is not drawn, so the result has the same rows as
+`fitted(fit)` and `nobs(fit)`. This holds for the default (no `newdata`) draw.
+
 Bivariate Gaussian models return `Dict(:mu1=>…, :mu2=>…)` for `nsim == 1`, or a
 length-`nsim` `Vector` of such `Dict`s for `nsim > 1` (a matrix of paired
 responses is not well defined).
@@ -3998,8 +4002,7 @@ Tweedie, and CumulativeLogit.
 # Example
 ```julia
 fit = drm(bf(@formula(y ~ x), @formula(sigma ~ x)), Gaussian(); data)
-y1  = simulate(fit)               # Vector, length nobs (a homtoep fit that dropped
-                                  # missing responses: one per data row, NaN there)
+y1  = simulate(fit)               # Vector, length nobs (rows with a missing response are not drawn)
 Y   = simulate(fit; nsim = 100)   # 100 columns, one per draw
 ys  = simulate(fit; newdata = (x = [0.0, 1.0],))  # one row per newdata row
 ```
@@ -4011,6 +4014,37 @@ parameters. Omit it to draw for the training design. Temporal fits refuse
 `newdata`.
 """
 function simulate(fit::DrmFit; nsim::Integer = 1, rng = default_rng(), newdata = nothing,
+                  kwargs...)
+    out = _simulate_all_rows(fit; nsim, rng, newdata, kwargs...)
+    newdata === nothing || return out
+    return _simulate_on_used_rows(fit, out)
+end
+
+# `simulate(fit)` returns the rows used in the fit (`nobs`), as drmTMB does (#1352): a row
+# dropped for a missing response is not simulated. `_simulate_all_rows` keeps one draw per
+# DATA row, which `bootstrap_ci` needs to merge a replicate back into the original table.
+# A temporal (homtoep) fit that dropped missing responses marks the retained data rows in
+# `fit.ranef.temporal.keep` rather than by `NaN` in `fit.obs`.
+function _simulate_used_mask(fit::DrmFit)
+    if _is_temporal_fit(fit)
+        keep = fit.ranef.temporal.keep
+        return keep === nothing ? nothing : keep
+    end
+    return _used_row_mask(fit)
+end
+function _simulate_on_used_rows(fit::DrmFit, out::AbstractVector{<:Real})
+    m = _simulate_used_mask(fit)
+    (m === nothing || length(out) != length(m)) && return out
+    return out[m]
+end
+function _simulate_on_used_rows(fit::DrmFit, out::AbstractMatrix)
+    m = _simulate_used_mask(fit)
+    (m === nothing || size(out, 1) != length(m)) && return out
+    return out[m, :]
+end
+_simulate_on_used_rows(fit::DrmFit, out) = out
+
+function _simulate_all_rows(fit::DrmFit; nsim::Integer = 1, rng = default_rng(), newdata = nothing,
                   re::Symbol = :marginal, data = nothing, K = nothing, A = nothing,
                   tree = nothing, coords = nothing)
     _is_fixed_prior_fit(fit) && fit.estim_method === :MAP && throw(ArgumentError("simulate: simulation from a $(_prior_kind_label(fit)) fit is not yet qualified"))
