@@ -4015,15 +4015,20 @@ function simulate(fit::DrmFit; newdata = nothing, kwargs...)
     # Training-design draws cover the rows used in the fit, as `nobs`, `fitted` and
     # `residuals` do (#1352); a `newdata` draw has its own rows.
     newdata === nothing || return out
-    out isa AbstractVector && return _on_used_rows(fit, out)
-    out isa AbstractMatrix && return _on_used_rows_cols(fit, out)
+    m = _simulate_used_mask(fit)
+    m === nothing && return out
+    out isa AbstractVector && length(out) == length(m) && return out[m]
+    out isa AbstractMatrix && size(out, 1) == length(m) && return out[m, :]
     return out
 end
 
-function _on_used_rows_cols(fit::DrmFit, M::AbstractMatrix)
+# Rows to keep in a training-design draw: those with an observed response, but only when that count
+# is `nobs`. A NaN `obs` can also come from a row the fit kept (a Binomial row with zero trials gives
+# 0/0), and `nobs` still counts it; such a fit keeps every row.
+function _simulate_used_mask(fit::DrmFit)
     m = _used_row_mask(fit)
-    (m === nothing || size(M, 1) != length(m)) && return M
-    return M[m, :]
+    (m === nothing || count(m) != fit.nobs) && return nothing
+    return m
 end
 
 # One value per input row (NaN-marked rows kept): what the bootstrap refit data needs.
