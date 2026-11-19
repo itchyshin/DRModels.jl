@@ -4,16 +4,18 @@ using Test, Random
 import Distributions as D
 
 @testset "Binomial sd regression quantile uses conditional modes (#1394)" begin
-    z(i, a, b, c, d) =
-        sqrt(3) * (mod(i * a, 1.0) + mod(i * b, 1.0) + mod(i * c, 1.0) + mod(i * d, 1.0) - 2)
-    G = 12; m = 6; n = G * m; N = 8
-    g = repeat(["g" * lpad(j, 2, '0') for j in 1:G], inner = m)
-    gx = repeat([isodd(j) ? -1.0 : 1.0 for j in 1:G], inner = m)
-    x1 = [z(i, sqrt(2), sqrt(3), sqrt(5), sqrt(7)) for i in 1:n]
-    b = [exp(-0.3 + 0.5 * (isodd(j) ? -1 : 1)) *
-         z(j, sqrt(11), sqrt(13), sqrt(17), sqrt(19)) for j in 1:G]
-    p = [1 / (1 + exp(-(0.2 + 0.7 * x1[i] + b[(i - 1) ÷ m + 1]))) for i in 1:n]
-    s = [Float64(D.quantile(D.Binomial(N, p[i]), mod(i * sqrt(23), 1.0))) for i in 1:n]
+    # Interior AGHQ fit: enough replication per group, moderate RE and SD effects.
+    G, m, N = 40, 8, 10
+    n = G * m
+    rng = MersenneTwister(100)
+    g = repeat(string.("g", 1:G), inner = m)
+    gx_g = repeat([-0.25, 0.25], inner = cld(G, 2))[1:G]
+    gx = gx_g[repeat(1:G, inner = m)]
+    x1 = repeat(collect(range(-0.8, 0.8; length = m)), outer = G)
+    u = 0.2 .* randn(rng, G)
+    η = [0.05 + 0.25 * x1[i] + u[(i - 1) ÷ m + 1] for i in 1:n]
+    p = clamp.(1 ./ (1 .+ exp.(-η)), 0.25, 0.75)
+    s = [Float64(rand(rng, D.Binomial(N, p[i]))) for i in 1:n]
     fl = N .- s
     fit = drm(bf(@formula(cbind(s, fl) ~ x1 + (1 | g)), @formula(sd(g) ~ gx)),
               Binomial(); data = (; s, fl, x1, g, gx))
