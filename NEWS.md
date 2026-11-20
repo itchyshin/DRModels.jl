@@ -6,6 +6,8 @@ human-readable changelog.
 
 ## Development
 
+- **`lrt_boundary` refuses swapped arguments and an impossible `q` (refs #1002).** `lrt_boundary(fit_full, fit_reduced; q)` now throws an `ArgumentError` when `fit_full` does not have more parameters than `fit_reduced`, or when `q` is outside `1:(dof(fit_full) - dof(fit_reduced))`. Before, a swapped pair returned a negative statistic with `p = 0.5` and no message.
+
 - **`simulate(fit)` returns the used rows only (#1352).** A row dropped for a missing response is no longer simulated, so `simulate`, `fitted`, `residuals` and `nobs` have the same rows and match drmTMB (a Poisson fit on 60 rows with 10 missing responses returned 60 simulated rows, now 50; a `nsim > 1` matrix has `nobs(fit)` rows). `simulate(fit; newdata = ...)` is unchanged. The parametric bootstrap still draws over every data row internally, so its refits drop the same rows as before. A `temporal(..., homtoep)` fit that dropped missing responses no longer returns `NaN` at the dropped rows from `simulate`.
 
 ## v0.8.2
