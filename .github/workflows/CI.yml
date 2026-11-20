@@ -3,6 +3,7 @@ name: CI
 # trigger to `main` only right before a tagged release / CRAN-equivalent.
 on:
   pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
     branches: [main]
   schedule:
     # Nightly full matrix (Julia 1.10 and 1) on main, so 1.10 stays covered
@@ -96,7 +97,13 @@ jobs:
         # the nightly scheduled run on main and on manual dispatch. This halves
         # the runner queue that held PRs for hours (Shinichi, 24 Oct 2026).
         version: ${{ fromJSON(github.event_name == 'pull_request' && '["1"]' || '["1.10", "1"]') }}
-        shard: [1, 2, 3, 4]
+        # Draft PRs: one shard smoke only; ready PRs / schedule / dispatch: full 4-way split.
+        shard: >-
+          ${{ fromJSON(
+            github.event_name == 'pull_request' && github.event.pull_request.draft
+            && '["1"]'
+            || '["1", "2", "3", "4"]'
+          ) }}
     steps:
       - uses: actions/checkout@v6
       - if: needs.changes.outputs.code == 'true'
@@ -114,15 +121,20 @@ jobs:
           # only. Nightly also runs Julia 1.10; uploading both versions of
           # the same src/ lines would double-count on Codecov. PRs already
           # run Julia 1 only. julia-runtest's default is coverage=true.
-          coverage: ${{ matrix.version == '1' }}
+          coverage: >-
+            ${{ matrix.version == '1' && !(github.event_name == 'pull_request' && github.event.pull_request.draft) }}
         env:
           # test/runtests.jl treats an unset/empty value as "run everything", so
           # a local `julia test/runtests.jl` and Pkg.test() are unchanged.
           DRM_TEST_SHARD: ${{ format('{0}/4', matrix.shard) }}
-      - if: needs.changes.outputs.code == 'true' && matrix.version == '1'
+      - if: >-
+          needs.changes.outputs.code == 'true' && matrix.version == '1' &&
+          !(github.event_name == 'pull_request' && github.event.pull_request.draft)
         uses: julia-actions/julia-processcoverage@v1
       - name: Summarise shard lcov
-        if: needs.changes.outputs.code == 'true' && matrix.version == '1'
+        if: >-
+          needs.changes.outputs.code == 'true' && matrix.version == '1' &&
+          !(github.event_name == 'pull_request' && github.event.pull_request.draft)
         run: |
           set -euo pipefail
           test -f lcov.info
@@ -141,7 +153,9 @@ jobs:
         env:
           SHARD: ${{ matrix.shard }}
       - name: Upload shard lcov artefact
-        if: needs.changes.outputs.code == 'true' && matrix.version == '1'
+        if: >-
+          needs.changes.outputs.code == 'true' && matrix.version == '1' &&
+          !(github.event_name == 'pull_request' && github.event.pull_request.draft)
         uses: actions/upload-artifact@v6
         with:
           name: coverage-lcov-julia1-shard${{ matrix.shard }}
@@ -210,7 +224,9 @@ jobs:
   julia-1-12:
     name: Julia 1.12 - focused list (informational)
     needs: changes
-    if: needs.changes.outputs.code == 'true' && github.event_name != 'schedule'
+    if: >-
+      needs.changes.outputs.code == 'true' && github.event_name != 'schedule' &&
+      !(github.event_name == 'pull_request' && github.event.pull_request.draft)
     runs-on: ubuntu-latest
     continue-on-error: true
     timeout-minutes: 30
@@ -293,6 +309,7 @@ jobs:
     needs: [changes, test]
     if: >-
       needs.changes.outputs.code == 'true' &&
+      !(github.event_name == 'pull_request' && github.event.pull_request.draft) &&
       (github.event_name != 'pull_request' ||
        github.event.pull_request.head.repo.full_name == github.repository)
     runs-on: ubuntu-latest
