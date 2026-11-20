@@ -202,12 +202,13 @@ function _drm_zi_re_laplace(f::DrmFormula, fam; data, g_tol::Real = 1e-8, start 
     # The truncated-NB2 + hu spelling is the NegBinomial2 hurdle (see the fixed-effects entry).
     fitfam = (fam isa TruncatedNegBinomial2 && haskey(rhs, :hu)) ? NegBinomial2() : fam
     pν = Xν === nothing ? 0 : size(Xν, 2)
-    # ZIP with several zero-mass predictors needs a sharper Laplace solve (#1371).
-    g_tol_work = kind isa Val{:zip} && pν >= 2 ? min(g_tol, 1e-10) : g_tol
-    run = st -> _fit_indep_re_laplace(fitfam, kind, y, Xμ, Xσ, Xν, comps, nmμ, nmσ, nmν, g_tol_work; start = st)
+    run = st -> _fit_indep_re_laplace(fitfam, kind, y, Xμ, Xσ, Xν, comps, nmμ, nmσ, nmν, g_tol; start = st)
+    run_sharp = kind isa Val{:zip} && pν >= 2 ?
+        (st -> _fit_indep_re_laplace(fitfam, kind, y, Xμ, Xσ, Xν, comps, nmμ, nmσ, nmν, min(g_tol, 1e-10); start = st)) :
+        run
     fit = run(start)
     start === nothing && kind isa Union{Val{:zip},Val{:zinb},Val{:tnb},Val{:hnb}} &&
-        (fit = _zi_re_restarts(fit, run, kind, fitfam, y, Xμ, Xσ, Xν, nmμ, nmν, g_tol_work))
+        (fit = _zi_re_restarts(fit, run, run_sharp, kind, fitfam, y, Xμ, Xσ, Xν, nmμ, nmν, g_tol))
     return _withformula(fit, f)
 end
 
@@ -223,9 +224,9 @@ end
 # A refit replaces the first fit only if its log-likelihood is higher (or equal and it converged).
 # The converged flag is never changed: a fit that no start rescues stays `converged = false`.
 # Zero-inflated Poisson with `zi ~ x` on `(1 | g)` can converge at a worse mode (DRModels.jl#1371);
-# interior starts on both zero-mass slopes are still tried when the first fit looks fine.
-# Candidates with log-likelihood above a pessimistic anchor plus min(12, n/8) nats are discarded
-# as spurious stationary points (multi-modal zero inflation with random intercepts).
+# one interior probe can expose that plateau so restarts still run when the default fit is `ok`.
+# Candidates with log-likelihood above the default plus n observations are discarded as spurious
+# stationary points (issue #1371 spurious modes were O(n) nats above the wrong plateau).
 const _ZI_RE_RESTART_STARTS = ((0.5, 0.0), (1.0, -1.0), (0.3, 1.0))   # (sigma, zero-mass intercept)
 const _ZI_RE_BOUNDARY_ETA = 15.0
 const _ZI_RE_LOGSD_STARTS = (log(0.15), log(0.2), log(0.22), log(0.25), log(0.3), log(0.35), log(0.5))
@@ -235,21 +236,37 @@ const _ZI_RE_ZIP2ZI_STARTS = (
     (-0.5, -0.5), (-0.45, -0.95), (-0.4, -1.4), (-0.4, -1.2), (0.0, 0.0),
 )
 
-# Spurious ZIP modes can jump ~min(12, n/8) nats above a boundary default in one interior step.
-_zi_re_loglik_ceiling(ll_anchor::Real, n::Int) = ll_anchor + min(12.0, 0.125 * n)
-_zi_re_restart_ok(ll::Real, ceiling::Real) = isfinite(ll) && ll <= ceiling
+# Slack n/8 above an anchor that is never below the default (probe may only raise it); at n=80 → 10 nats.
+_zi_re_loglik_ceiling(ll_anchor::Real, n::Int) = ll_anchor + 0.125 * n
+_zi_re_restart_ok(ll::Real, ceiling::Real) = isfinite(ll) && ll > -1e17 && ll <= ceiling
 
-function _zi_re_pick_best(best::DrmFit, cand::DrmFit, ceiling::Real)
-    lc = isfinite(cand.loglik) ? cand.loglik : -Inf
-    lb = isfinite(best.loglik) ? best.loglik : -Inf
+function _zi_re_pick_best(best::DrmFit, cand::DrmFit, ceiling::Real, ok)
+    lc = isfinite(cand.loglik) && cand.loglik > -1e17 ? cand.loglik : -Inf
+    lb = isfinite(best.loglik) && best.loglik > -1e17 ? best.loglik : -Inf
     _zi_re_restart_ok(lc, ceiling) || return best
-    !_zi_re_restart_ok(lb, ceiling) && return cand
+    ok(best) && lc <= lb + 1e-8 && return best
+    !_zi_re_restart_ok(lb, ceiling) && _zi_re_restart_ok(lc, ceiling) && return cand
     lc > lb + 1e-8 && return cand
     abs(lc - lb) <= 1e-8 && cand.converged && !best.converged && return cand
     return best
 end
 
-function _zi_re_pessimistic_loglik_anchor(fit::DrmFit, run, y, pμ, pσ, pν, βμ)
+function _zi_re_zip2_plateau_suspect(fit::DrmFit, run, pμ, pσ, pν, βμ)
+    pν < 2 && return false
+    ok_default = fit.converged && isfinite(fit.loglik) && fit.loglik > -1e17
+    ok_default || return false
+    st = zeros(length(fit.theta))
+    st[1:pμ] .= βμ
+    pσ > 0 && (st[pμ + 1] = log(0.5))
+    st[pμ + pσ + 1] = -0.5
+    st[pμ + pσ + 2] = -1.0
+    st[end] = log(0.3)
+    cand = try run(st) catch err; err isa InterruptException && rethrow(); nothing end
+    cand === nothing && return false
+    cand.converged && isfinite(cand.loglik) && cand.loglik > fit.loglik + 5.0
+end
+
+function _zi_re_default_loglik_anchor(fit::DrmFit, run, pμ, pσ, pν, βμ)
     ll = isfinite(fit.loglik) && fit.loglik > -1e17 ? fit.loglik : -Inf
     st = zeros(length(fit.theta))
     st[1:pμ] .= βμ
@@ -259,12 +276,12 @@ function _zi_re_pessimistic_loglik_anchor(fit::DrmFit, run, y, pμ, pσ, pν, β
     st[end] = log(0.3)
     cand = try run(st) catch err; err isa InterruptException && rethrow(); nothing end
     if cand !== nothing && isfinite(cand.loglik) && cand.loglik > -1e17
-        ll = ll > -Inf ? min(ll, cand.loglik) : cand.loglik
+        ll = ll > -Inf ? max(ll, cand.loglik) : cand.loglik
     end
     return ll > -Inf ? ll : fit.loglik
 end
 
-function _zi_re_refine_zip!(best::DrmFit, run, pμ, pσ, pν, ceiling::Real)
+function _zi_re_refine_zip!(best::DrmFit, run, pμ, pσ, pν, ceiling::Real, ok)
     pν < 2 && return best
     θ = best.theta
     isfinite(best.loglik) || return best
@@ -276,7 +293,7 @@ function _zi_re_refine_zip!(best::DrmFit, run, pμ, pσ, pν, ceiling::Real)
         st[end] += dl
         cand = try run(st) catch err; err isa InterruptException && rethrow(); nothing end
         cand === nothing && continue
-        best = _zi_re_pick_best(best, cand, ceiling)
+        best = _zi_re_pick_best(best, cand, ceiling, ok)
     end
     return best
 end
@@ -289,18 +306,18 @@ function _zi_re_try_start!(starts, seen, st)
     return nothing
 end
 
-function _zi_re_restarts(fit::DrmFit, run, kind::Val, fam, y, Xμ, Xσ, Xν, nmμ, nmν, g_tol)
+function _zi_re_restarts(fit::DrmFit, run, run_sharp, kind::Val, fam, y, Xμ, Xσ, Xν, nmμ, nmν, g_tol)
     pμ = size(Xμ, 2); pσ = Xσ === nothing ? 0 : size(Xσ, 2); pν = Xν === nothing ? 0 : size(Xν, 2)
     νr = (pμ + pσ + 1):(pμ + pσ + pν)
     at_boundary(ft) = pν > 0 && maximum(abs, Xν * ft.theta[νr]) >= _ZI_RE_BOUNDARY_ETA
     ok(ft) = ft.converged && isfinite(ft.loglik) && ft.loglik > -1e17 && !at_boundary(ft)
-    needs = !ok(fit) || (pν >= 2 && kind isa Val{:zip})
-    needs || return fit
     βμ = Xμ \ log.(Float64.(y) .+ 0.5)
+    needs = !ok(fit) || (pν >= 2 && kind isa Val{:zip} && _zi_re_zip2_plateau_suspect(fit, run, pμ, pσ, pν, βμ))
+    needs || return fit
     yv = _indep_response(kind, y)
     θ_fe = _indep_fixed_start(kind, fam, yv, Xμ, Xσ, Xν, nmμ, String[], nmν, g_tol)
     μ_bases = (βμ, θ_fe[1:pμ])
-    ll_anchor = _zi_re_pessimistic_loglik_anchor(fit, run, y, pμ, pσ, pν, βμ)
+    ll_anchor = _zi_re_default_loglik_anchor(fit, run, pμ, pσ, pν, βμ)
     ll_ceiling = _zi_re_loglik_ceiling(ll_anchor, length(y))
     starts = Vector{Vector{Float64}}(); seen = Set{NTuple{length(fit.theta), Float64}}()
     for μ0 in μ_bases, (σ0, z0) in _ZI_RE_RESTART_STARTS
@@ -330,12 +347,13 @@ function _zi_re_restarts(fit::DrmFit, run, kind::Val, fam, y, Xμ, Xσ, Xν, nm�
         end
     end
     best = fit
+    run_work = kind isa Val{:zip} && pν >= 2 ? run_sharp : run
     for st in starts
-        cand = try run(st) catch err; err isa InterruptException && rethrow(); nothing end
+        cand = try run_work(st) catch err; err isa InterruptException && rethrow(); nothing end
         cand === nothing && continue
-        best = _zi_re_pick_best(best, cand, ll_ceiling)
+        best = _zi_re_pick_best(best, cand, ll_ceiling, ok)
     end
-    kind isa Val{:zip} && (best = _zi_re_refine_zip!(best, run, pμ, pσ, pν, ll_ceiling))
+    kind isa Val{:zip} && (best = _zi_re_refine_zip!(best, run_work, pμ, pσ, pν, ll_ceiling, ok))
     return best
 end
 
