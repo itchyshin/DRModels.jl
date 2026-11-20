@@ -736,12 +736,16 @@ function _fit_beta(fam::Beta, y, Xμ, Xσ, nmμ, nmσ, g_tol; offset = nothing)
     res = _ctl_optimize((x0, opts, method) -> Optim.optimize(nll, x0, method, opts; autodiff = :forward),
                        θ0; g_tol = g_tol)   # control: maxit / start / multi_start (#948 #994)
     res = _beta_newton_polish(res, nll, g_tol)         # #1127
-    θ̂ = Optim.minimizer(res); V = _ctl_se(() -> _vcov_from_hessian(ForwardDiff.hessian(nll, θ̂)), θ̂)
+    θ̂ = Optim.minimizer(res); H = ForwardDiff.hessian(nll, θ̂)
+    V = _ctl_se(() -> _vcov_from_hessian(H), θ̂)
+    # Unit-free stationarity (#1050, #1225): Optim's absolute-tolerance flag reads a
+    # stalled LBFGS step as converged even at max|g| ~ 5e4.
+    converged = !Optim.iteration_limit_reached(res) && _unitfree_converged(H, ForwardDiff.gradient(nll, θ̂))
     blocks = [:mu => 1:pμ, :sigma => (pμ+1):(pμ+pσ)]
     names = [:mu => nmμ, :sigma => nmσ]
     means = Dict(:mu => _logistic.(_eta_with_offset(Xμ, θ̂[1:pμ], offset))); obs = Dict(:mu => Vector{Float64}(y))  # response-scale μ̂
     scales = Dict(:sigma => _reported_sigma(Xσ * θ̂[(pμ+1):(pμ+pσ)], -15.0, 15.0, 3.0))
     return _withiterations(
-        _withnll(DrmFit(fam, blocks, names, θ̂, V, -nll(θ̂), n, Optim.converged(res), means, obs, scales), nll),
+        _withnll(DrmFit(fam, blocks, names, θ̂, V, -nll(θ̂), n, converged, means, obs, scales), nll),
         Optim.iterations(res))
 end
