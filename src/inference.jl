@@ -2297,8 +2297,10 @@ function _bootstrap_refit_kwargs(fit::DrmFit)
        haskey(fit.scales, :sd_group) && haskey(fit.scales, :aghq_nodes)
         push!(kw, :nAGQ => round(Int, only(fit.scales[:aghq_nodes])))
     end
-    if fit.family isa Binomial && haskey(fit.scales, :sd_group) &&
-       haskey(fit.scales, :aghq_nodes)
+    # Correlated-block and slope-only SD routes record `:aghq_nodes` but not always
+    # `:sd_group`; bootstrap refits must still use `_drm_binomial_sd_regression`
+    # with the same quadrature order (#1334).
+    if fit.family isa Binomial && haskey(fit.scales, :aghq_nodes)
         push!(kw, :nq => round(Int, only(fit.scales[:aghq_nodes])))
     end
     if _is_fixed_prior_fit(fit)
