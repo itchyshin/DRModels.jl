@@ -6,6 +6,8 @@ human-readable changelog.
 
 ## Development
 
+- **`simulate(fit)` returns the used rows only (#1352).** A row dropped for a missing response is no longer simulated, so `simulate`, `fitted`, `residuals` and `nobs` have the same rows and match drmTMB (a Poisson fit on 60 rows with 10 missing responses returned 60 simulated rows, now 50; a `nsim > 1` matrix has `nobs(fit)` rows). `simulate(fit; newdata = ...)` is unchanged. The parametric bootstrap still draws over every data row internally, so its refits drop the same rows as before. A `temporal(..., homtoep)` fit that dropped missing responses no longer returns `NaN` at the dropped rows from `simulate`.
+
 - **Behaviour change: the bootstrap default is now record-and-continue (#1052).** `bootstrap_ci`, `bootstrap_summary` and `bootstrap_result` default to `failures = :skip`: a refit that throws is recorded in `failures`, the remaining draws are used, the result carries `bootstrap_incomplete = true` and `status = "bootstrap_incomplete"`, and a warning names how many of the `B` draws were dropped (every summary uses the completed draws only). This matches drmTMB. Pass `failures = :error` to keep the old abort. If every replicate fails the call still errors.
 
 ## v0.8.2
