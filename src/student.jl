@@ -81,10 +81,9 @@ end
 # #969: Student ν at the Gaussian limit. When the data have no heavy tails the ML
 # estimate runs to ν → ∞ (1/ν → 0): the likelihood is flat in the ν linear predictor,
 # the Hessian is singular there, and the pseudo-inverse can hand back a variance of
-# ~0, which prints as SE(ν) = 0 and a zero-width Wald interval. FLAG ONLY: `vcov`,
-# `stderror`, `converged` and `convergence_status` are NOT changed (how the ν SE
-# should be reported, and whether such a fit counts as `:boundary`, is an owner
-# decision; see #969). `1/ν < 1e-3` is the cut the issue's harness uses.
+# ~0, which prints as SE(ν) = 0 and a zero-width Wald interval. Such a fit is
+# `convergence_status` `:boundary` (so `is_converged` is false); `vcov` and `stderror` are
+# NOT changed (how the ν SE should be reported is an owner decision; see #969). `1/ν < 1e-3` is the cut the issue's harness uses.
 const _STUDENT_NU_BOUNDARY_INV = 1e-3
 
 # Largest fitted ν over the rows, or `nothing` if the fit has no finite ν.
@@ -109,7 +108,7 @@ function _warn_student_nu_boundary(fit)
           "optimiser stop and their Wald SE / interval are NOT valid (a reported SE of 0 means " *
           "'not computable', not 'precise'). The Gaussian family is the appropriate model; " *
           "compare it by likelihood ratio with a 0.5χ²₀ + 0.5χ²₁ boundary mixture (DRModels.jl #969). " *
-          "`stderror`, `vcov` and `convergence_status` are unchanged."
+          "`convergence_status` is :boundary; `stderror` and `vcov` are unchanged."
     return fit
 end
 

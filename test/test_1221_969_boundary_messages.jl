@@ -50,3 +50,20 @@ end
     @test DRModels._student_nu_boundary(f2) === nothing
     @test !occursin("boundary (limit)", sprint(show, MIME"text/plain"(), f2))
 end
+
+@testset "#969 Student nu Gaussian limit is :boundary, never converged" begin
+    fm = bf(@formula(y ~ 1 + x), @formula(sigma ~ 1), @formula(nu ~ 1))
+    Random.seed!(1); xg = randn(300); yg = 1 .+ 0.5 .* xg .+ exp(-0.4) .* randn(300)
+    fit = with_logger(NullLogger()) do
+        drm(fm, Student(); data = (; y = yg, x = xg))
+    end
+    @test DRModels._student_nu_boundary(fit) !== nothing
+    @test convergence_status(fit) === :boundary
+    @test !is_converged(fit)
+
+    Random.seed!(2); x2 = randn(300); y2 = 1 .+ 0.5 .* x2 .+ exp(-0.4) .* randn(300)
+    f2 = with_logger(NullLogger()) do
+        drm(fm, Student(); data = (; y = y2, x = x2))
+    end
+    @test convergence_status(f2) === :converged
+end
