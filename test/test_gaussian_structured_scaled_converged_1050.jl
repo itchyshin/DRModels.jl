@@ -18,7 +18,10 @@ using LinearAlgebra
     u = 0.8 .* (cholesky(Symmetric(K)).L * randn(rng, G))
     b = 0.4 .* randn(rng, G)
     h = repeat(1:8, outer = n ÷ 8)
-    y = 0.3 .+ 0.5 .* x0 .+ u[id] .+ b[id] .+ exp.(-0.3 .+ 0.1 .* x0) .* randn(rng, n)
+    # A real h-level effect keeps the second random-effect variance interior; without
+    # it the h variance collapses to the boundary and `converged` is correctly false.
+    c = 0.8 .* randn(rng, 8)
+    y = 0.3 .+ 0.5 .* x0 .+ u[id] .+ b[id] .+ c[h] .+ exp.(-0.3 .+ 0.1 .* x0) .* randn(rng, n)
 
     for sc in (1.0, 1e4)
         data = (; y, x = x0 .* sc, id, g = id, h)
@@ -51,4 +54,21 @@ using LinearAlgebra
     @test res.failed == 0
     @test res.used == 6
     @test res.status == "bootstrap"
+end
+
+# Boundary companion: the same design with NO h-level effect has a true h variance of
+# zero, so the fitted variance collapses and the shared rule reports the non-converged
+# `:degenerate` status, not converged. Status is asserted, nothing is loosened.
+@testset "#1050 cluster B: collapsed h variance reports degenerate, not converged" begin
+    rng = MersenneTwister(7)
+    G = 40; m = 6; n = G * m
+    id = repeat(1:G, inner = m)
+    x0 = randn(rng, n)
+    h = repeat(1:8, outer = n ÷ 8)
+    y = 0.3 .+ 0.5 .* x0 .+ 0.8 .* randn(rng, G)[id] .+
+        exp.(-0.3 .+ 0.1 .* x0) .* randn(rng, n)
+    f = drm(bf(@formula(y ~ x + (1 | g) + (1 | h)), @formula(sigma ~ x)), Gaussian();
+            data = (; y, x = x0, g = id, h))
+    @test !is_converged(f)
+    @test convergence_status(f) === :degenerate
 end
