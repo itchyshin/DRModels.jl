@@ -208,7 +208,15 @@ function _fit_structured_gaussian(fam::Gaussian, y, Xμ, Xσ, gidx, G, K, nmμ, 
     θ0[pμ+pσ+1] = log(std(res0) / 2 + eps())
     res = Optim.optimize(nll_opt, θ0, Optim.LBFGS(), Optim.Options(g_tol = g_tol); autodiff = :forward)
     θ̂ = Optim.minimizer(res)
-    V = _vcov_from_hessian(ForwardDiff.hessian(nll_opt, θ̂))
+    H = ForwardDiff.hessian(nll_opt, θ̂)
+    # Unit-free stationarity (DRModels.jl#1050, as PR #1044): not the iteration cap,
+    # and the Newton step in SE units, not `g_converged` (absolute 1e-8), which a
+    # rescaled predictor trips on the same stationary fit.
+    converged = !Optim.iteration_limit_reached(res) &&
+        _unitfree_converged(H, ForwardDiff.gradient(nll_opt, θ̂))
+    # `V` is assigned after the gradient call: the objective closure assigns an
+    # outer `V`, which a Dual-valued call would otherwise leave in the fit.
+    V = _vcov_from_hessian(H)
 
     blocks = [:mu => 1:pμ, :sigma => (pμ+1):(pμ+pσ), :resd => (pμ+pσ+1):(pμ+pσ+1)]
     names = [:mu => nmμ, :sigma => nmσ, :resd => [String(grp)]]
@@ -216,7 +224,7 @@ function _fit_structured_gaussian(fam::Gaussian, y, Xμ, Xσ, gidx, G, K, nmμ, 
     obs = Dict(:mu => Vector{Float64}(y))
     scales = Dict(:sigma => exp.(Xσ * θ̂[(pμ+1):(pμ+pσ)]))
     _record_cond_fit!(scales, _structured_gaussian_modes(y, Xμ, Xσ, gidx, G, Kinv, θ̂, pμ, pσ)[gidx])   # for `fitted(fit)`
-    fit = _withnll(DrmFit(fam, blocks, names, θ̂, V, -nll(θ̂), n, drm_optim_converged(res), means, obs, scales), nll)
+    fit = _withnll(DrmFit(fam, blocks, names, θ̂, V, -nll(θ̂), n, converged, means, obs, scales), nll)
     reml && return _withreml(fit, -nll_reml(θ̂), -nll(θ̂))
     return fit
 end
@@ -338,7 +346,15 @@ function _fit_two_structured_gaussian(fam::Gaussian, y, Xμ, gidx1, G1, C1, gidx
     θ0[pμ+3] = log(s0 / sqrt(3) + eps())
     res = Optim.optimize(nll, θ0, Optim.LBFGS(), Optim.Options(g_tol = g_tol); autodiff = :forward)
     θ̂ = Optim.minimizer(res)
-    V = _vcov_from_hessian(ForwardDiff.hessian(nll, θ̂))
+    H = ForwardDiff.hessian(nll, θ̂)
+    # Unit-free stationarity (DRModels.jl#1050, as PR #1044): not the iteration cap,
+    # and the Newton step in SE units, not `g_converged` (absolute 1e-8), which a
+    # rescaled predictor trips on the same stationary fit.
+    converged = !Optim.iteration_limit_reached(res) &&
+        _unitfree_converged(H, ForwardDiff.gradient(nll, θ̂))
+    # `V` is assigned after the gradient call: the objective closure assigns an
+    # outer `V`, which a Dual-valued call would otherwise leave in the fit.
+    V = _vcov_from_hessian(H)
 
     # :resd carries BOTH structured SD parameters (logσ₁, logσ₂) so `re_sd` and
     # `vc` report them per grouping factor; :resid carries the residual logσ.
@@ -360,7 +376,7 @@ function _fit_two_structured_gaussian(fam::Gaussian, y, Xμ, gidx1, G1, C1, gidx
     haskey(scales, :cond_blup_unavailable) ||
         _record_cond_fit!(scales, Z1 * blup[Symbol(grp1)] .+ Z2 * blup[Symbol(grp2)])   # fitted-row modes for `fitted(fit)`
     return _withranef(_withnll(DrmFit(fam, blocks, names, θ̂, V, -nll(θ̂), n,
-        drm_optim_converged(res), means, obs, scales), nll), blup)
+        converged, means, obs, scales), nll), blup)
 end
 
 # Gaussian phylogenetic random INTERCEPT + SLOPE with two SDs (#620) — the
@@ -429,7 +445,15 @@ function _fit_phylo_slope_gaussian(fam::Gaussian, y, Xμ, Xσ, gidx, G, C, xs, n
     θ0[pμ+pσ+2] = log(s0 / sqrt(3) / (std(xs) + eps()) + eps())
     res = Optim.optimize(nll_opt, θ0, Optim.LBFGS(), Optim.Options(g_tol = g_tol); autodiff = :forward)
     θ̂ = Optim.minimizer(res)
-    Vθ = _vcov_from_hessian(ForwardDiff.hessian(nll_opt, θ̂))
+    H = ForwardDiff.hessian(nll_opt, θ̂)
+    # Unit-free stationarity (DRModels.jl#1050, as PR #1044): not the iteration cap,
+    # and the Newton step in SE units, not `g_converged` (absolute 1e-8), which a
+    # rescaled predictor trips on the same stationary fit.
+    converged = !Optim.iteration_limit_reached(res) &&
+        _unitfree_converged(H, ForwardDiff.gradient(nll_opt, θ̂))
+    # `V` is assigned after the gradient call: the objective closure assigns an
+    # outer `V`, which a Dual-valued call would otherwise leave in the fit.
+    Vθ = _vcov_from_hessian(H)
 
     # :resd carries the two field SDs (log σₐ, log σ_b): the intercept field keyed
     # by the bare group name (the single-structured convention), the slope field
@@ -456,7 +480,7 @@ function _fit_phylo_slope_gaussian(fam::Gaussian, y, Xμ, Xσ, gidx, G, C, xs, n
     _flag_blup_unavailable!(scales, blup)
     haskey(scales, :cond_blup_unavailable) ||
         _record_cond_fit!(scales, Z * blup[Symbol(grp)] .+ Zx * blup[Symbol("$(grp):$(var)")])   # fitted-row modes for `fitted(fit)`
-    fit = DrmFit(fam, blocks, names, θ̂, Vθ, -nll(θ̂), n, drm_optim_converged(res), means, obs, scales)
+    fit = DrmFit(fam, blocks, names, θ̂, Vθ, -nll(θ̂), n, converged, means, obs, scales)
     fit = _withranef(_withnll(fit, nll), blup)
     reml && return _withreml(fit, -nll_reml(θ̂), -nll(θ̂))
     return fit
@@ -527,7 +551,15 @@ function _fit_structured_ranef_gaussian(fam::Gaussian, y, Xμ, Xσ, comps, nmμ,
     end
     res = Optim.optimize(nll, θ0, Optim.LBFGS(), Optim.Options(g_tol = g_tol); autodiff = :forward)
     θ̂ = Optim.minimizer(res)
-    Vθ = _vcov_from_hessian(ForwardDiff.hessian(nll, θ̂))
+    H = ForwardDiff.hessian(nll, θ̂)
+    # Unit-free stationarity (DRModels.jl#1050, as PR #1044): not the iteration cap,
+    # and the Newton step in SE units, not `g_converged` (absolute 1e-8), which a
+    # rescaled predictor trips on the same stationary fit.
+    converged = !Optim.iteration_limit_reached(res) &&
+        _unitfree_converged(H, ForwardDiff.gradient(nll, θ̂))
+    # `V` is assigned after the gradient call: the objective closure assigns an
+    # outer `V`, which a Dual-valued call would otherwise leave in the fit.
+    Vθ = _vcov_from_hessian(H)
 
     labels = [String(c[5]) for c in comps]
     blocks = [:mu => 1:pμ, :sigma => (pμ+1):(pμ+pσ), :resd => (pμ+pσ+1):(pμ+pσ+m)]
@@ -561,7 +593,7 @@ function _fit_structured_ranef_gaussian(fam::Gaussian, y, Xμ, Xσ, comps, nmμ,
     end
     _flag_blup_unavailable!(scales, blup)
     haskey(scales, :cond_blup_unavailable) || _record_cond_fit!(scales, eta_rows)   # for `fitted(fit)`
-    fit = DrmFit(fam, blocks, names, θ̂, Vθ, -nll(θ̂), n, drm_optim_converged(res), means, obs, scales)
+    fit = DrmFit(fam, blocks, names, θ̂, Vθ, -nll(θ̂), n, converged, means, obs, scales)
     return _withranef(_withnll(fit, nll), blup)
 end
 
@@ -693,7 +725,15 @@ function _fit_spatial_gaussian(fam::Gaussian, y, Xμ, Xσ, gidx, G, coords, nmμ
     θ0[pμ+pσ+2] = log(max(meandist, eps()))   # meandist>0 by the G/coincidence guards
     res = Optim.optimize(nll, θ0, Optim.LBFGS(), Optim.Options(g_tol = g_tol); autodiff = :forward)
     θ̂ = Optim.minimizer(res)
-    V = _vcov_from_hessian(ForwardDiff.hessian(nll, θ̂))
+    H = ForwardDiff.hessian(nll, θ̂)
+    # Unit-free stationarity (DRModels.jl#1050, as PR #1044): not the iteration cap,
+    # and the Newton step in SE units, not `g_converged` (absolute 1e-8), which a
+    # rescaled predictor trips on the same stationary fit.
+    converged = !Optim.iteration_limit_reached(res) &&
+        _unitfree_converged(H, ForwardDiff.gradient(nll, θ̂))
+    # `V` is assigned after the gradient call: the objective closure assigns an
+    # outer `V`, which a Dual-valued call would otherwise leave in the fit.
+    V = _vcov_from_hessian(H)
 
     blocks = [:mu => 1:pμ, :sigma => (pμ+1):(pμ+pσ),
         :resd => (pμ+pσ+1):(pμ+pσ+1), :range => (pμ+pσ+2):(pμ+pσ+2)]
@@ -701,7 +741,7 @@ function _fit_spatial_gaussian(fam::Gaussian, y, Xμ, Xσ, gidx, G, coords, nmμ
     means = Dict(:mu => Xμ * θ̂[1:pμ])
     obs = Dict(:mu => Vector{Float64}(y))
     scales = Dict(:sigma => exp.(Xσ * θ̂[(pμ+1):(pμ+pσ)]))
-    return _withnll(DrmFit(fam, blocks, names, θ̂, V, -nll(θ̂), n, drm_optim_converged(res), means, obs, scales), nll)
+    return _withnll(DrmFit(fam, blocks, names, θ̂, V, -nll(θ̂), n, converged, means, obs, scales), nll)
 end
 
 # ===========================================================================
@@ -1011,6 +1051,12 @@ function _fit_two_structured_gaussian_sparse_spec(fam::Gaussian, y, Xμ, Xσ,
     # #956: guarded constructor (an indefinite FD Hessian is no longer inverted).
     V = hess_ok ? _vcov_from_fd_hessian(Hmat; context = "two-structured Gaussian") :
         fill(NaN, np, np)
+    # Unit-free stationarity (DRModels.jl#1050, as PR #1044): not the iteration cap,
+    # and the Newton step in SE units, not `g_converged` (absolute 1e-8). The
+    # analytic gradient and the FD Hessian above are the ones this route already
+    # uses; an unusable Hessian is not converged.
+    converged = hess_ok && !Optim.iteration_limit_reached(res) &&
+        _unitfree_converged(Hmat, grad_at(θ̂))
 
     grp1 = comp1.grp; grp2 = comp2.grp
     blocks = [:mu => iβμ, :sigma => iβσ, :resd => (il1):(il2)]
@@ -1027,7 +1073,7 @@ function _fit_two_structured_gaussian_sparse_spec(fam::Gaussian, y, Xμ, Xσ,
         Dict(grp1 => a1, grp2 => a2)
     end
     return _withranef(_withnll(DrmFit(fam, blocks, names, θ̂, V, -nll_only(θ̂), n,
-        drm_optim_converged(res), means, obs, scales), nll_only), blup)
+        converged, means, obs, scales), nll_only), blup)
 end
 
 # Sparse square-root factor B of a sparse SPD precision Q (BᵀB = Q): with the
