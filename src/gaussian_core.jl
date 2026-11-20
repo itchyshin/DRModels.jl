@@ -2243,11 +2243,14 @@ function _drm_gaussian_fit(f::DrmFormula, fam::Gaussian; data, K = nothing, A = 
         return _withformula(_fit_ranef_gaussian(fam, y, Xμ, Xσ, gidx, G, w, nmμ, nmσ, grp, g_tol;
                                                reml = reml_here, prior_w = prior_w), f)
     end
+    repeated_grp = Set(g for g in last.(re) if count(==(g), last.(re)) > 1)
     comps = map(zip(re, re_kinds)) do ((_, grp), (kind, var))  # multiple scalar components
         kind === :intercept || _require_finite_data_column(data, var)
         w = kind === :intercept ? ones(length(y)) : Float64.(getproperty(data, var))
         gidx, Gk = _group_index(getproperty(data, grp); col = grp)
-        (w, gidx, Gk, String(grp))
+        # a slope on a group that carries more than one component is labelled `g:x`, so
+        # `(1 | g) + (0 + x | g)` has unique SD labels (#1756); other labels are unchanged.
+        (w, gidx, Gk, (kind !== :intercept && grp in repeated_grp) ? "$(grp):$(var)" : String(grp))
     end
     return _withformula(_fit_multi_ranef_gaussian(fam, y, Xμ, Xσ, comps, nmμ, nmσ, g_tol;
                                                  reml = method === :REML), f)
