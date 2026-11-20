@@ -43,3 +43,18 @@ _gmsg(f) = try; f(); "" catch e; e isa ArgumentError ? e.msg : rethrow(); end
         @test_broken !isempty(_gmsg(() -> lrt_boundary(bad, reduced)))
     end
 end
+
+@testset "lrt_boundary refuses swapped arguments and an impossible q (#1002)" begin
+    g = repeat(1:8, inner = 6)
+    x = randn(MersenneTwister(12), 48)
+    y = 0.2 .+ 0.3 .* x .+ randn(MersenneTwister(13), 48)
+    data = (; y, x, g)
+    full = drm(bf(@formula(y ~ x + (1 | g)), @formula(sigma ~ 1)), Gaussian(); data)
+    reduced = drm(bf(@formula(y ~ x), @formula(sigma ~ 1)), Gaussian(); data)
+    @test dof(full) - dof(reduced) == 1
+    @test occursin("more parameters", _gmsg(() -> lrt_boundary(reduced, full)))   # swapped
+    @test occursin("more parameters", _gmsg(() -> lrt_boundary(full, full)))
+    @test occursin("`q`", _gmsg(() -> lrt_boundary(full, reduced; q = 2)))
+    @test occursin("`q`", _gmsg(() -> lrt_boundary(full, reduced; q = 0)))
+    @test lrt_boundary(full, reduced; q = 1).q == 1                                # unchanged
+end
