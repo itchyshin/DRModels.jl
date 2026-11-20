@@ -3779,7 +3779,13 @@ function predict_parameters(fit::DrmFit, newdata; type::Symbol = :response,
             end
             continue
         end
-        haskey(forms, p) || continue          # skip RE-SD / cutpoint blocks (:resd, :recov, :cutpoints, …)
+        form_rhs = get(forms, p, nothing)
+        if form_rhs === nothing
+            # ZeroOneBeta always fits σ/zoi/coi with intercept-only defaults even when
+            # the user omitted them from `bf()`; blocks still carry those parameters.
+            (fit.family isa ZeroOneBeta && p in (:sigma, :zoi, :coi)) || continue
+            form_rhs = ConstantTerm(1)
+        end
         resp = bivar ? (p === :mu2 ? f.response2 : f.response1) : f.response
         allow_sd_animal_slope = fit.family isa Union{Binomial,Gamma} && f isa DrmFormula &&
             any(item.target.level === :animal for item in _sd_target_parts(f))
@@ -3787,7 +3793,7 @@ function predict_parameters(fit::DrmFit, newdata; type::Symbol = :response,
             any(item.target.level === :animal for item in _sd_target_parts(f))
         q2_label_ok = fit.family isa Union{Gaussian,Poisson,NegBinomial2}
         allow_gamma_animal_intercept_slope = fit.family isa Union{Gamma,Gaussian,Poisson,NegBinomial2} &&
-            _animal_intercept_slope(forms[p]; allow_label = q2_label_ok) !== nothing
+            _animal_intercept_slope(form_rhs; allow_label = q2_label_ok) !== nothing
         allow_binomial_phylo_slope_only = fit.family isa Union{Binomial,Gamma} &&
             f isa DrmFormula && !isempty(_sdphylo_parts(f))
         allow_binomial_relmat_slope = fit.family isa Union{Binomial,Poisson,Gaussian,Gamma,NegBinomial2} &&
@@ -3796,8 +3802,8 @@ function predict_parameters(fit::DrmFit, newdata; type::Symbol = :response,
         allow_binomial_spatial_slope = fit.family isa Union{Binomial,Gaussian,Gamma,NegBinomial2} &&
             f isa DrmFormula && any(
                 item.target.level === :spatial for item in _sd_target_parts(f))
-        parameter_rhs = p === :mu ? _strip_fitted_q2_terms(fit, forms[p]) :
-                        p === :sigma ? _strip_sigma_struct_q2_terms(fit, forms[p]) : forms[p]
+        parameter_rhs = p === :mu ? _strip_fitted_q2_terms(fit, form_rhs) :
+                        p === :sigma ? _strip_sigma_struct_q2_terms(fit, form_rhs) : form_rhs
         if p === :mu && fit.family isa Binomial
             interaction = _binomial_phylo_interaction_parts(parameter_rhs)
             interaction === nothing || (parameter_rhs = interaction.fixed_rhs)
@@ -3806,7 +3812,7 @@ function predict_parameters(fit::DrmFit, newdata; type::Symbol = :response,
                                        allow_animal_slope = allow_sd_animal_slope,
                                        allow_relmat_slope = allow_binomial_relmat_slope,
                                        allow_relmat_intercept_slope = fit.family isa Union{Gaussian,Poisson,NegBinomial2} &&
-                                           _animal_intercept_slope(forms[p]; kind = relmat,
+                                           _animal_intercept_slope(form_rhs; kind = relmat,
                                                                    allow_label = q2_label_ok) !== nothing,
                                        allow_labelled_intercept_slope = q2_label_ok,
                                        allow_spatial_slope = allow_binomial_spatial_slope,
