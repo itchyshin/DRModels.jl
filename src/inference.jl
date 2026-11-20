@@ -4492,7 +4492,7 @@ function _bootstrap_keep_unobserved(orig::AbstractVector, sim::AbstractVector)
     length(orig) == length(sim) || throw(ArgumentError(
         "bivariate bootstrap draw has length $(length(sim)), expected $(length(orig))"))
     out = similar(orig, promote_type(eltype(orig), Float64))
-    @inbounds for i in eachindex(out)
+    for i in eachindex(out)
         o = orig[i]
         out[i] = _is_response_missing(o) ? o : sim[i]
     end
@@ -4530,10 +4530,8 @@ function _restore_response_mask!(ysim::AbstractVector{Float64}, raw)
         "per row of `data`); pass the same `data` the model was fitted to. If `drm` " *
         "dropped rows with a missing value when it fitted the model (#1089), pass " *
         "`drm_listwise(formula, data)` as `data`"))
-    @inbounds for i in eachindex(ysim)
-        if _is_response_missing(raw[i])
-            ysim[i] = NaN
-        end
+    for i in eachindex(ysim)
+        ysim[i] = _is_response_missing(raw[i]) ? NaN : ysim[i]
     end
     return ysim
 end
