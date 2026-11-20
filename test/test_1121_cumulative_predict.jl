@@ -88,3 +88,15 @@ const _R1121_FIXED_SE = [0.131946023699645, 0.0, 0.197919035549467,
         @test_throws ArgumentError predict(fit, (; x = [0.0], f = ["z"]))
     end
 end
+
+@testset "CumulativeLogit predict(type = :mean) is the expected category score (#1322)" begin
+    d = _read_1121("cumulative_logit_fixed.csv")
+    nd = _read_1121("nd_main.csv")
+    fit = drm(bf(@formula(y ~ x + f)), CumulativeLogit(); data = d)
+    m = predict(fit, nd; type = :mean)
+    @test length(m) == length(nd.x)
+    @test all(1 .<= m .<= length(unique(d.y)))
+    # in-sample equals fitted(), as in drmTMB's predict(type = "mean")
+    @test predict(fit, d; type = :mean) ≈ fitted(fit)
+    @test m != predict(fit, nd; type = :response)   # response stays the linear predictor
+end

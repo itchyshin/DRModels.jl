@@ -3442,11 +3442,16 @@ end
 # E[Y] at `newdata` (drmTMB `predict(type = "mean")`): the component parameters
 # from `predict_parameters`, combined as in `fitted`. Population level.
 function _predict_mean(fit::DrmFit, newdata)
-    fit.family isa CumulativeLogit && throw(ArgumentError(
-        "predict: `type = :mean` is not available for CumulativeLogit; " *
-        "`fitted(fit)` is the expected category score"))
     fit.formula isa DrmFormula || throw(ArgumentError(
         "predict: `type = :mean` is defined for univariate fits; use `type = :response`"))
+    if fit.family isa CumulativeLogit
+        # expected category score at `newdata` (drmTMB `ordinal_expected_score()`): the
+        # intercept-free `Xβ̂` from `predict(type = :link)` and the fitted cutpoints.
+        η = predict(fit, newdata; type = :link)
+        δ = coef(fit, :cutpoints)
+        cuts = cumsum(vcat(δ[1], exp.(δ[2:end])))
+        return _cumulative_score(η, cuts, length(δ) + 1)
+    end
     pp = predict_parameters(fit, newdata)
     if fit.family isa ZeroOneBeta
         return (1 .- pp[:zoi]) .* pp[:mu] .+ pp[:zoi] .* pp[:coi]
