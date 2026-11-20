@@ -1259,7 +1259,8 @@ function _gaussian_offset_shift(f::DrmFormula, fam, kwargs)
         _refuse_offset_route(fam, "`marginal = :$(kwargs[:marginal])`")
     rhs_fixed, offset_term = _extract_offset(mu_rhs)
     offset_term === nothing && return f, kwargs, nothing  # nested only: the `_design` backstop refuses it
-    data = kwargs[:data]
+    data = _drop_missing_predictor_rows(f, kwargs[:data])
+    kwargs = merge((; kwargs...), (; data))
     raw = _table_column(data, f.response)
     (any(ismissing, raw) || any(v -> v isa Real && isnan(v), raw)) &&
         _refuse_offset_route(fam, "missing or `NaN` responses (drop those rows first)")
