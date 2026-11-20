@@ -1,0 +1,5 @@
+# drmTMB 0.8.1 set 1 in DRModels.jl#1371 (issue comment: logLik -80.79, optimiser not converged).
+# Measured on the Laplace objective with the #1371 restart grid (not re-run from R here).
+route = "issue_1371_zip_ri"
+drmTMB_version = "0.8.1"
+loglik = -80.79962706537178
