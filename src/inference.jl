@@ -4374,7 +4374,7 @@ function _bootstrap_result(
             # `simulate(fit0; re = :zero)` is conditional and collapses a variance-component CI.
             # `re = :zero` keeps the fallback's previous draw (#1092 changed the
             # `simulate` default; this path is reached only without a simulator).
-            ysim = simulate_fn === nothing ? simulate(fit0; rng=rr, re=:zero) : simulate_fn(rr)
+            ysim = simulate_fn === nothing ? _simulate_all_rows(fit0; rng=rr, re=:zero) : simulate_fn(rr)
             datab = _bootstrap_data(formula, data, ysim)
             fitb = _without_boundary_warnings(() -> refit(datab))
             # Not the raw `.converged` field: this gate also rejects a degenerate

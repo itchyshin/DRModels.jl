@@ -1,0 +1,1 @@
+| 2026-11-19 | **`x - 1` refusal on every route** (refs #1349) | local `julia --project=test` on the touched test file plus neighbouring formula, bivariate and mixed-family files | ✅ 2142 pass, 0 fail, 1 pre-existing broken across 29 files; bivariate Gaussian / LogNormal / Student, cross-family and `(x - 1 | g)` bars now refuse | Shannon (Boole, Noether) |
