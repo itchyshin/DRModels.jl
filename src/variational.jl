@@ -475,7 +475,10 @@ function _fit_poisson_ranef_va(fam::Poisson, y, Xμ, gidx, G, nmμ, grp, g_tol;
     θ0[1] = log(sum(y) / n + eps())
     θ0[pμ+1] = log(0.5)
     res = Optim.optimize(nll, θ0, Optim.LBFGS(), Optim.Options(g_tol = g_tol); autodiff = :forward)
-    θ̂ = Optim.minimizer(res); V = _vcov_from_hessian(ForwardDiff.hessian(nll, θ̂))
+    θ̂ = Optim.minimizer(res); H = ForwardDiff.hessian(nll, θ̂); V = _vcov_from_hessian(H)
+    # #1050: not the iteration cap, and the Newton step in SE units; not `Optim.g_converged` (absolute 1e-8).
+    opt_converged = !Optim.iteration_limit_reached(res) &&
+        _unitfree_converged(H, ForwardDiff.gradient(nll, θ̂))
     blocks = [:mu => 1:pμ, :resd => (pμ+1):(pμ+1)]
     names = [:mu => nmμ, :resd => [String(grp)]]
     means = Dict(:mu => exp.(Xμ * θ̂[1:pμ])); obs = Dict(:mu => Vector{Float64}(y))
@@ -484,7 +487,7 @@ function _fit_poisson_ranef_va(fam::Poisson, y, Xμ, gidx, G, nmμ, grp, g_tol;
     # group whose inner solve is not stationary makes the fit not converged (#965).
     dec = zeros(G)
     ll = -nll(θ̂, dec)
-    conv = _va_inner_converged(dec, "_fit_poisson_ranef_va") && drm_optim_converged(res)
+    conv = _va_inner_converged(dec, "_fit_poisson_ranef_va") && opt_converged
     # loglik field carries the ELBO (a lower bound); label downstream as :VA.
     return _withnll(DrmFit(fam, blocks, names, θ̂, V, ll, n, conv, means, obs, scales), nll)
 end
@@ -618,7 +621,10 @@ function _fit_binomial_ranef_va(fam::Binomial, s, ntr, Xμ, gidx, G, nmμ, grp, 
     θ0 = zeros(pμ + 1)
     θ0[1] = log(p̄ / (1 - p̄)); θ0[pμ+1] = log(0.5)
     res = Optim.optimize(nll, θ0, Optim.LBFGS(), Optim.Options(g_tol = g_tol); autodiff = :forward)
-    θ̂ = Optim.minimizer(res); V = _vcov_from_hessian(ForwardDiff.hessian(nll, θ̂))
+    θ̂ = Optim.minimizer(res); H = ForwardDiff.hessian(nll, θ̂); V = _vcov_from_hessian(H)
+    # #1050: not the iteration cap, and the Newton step in SE units; not `Optim.g_converged` (absolute 1e-8).
+    opt_converged = !Optim.iteration_limit_reached(res) &&
+        _unitfree_converged(H, ForwardDiff.gradient(nll, θ̂))
     blocks = [:mu => 1:pμ, :resd => (pμ+1):(pμ+1)]
     names = [:mu => nmμ, :resd => [String(grp)]]
     means = Dict(:mu => _logistic.(Xμ * θ̂[1:pμ])); obs = Dict(:mu => s ./ ntr)   # population μ (b=0)
@@ -627,7 +633,7 @@ function _fit_binomial_ranef_va(fam::Binomial, s, ntr, Xμ, gidx, G, nmμ, grp, 
     # group whose inner solve is not stationary makes the fit not converged (#965).
     dec = zeros(G)
     ll = -nll(θ̂, dec)
-    conv = _va_inner_converged(dec, "_fit_binomial_ranef_va") && drm_optim_converged(res)
+    conv = _va_inner_converged(dec, "_fit_binomial_ranef_va") && opt_converged
     # loglik field carries the ELBO (a lower bound); label downstream as :VA.
     return _withnll(DrmFit(fam, blocks, names, θ̂, V, ll, n, conv, means, obs, scales), nll)
 end
@@ -825,7 +831,10 @@ function _fit_nb2_ranef_va(fam::NegBinomial2, y, Xμ, Xσ, gidx, G, nmμ, nmσ, 
     θ0[pμ+1] = -0.5 * log(max(m̄^2 / max(v̄ - m̄, 0.1 * m̄ + eps()), 0.5))   # MoM init (log σ)
     θ0[pμ+pσ+1] = log(0.5)
     res = Optim.optimize(nll, θ0, Optim.LBFGS(), Optim.Options(g_tol = g_tol); autodiff = :forward)
-    θ̂ = Optim.minimizer(res); V = _vcov_from_hessian(ForwardDiff.hessian(nll, θ̂))
+    θ̂ = Optim.minimizer(res); H = ForwardDiff.hessian(nll, θ̂); V = _vcov_from_hessian(H)
+    # #1050: not the iteration cap, and the Newton step in SE units; not `Optim.g_converged` (absolute 1e-8).
+    opt_converged = !Optim.iteration_limit_reached(res) &&
+        _unitfree_converged(H, ForwardDiff.gradient(nll, θ̂))
     blocks = [:mu => 1:pμ, :sigma => (pμ+1):(pμ+pσ), :resd => (pμ+pσ+1):(pμ+pσ+1)]
     names = [:mu => nmμ, :sigma => nmσ, :resd => [String(grp)]]
     means = Dict(:mu => exp.(Xμ * θ̂[1:pμ])); obs = Dict(:mu => Vector{Float64}(y))   # population μ (b=0)
@@ -834,7 +843,7 @@ function _fit_nb2_ranef_va(fam::NegBinomial2, y, Xμ, Xσ, gidx, G, nmμ, nmσ, 
     # group whose inner solve is not stationary makes the fit not converged (#965).
     dec = zeros(G)
     ll = -nll(θ̂, dec)
-    conv = _va_inner_converged(dec, "_fit_nb2_ranef_va") && drm_optim_converged(res)
+    conv = _va_inner_converged(dec, "_fit_nb2_ranef_va") && opt_converged
     # loglik field carries the ELBO (a lower bound); label downstream as :VA.
     return _withnll(DrmFit(fam, blocks, names, θ̂, V, ll, n, conv, means, obs, scales), nll)
 end
@@ -1003,7 +1012,10 @@ function _fit_gamma_ranef_va(fam::Gamma, y, Xμ, Xσ, gidx, G, nmμ, nmσ, grp, 
     θ0[1] = log(ȳ + eps()); θ0[pμ+1] = -0.5 * log(α0)  # σ = 1/√α ⇒ log σ = −½ log α
     θ0[pμ+pσ+1] = log(0.5)
     res = Optim.optimize(nll, θ0, Optim.LBFGS(), Optim.Options(g_tol = g_tol); autodiff = :forward)
-    θ̂ = Optim.minimizer(res); V = _vcov_from_hessian(ForwardDiff.hessian(nll, θ̂))
+    θ̂ = Optim.minimizer(res); H = ForwardDiff.hessian(nll, θ̂); V = _vcov_from_hessian(H)
+    # #1050: not the iteration cap, and the Newton step in SE units; not `Optim.g_converged` (absolute 1e-8).
+    opt_converged = !Optim.iteration_limit_reached(res) &&
+        _unitfree_converged(H, ForwardDiff.gradient(nll, θ̂))
     blocks = [:mu => 1:pμ, :sigma => (pμ+1):(pμ+pσ), :resd => (pμ+pσ+1):(pμ+pσ+1)]
     names = [:mu => nmμ, :sigma => nmσ, :resd => [String(grp)]]
     means = Dict(:mu => exp.(Xμ * θ̂[1:pμ])); obs = Dict(:mu => Vector{Float64}(y))   # population μ (b=0)
@@ -1012,7 +1024,7 @@ function _fit_gamma_ranef_va(fam::Gamma, y, Xμ, Xσ, gidx, G, nmμ, nmσ, grp, 
     # group whose inner solve is not stationary makes the fit not converged (#965).
     dec = zeros(G)
     ll = -nll(θ̂, dec)
-    conv = _va_inner_converged(dec, "_fit_gamma_ranef_va") && drm_optim_converged(res)
+    conv = _va_inner_converged(dec, "_fit_gamma_ranef_va") && opt_converged
     # loglik field carries the ELBO (a lower bound); label downstream as :VA.
     return _withnll(DrmFit(fam, blocks, names, θ̂, V, ll, n, conv, means, obs, scales), nll)
 end
@@ -1189,7 +1201,10 @@ function _fit_beta_ranef_va(fam::Beta, y, Xμ, Xσ, gidx, G, nmμ, nmσ, grp, g_
     θ0[1] = log(ȳ / (1 - ȳ)); θ0[pμ+1] = -0.5 * log(φ0)  # σ = 1/√φ ⇒ log σ = −½ log φ
     θ0[pμ+pσ+1] = log(0.5)
     res = Optim.optimize(nll, θ0, Optim.LBFGS(), Optim.Options(g_tol = g_tol); autodiff = :forward)
-    θ̂ = Optim.minimizer(res); V = _vcov_from_hessian(ForwardDiff.hessian(nll, θ̂))
+    θ̂ = Optim.minimizer(res); H = ForwardDiff.hessian(nll, θ̂); V = _vcov_from_hessian(H)
+    # #1050: not the iteration cap, and the Newton step in SE units; not `Optim.g_converged` (absolute 1e-8).
+    opt_converged = !Optim.iteration_limit_reached(res) &&
+        _unitfree_converged(H, ForwardDiff.gradient(nll, θ̂))
     blocks = [:mu => 1:pμ, :sigma => (pμ+1):(pμ+pσ), :resd => (pμ+pσ+1):(pμ+pσ+1)]
     names = [:mu => nmμ, :sigma => nmσ, :resd => [String(grp)]]
     means = Dict(:mu => _logistic.(Xμ * θ̂[1:pμ])); obs = Dict(:mu => Vector{Float64}(y))   # population μ (b=0)
@@ -1198,7 +1213,7 @@ function _fit_beta_ranef_va(fam::Beta, y, Xμ, Xσ, gidx, G, nmμ, nmσ, grp, g_
     # group whose inner solve is not stationary makes the fit not converged (#965).
     dec = zeros(G)
     ll = -nll(θ̂, dec)
-    conv = _va_inner_converged(dec, "_fit_beta_ranef_va") && drm_optim_converged(res)
+    conv = _va_inner_converged(dec, "_fit_beta_ranef_va") && opt_converged
     # loglik field carries the ELBO (a lower bound); label downstream as :VA.
     return _withnll(DrmFit(fam, blocks, names, θ̂, V, ll, n, conv, means, obs, scales), nll)
 end
