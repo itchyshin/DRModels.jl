@@ -828,11 +828,18 @@ function _design(response::Symbol, rhs, data; schema_cache = nothing, schema_key
     _, X = try
         modelcols(ft, design_data)
     catch e
-        predict_build || rethrow(e)
-        throw(ArgumentError("predict: could not build the `$(schema_key)` design matrix " *
-            "from `newdata`: " * sprint(showerror, e)))
+        if predict_build
+            throw(ArgumentError("predict: could not build the `$(schema_key)` design matrix " *
+                "from `newdata`: " * sprint(showerror, e)))
+        else
+            _rethrow_formula_build_hint(e)
+        end
     end
-    Xm = X isa AbstractMatrix ? Matrix{Float64}(X) : reshape(Float64.(collect(X)), :, 1)
+    Xm = try
+        X isa AbstractMatrix ? Matrix{Float64}(X) : reshape(Float64.(collect(X)), :, 1)
+    catch e
+        _rethrow_formula_build_hint(e)
+    end
     names = String.(vec(coefnames(ft.rhs)))
     # Catches a finite column that a transform (`log`, `I(1 / x)`, …) turned
     # non-finite. Plain `NaN`/`Inf` columns are already named above. The same
