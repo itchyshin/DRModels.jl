@@ -272,8 +272,10 @@ struct DrmFit{F}
     # has returned, so the `_with*` rebuilders below need not carry it.
     control_info::Any
     # `:ok` (the default), or `:skipped` when the caller turned standard errors off
-    # (`se = false`, `q4_vcov = false`). `vcov` is all-NaN in both a skipped and a
-    # failed covariance, so this is the only record of which one happened. The
+    # (`se = false`, `q4_vcov = false`), or `:boundary_all` when the Hessian guard
+    # flagged every coordinate (set by the `drm` entry, `_reconcile_guard_flags`).
+    # `vcov` is all-NaN in a skipped, a failed and an all-flagged covariance, so this
+    # is the only record of which one happened. The
     # twin `convergence_status` does not apply its covariance steps to a skipped
     # one, as drmTMB does for `drm_control(se = FALSE)` (FX3b). Set by
     # `_withuncertainty`.
@@ -596,6 +598,14 @@ _withgeometry(fit::DrmFit, g::Symbol) = DrmFit(fit.family, fit.blocks, fit.coefn
     fit.estim_method, fit.reml_loglik, fit.ml_loglik, fit.marginal, fit.phylo_penalty, fit.penalty, fit.iterations, fit.phylo_scale,
     fit.uncertainty, g)
 
+# Replace the covariance, and optionally `uncertainty`, of a finished fit (the `drm`
+# entry re-judges the Hessian guard's flag with it, src/vcov_guard.jl).
+_withvcov(fit::DrmFit, V, uncertainty = fit.uncertainty) = DrmFit(fit.family, fit.blocks,
+    fit.coefnames, fit.theta, V, fit.loglik, fit.nobs, fit.converged, fit.means, fit.obs,
+    fit.scales, fit.formula, fit.nll, fit.nllgrad, fit.ranef, fit.estim_method,
+    fit.reml_loglik, fit.ml_loglik, fit.marginal, fit.phylo_penalty, fit.penalty,
+    fit.iterations, fit.phylo_scale, fit.control_info, uncertainty, fit.geometry)
+
 """
     niterations(fit) -> Int
 
@@ -839,6 +849,7 @@ function _design(response::Symbol, rhs, data; schema_cache = nothing, schema_key
     # observed-row mask: a transform that is non-finite only on a dropped
     # response row is not an error.
     _require_finite_inputs(; predictors=(Xm, names), observed=observed)
+    _note_design_norms!(names, Xm)
     return y_response, Xm, names
 end
 
@@ -3629,7 +3640,9 @@ end
 # by |dμ/dη| at η̂_i. Centralised so the point value and its SE stay consistent.
 function _delta_se(Xp::AbstractMatrix, Vp::AbstractMatrix, η::AbstractVector,
                    type::Symbol, fam, p::Symbol)
-    se_link = [sqrt(max(0.0, dot(view(Xp, i, :), Vp, view(Xp, i, :)))) for i in 1:size(Xp, 1)]
+    se_link = isempty(_flagged_coords(Vp)) ?
+        [sqrt(max(0.0, dot(view(Xp, i, :), Vp, view(Xp, i, :)))) for i in 1:size(Xp, 1)] :
+        sqrt.(max.(0.0, _delta_variances(Xp, Vp)))
     type === :link && return se_link
     return abs.(_link_deriv(fam, p, η)) .* se_link
 end
@@ -3753,7 +3766,7 @@ function predict_parameters(fit::DrmFit, newdata; type::Symbol = :response,
             if se
                 Zrow = Zg[gidx, :]
                 Vsd = view(V, r, r)
-                var_eta = vec(sum((Zrow * Vsd) .* Zrow; dims = 2))
+                var_eta = _delta_variances(Zrow, Vsd)
                 se_value = sqrt.(max.(var_eta, 0.0))
                 if type === :response
                     se_value .*= fit.family isa Binomial && !structured_binomial ?
@@ -3786,7 +3799,7 @@ function predict_parameters(fit::DrmFit, newdata; type::Symbol = :response,
             if se
                 Zrow = Zg[gidx, :]
                 Vsd = view(V, r, r)
-                var_eta = vec(sum((Zrow * Vsd) .* Zrow; dims = 2))
+                var_eta = _delta_variances(Zrow, Vsd)
                 se_value = sqrt.(max.(var_eta, 0.0))
                 if type === :response
                     se_value .*= fit.family isa Binomial ?

@@ -506,25 +506,31 @@ end
 const _SPATIAL_RANGE_KEY = :drm_spatial_fixed_range
 
 function _drm_run_controlled(body::Function, f, fam, control, weights)
-    tls = task_local_storage()
-    old = get(tls, _SPATIAL_RANGE_KEY, nothing)
-    tls[_SPATIAL_RANGE_KEY] = nothing
-    try
-        fit = _drm_run_controlled_inner(body, f, fam, control, weights)
-        rng = tls[_SPATIAL_RANGE_KEY]
-        if fit isa DrmFit && rng !== nothing && !haskey(fit.scales, :spatial_range)
-            fit.scales[:spatial_range] = [rng]
+    # The Hessian guard records what it flags during this call; `_reconcile_guard_flags`
+    # finishes the judgement once the fit is named (src/vcov_guard.jl).
+    recs = _GuardRecords()
+    fit = task_local_storage(_GUARD_RECORDS_KEY, recs) do
+        tls = task_local_storage()
+        old = get(tls, _SPATIAL_RANGE_KEY, nothing)
+        tls[_SPATIAL_RANGE_KEY] = nothing
+        try
+            fit = _drm_run_controlled_inner(body, f, fam, control, weights)
+            rng = tls[_SPATIAL_RANGE_KEY]
+            if fit isa DrmFit && rng !== nothing && !haskey(fit.scales, :spatial_range)
+                fit.scales[:spatial_range] = [rng]
+            end
+            return fit
+        catch e
+            e isa MethodError && _refuse_kwarg_methoderror(e, f, fam)
+            rethrow()
+        finally
+            # An enclosing `drm` call (the missing-response wrappers re-enter `drm`) keeps what this
+            # call recorded; otherwise the earlier value is restored.
+            seen = get(tls, _SPATIAL_RANGE_KEY, nothing)
+            tls[_SPATIAL_RANGE_KEY] = seen === nothing ? old : seen
         end
-        return fit
-    catch e
-        e isa MethodError && _refuse_kwarg_methoderror(e, f, fam)
-        rethrow()
-    finally
-        # An enclosing `drm` call (the missing-response wrappers re-enter `drm`) keeps what this
-        # call recorded; otherwise the earlier value is restored.
-        seen = get(tls, _SPATIAL_RANGE_KEY, nothing)
-        tls[_SPATIAL_RANGE_KEY] = seen === nothing ? old : seen
     end
+    return _reconcile_guard_flags(fit, recs)
 end
 
 function _ctl_finish(fit, scope::_ControlScope, fam)

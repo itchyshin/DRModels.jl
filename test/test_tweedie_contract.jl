@@ -157,7 +157,8 @@ end
         @test all(isfinite, fit0.theta)
         @test coef(fit0, :mu)[1] < -20          # log mean driven to -inf
         @test loglik(fit0) ≈ 0 atol = 1e-6
-        @test minimum(eigvals(Symmetric(Matrix{Float64}(fit0.vcov), :L))) <= 0
+        @test bridge_diagnostics(fit0).boundary == 1:4   # every coordinate flagged
+        @test all(isnan, fit0.vcov)             # not a positive definite covariance
 
         y1 = vcat(1.3, zeros(n - 1))
         fit1 = @test_logs (:warn, r"numerically singular") (:warn, r"ended at a clamp") match_mode = :any drm(
@@ -168,6 +169,9 @@ end
         @test all(isfinite, fit1.theta)
         @test coef(fit1, :nu)[1] < -11.9  # power pinned at its lower clamp
         @test loglik(fit1) > -1e15
-        @test minimum(eigvals(Symmetric(Matrix{Float64}(fit1.vcov), :L))) <= 0
+        @test bridge_diagnostics(fit1).boundary == [4]
+        @test all(isnan, fit1.vcov[4, :]) && all(isnan, fit1.vcov[:, 4])
+        @test all(isfinite, fit1.vcov[1:3, 1:3])
+        @test issymmetric(fit1.vcov[1:3, 1:3])
     end
 end

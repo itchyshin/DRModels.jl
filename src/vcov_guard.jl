@@ -64,16 +64,24 @@ Symmetrises `H`, then inverts it, unless it is numerically singular or not
 positive definite. A clearly negative eigenvalue means the point is not a
 minimum: the function warns and returns a `NaN` covariance rather than
 `inv(H)` or a pseudo-inverse. A numerically zero eigenvalue (a variance
-boundary) still falls back to the Moore–Penrose pseudo-inverse and warns,
-naming the flat coordinates. The decision is made from the eigenvalues rather
-than from whether `inv` happens to throw, so the result does not depend on the
-LAPACK build or CPU.
+boundary) warns, naming the flat coordinates; those flagged coordinates are
+dropped from the Hessian before the rest is inverted, and their rows and columns of
+the result are `NaN`. If no single coordinate is flagged (the singular direction is
+a combination of several), the Moore-Penrose pseudo-inverse is used as before. The
+decision is made from the eigenvalues rather than from whether `inv` happens to throw,
+so the result does not depend on the LAPACK build or CPU.
 
-The pseudo-inverse keeps a fit usable, but standard errors for the flagged
-coordinates are not trustworthy: at a variance boundary the sampling
-distribution is not the usual normal approximation. Use `method = :profile` or
-the bootstrap entry points for those targets (see `src/inference.jl`), or the
-χ̄² boundary machinery in `src/chibar.jl`.
+Standard errors for flagged coordinates are withheld (`NaN`) because at a variance
+boundary the sampling distribution is not the usual normal approximation. Use
+`method = :profile` or the bootstrap entry points for those targets (see
+`src/inference.jl`), or the χ̄² boundary machinery in `src/chibar.jl`.
+
+Called on a bare matrix, the guard compares each curvature with the largest one, which
+treats every coordinate as dimensionless. Called while a `drm` fit is being built, it
+records the flag, and the `drm` entry re-judges it once the coordinates are named: a
+coefficient on a covariate (or an identity-link location coefficient) is not flagged
+for being small next to another coordinate, because its curvature depends on the units
+of the data (see `_flat_units_free`). That step can only remove flags.
 """
 function _vcov_from_hessian(H::AbstractMatrix; context::AbstractString = "")
     Hs = Matrix(H)
@@ -113,24 +121,373 @@ function _vcov_from_hessian(H::AbstractMatrix; context::AbstractString = "")
         return fill(NaN, size(Hs))
     end
 
+    flagged_here = Int[]
+    warn_here = false
+    rcond_here = 0.0
     if scale == 0 || minimum(abs, ev) <= _VCOV_RTOL * scale
         d = abs.(diag(Hs))
         dmax = maximum(d)
         flat = dmax == 0 ? collect(eachindex(d)) : findall(<=(_VCOV_RTOL * dmax), d)
         # #1110: an aliased design column explains the singularity and was already
         # warned about by name; do not also blame a variance boundary.
-        _design_rank_pending() || @warn """
-              Hessian is numerically singular at the optimum — using a pseudo-inverse.
-              The fit is at a variance/dispersion boundary, so standard errors for the
-              flagged coordinates are NOT trustworthy. Prefer `confint(fit, method = :profile)`
-              or the bootstrap entry points for those targets.
-              """ context flat_coordinates = flat rcond = scale == 0 ? 0.0 : minimum(abs, ev) / scale
-        V0 = pinv(Hs)
+        warn_singular = !_design_rank_pending()
+        rcond = scale == 0 ? 0.0 : minimum(abs, ev) / scale
+        if isempty(flat)
+            V0 = pinv(Hs)
+            warn_singular && _warn_singular_hessian(context, flat, rcond)
+        else
+            # Drop the flagged coordinates BEFORE inverting, so finite-difference
+            # noise on a flat coordinate (1e-8 of either sign) cannot contaminate the
+            # covariances of the others, and report the flagged rows and columns as
+            # NaN: a variance for a coordinate whose curvature cannot be told from zero
+            # is not a number the data support (DRModels.jl#1383).
+            V0 = _vcov_drop_flagged(Hs, flat)
+            flagged_here = flat
+            warn_here = warn_singular
+            rcond_here = rcond
+        end
     else
         V0 = inv(Hs)
     end
 
-    return Matrix(Symmetric((V0 + V0') / 2))
+    V = Matrix(Symmetric((V0 + V0') / 2))
+    isempty(flagged_here) || _note_guard_flag!(Hs, V, flagged_here, context, rcond_here, warn_here)
+    return V
+end
+
+# Covariance of the unflagged block of `Hs`; flagged rows and columns are NaN.
+# The block is inverted directly when it is well conditioned and by pseudo-inverse
+# otherwise (the behaviour the whole matrix had before), without a second warning.
+function _vcov_drop_flagged(Hs::AbstractMatrix, flat::AbstractVector{<:Integer})
+    n = size(Hs, 1)
+    V = fill(NaN, n, n)
+    keep = setdiff(1:n, flat)
+    isempty(keep) && return V
+    Hk = Hs[keep, keep]
+    ev = eigvals(Symmetric(Hk))
+    scale = maximum(abs, ev)
+    V[keep, keep] = (scale != 0 && minimum(abs, ev) > _VCOV_RTOL * scale) ? inv(Hk) : pinv(Hk)
+    return V
+end
+
+# Coordinates whose variance in `V` is NaN: the ones the guard flagged (#1383).
+_flagged_coords(V::AbstractMatrix) = [i for i in axes(V, 1) if isnan(V[i, i])]
+
+# ---------------------------------------------------------------------------
+# Units-free judgement of the flag (#1383)
+# ---------------------------------------------------------------------------
+#
+# `_vcov_from_hessian` sees only a matrix. It compares each diagonal curvature with
+# the largest one, which is right when every coordinate is dimensionless (a log SD, a
+# log size, an atanh correlation) but wrong for a coefficient on a covariate: its
+# curvature scales with the squared units of that covariate. A covariate in units of
+# 1e5 makes every other coordinate look flat, and one in units of 1e-5 makes its own
+# coefficient look flat, in a well identified fit.
+#
+# A matrix alone cannot tell a flat coordinate from one in small units (the same
+# diagonal in both cases), so the judgement is finished where the coordinates are
+# named, once the fit exists: `_reconcile_guard_flags` (called by every `drm` entry)
+# re-judges the flags with the criterion below. It can only remove flags.
+#
+#   * A coordinate that carries units (`_unit_bearing_coords`) is never flagged for being
+#     small next to another coordinate.
+#       - A coefficient on a covariate in a block with a log or logit link is judged per
+#         unit of its own design column: its curvature divided by the squared norm of the
+#         column (the mean per-observation weight) is flagged when it is at most
+#         `_VCOV_RTOL`. Multiplying the column by c multiplies both by c^2, so the verdict
+#         does not change.
+#       - Any other such coordinate (a location coefficient of a Gaussian, Student or
+#         skew-normal fit, whose weight carries the units of the response; an
+#         off-diagonal covariance entry; a column that was not recorded) is flagged only
+#         when its curvature is exactly zero.
+#   * Every other coordinate (a log SD, a log size, a correlation, an intercept of a
+#     log or logit block, a threshold) is flagged when its curvature is at most
+#     `_VCOV_RTOL` times the number of observations. The reference does not come from
+#     the other coordinates: a location intercept has curvature n / sigma^2 and a log
+#     sigma has 2n, so comparing them would judge the signal to noise ratio, not
+#     flatness. The curvature of a dimensionless coordinate that carries information
+#     is of the order of the number of observations that inform it, and that does not
+#     change with the units of any design column, with the units of the response, or
+#     with the size of sigma. A flat coordinate is far below it.
+#   * A random-effect log SD (an SD block or a diagonal Cholesky entry) at or below
+#     `_RE_LOGSD_FLOOR` = -8 keeps the flag the matrix set, whatever its curvature (P48 j),
+#     except in a Gaussian, Student or skew-normal fit, whose SDs carry the response units.
+#   * The result can only remove flags the matrix alone set: it is intersected with them.
+#
+# Known limits: weights or frequencies that are very small make every curvature small
+# and are read as flatness; a flat slope in a block whose intercept is at the boundary
+# is caught only when its design column was recorded.
+
+const _GUARD_RECORDS_KEY = :drm_vcov_guard_records
+
+const _GuardItem = NamedTuple{(:H, :V, :flat, :context, :rcond, :warn),
+    Tuple{Matrix{Float64},Matrix{Float64},Vector{Int},String,Float64,Bool}}
+
+mutable struct _GuardRecords
+    lock::ReentrantLock
+    items::Vector{_GuardItem}
+    # Squared norm of each design column built during the call, by coefficient name
+    # (the smallest when a name occurs more than once); see `_note_design_norms!`.
+    norms::Dict{String,Float64}
+end
+_GuardRecords() = _GuardRecords(ReentrantLock(), _GuardItem[], Dict{String,Float64}())
+
+# Called by `_design` for every design matrix it builds. Inside a `drm` call the squared
+# norm of each column is kept, so that the coefficient on a covariate can be judged
+# per unit of that covariate (`_flat_units_free`). Elsewhere it does nothing.
+function _note_design_norms!(names, X::AbstractMatrix)
+    r = get(task_local_storage(), _GUARD_RECORDS_KEY, nothing)
+    r isa _GuardRecords || return nothing
+    lock(r.lock) do
+        for (j, nm) in enumerate(names)
+            j <= size(X, 2) || break
+            v = sum(abs2, view(X, :, j))
+            key = String(nm)
+            r.norms[key] = haskey(r.norms, key) ? min(r.norms[key], v) : v
+        end
+    end
+    return nothing
+end
+
+function _warn_singular_hessian(context, flat, rcond)
+    @warn """
+          Hessian is numerically singular at the optimum — using a pseudo-inverse.
+          The fit is at a variance/dispersion boundary, so standard errors for the
+          flagged coordinates are NOT trustworthy. Prefer `confint(fit, method = :profile)`
+          or the bootstrap entry points for those targets.
+          """ context flat_coordinates = flat rcond
+    return nothing
+end
+
+# Called by the guard when it flagged coordinates. Inside a `drm` call the record is
+# kept and the warning is left to `_reconcile_guard_flags`, which knows the final flag;
+# anywhere else the warning is given at once.
+function _note_guard_flag!(H::AbstractMatrix, V::AbstractMatrix, flat::AbstractVector{<:Integer},
+                           context, rcond::Real, warn::Bool)
+    r = get(task_local_storage(), _GUARD_RECORDS_KEY, nothing)
+    if !(r isa _GuardRecords)
+        warn && _warn_singular_hessian(context, collect(Int, flat), rcond)
+        return nothing
+    end
+    lock(r.lock) do
+        push!(r.items, (H = Matrix{Float64}(H), V = Matrix{Float64}(V), flat = Vector{Int}(flat),
+                        context = String(context), rcond = Float64(rcond), warn = warn))
+    end
+    return nothing
+end
+
+_identity_location_family(fam) = fam isa Gaussian || fam isa Student || fam isa SkewNormal
+
+# Blocks whose non-intercept columns are design columns of a covariate.
+const _COEF_BLOCKS = (:mu, :mu1, :mu2, :sigma, :sigma1, :sigma2, :nu, :zi, :hu, :zoi, :coi, :rho12)
+
+# Off-diagonal entry of a Cholesky factor of a covariance (`g:L21`): in response units.
+_is_offdiag_chol_name(nm::AbstractString) =
+    (m = match(r":L(\d)(\d)$", nm)) !== nothing && m.captures[1] != m.captures[2]
+
+# Diagonal entry of a covariance Cholesky factor (`g:L11`, `Sigma_a:L22`): a log SD.
+_is_diag_chol_name(nm::AbstractString) =
+    (m = match(r":L(\d)(\d)$", nm)) !== nothing && m.captures[1] == m.captures[2]
+
+# A log SD at or below this is an SD below exp(-8) = 3.4e-4 of the scale it is judged
+# against: practically zero, whatever the curvature of the likelihood in that direction
+# (P48 j). It keeps a flag the matrix alone set; it never adds one.
+const _RE_LOGSD_FLOOR = -8.0
+
+# Coordinates of `fit.theta` that are random-effect log SDs: the SD blocks (`:resd`,
+# `:sd`, `:sd_*`) and the diagonal entries of a covariance Cholesky factor. Empty for a
+# Gaussian, Student or skew-normal fit: there the SD is in the units of the response, so
+# a log SD below -8 is a response spread of 3e-4, not a boundary, and the floor would
+# undo the unit-free flag (a response with a spread of 1e-6 has log SDs near -14).
+function _re_logsd_coords(fit)
+    out = Int[]
+    _identity_location_family(fit.family) && return out
+    for ((p, rng), (_, nms)) in zip(fit.blocks, fit.coefnames)
+        ps = String(p)
+        sdblock = p in (:resd, :sd) || startswith(ps, "sd_")
+        for (k, i) in enumerate(rng)
+            (1 <= i <= length(fit.theta)) || continue
+            nm = k <= length(nms) ? String(nms[k]) : ""
+            if sdblock || _is_diag_chol_name(nm)
+                push!(out, i)
+            end
+        end
+    end
+    return out
+end
+
+"""
+    _unit_bearing_coords(fit) -> BitVector
+
+Coordinates of `fit.theta` whose curvature depends on the units of the data: every
+coefficient of an identity-link location block (units of the response), every other
+coefficient on a design column that is not the intercept, and an off-diagonal
+covariance Cholesky entry. Everything else (intercepts of log and logit blocks, log
+SDs, log sizes, correlations, thresholds) is dimensionless.
+"""
+function _unit_bearing_coords(fit)
+    unit = falses(length(fit.theta))
+    idloc = _identity_location_family(fit.family)
+    for ((p, rng), (_, nms)) in zip(fit.blocks, fit.coefnames)
+        for (k, i) in enumerate(rng)
+            (1 <= i <= length(unit)) || continue
+            nm = k <= length(nms) ? String(nms[k]) : ""
+            if idloc && p in (:mu, :mu1, :mu2)
+                unit[i] = true
+            elseif p in _COEF_BLOCKS && nm != "(Intercept)"
+                unit[i] = true
+            elseif _is_offdiag_chol_name(nm)
+                unit[i] = true
+            end
+        end
+    end
+    return unit
+end
+
+# Squared norm of the design column behind each coordinate of `fit.theta` that carries
+# units but whose per-observation weight does not: a coefficient on a covariate in a
+# block with a log or logit link (not an identity-link location block, whose weight
+# carries the units of the response, and not a covariance Cholesky entry). `NaN` for
+# every other coordinate, and for a column that was not recorded.
+function _column_norms2(fit, recs::_GuardRecords, unit::AbstractVector{Bool})
+    cn2 = fill(NaN, length(fit.theta))
+    idloc = _identity_location_family(fit.family)
+    for ((p, rng), (_, nms)) in zip(fit.blocks, fit.coefnames)
+        (idloc && p in (:mu, :mu1, :mu2)) && continue
+        for (k, i) in enumerate(rng)
+            (1 <= i <= length(cn2) && unit[i] && k <= length(nms)) || continue
+            _is_offdiag_chol_name(String(nms[k])) && continue
+            cn2[i] = lock(() -> get(recs.norms, String(nms[k]), NaN), recs.lock)
+        end
+    end
+    return cn2
+end
+
+# The flagged coordinates under the units-free criterion above. `colnorm2` (see
+# `_column_norms2`) lets a coefficient on a covariate be judged per unit of its own
+# column: its curvature divided by the squared norm of the column is the mean
+# per-observation weight, a dimensionless number that does not change when the column
+# is multiplied by a constant.
+function _flat_units_free(H::AbstractMatrix, unit::AbstractVector{Bool}, nobs::Real;
+                          colnorm2::Union{Nothing,AbstractVector{<:Real}} = nothing)
+    d = abs.(diag(H))
+    dmax = maximum(d)
+    ref = Float64(nobs)
+    flat = Int[]
+    for i in eachindex(d)
+        if !unit[i]
+            d[i] <= _VCOV_RTOL * ref && push!(flat, i)
+        elseif colnorm2 !== nothing && isfinite(colnorm2[i]) && colnorm2[i] > 0
+            d[i] <= _VCOV_RTOL * colnorm2[i] && push!(flat, i)
+        else
+            (dmax == 0 || d[i] == 0) && push!(flat, i)
+        end
+    end
+    return flat
+end
+
+# Inverse of a symmetric positive definite block, computed on its unit-diagonal form
+# so that coordinates in very different units do not spoil the conditioning; the
+# pseudo-inverse of that form (or of the block, when a diagonal entry is not positive)
+# otherwise.
+function _inverse_units_free(Hk::AbstractMatrix)
+    d = diag(Hk)
+    if all(>(0), d)
+        s = 1 ./ sqrt.(d)
+        C = Hk .* s .* s'
+        ev = eigvals(Symmetric(C))
+        if minimum(ev) > _VCOV_RTOL * maximum(ev)
+            return Matrix(Symmetric(inv(Symmetric(C)) .* s .* s'))
+        end
+        return Matrix(Symmetric(pinv(Symmetric(C)) .* s .* s'))
+    end
+    return pinv(Hk)
+end
+
+function _vcov_units_free(H::AbstractMatrix, flat::AbstractVector{<:Integer})
+    n = size(H, 1)
+    V = fill(NaN, n, n)
+    keep = setdiff(1:n, flat)
+    isempty(keep) && return V
+    V[keep, keep] = _inverse_units_free(H[keep, keep])
+    return Matrix(Symmetric((V + V') / 2))
+end
+
+# Finish the flag of a finished fit (see the comment above). `recs` holds what the
+# guard flagged while the fit was being built. The covariance of a fit with an aliased
+# design column was rewritten after the guard (`_apply_design_rank` sets the aliased
+# rows and columns to NaN), so the record is matched ignoring those rows and columns,
+# and they are set to NaN again. A covariance that is not one of the records (the route
+# changed it in another way) is left alone.
+function _reconcile_guard_flags(fit, recs::_GuardRecords)
+    isempty(recs.items) && return fit
+    alias = fit isa DrmFit ? _aliased_coords(fit) : Int[]
+    k = fit isa DrmFit ?
+        lock(() -> findlast(r -> _same_except(r.V, fit.vcov, alias), recs.items), recs.lock) : nothing
+    rec = k === nothing ? nothing : recs.items[k]
+    if rec !== nothing && size(rec.H, 1) != length(fit.theta)
+        rec = nothing
+    end
+    # Warnings the guard deferred: the ones of covariances that were not kept as they are.
+    for r in recs.items
+        (r.warn && r !== rec) && _warn_singular_hessian(r.context, r.flat, r.rcond)
+    end
+    rec === nothing && return fit
+    # The units-free flag can only remove flags the matrix alone set.
+    unit = _unit_bearing_coords(fit)
+    flat = intersect(_flat_units_free(rec.H, unit, fit.nobs; colnorm2 = _column_norms2(fit, recs, unit)),
+                     rec.flat)
+    # P48 j: keep the matrix's flag on a random-effect log SD at or below the floor.
+    re_floor = [i for i in _re_logsd_coords(fit) if i in rec.flat && fit.theta[i] <= _RE_LOGSD_FLOOR]
+    flat = sort!(union(flat, re_floor))
+    rec.warn && !isempty(flat) && _warn_singular_hessian(rec.context, flat, rec.rcond)
+    V = if flat == rec.flat
+        fit.vcov
+    else
+        Vn = _vcov_units_free(rec.H, flat)
+        for c in alias
+            Vn[c, :] .= NaN
+            Vn[:, c] .= NaN
+        end
+        Vn
+    end
+    # One stored flag, for the case the covariance cannot show: every coordinate flagged
+    # gives an all-NaN matrix, which is otherwise the same as a failed covariance.
+    uncertainty = (length(flat) == length(fit.theta) && fit.uncertainty === :ok) ?
+        :boundary_all : fit.uncertainty
+    (flat == rec.flat && uncertainty === fit.uncertainty) && return fit
+    return _withvcov(fit, V, uncertainty)
+end
+
+# `a` and `b` agree (NaN equal to NaN) outside the rows and columns `skip`, and `b` is NaN
+# on them.
+function _same_except(a::AbstractMatrix, b::AbstractMatrix, skip::AbstractVector{<:Integer})
+    isempty(skip) && return isequal(a, b)
+    size(a) == size(b) || return false
+    n = size(a, 1)
+    for j in 1:n, i in 1:n
+        if i in skip || j in skip
+            isnan(b[i, j]) || return false
+        elseif !isequal(a[i, j], b[i, j])
+            return false
+        end
+    end
+    return true
+end
+
+# Row-wise delta-method variances `xᵢ' V xᵢ` for the rows of `X`. A row that puts weight
+# on a flagged coordinate gets NaN; a row that does not keeps its variance, because
+# `0 * NaN` must not remove it. With no flagged coordinate this is the plain product.
+function _delta_variances(X::AbstractMatrix, V::AbstractMatrix)
+    flagged = _flagged_coords(V)
+    isempty(flagged) && return vec(sum((X * V) .* X; dims = 2))
+    keep = setdiff(axes(V, 1), flagged)
+    Xk = X[:, keep]
+    out = vec(sum((Xk * V[keep, keep]) .* Xk; dims = 2))
+    for i in axes(X, 1)
+        any(!iszero, view(X, i, flagged)) && (out[i] = NaN)
+    end
+    return out
 end
 
 """
