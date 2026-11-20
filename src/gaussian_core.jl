@@ -4594,6 +4594,32 @@ function _recov_is_sd_corr(fit)
     return !isempty(nms) && occursin(":log_sd_", first(nms))
 end
 
+# The Poisson / NegBinomial2 `marginal = :Laplace` (1 + x | g) route keeps the same three numbers
+# as one-coefficient SD blocks (`:sd_intercept` -> `g:log_sd_intercept`, `:sd_slope` -> `g:log_sd_x`)
+# plus a one-coefficient `:recov` block (`g:atanh_rho`). These are plain log SDs, not an SD
+# regression and not a Cholesky triple. Keyed on the coefficient names. Returns
+# `(group, labels, sds, covariance)` or `nothing` when the fit has a different layout.
+function _split_logsd_decode(fit)
+    ri = findfirst(cn -> cn[1] === :recov, fit.coefnames)
+    ri === nothing && return nothing
+    rn = fit.coefnames[ri][2]
+    (length(rn) == 1 && endswith(rn[1], ":atanh_rho")) || return nothing
+    grp = String(split(rn[1], ":")[1])
+    sdblocks = [(p, r) for (p, r) in fit.blocks if startswith(String(p), "sd_")]
+    length(sdblocks) == 2 || return nothing
+    sds = Float64[]
+    for (p, r) in sdblocks
+        ci = findfirst(cn -> cn[1] === p, fit.coefnames)
+        ci === nothing && return nothing
+        nm = fit.coefnames[ci][2]
+        (length(nm) == 1 && startswith(nm[1], grp * ":log_sd_")) || return nothing
+        push!(sds, exp(fit.theta[first(r)]))
+    end
+    rho = _Q2_RHO_BOUND * tanh(fit.theta[first(last(fit.blocks[findfirst(pb -> pb[1] === :recov, fit.blocks)]))])
+    Σ = [sds[1]^2 rho*sds[1]*sds[2]; rho*sds[1]*sds[2] sds[2]^2]
+    return grp, ["intercept", "slope"], sds, Σ
+end
+
 # -> (group, labels, sds, covariance) for an SD/partial-correlation `:recov` block.
 function _recov_sd_corr_decode(fit, r)
     nms = first(cn[2] for cn in fit.coefnames if cn[1] === :recov)
@@ -4655,7 +4681,8 @@ existed.
 function re_sd(fit::DrmFit; scale::Symbol = :native, tree = nothing)
     # Location–scale–scale fits (#544) model the RE SD with covariates, so a
     # single per-grouping SD is ill-defined — refuse rather than misreport.
-    _has_sd_regression_block(fit) &&
+    split_logsd = _split_logsd_decode(fit)
+    split_logsd === nothing && _has_sd_regression_block(fit) &&
         throw(ArgumentError("re_sd: this fit models the random-effect SD with covariates " *
             "(`sd(group) ~ …`), so a single SD per grouping is not defined. Use " *
             "`coef(fit, :sd)` for the log-SD coefficients."))
@@ -4664,7 +4691,14 @@ function re_sd(fit::DrmFit; scale::Symbol = :native, tree = nothing)
     d = Dict{Symbol,Float64}()
     isd = _intercept_only_sd(fit)
     isd === nothing || (d[isd.group] = isd.sd)
+    if split_logsd !== nothing
+        grp, labels, sds, _ = split_logsd
+        for (lab, sd) in zip(labels, sds)
+            d[Symbol(grp * "_" * lab)] = sd
+        end
+    end
     for (p, r) in fit.blocks
+        split_logsd !== nothing && p === :recov && continue
         if p === :resd
             nms = first(cn[2] for cn in fit.coefnames if cn[1] === :resd)
             for (j, nm) in enumerate(nms)
