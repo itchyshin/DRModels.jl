@@ -3225,7 +3225,8 @@ function _bridge_dpars(fit::DrmFit)
     # R bridge as fictitious dpars.
     for (k, v) in pairs(fit.scales)
         (_sigma_internal_key(k) ||
-         k in (:trials, :q2_restarts, :sd, :sd_group, :sd_group_index, :aghq_nodes) ||
+         k in (:trials, :q2_restarts, :sd, :sd_group, :sd_group_index, :aghq_nodes,
+               :sigma_population, :mu_population) ||
          startswith(String(k), "sdtarget_") || startswith(String(k), "cond_")) && continue
         out[String(k)] = collect(float.(v))
     end

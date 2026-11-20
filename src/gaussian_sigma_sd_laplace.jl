@@ -338,6 +338,9 @@ function _fit_gaussian_sigma_sd_laplace(fam::Union{Gaussian,NegBinomial2,Gamma},
         :sd_group => has_a ? sd_a : sd_b,
         :sd => has_a ? sd_a[ga] : sd_b[gb])
     has_a && (scales[:sd_group_index] = Float64.(ga))
+    # `means[:mu]` holds the conditional mean here; keep the mean with the random effect set to
+    # zero for `simulate(re = :zero)`.
+    has_a && (scales[:mu_population] = Float64.(fam isa Gaussian ? mean_fixed : exp.(mean_fixed)))
     # `means[:mu]` already holds the CONDITIONAL mean on this joint route (mean mode `ab` included);
     # record the per-row mode too so `fitted(fit; re = :zero)` can take it back out.
     has_a && (_record_cond_fit!(scales, ab[ga]); scales[:cond_fit_stored] = [1.0])
