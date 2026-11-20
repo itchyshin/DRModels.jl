@@ -1328,7 +1328,8 @@ Random-effect covariance summary per grouping factor.
 function vc(fit::DrmFit)
     # Location-scale-scale fits (#544): the RE variance varies by group-level
     # covariates, so a single component matrix is ill-defined -- refuse.
-    _has_sd_regression_block(fit) &&
+    split_logsd = _split_logsd_decode(fit)
+    split_logsd === nothing && _has_sd_regression_block(fit) &&
         throw(ArgumentError("vc: this fit models the random-effect SD with covariates " *
             "(`sd(group) ~ ...`); use `coef(fit, :sd)` for the log-SD coefficients."))
     d = Dict{Symbol,Matrix{Float64}}()
@@ -1339,7 +1340,11 @@ function vc(fit::DrmFit)
     if fit.ranef isa NamedTuple && haskey(fit.ranef, :Sigma_a)
         d[Symbol(fit.ranef.group)] = Matrix{Float64}(fit.ranef.Sigma_a)
     end
+    if split_logsd !== nothing
+        d[Symbol(split_logsd[1])] = split_logsd[4]
+    end
     for (p, r) in fit.blocks
+        split_logsd !== nothing && p === :recov && continue
         if p === :recov && _recov_is_sd_corr(fit)
             grp, _, _, Σ = _recov_sd_corr_decode(fit, r)
             d[Symbol(grp)] = Σ

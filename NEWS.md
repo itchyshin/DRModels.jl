@@ -6,6 +6,8 @@ human-readable changelog.
 
 ## Development
 
+- **`simulate(fit)` returns the used rows only (#1352).** A row dropped for a missing response is no longer simulated, so `simulate`, `fitted`, `residuals` and `nobs` have the same rows and match drmTMB (a Poisson fit on 60 rows with 10 missing responses returned 60 simulated rows, now 50; a `nsim > 1` matrix has `nobs(fit)` rows). `simulate(fit; newdata = ...)` is unchanged. The parametric bootstrap still draws over every data row internally, so its refits drop the same rows as before. A `temporal(..., homtoep)` fit that dropped missing responses no longer returns `NaN` at the dropped rows from `simulate`.
+
 ## v0.8.2
 
 - **`bridge_diagnostics` no longer labels every counted fit `Optim.LBFGS` (#1260).** The optimizer field follows the **kept** selected-stage method (`actual_optimizer`, not the last `optimizer_runs` entry): `Optim.LBFGS` / `Optim.BFGS` / `Optim.Newton` when recorded. A nonnegative `niterations` count is the accepted final stage, not total work, and is not itself evidence of LBFGS. Unrecorded counted BFGS-first Laplace routes (Gamma/Student independent slopes; Gaussian random-slope mean plus sigma random intercept) stay `missing`, as does an unrecorded Beta Newton polish. Default LBFGS is labelled only on known-LBFGS unrecorded fingerprints (including `Fminbox(LBFGS)`, reported as `Optim.LBFGS`). Fitted values, likelihoods, and solver defaults are unchanged.

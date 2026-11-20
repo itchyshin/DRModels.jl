@@ -724,6 +724,11 @@ end
 
 _observed_response_mask(y) = .!isnan.(Vector{Float64}(y))
 
+# True when no entry is `missing` or `NaN`. The prior routes refuse an incomplete
+# response by name; `missing` must reach that refusal, not a `Vector{Float64}`
+# conversion error inside `_observed_response_mask`.
+_complete_response(y) = !any(ismissing, y) && all(_observed_response_mask(y))
+
 function _table_column(data, name::Symbol)
     if data isa NamedTuple
         return getproperty(data, name)
@@ -1378,7 +1383,7 @@ function _drm_gaussian_fit(f::DrmFormula, fam::Gaussian; data, K = nothing, A = 
     if has_sd_prior && any(ismissing, _table_column(data, f.response))
         throw(ArgumentError("SD priors require complete responses"))
     end
-    if priors !== nothing && !all(_observed_response_mask(_table_column(data, f.response)))
+    if priors !== nothing && !_complete_response(_table_column(data, f.response))
         has_sd_prior && throw(ArgumentError("SD priors currently require complete responses"))
         throw(ArgumentError("fixed-effect priors currently require complete responses"))
     end
@@ -3048,9 +3053,10 @@ The per-family parameter → distribution map lives in `_conditional_dist`
 
 `type = :pearson` returns `(y − E[Y]) / √Var[Y]` with the mean and variance of the fitted
 distribution of each observation, as drmTMB's `residuals(fit, type = "pearson")`. It is
-implemented for fixed-effect Gaussian, Poisson, NegBinomial2, Gamma and Beta fits.
-Any other family or route (random effects, structured or temporal terms, zero
-inflation, hurdles, Student, LogNormal, Binomial, ordinal, bivariate) throws an
+implemented for fixed-effect Gaussian, Poisson, NegBinomial2, Gamma, Beta and LogNormal
+fits (`LogNormal()` uses the log-scale `(log y − μ̂) / σ̂`, as drmTMB). Any other family
+or route (random effects, structured or temporal terms, zero inflation, hurdles,
+Student, Binomial, ordinal, bivariate) throws an
 `ArgumentError` that names it, because drmTMB's definition differs or has not been
 checked there. A diagonal `meta_V(v)` without a random effect is a fixed-effect fit and is
 supported. The result has one entry per kept row, as for `:response` and `:quantile` and as in
@@ -3983,6 +3989,10 @@ Return value (univariate / random-effect / meta models):
 - `nsim == 1` → a length-`nobs` response `Vector` (back-compatible).
 - `nsim  > 1` → a `nobs × nsim` `Matrix`, one independent replicate per column.
 
+Only the rows used in the fit are simulated, as in drmTMB (#1352): a row dropped
+for a missing response is not drawn, so the result has the same rows as
+`fitted(fit)` and `nobs(fit)`. This holds for the default (no `newdata`) draw.
+
 Bivariate Gaussian models return `Dict(:mu1=>…, :mu2=>…)` for `nsim == 1`, or a
 length-`nsim` `Vector` of such `Dict`s for `nsim > 1` (a matrix of paired
 responses is not well defined).
@@ -3995,8 +4005,7 @@ Tweedie, and CumulativeLogit.
 # Example
 ```julia
 fit = drm(bf(@formula(y ~ x), @formula(sigma ~ x)), Gaussian(); data)
-y1  = simulate(fit)               # Vector, length nobs (a homtoep fit that dropped
-                                  # missing responses: one per data row, NaN there)
+y1  = simulate(fit)               # Vector, length nobs (rows with a missing response are not drawn)
 Y   = simulate(fit; nsim = 100)   # 100 columns, one per draw
 ys  = simulate(fit; newdata = (x = [0.0, 1.0],))  # one row per newdata row
 ```
@@ -4008,6 +4017,49 @@ parameters. Omit it to draw for the training design. Temporal fits refuse
 `newdata`.
 """
 function simulate(fit::DrmFit; nsim::Integer = 1, rng = default_rng(), newdata = nothing,
+                  kwargs...)
+    out = _simulate_all_rows(fit; nsim, rng, newdata, kwargs...)
+    newdata === nothing || return out
+    return _simulate_on_used_rows(fit, out)
+end
+
+# `simulate(fit)` returns the rows used in the fit (`nobs`), as drmTMB does (#1352): a row
+# dropped for a missing response is not simulated. `_simulate_all_rows` keeps one draw per
+# DATA row, which `bootstrap_ci` needs to merge a replicate back into the original table.
+# A temporal (homtoep) fit that dropped missing responses marks the retained data rows in
+# `fit.ranef.temporal.keep` rather than by `NaN` in `fit.obs`.
+function _simulate_used_mask(fit::DrmFit)
+    if _is_temporal_fit(fit)
+        info = fit.ranef.temporal       # only the homtoep metadata has `keep`
+        return hasproperty(info, :keep) ? info.keep : nothing
+    end
+    m = _used_row_mask(fit)
+    # A Binomial row with zero trials has `NaN` for the observed proportion (0 / 0) but it IS a
+    # fitted row (it counts in `nobs` and contributes nothing); only rows dropped by the
+    # missing-data policy are cut. The draw there is zero.
+    if m !== nothing && haskey(fit.scales, :trials)
+        tr = fit.scales[:trials]
+        length(tr) == length(m) && (m = m .| (tr .== 0))
+    end
+    # A fit that does not keep the trials (rebuilt from `data`) cannot tell a zero-trial row from a
+    # dropped one by `fit.obs`; the rows used are exactly `nobs` of them, so a mask that does not
+    # count to `nobs` is not the missing-data policy and cuts nothing.
+    (m !== nothing && count(m) != fit.nobs) && return nothing
+    return m
+end
+function _simulate_on_used_rows(fit::DrmFit, out::AbstractVector{<:Real})
+    m = _simulate_used_mask(fit)
+    (m === nothing || length(out) != length(m)) && return out
+    return out[m]
+end
+function _simulate_on_used_rows(fit::DrmFit, out::AbstractMatrix)
+    m = _simulate_used_mask(fit)
+    (m === nothing || size(out, 1) != length(m)) && return out
+    return out[m, :]
+end
+_simulate_on_used_rows(fit::DrmFit, out) = out
+
+function _simulate_all_rows(fit::DrmFit; nsim::Integer = 1, rng = default_rng(), newdata = nothing,
                   re::Symbol = :marginal, data = nothing, K = nothing, A = nothing,
                   tree = nothing, coords = nothing)
     _is_fixed_prior_fit(fit) && fit.estim_method === :MAP && throw(ArgumentError("simulate: simulation from a $(_prior_kind_label(fit)) fit is not yet qualified"))
@@ -4591,6 +4643,32 @@ function _recov_is_sd_corr(fit)
     return !isempty(nms) && occursin(":log_sd_", first(nms))
 end
 
+# The Poisson / NegBinomial2 `marginal = :Laplace` (1 + x | g) route keeps the same three numbers
+# as one-coefficient SD blocks (`:sd_intercept` -> `g:log_sd_intercept`, `:sd_slope` -> `g:log_sd_x`)
+# plus a one-coefficient `:recov` block (`g:atanh_rho`). These are plain log SDs, not an SD
+# regression and not a Cholesky triple. Keyed on the coefficient names. Returns
+# `(group, labels, sds, covariance)` or `nothing` when the fit has a different layout.
+function _split_logsd_decode(fit)
+    ri = findfirst(cn -> cn[1] === :recov, fit.coefnames)
+    ri === nothing && return nothing
+    rn = fit.coefnames[ri][2]
+    (length(rn) == 1 && endswith(rn[1], ":atanh_rho")) || return nothing
+    grp = String(split(rn[1], ":")[1])
+    sdblocks = [(p, r) for (p, r) in fit.blocks if startswith(String(p), "sd_")]
+    length(sdblocks) == 2 || return nothing
+    sds = Float64[]
+    for (p, r) in sdblocks
+        ci = findfirst(cn -> cn[1] === p, fit.coefnames)
+        ci === nothing && return nothing
+        nm = fit.coefnames[ci][2]
+        (length(nm) == 1 && startswith(nm[1], grp * ":log_sd_")) || return nothing
+        push!(sds, exp(fit.theta[first(r)]))
+    end
+    rho = _Q2_RHO_BOUND * tanh(fit.theta[first(last(fit.blocks[findfirst(pb -> pb[1] === :recov, fit.blocks)]))])
+    Σ = [sds[1]^2 rho*sds[1]*sds[2]; rho*sds[1]*sds[2] sds[2]^2]
+    return grp, ["intercept", "slope"], sds, Σ
+end
+
 # -> (group, labels, sds, covariance) for an SD/partial-correlation `:recov` block.
 function _recov_sd_corr_decode(fit, r)
     nms = first(cn[2] for cn in fit.coefnames if cn[1] === :recov)
@@ -4652,7 +4730,8 @@ existed.
 function re_sd(fit::DrmFit; scale::Symbol = :native, tree = nothing)
     # Location–scale–scale fits (#544) model the RE SD with covariates, so a
     # single per-grouping SD is ill-defined — refuse rather than misreport.
-    _has_sd_regression_block(fit) &&
+    split_logsd = _split_logsd_decode(fit)
+    split_logsd === nothing && _has_sd_regression_block(fit) &&
         throw(ArgumentError("re_sd: this fit models the random-effect SD with covariates " *
             "(`sd(group) ~ …`), so a single SD per grouping is not defined. Use " *
             "`coef(fit, :sd)` for the log-SD coefficients."))
@@ -4661,7 +4740,14 @@ function re_sd(fit::DrmFit; scale::Symbol = :native, tree = nothing)
     d = Dict{Symbol,Float64}()
     isd = _intercept_only_sd(fit)
     isd === nothing || (d[isd.group] = isd.sd)
+    if split_logsd !== nothing
+        grp, labels, sds, _ = split_logsd
+        for (lab, sd) in zip(labels, sds)
+            d[Symbol(grp * "_" * lab)] = sd
+        end
+    end
     for (p, r) in fit.blocks
+        split_logsd !== nothing && p === :recov && continue
         if p === :resd
             nms = first(cn[2] for cn in fit.coefnames if cn[1] === :resd)
             for (j, nm) in enumerate(nms)

@@ -17,7 +17,7 @@
 #
 # Every message names the offending argument.
 
-using StatsModels: StatsModels
+using StatsModels: StatsModels, FormulaTerm
 
 # ── #1027: secondary parameters each family models ──────────────────────────
 #
@@ -720,4 +720,11 @@ function _resolve_coords_labels(f::DrmFormula, data, coords, ids)
             (length(absent) > 3 ? ", …" : "") * "). Every level must be one of the labels of `coords`."))
     perm = [pos[string(l)] for l in levels]
     return isvec ? Vector{Float64}(M)[perm] : Matrix{Float64}(M)[perm, :]
+end
+
+# #1351: a bare `@formula(...)` passed to `drm` used to fall through to MethodError.
+function drm(f::FormulaTerm, fam; kwargs...)
+    throw(ArgumentError(
+        "drm: `formula` must be created with `drm_formula()` or `bf()`. " *
+        "Wrap your formulas, e.g. `bf(@formula(y ~ x), @formula(sigma ~ 1))`."))
 end
