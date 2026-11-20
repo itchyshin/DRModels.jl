@@ -1208,17 +1208,36 @@ them.
             "for the bivariate Gaussian route only, `bf(mu1 = …, mu2 = …, …)` with " *
             "`meta_vcov_bivariate`. For a univariate model, known diagonal sampling variances " *
             "go in the formula as `meta_V(v)`; a dense univariate `V` is not implemented yet."))
+    if haskey(kwargs, :se)
+        accepted = collect(Symbol, _accepted_kwargs(_drm_gaussian_fit, f, fam))
+        for k in (:control, :weights)
+            k in accepted || push!(accepted, k)
+        end
+        mu_rhs = nothing
+        for (p, r) in f.forms
+            p === :mu && (mu_rhs = r)
+        end
+        # Refuse bare `se = …` on the canonical `:y` response without an offset (wave-6 (d));
+        # other response symbols (e.g. shifted-response comparisons in #1337) strip `se` below.
+        f.response === :y && (mu_rhs === nothing || !_has_offset_term(mu_rhs)) &&
+            _refuse_unsupported_kwargs((:se,), f, fam, accepted)
+    end
     # #938: `offset(z)` on the identity-link mean is a known additive constant, so
     # the fit of `y ~ x + offset(z)` is exactly the fit of `y - z ~ x` (the same
     # likelihood and the same estimates). Fit the shifted response, then put the
     # offset back into the fitted means and the observed response.
     f_fit, kw_fit, off = _gaussian_offset_shift(f, fam, kwargs)
-    # `se` is handled by `@drm_entry` / `_withuncertainty`, not by `_drm_gaussian_fit`.
-    kw_inner = (; (p for p in pairs(kw_fit) if p.first !== :se)...)
+    # On the offset path (and non-`:y` response comparisons) `_drm_gaussian_fit` does not take
+    # `se`; strip it for those fits. Bare `se` on response `:y` was refused above.
+    strip_se = haskey(kwargs, :se) && (off !== nothing || f.response !== :y)
+    kw_inner = strip_se ? (; (p for p in pairs(kw_fit) if p.first !== :se)...) : kw_fit
     # The residual-variance / structured-variance BOUNDARY advisory (#724, #697) is
     # attached here, once, rather than in each of the fitter's return paths.
     fit = _apply_design_rank(_warn_variance_boundary(_drm_gaussian_fit(f_fit, fam; kw_inner...)))
-    fit = off === nothing ? fit : _gaussian_offset_restore(fit, f, off)
+    if off !== nothing
+        fit = _gaussian_offset_restore(fit, f, off)
+    end
+    strip_se && (fit = _withuncertainty(fit, kwargs[:se]))
     return _with_prior_table_input(fit, get(kwargs, :priors, nothing))
 end
 
