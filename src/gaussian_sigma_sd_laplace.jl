@@ -175,10 +175,25 @@ function _gsl_mode(joint, v0::Vector{Float64}; tol::Float64 = 1e-10, maxit::Int 
             end
             t *= 0.5
         end
-        accepted || return v, maximum(abs, g) < 1e-8
+        accepted || return v, maximum(abs, g) < 1e-8 || _gsl_at_gradient_floor(g, H)
         F, g, H = joint(v, true)
     end
-    return v, maximum(abs, g) < 1e-9
+    return v, maximum(abs, g) < 1e-9 || _gsl_at_gradient_floor(g, H)
+end
+
+# Roundoff floor of the inner-mode gradient (#1366). With a correlated pair (`rho`) the prior
+# precision is sr = 1 / (1 - rho^2), which is ~1e8 once atanh(rho) is about 8 (|rho| within 1e-7 of 1,
+# a normal outcome with few groups), and the gradient `sr * (va - rho * vb)` then carries roundoff of
+# order sr * |v| * eps, above the absolute 1e-9 test: Newton sits at the exact mode yet the loop
+# reports failure and the outer objective takes the 1e18 sentinel. The scale-free question is the
+# Newton decrement g' H^-1 g (the objective gap to the mode): at 1e-14 the Laplace value is exact
+# to far below the outer tolerance. Only consulted where the absolute test already said "failed",
+# so a mode that passes today is unchanged and a stalled mode (large decrement) still fails.
+function _gsl_at_gradient_floor(g, H)
+    all(isfinite, g) || return false
+    C = cholesky(Symmetric(H); check = false)
+    issuccess(C) || return false
+    return dot(g, C \ g) < 1e-14
 end
 
 # `mean_re` is `nothing` or (gidx, G, Zg, nmsd, grp, block); `sigma_re` is
