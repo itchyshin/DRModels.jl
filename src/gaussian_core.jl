@@ -3635,7 +3635,8 @@ Population-level prediction of **every** distributional parameter at `newdata`
 The returned `Dict` has one entry per
 distributional parameter the model carries — always `:mu` and (when the family
 uses it) `:sigma`, plus any family extras present (`:nu`, `:zi`, `:hu`, `:zoi`,
-`:coi`). For supported Binomial, BetaBinomial, Poisson, NB2, zero-truncated NB2, Gamma, Beta,
+`:coi`; a ZeroOneBeta fit always returns `:zoi` and `:coi`, intercept-only when no
+formula was written for them). For supported Binomial, BetaBinomial, Poisson, NB2, zero-truncated NB2, Gamma, Beta,
 Student, or Tweedie random-effect SD fits with `sd(group) ~ …`, it also contains
 `:sd`: the random-effect SD evaluated for
 each row's group, repeated for rows in the same group.
@@ -3684,6 +3685,13 @@ function predict_parameters(fit::DrmFit, newdata; type::Symbol = :response,
     f === nothing && error("predict_parameters: this fit did not retain its formula")
     type in (:response, :link) || error("predict_parameters: `type` must be :response or :link")
     forms = Dict(f.forms)
+    if fit.family isa ZeroOneBeta
+        # `zoi` and `coi` are always estimated, intercept-only when the user wrote no formula
+        # for them; `bf()` keeps only the formulas that were written (#1389).
+        for (p, _) in fit.blocks
+            p in (:zoi, :coi) && !haskey(forms, p) && (forms[p] = ConstantTerm(1))
+        end
+    end
     nd = NamedTuple(pairs(newdata))
     # Same label-response handling as `predict` (CumulativeLogit univariate fits only).
     fit.family isa CumulativeLogit && f isa DrmFormula &&
