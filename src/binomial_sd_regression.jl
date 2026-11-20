@@ -2568,7 +2568,8 @@ function _fit_binomial_sd_regression(fam::Binomial, s, ntr, Xmu, Zgs, nmsds,
     end
     ri = restart_info[]
     thetahat = Optim.minimizer(res)
-    V = _vcov_or_nan(ForwardDiff.hessian(nll, thetahat))
+    H = ForwardDiff.hessian(nll, thetahat); V = _vcov_or_nan(H)
+    converged = !Optim.iteration_limit_reached(res) && _unitfree_converged(H, ForwardDiff.gradient(nll, thetahat))
     blocks = Pair{Symbol,UnitRange{Int}}[:mu => 1:pmu]
     names = Pair{Symbol,Vector{String}}[:mu => nmmu]
     for j in 1:q
@@ -2618,6 +2619,6 @@ function _fit_binomial_sd_regression(fam::Binomial, s, ntr, Xmu, Zgs, nmsds,
         scales[:cond_eta_re] = copy(scales[:cond_fit_eta_re])
     end
     fit = DrmFit(fam, blocks, names, thetahat, V, -nll(thetahat), n,
-        drm_optim_converged(res), means, obs, scales)
+        converged, means, obs, scales)
     return _withiterations(_withnll(fit, nll), Optim.iterations(res))
 end
