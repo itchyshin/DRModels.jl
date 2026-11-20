@@ -34,9 +34,9 @@ import ForwardDiff
         # whether the number is an exact gradient, a finite-difference stand-in, or
         # absent, and the last of those silently satisfies `ok`.
         # `convergence_status` added by FX3b: the three-valued twin status.
-        # `boundary_params` .. `optimiser_message` added by the converged rule (SHINICHI-1753-1118).
+        # `boundary_params` .. `optimizer_message` added by the converged rule (SHINICHI-1753-1118).
         @test keys(r) == (:convergence_status, :converged, :boundary_params, :pd_hessian,
-                          :max_gradient, :optimiser_code, :optimiser_message, :max_abs_grad, :grad_source, :vcov_complete,
+                          :max_gradient, :optimizer_code, :optimizer_message, :max_abs_grad, :grad_source, :vcov_complete,
                           :vcov_posdef, :min_eigval, :cond, :penalized_map,
                           :variance_boundary, :temporal_boundary, :skew_normal_nu_wald,
                           :fixed_effect_rank_deficiency, :ok)

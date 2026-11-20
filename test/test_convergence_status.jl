@@ -218,20 +218,20 @@ end
 @testset "convergence_info record (SHINICHI-1753-1118)" begin
     info = convergence_info(_cs_fit())
     @test keys(info) == (:converged, :convergence_status, :boundary_params, :pd_hessian,
-                         :max_gradient, :optimiser_code, :optimiser_message)
+                         :max_gradient, :optimizer_code, :optimizer_message)
     @test info.converged && info.convergence_status === :converged
     @test isempty(info.boundary_params) && info.pd_hessian === true
     @test isnan(info.max_gradient)            # a hand-built fit stores no objective
-    @test info.optimiser_code == 0 && info.optimiser_message isa String
+    @test info.optimizer_code == 0 && info.optimizer_message isa String
 
     nc = convergence_info(_cs_fit(converged = false))
-    @test !nc.converged && nc.convergence_status === :not_converged && nc.optimiser_code == 1
-    @test convergence_info(_cs_fit(loglik = NaN)).optimiser_code == 1
-    @test occursin("not finite", convergence_info(_cs_fit(loglik = NaN)).optimiser_message)
+    @test !nc.converged && nc.convergence_status === :not_converged && nc.optimizer_code == 1
+    @test convergence_info(_cs_fit(loglik = NaN)).optimizer_code == 1
+    @test occursin("not finite", convergence_info(_cs_fit(loglik = NaN)).optimizer_message)
 
     b = convergence_info(_cs_fit(resd = 5e-5, rho12 = [0.99]))
     @test b.convergence_status === :boundary
-    @test Set(b.boundary_params) == Set([(name = "sd:g", kind = :sd), (name = "rho12", kind = :cor)])
+    @test Set(b.boundary_params) == Set([(name = "sd:g", kind = :re_sd), (name = "rho12", kind = :rho12)])
 
     d = convergence_info(_cs_fit(V = [1.0 1.0; 1.0 1.0]))
     @test d.convergence_status === :degenerate && d.pd_hessian === false
@@ -250,6 +250,19 @@ end
     @test convergence_info(fitg(50.0)).max_gradient ≈ 5.0 atol = 1e-6
     @test convergence_status(fitg(0.005)) === :converged       # 5e-4 SE
     @test convergence_status(fitg(0.05)) === :not_converged    # 5e-3 SE
+
+    # Order (SHINICHI-0724-1120 item 1): gradient BEFORE boundary. A boundary fit whose Newton
+    # step is above the cut is :not_converged; with a stationary objective it stays :boundary.
+    fitgb(c) = DRModels._withnll(_cs_fit(loglik = -100.0, resd = 5e-5), th -> 100.0 + c * th[1] + (th[2] - 0.2)^2)
+    @test convergence_status(fitgb(0.0)) === :boundary
+    @test convergence_status(fitgb(50.0)) === :not_converged
+    @test convergence_info(fitgb(50.0)).max_gradient ≈ 5.0 atol = 1e-6
+    # A non-finite gradient is :not_converged (also ahead of boundary).
+    fitnan(; kw...) = DRModels._withnll(_cs_fit(; loglik = -100.0, kw...), th -> Inf * th[1])
+    @test convergence_status(fitnan()) === :not_converged
+    @test convergence_status(fitnan(resd = 5e-5)) === :not_converged
+    @test convergence_info(fitnan()).max_gradient == Inf
+    @test convergence_info(fitnan()).optimizer_code == 0
 end
 
 @testset "REML fit: stored ML objective is not a stationarity oracle (b_sxz regression)" begin

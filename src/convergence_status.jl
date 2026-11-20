@@ -123,8 +123,8 @@ end
 #
 #   :not_converged  the optimiser did not finish, the log-likelihood is not finite (or is
 #                   the failed-objective sentinel), or the Newton step in SE units exceeds
-#                   1e-3 (the gradient is read only when no parameter is at a boundary: a
-#                   boundary coordinate has no interior stationary point to test)
+#                   1e-3, or the gradient is non-finite (tested BEFORE the boundary rule,
+#                   SHINICHI-0724-1120 item 1, as drmTMB #1781)
 #   :boundary       SD ~ 0, |cor| ~ 1, a Heywood case (a Gaussian residual scale collapsed
 #                   onto the data) or a parameter at the end of its search interval. Tested
 #                   BEFORE the Hessian, so a boundary fit never reads :degenerate
@@ -166,10 +166,19 @@ function _newton_step_se_units(fit::DrmFit)
     return isfinite(val) ? (value = val, reason = :scored) : (value = NaN, reason = :no_gradient)
 end
 
-# Boundary parameters as `(name, kind)`; kind is :sd, :cor, :heywood or :bound.
+# The value the rule compares with the cut: a gradient that no producer could return as a
+# finite vector at a fit with a finite log-likelihood is a NON-FINITE gradient, which is
+# `Inf` (so `:not_converged`, SHINICHI-0724-1120 item 1, as drmTMB's `drm_newton_step_se`).
+# Not scored for the other reasons (no objective, REML, no usable vcov): `NaN`.
+function _newton_step_for_rule(fit::DrmFit)
+    r = _newton_step_se_units(fit)
+    return r.reason === :no_gradient ? Inf : r.value
+end
+
+# Boundary parameters as `(name, kind)`; kind is :re_sd, :rho12, :heywood or :bound.
 function _twin_boundary_params(fit::DrmFit)
     out = NamedTuple{(:name, :kind),Tuple{String,Symbol}}[]
-    haskey(fit.scales, :cond_logsd_wall) && push!(out, (name = "cond_logsd", kind = :sd))
+    haskey(fit.scales, :cond_logsd_wall) && push!(out, (name = "cond_logsd", kind = :re_sd))
     # A skipped covariance (`se = false`) is all-NaN, so every row would look like a floor row.
     for k in (fit.uncertainty === :skipped ? Int[] : _twin_floor_fixed_coords(fit))
         nm = "sd"
@@ -178,19 +187,19 @@ function _twin_boundary_params(fit::DrmFit)
             r = _block_range(fit, :resd)
             k in r && (nm = string("sd:", names[k - first(r) + 1]))
         end
-        push!(out, (name = nm, kind = :sd))
+        push!(out, (name = nm, kind = :re_sd))
     end
     sdv = try re_sd(fit) catch err; err isa ArgumentError || rethrow(); nothing end
     if sdv !== nothing
         for (k, v) in sdv
             isfinite(v) && v < _TWIN_RE_SD_BOUNDARY &&
-                push!(out, (name = string("sd:", k), kind = :sd))
+                push!(out, (name = string("sd:", k), kind = :re_sd))
         end
     end
     rho = _twin_rho12_values(fit)
     for (i, r) in enumerate(rho)
         isfinite(r) && abs(r) > _TWIN_RHO12_BOUNDARY &&
-            push!(out, (name = length(rho) == 1 ? "rho12" : string("rho12[", i, "]"), kind = :cor))
+            push!(out, (name = length(rho) == 1 ? "rho12" : string("rho12[", i, "]"), kind = :rho12))
     end
     # Heywood: the Gaussian residual scale collapsed onto the data (`_nondegenerate_fit`),
     # which is not an aliased design (that one is :degenerate).
@@ -229,16 +238,19 @@ function _convergence_report(fit::DrmFit)
     bparams = (optok || wall) ? _twin_boundary_params(fit) : _twin_boundary_params_none()
     if !optok && !wall
         return (status = :not_converged, boundary_params = bparams, pd_hessian = pd,
-                max_gradient = NaN, optimiser_code = code, optimiser_message = msg)
+                max_gradient = NaN, optimizer_code = code, optimizer_message = msg)
+    end
+    # Order (SHINICHI-0724-1120 item 1, as drmTMB #1781): gradient first, then boundary.
+    grad = _newton_step_for_rule(fit)
+    if (isfinite(grad) && grad > _TWIN_NEWTON_STEP_TOL) || grad == Inf
+        return (status = :not_converged, boundary_params = bparams, pd_hessian = pd,
+                max_gradient = grad, optimizer_code = code, optimizer_message = msg)
     end
     if !isempty(bparams)
         return (status = :boundary, boundary_params = bparams, pd_hessian = pd,
-                max_gradient = NaN, optimiser_code = code, optimiser_message = msg)
+                max_gradient = grad, optimizer_code = code, optimizer_message = msg)
     end
-    grad = _newton_step_se_units(fit).value
-    status = if isfinite(grad) && grad > _TWIN_NEWTON_STEP_TOL
-        :not_converged
-    elseif !(fit.geometry === :ok && !_design_rank_deficient(fit))
+    status = if !(fit.geometry === :ok && !_design_rank_deficient(fit))
         :degenerate
     elseif !skipped && !(pd === true && ses_ok)
         :degenerate
@@ -246,7 +258,7 @@ function _convergence_report(fit::DrmFit)
         :converged
     end
     return (status = status, boundary_params = bparams, pd_hessian = pd,
-            max_gradient = grad, optimiser_code = code, optimiser_message = msg)
+            max_gradient = grad, optimizer_code = code, optimizer_message = msg)
 end
 
 _twin_boundary_params_none() = NamedTuple{(:name, :kind),Tuple{String,Symbol}}[]
@@ -260,17 +272,17 @@ matching rule wins and every status is a warning, never an error:
 
 1. `:not_converged` unless the optimiser stopped normally (`fit.converged`) at a
    finite log-likelihood strictly above the `-1e15` failed-objective sentinel.
-2. `:boundary` when a parameter is at a boundary, tested BEFORE the Hessian: a fitted
+2. `:not_converged` when the Newton step in standard-error units,
+   `max_i |(H⁻¹ g)_i| / SE_i` with `H⁻¹ = vcov(fit)`, `SE_i = sqrt((H⁻¹)_ii)` and `g` the
+   gradient of the objective at the optimum, exceeds `1e-3`, or when no finite gradient can be produced (a non-finite gradient). This is tested BEFORE the boundary rule (SHINICHI-0724-1120, as drmTMB #1781). It is not scored (and the rule
+   passes) when the fit stores no objective, when standard errors are off or `vcov` is not
+   positive definite (rules 5 to 7 then speak), or for a REML fit, whose stored objective is
+   the ML one and so is not the objective `vcov` inverts.
+3. `:boundary` when a parameter is at a boundary, tested BEFORE the Hessian: a fitted
    residual correlation has `|rho12| > 0.98`; a random-effect SD ([`re_sd`](@ref)) is
    below `1e-4` (also a log SD within `1e-3` of the sparse-Laplace floor of `-8`, whose
    standard error is `NaN`, #1190); a Gaussian residual scale has collapsed onto the data
    (Heywood); or a Tweedie power ended at an end of its search interval.
-3. `:not_converged` when the Newton step in standard-error units,
-   `max_i |(H⁻¹ g)_i| / SE_i` with `H⁻¹ = vcov(fit)`, `SE_i = sqrt((H⁻¹)_ii)` and `g` the
-   gradient of the objective at the optimum, exceeds `1e-3`. It is not scored (and the rule
-   passes) when the fit stores no objective, when standard errors are off or `vcov` is not
-   positive definite (rules 5 to 7 then speak), or for a REML fit, whose stored objective is
-   the ML one and so is not the objective `vcov` inverts.
 4. `:degenerate` when a geometry screen fired: a Poisson or NegBinomial2 fixed-effect MLE
    that does not exist (#1109), a fixed-effect-only Binomial fit with (quasi-)complete
    separation (#1186), or an aliased fixed-effect column (#1110).
@@ -290,7 +302,7 @@ Rules 5 to 7 are skipped when standard errors were turned off (`se = false`, or
 [`is_converged`](@ref) and [`converged`](@ref) are `true` only for `:converged`.
 The raw optimiser flag is `fit.converged`. [`convergence_info`](@ref) returns the full
 record: `converged`, `convergence_status`, `boundary_params` (name and kind),
-`pd_hessian`, `max_gradient`, `optimiser_code` and `optimiser_message`.
+`pd_hessian`, `max_gradient`, `optimizer_code` and `optimizer_message`.
 """
 convergence_status(fit::DrmFit) = _convergence_report(fit).status
 
@@ -301,23 +313,23 @@ The converged rule's whole record, with the field names shared with drmTMB:
 
 - `converged` — `convergence_status === :converged`.
 - `convergence_status` — see [`convergence_status`](@ref).
-- `boundary_params` — a vector of `(name, kind)`; `kind` is `:sd`, `:cor`, `:heywood`
+- `boundary_params` — a vector of `(name, kind)`; `kind` is `:re_sd`, `:rho12`, `:heywood`
   or `:bound`. Empty unless the status is `:boundary`.
 - `pd_hessian` — `true` / `false`, or `missing` when standard errors were turned off.
 - `max_gradient` — the Newton step in standard-error units `max_i |(H⁻¹ g)_i| / SE_i` (not
   the raw gradient); `NaN` when it was not scored (no stored objective, a REML fit, no usable
   `vcov`, or the status was settled before the gradient).
-- `optimiser_code` — `0` finished at a finite log-likelihood, `1` did not (including a non-finite
+- `optimizer_code` — `0` finished at a finite log-likelihood, `1` did not (including a non-finite
   or sentinel log-likelihood).
-- `optimiser_message` — a short plain-language message. `DrmFit` stores only the optimiser's
+- `optimizer_message` — a short plain-language message. `DrmFit` stores only the optimiser's
   boolean flag and iteration count, so this is not the raw Optim message.
 """
 function convergence_info(fit::DrmFit)
     r = _convergence_report(fit)
     return (converged = r.status === :converged, convergence_status = r.status,
             boundary_params = r.boundary_params, pd_hessian = r.pd_hessian,
-            max_gradient = r.max_gradient, optimiser_code = r.optimiser_code,
-            optimiser_message = r.optimiser_message)
+            max_gradient = r.max_gradient, optimizer_code = r.optimizer_code,
+            optimizer_message = r.optimizer_message)
 end
 
 """

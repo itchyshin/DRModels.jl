@@ -4805,7 +4805,7 @@ Returns a `NamedTuple` and logs a short report:
 - `converged` — [`is_converged`](@ref)`(fit)`, i.e. `convergence_status ===
   :converged`. A Gaussian fit whose scale collapsed is reported `false` here even
   when `fit.converged` is `true` (#949), and so is a `:boundary` fit (FX3b).
-- `boundary_params`, `pd_hessian`, `max_gradient`, `optimiser_code`, `optimiser_message` — the
+- `boundary_params`, `pd_hessian`, `max_gradient`, `optimizer_code`, `optimizer_message` — the
   remaining fields of [`convergence_info`](@ref) (`max_gradient` is the Newton step in SE
   units there; `max_abs_grad` below is the absolute one).
 - `max_abs_grad` — `max|∇nll|` at the optimum (≈ 0 at a clean interior optimum;
@@ -4919,8 +4919,8 @@ function check_drm(fit::DrmFit; grad_tol::Real=1e-3)
         boundary_params=cinfo.boundary_params,
         pd_hessian=cinfo.pd_hessian,
         max_gradient=cinfo.max_gradient,
-        optimiser_code=cinfo.optimiser_code,
-        optimiser_message=cinfo.optimiser_message,
+        optimizer_code=cinfo.optimizer_code,
+        optimizer_message=cinfo.optimizer_message,
         max_abs_grad=mag,
         grad_source=grad.source,
         vcov_complete=vcov_complete,
