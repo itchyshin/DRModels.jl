@@ -401,10 +401,10 @@ end
 # η, the log-likelihood is non-decreasing along (d, δ) iff δ_{y_i - 1} <= x_i·d <= δ_{y_i}
 # for every row, i.e. iff the stacked binary problem (row (i, k): response 1{y_i > k},
 # design [x_i, e_k], k = 1..K-1) has a (quasi-)complete separating direction. The
-# existing exact screen is reused on that stacked design. WARN ONLY: the estimates,
-# SEs, `converged` and `convergence_status` are left exactly as before (whether this
-# route should also set Inf SEs / a degenerate geometry, as Binomial does, is an
-# owner decision; see #1221). Quiet inside bootstrap / profile refits.
+# existing exact screen is reused on that stacked design. Estimates and SEs are
+# left as fitted; the fit is flagged `:ordinal_separation` so the converged rule
+# reports `:degenerate` (#1221, SHINICHI-1753-1118). Quiet inside bootstrap /
+# profile refits.
 function _cumulative_separation_warn(Xμ, y, K, nmμ)
     pμ = size(Xμ, 2); n = length(y); nc = K - 1
     (pμ == 0 || n == 0 || nc < 1) && return String[]
@@ -433,7 +433,7 @@ function _cumulative_separation_warn(Xμ, y, K, nmμ)
           coefficients can grow without bound at little or no cost in likelihood, and
           their reported estimates are an arbitrary stopping point of the optimiser.
           Any standard errors printed for this fit (large but finite, or 0) are not
-          meaningful, and `converged` / `convergence_status` do NOT reflect this.
+          meaningful, and `convergence_status` is `:degenerate`.
           Consider removing or collapsing the offending predictor, or a penalised fit.$partial
           """ separation = :complete_or_quasi flagged_coefficients = flagged
     return flagged
@@ -525,7 +525,7 @@ function _fit_cumulative(fam::CumulativeLogit, y::Vector{Int}, Xμ, K, nmμ, g_t
     res = _ctl_optimize((x0, opts, method) -> Optim.optimize(nll, x0, method, opts; autodiff = :forward),
                        θ0; g_tol = g_tol)   # control: maxit / start / multi_start (#948 #994)
     θ̂ = Optim.minimizer(res); V = _ctl_se(() -> _vcov_from_hessian(ForwardDiff.hessian(nll, θ̂)), θ̂)
-    _cumulative_separation_warn(Xμ, y, K, nmμ)   # #1221: warn only
+    separated = !isempty(_cumulative_separation_warn(Xμ, y, K, nmμ))   # #1221
     blocks = [:mu => 1:pμ, :cutpoints => (pμ+1):(pμ+nc)]
     names = [:mu => nmμ, :cutpoints => ["theta$k" for k in 1:nc]]
     # fitted = expected category score Σ_k k·P(y=k)
@@ -538,9 +538,10 @@ function _fit_cumulative(fam::CumulativeLogit, y::Vector{Int}, Xμ, K, nmμ, g_t
     score = _cumulative_score(η̂, cuts_hat, K)
     means = Dict(:mu => score); obs = Dict(:mu => Float64.(y))
     scales = Dict(:ordinal_eta => η̂, :ordinal_cuts => Float64.(cuts_hat))
-    return _withiterations(
+    fit = _withiterations(
         _withnll(DrmFit(fam, blocks, names, θ̂, V, -nll(θ̂), n, drm_optim_converged(res), means, obs, scales), nll),
         Optim.iterations(res))
+    return separated ? _withgeometry(fit, :ordinal_separation) : fit   # converged rule: separation is :degenerate
 end
 
 # Default AGHQ nodes for the CumulativeLogit `(1 | g)` / `(0 + x | g)` routes. The
