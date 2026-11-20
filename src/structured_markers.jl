@@ -26,7 +26,7 @@ end
 _is_structured_marker(t::FunctionTerm) = t.f in _STRUCTURED_MARKERS
 _is_structured_or_temporal_marker(t::FunctionTerm) = t.f in _STRUCTURED_OR_TEMPORAL_MARKERS
 
-const _STRUCTURED_MARKER_NAMES = (
+const _STRUCTURED_MARKER_NAMES = Dict{Function,String}(
     relmat => "relmat",
     animal => "animal",
     phylo  => "phylo",
