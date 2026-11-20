@@ -1224,7 +1224,9 @@ end
 # the response. Returns `(formula, kwargs, offset)`, the inputs unchanged (and
 # `nothing`) without an offset. Only the fixed-effects mean (with an optional
 # `meta_V(v)`) is covered: a random or structured term, an `sd()` part, a joint `mi()` model, missing
-# responses or a non-default `marginal` refuse it by name.
+# a non-default `marginal` refuse it by name. Missing/NaN responses are
+# listwise-dropped with a warning (`_drop_missing_response_rows`), like other
+# Gaussian routes.
 # True when a right-hand side carries any `(… | g)` random-effect term.
 function _rhs_has_bar(rhs)
     terms = rhs isa Tuple ? collect(rhs) : Any[rhs]
@@ -1238,6 +1240,10 @@ function _gaussian_offset_shift(f::DrmFormula, fam, kwargs)
     end
     (mu_rhs !== nothing && _has_offset_term(mu_rhs)) || return f, kwargs, nothing
     haskey(kwargs, :data) || return f, kwargs, nothing     # the missing-`data` error is raised downstream
+    # #1382: narrow to complete predictors (including the offset column) before
+    # building the offset vector — same as `_drop_missing_predictor_rows` inside
+    # `_drm_gaussian_fit`, but offset shift runs earlier.
+    kwargs = merge((; kwargs...), (; data = _drop_missing_predictor_rows(f, kwargs[:data])))
     _has_joint_mi(f) && _refuse_offset_route(fam, "a joint `mi()` missing-predictor model")
     _, re, mv, st = _split_ranef(mu_rhs; allow_phylo_slope = true, allow_temporal = true)
     # `meta_V(v)` on its own is admitted: the known sampling variances do not involve
@@ -1259,10 +1265,9 @@ function _gaussian_offset_shift(f::DrmFormula, fam, kwargs)
         _refuse_offset_route(fam, "`marginal = :$(kwargs[:marginal])`")
     rhs_fixed, offset_term = _extract_offset(mu_rhs)
     offset_term === nothing && return f, kwargs, nothing  # nested only: the `_design` backstop refuses it
-    data = kwargs[:data]
+    data = _drop_missing_response_rows(f, kwargs[:data])
+    kwargs = merge((; kwargs...), (; data = data))
     raw = _table_column(data, f.response)
-    (any(ismissing, raw) || any(v -> v isa Real && isnan(v), raw)) &&
-        _refuse_offset_route(fam, "missing or `NaN` responses (drop those rows first)")
     off = _offset_for_fit(fam, offset_term, data, length(raw))
     forms = Pair{Symbol,Any}[p => (p === :mu ? rhs_fixed : r) for (p, r) in f.forms]
     f_shift = DrmFormula(f.response, forms, f.response2, f.schema_cache)
