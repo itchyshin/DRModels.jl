@@ -3285,8 +3285,11 @@ drmTMB's `predict()` with `newdata` also sets the random effects to zero, so for
 GLM-type families above the two packages' predictions compare like with like
 (drmTMB's LogNormal prediction is the log-scale `μ`, which `type = :response` and
 `type = :link` both return). Without `newdata`, drmTMB's `predict()`, and so its `fitted()`, add
-the fitted random-effect modes for the fitted rows; DRModels.jl's `predict` always
-takes `newdata`, and the in-sample conditional value is `fitted(fit)`.
+the fitted random-effect modes for the fitted rows. `predict(fit)` (no `newdata`)
+matches drmTMB `predict(newdata = NULL)`: `type = :response` is the in-sample
+component location (conditional `μ` on the used rows), `type = :link` is its
+linear predictor, and `type = :mean` is `fitted(fit)` (`E[Y]`). Population-level
+values at the training rows remain `predict(fit, data)`.
 
 A factor in `newdata` is coded with the levels and contrasts of the fitted data
 (`drm` records them), so `newdata` may hold any subset of the fitted levels, in
@@ -3328,6 +3331,174 @@ function _predict_ignore_label_response(nd::NamedTuple, response::Symbol)
     col isa AbstractVector || return nd
     any(x -> x isa Union{AbstractString,Symbol}, col) || return nd
     return merge(nd, NamedTuple{(response,)}((zeros(length(col)),)))
+end
+
+function _predict_se_requires_newdata(who::AbstractString)
+    throw(ArgumentError(
+        "$who: standard errors for in-sample prediction require the training `newdata` table; " *
+        "call `$(who)(fit, data; se = true)` instead."))
+end
+
+# Map stored parameter values (response scale) to the linear predictor used at
+# fit time — the inverse of `_param_response`.
+function _insample_nrows(fit::DrmFit)
+    haskey(fit.means, :mu) && return length(fit.means[:mu])
+    haskey(fit.means, :mu1) && return length(fit.means[:mu1])
+    throw(ArgumentError("predict_parameters: no in-sample row count on this fit"))
+end
+
+function _formula_has_meta_v(fit::DrmFit)
+    f = fit.formula
+    f isa DrmFormula || return false
+    rhs = get(Dict(f.forms), :mu, nothing)
+    rhs === nothing && return false
+    terms = rhs isa Tuple ? collect(rhs) : Any[rhs]
+    for t in terms
+        t isa FunctionTerm || continue
+        (t.f === meta_V || (t.f isa Function && nameof(t.f) === :meta_V)) && return true
+    end
+    return false
+end
+
+# Population-level location linear predictor (before adding `cond_fit_eta_re`).
+function _insample_population_mu_link(fit::DrmFit)
+    fam = fit.family
+    sc = fit.scales
+    if fam isa ZeroOneBeta
+        haskey(sc, :beta_mu) || throw(ArgumentError(
+            "predict: this ZeroOneBeta fit did not retain component `:mu` values"))
+        μ = collect(Float64, sc[:beta_mu])
+        v = clamp.(μ, 1e-12, 1 - 1e-12)
+        return log.(v ./ (1 .- v))
+    end
+    if fam isa CumulativeLogit
+        haskey(sc, :ordinal_eta) || throw(ArgumentError(
+            "predict: this CumulativeLogit fit did not retain the location linear predictor"))
+        return collect(Float64, sc[:ordinal_eta])
+    end
+    ra = fit.ranef
+    if ra isa LocOnlyRanef && !haskey(sc, :cond_fit_eta_re)
+        return collect(Float64, ra.mu_fixed)
+    end
+    haskey(fit.means, :mu) || throw(ArgumentError(
+        "predict: this fit did not retain the mean parameter"))
+    μ = collect(Float64, fit.means[:mu])
+    if haskey(sc, :cond_fit_stored)
+        if fam isa LogNormal
+            return log.(μ)
+        end
+        lk = _fitted_link(fam)
+        lk === nothing && return μ
+        return first(lk).(μ)
+    end
+    if fam isa LogNormal
+        return log.(μ)
+    end
+    lk = _fitted_link(fam)
+    lk !== nothing && return first(lk).(μ)
+    return μ
+end
+
+function _insample_location_link(fit::DrmFit)
+    η = _insample_population_mu_link(fit)
+    sc = fit.scales
+    haskey(sc, :cond_fit_eta_re) && !haskey(sc, :cond_fit_stored) &&
+        (η = η .+ sc[:cond_fit_eta_re])
+    return _fitted_used_rows(fit, η)
+end
+
+function _insample_param_response(fit::DrmFit, p::Symbol, n::Int)
+    if p === :mu && fit.family isa ZeroOneBeta && haskey(fit.scales, :beta_mu)
+        return _fitted_used_rows(fit, collect(Float64, fit.scales[:beta_mu]))
+    end
+    if p === :sigma && fit.family isa Gaussian && _formula_has_meta_v(fit)
+        βσ = coef(fit, :sigma)
+        length(βσ) == 1 || throw(ArgumentError(
+            "predict_parameters: in-sample `sigma` with `meta_V` and a varying σ formula requires `newdata`"))
+        return _fitted_used_rows(fit, fill(exp(βσ[1]), n))
+    end
+    haskey(fit.scales, p) &&
+        return _fitted_used_rows(fit, collect(Float64, fit.scales[p]))
+    haskey(fit.means, p) &&
+        return _fitted_used_rows(fit, collect(Float64, fit.means[p]))
+    β = coef(fit, p)
+    length(β) == 1 || throw(ArgumentError(
+        "predict_parameters: in-sample `$p` requires the training `newdata` table on this route"))
+    return _fitted_used_rows(fit, _param_response(fit.family, p, fill(β[1], n)))
+end
+
+function _insample_param_link(fit::DrmFit, p::Symbol, n::Int)
+    β = coef(fit, p)
+    length(β) == 1 && return _fitted_used_rows(fit, fill(β[1], n))
+    return _stored_to_link(fit.family, p, _insample_param_response(fit, p, n))
+end
+
+function _stored_to_link(fam, p::Symbol, val::AbstractVector{<:Real})
+    if p === :mu || p === :mu1 || p === :mu2
+        if fam isa ZeroOneBeta && p === :mu
+            v = clamp.(val, 1e-12, 1 - 1e-12)
+            return log.(v ./ (1 .- v))
+        end
+        lk = _fitted_link(fam)
+        lk === nothing && throw(ArgumentError(
+            "predict_parameters: cannot recover the fitted `$p` link on this route"))
+        g = first(lk)
+        return g.(val)
+    elseif p === :sigma || p === :sigma1 || p === :sigma2
+        return log.(val)
+    elseif p === :rho12
+        ρ = val ./ RHO_GUARD
+        return atanh.(clamp.(ρ, -1 + 1e-12, 1 - 1e-12))
+    elseif p === :nu
+        fam isa Tweedie && return log.(clamp.((val .- 1) ./ (2 .- val), 1e-12, floatmax(Float64)))
+        fam isa Student && return log.(val .- 2)
+        fam isa SkewNormal && return collect(Float64, val)
+        throw(ArgumentError("predict_parameters: cannot recover the fitted `:nu` link on $(typeof(fam))"))
+    elseif p === :zi || p === :hu || p === :zoi || p === :coi
+        v = clamp.(val, 1e-12, 1 - 1e-12)
+        return log.(v ./ (1 .- v))
+    elseif p === :sd
+        return log.(val)
+    else
+        throw(ArgumentError("predict_parameters: cannot recover the fitted `$p` link without `newdata`"))
+    end
+end
+
+function _predict_parameters_insample(fit::DrmFit; type::Symbol = :response)
+    n = _insample_nrows(fit)
+    out = Dict{Symbol,Vector{Float64}}()
+    for (p, _) in fit.blocks
+        p in (:cutpoints, :resd, :recov) && continue
+        startswith(String(p), "sdtarget_") && continue
+        (p === :sd || p === :sd_phylo) && continue
+        val = type === :link ?
+            _insample_param_link(fit, p, n) :
+            _insample_param_response(fit, p, n)
+        out[p] = val
+    end
+    return out
+end
+
+function predict(fit::DrmFit; type::Symbol = :response, se::Bool = false)
+    se && return _predict_se_requires_newdata("predict")
+    type === :mean && return fitted(fit)
+    type in (:response, :link) ||
+        throw(ArgumentError("predict: without `newdata`, `type` must be :response, :link or :mean"))
+    fit.formula isa BivariateDrmFormula && throw(ArgumentError(
+        "predict: pass `newdata` for bivariate in-sample prediction"))
+    η = _insample_location_link(fit)
+    type === :link && return η
+    if fit.family isa LogNormal || fit.family isa CumulativeLogit
+        return η
+    end
+    return _mean_response(fit.family, η)
+end
+
+function predict_parameters(fit::DrmFit; type::Symbol = :response, se::Bool = false)
+    se && return _predict_se_requires_newdata("predict_parameters")
+    type in (:response, :link) ||
+        throw(ArgumentError("predict_parameters: `type` must be :response or :link"))
+    return _predict_parameters_insample(fit; type)
 end
 
 function predict(fit::DrmFit, newdata; type::Symbol = :response, se::Bool = false)
