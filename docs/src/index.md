@@ -71,34 +71,43 @@ For another response type or a more specialised structure, use
 
 ## Try a model of average and variability
 
-This example creates a continuous response whose average and spread both
-increase with a predictor. Think of `x` as temperature relative to its average
-and `y` as a centred body-size measurement. These are simulated data, so the
-example illustrates the method rather than a biological finding.
+This example matches the README and drmTMB's
+[first-model article](https://itchyshin.github.io/drmTMB/articles/drmTMB.html):
+growth of 120 individuals sampled in forest and grassland, where habitat and
+temperature shift mean growth and habitat also changes residual variation.
+These are simulated data, so the example illustrates the method rather than a
+biological finding. The printed estimates will not match the R article, because
+Julia and R generate different random numbers even from the same seed.
 
 After [installing DRModels.jl](getting-started.md#Install), run:
 
 ```julia
 using DRModels, Random
-Random.seed!(20260610)
+Random.seed!(1)
 
-x = randn(400)
-y = 1.0 .+ 0.5 .* x .+ exp.(-0.4 .+ 0.3 .* x) .* randn(400)
-dat = (; y, x)
+n = 120
+habitat = repeat(["forest", "grassland"]; inner = n ÷ 2)
+temperature = randn(n)
+grass = habitat .== "grassland"
+# true values: mean = 1 + 0.6*grassland + 0.4*temperature
+#              log(sigma) = -0.5 + 0.45*grassland
+growth = (1 .+ 0.6 .* grass .+ 0.4 .* temperature) .+
+         exp.(-0.5 .+ 0.45 .* grass) .* randn(n)
 
-# Separate formulas for the average response and its remaining spread:
-fit = drm(bf(@formula(y ~ x), @formula(sigma ~ x)), Gaussian(); data = dat)
+fit = drm(bf(@formula(growth ~ 1 + habitat + temperature),   # mean (mu)
+             @formula(sigma ~ 1 + habitat)),                 # log residual SD
+          Gaussian(); data = (; growth, habitat, temperature))
 
-is_converged(fit)            # did the fitting algorithm finish successfully?
-coef(fit, :mu)               # effects on the average response
-exp(coef(fit, :sigma)[2])    # ratio of standard deviations per unit increase in x
+coef(fit, :mu)      # true values: [1.00, 0.60, 0.40]
+coef(fit, :sigma)   # true values: [-0.50, 0.45]
+coeftable(fit)      # Wald SEs, z, p, 95% CIs for every coefficient
 ```
 
 The first formula describes the average response. The second describes its
-remaining spread, measured here by the standard deviation (`sigma`). In these
-simulated data, the average rises by 0.5 per unit of `x`, while the standard
-deviation is multiplied by `exp(0.3)`, about 1.35. Fitted values will differ
-because the data include random variation.
+remaining spread, measured here by the log of the standard deviation (`sigma`).
+The `sigma` habitat coefficient is a log residual-SD contrast: its true value
+`0.45` means residual SD in grassland is `exp(0.45)`, about 1.57 times that in
+forest. Fitted values will differ because the data include random variation.
 
 The [first-model tutorial](getting-started.md) explains the formulas, how to
 read estimates and confidence intervals, and what to check before reporting
