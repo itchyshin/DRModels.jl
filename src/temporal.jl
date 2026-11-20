@@ -764,7 +764,11 @@ function _fit_temporal_homtoep(fam::Gaussian, y, Xμ, Xσ, nmμ, nmσ, tt, lay, 
         best = best === nothing ? res : _better_restart(nll, best, res)
     end
     θ̂ = Optim.minimizer(best)
-    V = _vcov_from_hessian(ForwardDiff.hessian(nll, θ̂))
+    H = ForwardDiff.hessian(nll, θ̂)
+    V = _vcov_from_hessian(H)
+    # #1050: not the iteration cap, and the Newton step in SE units; not `Optim.g_converged` (absolute 1e-8).
+    opt_converged = !Optim.iteration_limit_reached(best) &&
+        _unitfree_converged(H, ForwardDiff.gradient(nll, θ̂))
 
     blocks = [:mu => 1:pμ, :sigma => iσ:iσ, :temporal_pac => iκ]
     names = [:mu => nmμ, :sigma => nmσ, :temporal_pac => ["pac_lag$(m)" for m in 1:(K-1)]]
@@ -775,7 +779,7 @@ function _fit_temporal_homtoep(fam::Gaussian, y, Xμ, Xσ, nmμ, nmσ, tt, lay, 
             time = tt.time, nseries = S, rows = grows, gaps = [lay.gap[r] for r in grows],
             has_ordinary = false, phylo = nothing, levels = lay.levels,
             occasions = lay.occasions, keep = keep)
-    fit = DrmFit(fam, blocks, names, θ̂, V, -nll(θ̂), n, drm_optim_converged(best), means, obs, scales)
+    fit = DrmFit(fam, blocks, names, θ̂, V, -nll(θ̂), n, opt_converged, means, obs, scales)
     # No latent temporal states: the Toeplitz block IS the marginal covariance.
     return _withranef(_withnll(fit, nll), (effects = Dict{Symbol,Vector{Float64}}(), temporal = info))
 end
@@ -874,7 +878,11 @@ function _fit_temporal_gaussian(fam::Gaussian, y, Xμ, Xσ, nmμ, nmσ, tt, lay,
         best = best === nothing ? res : _better_restart(nll, best, res)
     end
     θ̂ = Optim.minimizer(best)
-    V = _vcov_from_hessian(ForwardDiff.hessian(nll, θ̂))
+    H = ForwardDiff.hessian(nll, θ̂)
+    V = _vcov_from_hessian(H)
+    # #1050: not the iteration cap, and the Newton step in SE units; not `Optim.g_converged` (absolute 1e-8).
+    opt_converged = !Optim.iteration_limit_reached(best) &&
+        _unitfree_converged(H, ForwardDiff.gradient(nll, θ̂))
 
     # Conditional modes at θ̂, temporal effects back in DATA ROW order.
     r̂ = y .- Xμ * θ̂[1:pμ]
@@ -935,7 +943,7 @@ function _fit_temporal_gaussian(fam::Gaussian, y, Xμ, Xσ, nmμ, nmσ, tt, lay,
         end
     end
     _record_cond_fit!(scales, eta_rows)
-    fit = DrmFit(fam, blocks, names, θ̂, V, -nll(θ̂), n, drm_optim_converged(best), means, obs, scales)
+    fit = DrmFit(fam, blocks, names, θ̂, V, -nll(θ̂), n, opt_converged, means, obs, scales)
     return _withranef(_withnll(fit, nll), (effects = effects, temporal = info))
 end
 
