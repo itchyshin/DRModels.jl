@@ -263,6 +263,43 @@ end
     @test convergence_status(fitnan(resd = 5e-5)) === :not_converged
     @test convergence_info(fitnan()).max_gradient == Inf
     @test convergence_info(fitnan()).optimizer_code == 0
+
+    # WALL-ORDER-1120: a coordinate pinned at a wall (log SD below the 1e-4 cut) is held fixed in
+    # the Newton step, so a wall fit stays :boundary; interior coordinates still count.
+    # V = 0.01 I on the mu block and 0.04 on the SD coordinate (theta[3]); g = (0, 0, 50).
+    fitwall(c; resd = 5e-5) = DRModels._withnll(_cs_fit(loglik = -100.0, resd = resd),
+                                               th -> 100.0 + c * th[3] + (th[2] - 0.2)^2)
+    @test DRModels._twin_wall_pinned_coords(fitwall(50.0)) == [3]
+    @test convergence_status(fitwall(50.0)) === :boundary            # pinned coordinate, big step
+    @test convergence_info(fitwall(50.0)).max_gradient < 1e-6        # only the interior ones count
+    # the same gradient on an interior SD (1e-2, above the cut) is :not_converged, not :boundary
+    @test isempty(DRModels._twin_wall_pinned_coords(fitwall(50.0; resd = 1e-2)))
+    @test convergence_status(fitwall(50.0; resd = 1e-2)) === :not_converged
+    # an interior mu coordinate with a big step on a fit that also has a pinned SD: :not_converged
+    @test convergence_status(fitgb(50.0)) === :not_converged
+    # a non-finite gradient is not excused by the wall
+    @test convergence_status(fitnan(resd = 5e-5)) === :not_converged
+    nan3 = DRModels._withnll(_cs_fit(loglik = -100.0, resd = 5e-5), th -> Inf * th[3])
+    @test convergence_status(nan3) === :not_converged
+    @test convergence_info(nan3).max_gradient == Inf
+    # |rho12| edge: the :rho12 block is pinned
+    rho_fit(c; rho = 0.99) = begin
+        f = DrmFit(Poisson(), Pair{Symbol,UnitRange{Int}}[:mu => 1:2, :rho12 => 3:3],
+                   Pair{Symbol,Vector{String}}[:mu => ["(Intercept)", "x"], :rho12 => ["(Intercept)"]],
+                   [0.1, 0.2, 2.0], Matrix(0.01I, 3, 3), -100.0, 10, true,
+                   Dict(:mu => fill(1.0, 10)), Dict(:mu => Float64.(0:9)),
+                   Dict{Symbol,Vector{Float64}}(:rho12 => [rho]))
+        DRModels._withnll(f, th -> 100.0 + c * th[3] + (th[2] - 0.2)^2)
+    end
+    @test convergence_status(rho_fit(50.0)) === :boundary
+    @test convergence_status(rho_fit(50.0; rho = 0.5)) === :not_converged
+    # the independent-term log-SD search wall: optimiser flag false, gradient not scored
+    wallfit(c; wall = true) = DRModels._withnll(
+        _cs_fit(loglik = -100.0, converged = false,
+                scales = wall ? Dict(:cond_logsd_wall => [-30.0]) : Dict{Symbol,Vector{Float64}}()),
+        th -> 100.0 + c * th[1] + (th[2] - 0.2)^2)
+    @test convergence_status(wallfit(50.0)) === :boundary
+    @test convergence_status(wallfit(50.0; wall = false)) === :not_converged   # no wall: optimiser gate
 end
 
 @testset "REML fit: stored ML objective is not a stationarity oracle (b_sxz regression)" begin

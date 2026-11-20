@@ -124,7 +124,10 @@ end
 #   :not_converged  the optimiser did not finish, the log-likelihood is not finite (or is
 #                   the failed-objective sentinel), or the Newton step in SE units exceeds
 #                   1e-3, or the gradient is non-finite (tested BEFORE the boundary rule,
-#                   SHINICHI-0724-1120 item 1, as drmTMB #1781)
+#                   SHINICHI-0724-1120 item 1, as drmTMB #1781. WALL-ORDER-1120: coordinates
+#                   pinned at a wall (SD < 1e-4, |rho12| > 0.98) are held fixed in the Newton
+#                   step, and a fit stopped by the independent-term log-SD search wall is
+#                   :boundary without a gradient score, so wall fits stay :boundary)
 #   :boundary       SD ~ 0, |cor| ~ 1, a Heywood case (a Gaussian residual scale collapsed
 #                   onto the data) or a parameter at the end of its search interval. Tested
 #                   BEFORE the Hessian, so a boundary fit never reads :degenerate
@@ -141,6 +144,25 @@ end
 # It is unit-free in the response, in the sample size and in the parameter scale: it says how
 # far, in standard errors, one more Newton step would still move any parameter.
 const _TWIN_NEWTON_STEP_TOL = 1e-3
+
+# WALL-ORDER-1120: coordinates of `fit.theta` that sit at a wall or edge, so a non-zero
+# gradient there is expected and is not evidence of an unfinished optimiser. (The independent-term
+# log-SD wall, `:cond_logsd_wall`, is different: the search stopped at a 1e17 guard, the optimiser
+# flag is false and the free coordinates are not stationary either, so the gradient is not scored
+# at all in `_convergence_report`.)
+#   - a `:resd` log SD below the 1e-4 SD cut, and the sparse-Laplace floor coordinates;
+#   - the `:rho12` block when any finite |rho12| exceeds the 0.98 cut.
+function _twin_wall_pinned_coords(fit::DrmFit)
+    pinned = Int[]
+    n = length(fit.theta)
+    has(b) = any(p -> first(p) === b, fit.blocks)
+    has(:resd) && append!(pinned, [k for k in _block_range(fit, :resd)
+                                   if k <= n && exp(fit.theta[k]) < _TWIN_RE_SD_BOUNDARY])
+    fit.uncertainty === :skipped || append!(pinned, _twin_floor_fixed_coords(fit))
+    has(:rho12) && any(r -> isfinite(r) && abs(r) > _TWIN_RHO12_BOUNDARY, _twin_rho12_values(fit)) &&
+        append!(pinned, _block_range(fit, :rho12))
+    return unique!(filter!(k -> 1 <= k <= n, pinned))
+end
 
 # The Newton step in SE units, or `(value = NaN, reason)` when it cannot be scored:
 #   :no_objective  the fit stores no objective
@@ -160,9 +182,25 @@ function _newton_step_se_units(fit::DrmFit)
         return (value = NaN, reason = :no_vcov)
     g = _check_grad_vector(fit).grad
     g === nothing && return (value = NaN, reason = :no_gradient)
-    step = Symmetric(Matrix{Float64}(V), :L) * g
+    Vs = Symmetric(Matrix{Float64}(V), :L)
     se = _twin_standard_errors(V)
-    val = all(isfinite, se) && all(>(0), se) ? maximum(abs.(step) ./ se) : NaN
+    # WALL-ORDER-1120: a coordinate pinned at a wall has a flat, non-zero gradient by
+    # construction, so it is held fixed: the Newton step is taken over the free coordinates
+    # only, with their conditional covariance `V_ff - V_fp V_pp^-1 V_pf` (= `H_ff^-1`).
+    # With nothing pinned this is the plain `V g`, and interior coordinates still count.
+    pinned = _twin_wall_pinned_coords(fit)
+    free = setdiff(collect(eachindex(g)), pinned)
+    val = if !(all(isfinite, se) && all(>(0), se))
+        NaN
+    elseif isempty(pinned)
+        maximum(abs.(Vs * g) ./ se)
+    elseif isempty(free)
+        0.0
+    else
+        Vm = Matrix{Float64}(Vs)
+        Vff = Vm[free, free] - Vm[free, pinned] * (Vm[pinned, pinned] \ Vm[pinned, free])
+        maximum(abs.(Symmetric(Vff) * g[free]) ./ se[free])
+    end
     return isfinite(val) ? (value = val, reason = :scored) : (value = NaN, reason = :no_gradient)
 end
 
@@ -241,7 +279,9 @@ function _convergence_report(fit::DrmFit)
                 max_gradient = NaN, optimizer_code = code, optimizer_message = msg)
     end
     # Order (SHINICHI-0724-1120 item 1, as drmTMB #1781): gradient first, then boundary.
-    grad = _newton_step_for_rule(fit)
+    # WALL-ORDER-1120: a fit stopped by the log-SD search wall is a boundary fit by the wall flag; the
+    # search ended at a guard, not at a stationary point, so its gradient is not scored.
+    grad = wall ? NaN : _newton_step_for_rule(fit)
     if (isfinite(grad) && grad > _TWIN_NEWTON_STEP_TOL) || grad == Inf
         return (status = :not_converged, boundary_params = bparams, pd_hessian = pd,
                 max_gradient = grad, optimizer_code = code, optimizer_message = msg)
