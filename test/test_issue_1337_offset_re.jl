@@ -33,7 +33,7 @@ using DRModels, Random, Test
 
     # Gaussian: same likelihood as fitting the shifted response without the offset term.
     f0 = drm(bf(@formula(y0 ~ x1 + (1 | g)), @formula(sigma ~ 1)), Gaussian();
-             data = merge(d, (; y0 = d.yg .- d.off)), se = false)
+             data = merge(d, (; y0 = d.yg .- d.off)), control = DRMControl(se = false))
     @test loglik(fg) ≈ loglik(f0) rtol = 1e-8
     @test coef(fg, :mu) ≈ coef(f0, :mu) rtol = 1e-8
     @test exp(coef(fg, :resd)[1]) ≈ exp(coef(f0, :resd)[1]) rtol = 1e-6

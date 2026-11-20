@@ -1217,19 +1217,18 @@ them.
         for (p, r) in f.forms
             p === :mu && (mu_rhs = r)
         end
-        # Refuse bare `se = …` on the canonical `:y` response without an offset (wave-6 (d));
-        # other response symbols (e.g. shifted-response comparisons in #1337) strip `se` below.
-        f.response === :y && (mu_rhs === nothing || !_has_offset_term(mu_rhs)) &&
-            _refuse_unsupported_kwargs((:se,), f, fam, accepted)
+        # Refuse user `se = …` off the offset shift path (wave-6 (d)); response name is irrelevant.
+        # On `offset(...)` fits, `se` is stripped below and applied via `_withuncertainty` (#1337).
+        on_offset_path = mu_rhs !== nothing && _has_offset_term(mu_rhs)
+        !on_offset_path && _refuse_unsupported_kwargs((:se,), f, fam, accepted)
     end
     # #938: `offset(z)` on the identity-link mean is a known additive constant, so
     # the fit of `y ~ x + offset(z)` is exactly the fit of `y - z ~ x` (the same
     # likelihood and the same estimates). Fit the shifted response, then put the
     # offset back into the fitted means and the observed response.
     f_fit, kw_fit, off = _gaussian_offset_shift(f, fam, kwargs)
-    # On the offset path (and non-`:y` response comparisons) `_drm_gaussian_fit` does not take
-    # `se`; strip it for those fits. Bare `se` on response `:y` was refused above.
-    strip_se = haskey(kwargs, :se) && (off !== nothing || f.response !== :y)
+    # `_drm_gaussian_fit` does not take `se`; strip only on the offset path (refusal above otherwise).
+    strip_se = haskey(kwargs, :se) && off !== nothing
     kw_inner = strip_se ? (; (p for p in pairs(kw_fit) if p.first !== :se)...) : kw_fit
     # The residual-variance / structured-variance BOUNDARY advisory (#724, #697) is
     # attached here, once, rather than in each of the fitter's return paths.
