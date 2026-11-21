@@ -56,11 +56,14 @@ using LinearAlgebra
     @test res.status == "bootstrap"
 end
 
-# Boundary companion: the same design with NO h-level effect has a true h variance of
-# zero, so the fitted variance collapses and the shared rule reports the non-converged
-# `:degenerate` status, not converged. Status is asserted, nothing is loosened.
+# Collapse companion: the same design with NO h-level effect has a true h variance of
+# zero. For this seed the fitted h SD runs to the search floor (~1e-9, below the 1e-4
+# boundary cut) and the Hessian is singular there: vcov is not positive definite and the
+# SEs are ~1e7, so twin rules 3 and 5 report `:degenerate` before the boundary rule 8 can
+# report `:boundary`. (Not every seed collapses: seed 7 leaves an interior h SD of 0.108.)
+# Status is asserted, nothing is loosened.
 @testset "#1050 cluster B: collapsed h variance reports degenerate, not converged" begin
-    rng = MersenneTwister(7)
+    rng = MersenneTwister(1)
     G = 40; m = 6; n = G * m
     id = repeat(1:G, inner = m)
     x0 = randn(rng, n)
@@ -69,6 +72,7 @@ end
         exp.(-0.3 .+ 0.1 .* x0) .* randn(rng, n)
     f = drm(bf(@formula(y ~ x + (1 | g) + (1 | h)), @formula(sigma ~ x)), Gaussian();
             data = (; y, x = x0, g = id, h))
+    @test minimum(values(re_sd(f))) < 1e-4   # the h variance really collapsed
     @test !is_converged(f)
     @test convergence_status(f) === :degenerate
 end
