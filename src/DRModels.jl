@@ -205,7 +205,7 @@ export @formula, poly, bf, drm_formula, drm, Gaussian, Student, SkewNormal, Pois
        drm_figure, plot_profile, plot_parameter_surface, plot_corpairs,
        gaussian_locscale_phylo_sds,
        profile_sigma_a,
-       is_converged, converged, convergence_status, niterations, deviance, dof_residual,
+       is_converged, converged, convergence_status, convergence_info, niterations, deviance, dof_residual,
        lrtest, anova, aicc, weights, update,
        chibar_pvalue, lrt_boundary,
        bias_correct,

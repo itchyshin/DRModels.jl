@@ -113,7 +113,7 @@ end
     @test bad.converged && !is_converged(bad)
     txt = sprint(show, MIME"text/plain"(), bad)
     @test occursin("converged = false", txt)
-    @test occursin("degenerate", txt)
+    @test occursin("boundary", txt)   # Heywood: boundary before the Hessian (SHINICHI-1753-1118)
     rep = check_drm(bad)
     @test rep.converged == false
     @test rep.ok == false

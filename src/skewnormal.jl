@@ -317,7 +317,7 @@ const _SKEWNORMAL_RESTART_GAIN = 1e-5
 
 # Interior optimum: rules 3 to 5 of `convergence_status` (a positive definite Hessian, finite
 # standard errors, none inflated out of proportion).
-function _skewnormal_interior_ok(nll, θ)
+function _skewnormal_interior_ok(nll, θ, se_scale = 1.0)
     H = try
         ForwardDiff.hessian(nll, θ)
     catch e
@@ -329,13 +329,13 @@ function _skewnormal_interior_ok(nll, θ)
     issuccess(F) || return false
     V = inv(F)
     se = _twin_standard_errors(V)
-    return _twin_vcov_positive_definite(V) && all(isfinite, se) && !_twin_inflated_se(se)
+    return _twin_vcov_positive_definite(V) && all(isfinite, se) && !_twin_inflated_se(se, se_scale)
 end
 
 # Returns (result, winner, gain, flipped): the Optim result to keep, which start won (0 = the
 # default fit, k = k-th of `_SKEWNORMAL_RESTARTS`), the objective gain of the winner over the
 # default fit (plain `nll` calls), and whether the converged status changed.
-function _skewnormal_slant_restarts(nll, res0, θ0, iα, g_tol)
+function _skewnormal_slant_restarts(nll, res0, θ0, iα, g_tol; se_scale = 1.0)
     best, winner = res0, 0
     f0 = nll(Optim.minimizer(res0))
     f_best = isfinite(f0) ? f0 : Inf
@@ -359,11 +359,11 @@ function _skewnormal_slant_restarts(nll, res0, θ0, iα, g_tol)
         (drm_optim_converged(r) && all(isfinite, θr)) || continue
         f = nll(θr)
         f_best - f > _SKEWNORMAL_RESTART_GAIN || continue     # also false for NaN
-        _skewnormal_interior_ok(nll, θr) || continue
+        _skewnormal_interior_ok(nll, θr, se_scale) || continue
         best, f_best, winner = r, f, k
     end
     winner == 0 && return (res0, 0, 0.0, false)
-    first_ok = drm_optim_converged(res0) && _skewnormal_interior_ok(nll, Optim.minimizer(res0))
+    first_ok = drm_optim_converged(res0) && _skewnormal_interior_ok(nll, Optim.minimizer(res0), se_scale)
     return (best, winner, f0 - f_best, !first_ok)
 end
 
@@ -413,7 +413,10 @@ function _fit_skewnormal(fam::SkewNormal, y, Xμ, Xσ, Xν, nmμ, nmσ, nmν, g_
     restart_info = nothing
     scope = _active_control_scope()
     if scope === nothing || !_ctl_optim_requested(scope.control)
-        res, winner, gain, flipped = _skewnormal_slant_restarts(nll, res, θ0, pμ + pσ + 1, g_tol)
+        # unit-free inflated-SE rule (drmTMB #1781): the identity-link mu coefficients are scaled by sd(y)
+        yf = filter(isfinite, y); sy = length(yf) > 1 ? std(yf) : 1.0
+        se_scale = vcat(fill(isfinite(sy) && sy > 0 ? sy : 1.0, pμ), ones(pσ + pν))
+        res, winner, gain, flipped = _skewnormal_slant_restarts(nll, res, θ0, pμ + pσ + 1, g_tol; se_scale)
         restart_info = (winner = winner, gain = gain, flipped = flipped)
     end
     θ̂ = Optim.minimizer(res); V = _ctl_se(() -> _vcov_from_hessian(ForwardDiff.hessian(nll, θ̂)), θ̂)
