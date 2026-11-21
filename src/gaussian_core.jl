@@ -3181,7 +3181,10 @@ at the MLE — drmTMB's `sigma()`.
   (`exp.(Xσ·β̂_σ)` on the response scale; for meta-analysis `√(vᵢ + τ²)`).
 - Bivariate co-scale: `Dict(:sigma1 => …, :sigma2 => …)`.
 - Families with no separately fitted scale stored (e.g. Poisson, whose variance
-  is fixed by the mean): returns an empty `Dict` — there is no free dispersion.
+  is fixed by the mean, and Binomial and CumulativeLogit): returns an empty
+  `Dict` — there is no free dispersion. Per-row context stored with the fit (the
+  Binomial trials, the cumulative-logit linear predictor and cut points) is never
+  returned. Beta-binomial returns its `σ_i` vector.
 
 Random effects on sigma: the two engines store different things, and this returns what is stored.
 - Population-level (random effects set to zero), `exp.(Xσ·β̂_σ)`: the single Gaussian `sigma ~ ... + (1 | g)`
@@ -3248,8 +3251,12 @@ function _sigma_all_rows(fit::DrmFit)
     # contract is the fitted residual scale only. Every other fit returns its
     # whole scale table, as before (e.g. `:zi`, `:nu`, `:sigma1`/`:sigma2`).
     sd_route = haskey(fit.scales, :sd_group) || haskey(fit.scales, :sd)
+    # `fit.scales` also keeps per-row context that is not a scale: Binomial and
+    # Beta-binomial trials, and the cumulative-logit linear predictor and cut
+    # points. They never appear in `sigma()`.
+    context_keys = (:cond_blup_unavailable, :trials, :ordinal_eta, :ordinal_cuts)
     ks = sort!(sd_route ? [k for k in keys(fit.scales) if k in (:sigma, :sigma1, :sigma2)] :
-                          [k for k in keys(fit.scales) if !_sigma_internal_key(k)])
+                          [k for k in keys(fit.scales) if !_sigma_internal_key(k) && !(k in context_keys)])
     has_context = length(ks) != length(fit.scales)
     isempty(ks) && return Dict{Symbol,Vector{Float64}}()
     (length(ks) == 1 && ks[1] === :sigma) && return fit.scales[:sigma]
