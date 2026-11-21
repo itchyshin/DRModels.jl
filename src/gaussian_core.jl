@@ -4137,7 +4137,8 @@ function _fit_for_simulate_newdata(fit::DrmFit, newdata)
     for k in keys(fit.scales)
         haskey(scales, k) && continue
         startswith(String(k), "cond_") && continue   # conditional-mode record: population-level newdata has none
-        _sigma_internal_key(k) && continue           # fixed spatial range and other non-scale bookkeeping
+        # `:trials` is hidden from `sigma()` but the Binomial draw needs it; it is rebuilt for the new rows below.
+        k !== :trials && _sigma_internal_key(k) && continue   # fixed spatial range and other non-scale bookkeeping
         _simulate_newdata_bookkeeping_key(k) && continue   # per-group / training-row records; the draw never reads them
         if k === :beta_mu
             haskey(pp, :mu) || throw(ArgumentError("simulate: ZeroOneBeta `newdata` needs a :mu prediction"))
