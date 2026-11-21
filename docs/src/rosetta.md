@@ -212,8 +212,8 @@ distributional parameters:
   values under the conditional default. `residuals(fit)` is `y - fitted(fit)`
   and takes the same `re` keyword. `residuals(fit; type = :quantile)` and
   `sigma(fit)` also return the used rows only, so `fitted`, `residuals` and
-  `sigma` all have length `nobs(fit)` (`simulate(fit)` still returns one value
-  per input row). drmTMB has a second missing-data policy that returns full-length
+  `sigma` all have length `nobs(fit)`, and so does `simulate(fit)` (#1352: rows
+  dropped for a missing response are not simulated). drmTMB has a second missing-data policy that returns full-length
   values with `NA` for the unused rows; DRModels.jl matches the default (drop)
   policy only, and the second one is a planned follow-up.
   For LogNormal and zero-inflated, hurdle or
