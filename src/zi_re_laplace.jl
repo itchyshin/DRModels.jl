@@ -222,12 +222,14 @@ end
 # least squares on log(y + 0.5), log sigma = log(0.5), log(1), log(0.3), zero-mass intercept
 # 0, -1, 1, random-effect log SD log(0.3). Refits run only on default starts.
 # A refit replaces the first fit only if its log-likelihood is higher (or equal and it converged).
-# The converged flag is never changed: a fit that no start rescues stays `converged = false`.
+# If restarts find no valid candidate, `converged` is cleared so a spike with non-PD vcov is not
+# returned as converged.
 # Zero-inflated Poisson with `zi ~ x` on `(1 | g)` can converge at a worse mode (DRModels.jl#1371);
-# one interior probe can expose that plateau so restarts still run when the default fit is `ok`.
+# restarts run whenever the default fit fails the validity gate (including converged defaults with
+# non-PD vcov); an interior probe can also expose a higher plateau on multi-covariate `zi`.
 # Higher log-likelihood restart candidates are accepted only when they pass a validity check
-# (converged, finite PD vcov, log-likelihood reproduced from θ); spurious inner-Laplace modes are
-# rejected even when their reported logLik is much larger (issue #1371).
+# (converged, finite PD vcov, log-likelihood reproduced from θ via a cold inner solve); spurious
+# inner-Laplace modes are rejected even when their reported logLik is much larger (issue #1371).
 const _ZI_RE_RESTART_STARTS = ((0.5, 0.0), (1.0, -1.0), (0.3, 1.0))   # (sigma, zero-mass intercept)
 const _ZI_RE_BOUNDARY_ETA = 15.0
 const _ZI_RE_LOGSD_STARTS = (log(0.15), log(0.2), log(0.22), log(0.25), log(0.3), log(0.35), log(0.5))
@@ -238,9 +240,14 @@ const _ZI_RE_ZIP2ZI_STARTS = (
 )
 const _ZI_RE_RESTART_LL_RTOL = 1e-6
 
+function _zi_re_nll_cold(fit::DrmFit)
+    n = fit.nll
+    return n isa _IndepReNll ? n.cold : n
+end
+
 function _zi_re_loglik_at_theta(fit::DrmFit)
     fit.nll === nothing && return fit.loglik
-    nllv = fit.nll(fit.theta)
+    nllv = _zi_re_nll_cold(fit)(fit.theta)
     isfinite(nllv) || return -Inf
     return -nllv
 end
@@ -316,7 +323,7 @@ function _zi_re_restarts(fit::DrmFit, run, run_sharp, kind::Val, fam, y, Xμ, X�
     ok(ft) = ft.converged && isfinite(ft.loglik) && ft.loglik > -1e17 && !at_boundary(ft)
     valid(ft) = _zi_re_restart_valid(ft, ok)
     βμ = Xμ \ log.(Float64.(y) .+ 0.5)
-    needs = !ok(fit) || (pν >= 2 && kind isa Val{:zip} && _zi_re_zip2_plateau_suspect(fit, run, pμ, pσ, pν, βμ))
+    needs = !valid(fit) || (pν >= 2 && kind isa Val{:zip} && _zi_re_zip2_plateau_suspect(fit, run, pμ, pσ, pν, βμ))
     needs || return fit
     yv = _indep_response(kind, y)
     θ_fe = _indep_fixed_start(kind, fam, yv, Xμ, Xσ, Xν, nmμ, String[], nmν, g_tol)
@@ -356,6 +363,13 @@ function _zi_re_restarts(fit::DrmFit, run, run_sharp, kind::Val, fam, y, Xμ, X�
         best = _zi_re_pick_best(best, cand, valid)
     end
     kind isa Val{:zip} && (best = _zi_re_refine_zip!(best, run_work, pμ, pσ, pν, valid))
+    if best.converged && !valid(best)
+        best = DrmFit(best.family, best.blocks, best.coefnames, best.theta,
+            best.vcov, best.loglik, best.nobs, false, best.means, best.obs, best.scales, best.formula,
+            best.nll, best.nllgrad, best.ranef, best.estim_method, best.reml_loglik, best.ml_loglik,
+            best.marginal, best.phylo_penalty, best.penalty, best.iterations, best.phylo_scale,
+            best.uncertainty, best.geometry)
+    end
     return best
 end
 

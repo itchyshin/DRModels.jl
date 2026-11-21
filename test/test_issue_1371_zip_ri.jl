@@ -1,5 +1,5 @@
-# DRModels.jl#1371 — zero-inflated Poisson `y ~ x + (1 | g)` with `zi ~ x`: default start settles at
-# logLik ≈ -90.422 with `converged = true` (verified optimum; higher reported values are spurious modes).
+# DRModels.jl#1371 — zero-inflated Poisson `y ~ x + (1 | g)` with `zi ~ x`: on Julia 1.10 the default
+# fit fails (~-1e18); interior restarts reach logLik ≈ -90.422 with `converged = true` (verified optimum).
 using DRModels, Test, TOML
 
 const _I1371_REF = joinpath(@__DIR__, "fixtures", "issue_1371_zip_ri", "ref.toml")
