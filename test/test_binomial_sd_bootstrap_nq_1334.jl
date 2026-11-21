@@ -26,7 +26,7 @@ import Distributions
         @formula(y ~ x + (1 + x | g)),
         @formula(sd(g, coef(x)) ~ z1),
     )
-    fit = DRModels._drm_binomial_sd_regression(slope_only, Binomial(); data, nq = 9)
+    fit = DRModels._drm_binomial_sd_regression(slope_only, DRModels.Binomial(); data, nq = 9)
     @test fit.converged
     @test !haskey(fit.scales, :sd_group)
     @test haskey(fit.scales, :aghq_nodes)
