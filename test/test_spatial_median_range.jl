@@ -6,16 +6,16 @@
 using DRModels
 using Test, DelimitedFiles, LinearAlgebra, Statistics
 
-const _SMR_DIR = joinpath(@__DIR__, "fixtures", "spatial_median_range")
+const _SMRANGE_DIR = joinpath(@__DIR__, "fixtures", "spatial_median_range")
 
 function _smr_load()
-    m, h = readdlm(joinpath(_SMR_DIR, "data.csv"), ','; header = true)
+    m, h = readdlm(joinpath(_SMRANGE_DIR, "data.csv"), ','; header = true)
     col(name) = m[:, findfirst(==(name), vec(h))]
     data = (; y = Float64.(col("y")), s = Int.(col("s")), fl = Int.(col("fl")),
             x = Float64.(col("x")), g = String.(col("g")))
-    cm = readdlm(joinpath(_SMR_DIR, "coords.csv"), ','; skipstart = 1)
+    cm = readdlm(joinpath(_SMRANGE_DIR, "coords.csv"), ','; skipstart = 1)
     coords = Dict(String(cm[i, 1]) => [Float64(cm[i, 2]), Float64(cm[i, 3])] for i in 1:size(cm, 1))
-    rm = readdlm(joinpath(_SMR_DIR, "reference.csv"), ','; skipstart = 1)
+    rm = readdlm(joinpath(_SMRANGE_DIR, "reference.csv"), ','; skipstart = 1)
     ref = Dict{String,Dict{String,Float64}}()
     for i in 1:size(rm, 1)
         d = get!(ref, String(rm[i, 1]), Dict{String,Float64}())

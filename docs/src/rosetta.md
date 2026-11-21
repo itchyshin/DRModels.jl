@@ -125,7 +125,7 @@ fit = drm(
 | build a covariate grid for prediction | `prediction_grid(reference; predictor = values, …)` |
 | `simulate(fit)` (fresh random effects, `re.form = NA`) | `simulate(fit; data)` (fresh random effects, `re = :marginal`; `re = :zero` sets them to zero; random-effect fits need `data`, except temporal fits can simulate their full marginal chain without it) |
 | `summary(fit)` | `summary(fit)` (prints the Wald coefficient table) |
-| `weights(fit)` | `weights(fit)`: the prior weights from `drm(...; weights = w)`, or `nothing` (fixed-effect ML routes, Gaussian or Poisson with one `(1 | g)`, Gaussian `meta_V`, and the residual bivariate Gaussian; other routes refuse `weights =`) |
+| `weights(fit)` | `weights(fit)`: the prior weights from `drm(...; weights = w)`, or `nothing` (fixed-effect ML routes, Gaussian or Poisson with one `(1 | g)`, Gaussian `meta_V`, the residual bivariate Gaussian, and the bivariate Gaussian with `(1 | p | g)`; other routes refuse `weights =`) |
 | `drm_control(maxit =, start =, multi_start =, se =)` | `control = DRMControl(maxit =, start =, multi_start =, se =)`; `maxit` / `start` / `multi_start` on fixed-effect routes, `se = false` on every route (`control_info(fit)` reports what it did) |
 | `obj$gr(opt$par)` / `sdreport()$cov.fixed` | `gradient(fit)` / `hessian(fit)` (negative log-likelihood, `coef(fit)` order and scale) |
 | `family(fit)` | `family(fit)` |
@@ -202,7 +202,10 @@ distributional parameters:
   Poisson, zero-inflated NB2 and zero-truncated NB2 fits with one `(1 | g)` and the
   `CumulativeLogit` fit with `(1 | g) + (0 + x | g)`: `fitted(fit)` is
   `(1 - zi) * mu`, `mu / (1 - P(0))` or the expected category score, with the modes
-  in `mu` or in the linear predictor, as drmTMB's `fitted()`. A route that does not keep
+  in `mu` or in the linear predictor, as drmTMB's `fitted()`. So does the bivariate Gaussian
+  fit with `(1 | p | g)` in `mu1` and `mu2`: the group effects are the exact BLUPs, and
+  `fitted(fit)` returns the two response means (a `Dict` with keys `:mu1` and `:mu2`;
+  drmTMB returns an n x 2 matrix) with them added. A route that does not keep
   the modes needed for the conditional value (for example a `relmat` or `animal` count
   fit, `ZeroOneBeta` with a structured random effect, bivariate fits with random effects,
   a random effect on `sigma` when the mean depends on `sigma` (except the `LogNormal`
@@ -227,7 +230,8 @@ distributional parameters:
   response missing by default (drmTMB `miss_control(response = "drop")`, silent;
   DRModels.jl warns with the count). `missing = miss_control(response = "include")`
   keeps partly observed rows and fits the marginal likelihood of the observed
-  response in both. Before this default was aligned, DRModels.jl kept those rows
+  response in both, also on the `(1 | p | g)` random-effect route (with `method = :REML` only DRModels.jl
+  accepts it; drmTMB refuses). Before this default was aligned, DRModels.jl kept those rows
   unasked and its logLik differed from drmTMB's by 15 to 30 units on the same data.
 
 drmTMB's exact R spelling for per-parameter prediction is not asserted here.

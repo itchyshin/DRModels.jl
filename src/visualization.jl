@@ -37,6 +37,7 @@ function profile_curve(
 )
     _is_fixed_prior_fit(fit) && fit.estim_method === :MAP && throw(ArgumentError("profile_curve: likelihood profiles are not qualified for $(_prior_kind_label(fit)) MAP fits"))
     level = _validate_ci_level(level; what="profile_curve")
+    _refuse_reml_profile_biv_re(fit, "profile_curve")
     fit.nll === nothing && throw(
         ArgumentError(
             "profile_curve requires the fitted objective; this model was not built with one",
