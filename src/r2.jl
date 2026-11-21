@@ -166,9 +166,9 @@ function _r2_marker(t)
     elseif t isa FunctionTerm
         t.f === (|) && return "a random effect"
         t.f === meta_V && return "`meta_V(...)` known sampling variances"
-        for (fn, nm) in ((phylo, "phylo"), (relmat, "relmat"), (animal, "animal"),
-                         (spatial, "spatial"), (temporal, "temporal"))
-            t.f === fn && return "a `$nm(...)` term"
+        if _is_structured_or_temporal_marker(t)
+            nm = _STRUCTURED_MARKER_NAMES[t.f]
+            return "a `$nm(...)` term"
         end
         for a in t.args
             found = _r2_marker(a)

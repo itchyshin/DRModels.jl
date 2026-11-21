@@ -731,11 +731,16 @@ function _split_bivariate_q4_rhs(rhs, param::Symbol)
                 "drmTMB fits it (`drmTMB(bf(mu1 = y1 ~ x + (1|p|g), mu2 = y2 ~ x + (1|p|g), ...), family = biv_gaussian())`)."))
         elseif t isa FunctionTerm && t.f === meta_V
             error("bivariate q=4 structured fits do not support `meta_V` markers")
-        elseif t isa FunctionTerm && (t.f === relmat || t.f === animal || t.f === phylo || t.f === spatial)
+        elseif t isa FunctionTerm && _is_structured_or_temporal_marker(t)
             structured === nothing ||
                 error("`$param` contains multiple structured markers; the q=4 front end accepts exactly one structured intercept marker per predictor")
-            grp, tag = _q4_marker_group(t, param)
-            structured = (_structured_marker_kind(t), grp, tag)
+            if t.f === temporal
+                tt = _parse_temporal_term(t)
+                structured = (:temporal, tt.group, nothing)
+            else
+                grp, tag = _q4_marker_group(t, param)
+                structured = (_structured_marker_kind(t), grp, tag)
+            end
         else
             push!(fixed, t)
         end
@@ -773,14 +778,6 @@ function _q4_marker_group(t, param::Symbol)
     (lhs isa ConstantTerm && lhs.n == 1) ||
         error("`$param` uses `$kind`, but the bivariate q=4 front end supports only intercept markers (`$kind(1 | group)`)")
     return inner.args[2].sym, nothing
-end
-
-function _structured_marker_kind(t)
-    t.f === relmat && return :relmat
-    t.f === animal && return :animal
-    t.f === phylo && return :phylo
-    t.f === spatial && return :spatial
-    error("unsupported structured marker")
 end
 
 # Reorder the ML driver's retained coordinates instead of re-factorizing Λ:
