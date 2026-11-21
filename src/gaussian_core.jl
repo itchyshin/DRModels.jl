@@ -4141,7 +4141,8 @@ function _fit_for_simulate_newdata(fit::DrmFit, newdata)
     end
     for k in keys(fit.scales)
         haskey(scales, k) && continue
-        _scales_bookkeeping_key(k) && continue   # per-group / training-row records; population newdata has none
+        # `:trials` is bookkeeping for `sigma()` and the bridge, but the Binomial draw needs it; it is rebuilt for the new rows below.
+        k !== :trials && _scales_bookkeeping_key(k) && continue   # per-group / training-row records; population newdata has none
         if k === :beta_mu
             haskey(pp, :mu) || throw(ArgumentError("simulate: ZeroOneBeta `newdata` needs a :mu prediction"))
             scales[k] = pp[:mu]
