@@ -1249,7 +1249,15 @@ function _fit_correlated_ranef_gaussian(fam::Gaussian, y, Xμ, Xσ, gidx, G, xs,
         θ[pμ+pσ+3] = Σ21 / L11
         θ
     end
-    V = _vcov_from_hessian(ForwardDiff.hessian(nll, θ̂))
+    H = ForwardDiff.hessian(nll, θ̂)
+    # Unit-free stationarity (DRModels.jl#1050, as PR #1044): not the iteration cap,
+    # and the Newton step in SE units, not `g_converged` (absolute 1e-8), which a
+    # rescaled predictor trips on the same stationary fit.
+    converged = !Optim.iteration_limit_reached(res) &&
+        _unitfree_converged(H, ForwardDiff.gradient(nll, θ̂))
+    # `V` is assigned after the gradient call: the objective closure assigns an
+    # outer `V`, which a Dual-valued call would otherwise leave in the fit.
+    V = _vcov_from_hessian(H)
     blocks = [:mu => 1:pμ, :sigma => (pμ+1):(pμ+pσ), :recov => (pμ+pσ+1):(pμ+pσ+3)]
     names = [:mu => nmμ, :sigma => nmσ, :recov => ["$(grp):L11", "$(grp):L22", "$(grp):L21"]]
     means = Dict(:mu => Xμ * θ̂[1:pμ]); obs = Dict(:mu => Vector{Float64}(y))
@@ -1265,7 +1273,7 @@ function _fit_correlated_ranef_gaussian(fam::Gaussian, y, Xμ, Xσ, gidx, G, xs,
     end
     re = Dict(Symbol(grp) => blup)
     _record_cond_fit!(scales, blup[gidx, 1] .+ xs .* blup[gidx, 2])   # fitted-row modes for `fitted(fit)`
-    fit = _withranef(_withnll(DrmFit(fam, blocks, names, θ̂, V, -nll(θ̂), n, drm_optim_converged(res), means, obs, scales), nll_ml), re)
+    fit = _withranef(_withnll(DrmFit(fam, blocks, names, θ̂, V, -nll(θ̂), n, converged, means, obs, scales), nll_ml), re)
     reml && return _withreml(fit, -nll(θ̂), -nll_ml(θ̂))
     return fit
 end
@@ -1557,10 +1565,10 @@ function _fit_multi_ranef_gaussian(fam::Gaussian, y, Xμ, Xσ, comps, nmμ, nmσ
     # #977: above `_MULTI_RE_DENSE_HESSIAN_MAXQ` RE columns the Dual-number dense
     # QR is O((n + q) q²) per Hessian column, so the Hessian is instead a central
     # difference of the exact sparse analytic gradient (same guards below).
+    pen = oftype(sum(θ̂), 1e18)
+    Hθ = q <= _MULTI_RE_DENSE_HESSIAN_MAXQ ? ForwardDiff.hessian(nll_opt, θ̂) :
+         _multi_re_fd_hessian(grad!, θ̂)
     V = let
-        pen = oftype(sum(θ̂), 1e18)
-        Hθ = q <= _MULTI_RE_DENSE_HESSIAN_MAXQ ? ForwardDiff.hessian(nll_opt, θ̂) :
-             _multi_re_fd_hessian(grad!, θ̂)
         if nll_opt(θ̂) >= pen || !all(isfinite, Hθ) || !isposdef(Symmetric(Hθ))
             @warn "multi-RE Gaussian vcov: Hessian is not usable (near-singular " *
                   "capacitance or penalty leak); returning NaN standard errors."
@@ -1610,7 +1618,14 @@ function _fit_multi_ranef_gaussian(fam::Gaussian, y, Xμ, Xσ, comps, nmμ, nmσ
         bscaled = _multi_re_factor(des.Z * Diagonal(σcol), exp.(-ησ), r).bhat
         _record_cond_fit!(scales, des.Z * (σcol .* bscaled))
     end
-    converged = drm_optim_converged(res)
+    # Unit-free stationarity (DRModels.jl#1050, as PR #1044): not the iteration cap,
+    # and the Newton step in SE units, not `g_converged` (absolute 1e-8). The
+    # gradient is the analytic one the optimiser used (`grad!` is the ML nll), or
+    # the AD gradient of the REML objective. A penalty leak or unusable Hessian
+    # is not converged (V is NaN there).
+    score_opt = reml ? ForwardDiff.gradient(nll_opt, θ̂) : (g_opt = zeros(length(θ̂)); grad!(g_opt, θ̂); g_opt)
+    converged = !Optim.iteration_limit_reached(res) && nll_opt(θ̂) < pen &&
+        _unitfree_converged(Hθ, score_opt)
     if penalized && !isempty(sd_priors)
         score = zeros(length(θ̂)); grad!(score, θ̂)
         converged = _multi_sd_prior_converged(converged, score, θ̂, sd_priors)
@@ -1699,7 +1714,16 @@ function _fit_sigma_ranef_gaussian(fam::Gaussian, y, Xμ, Xσ, gidx, G, nmμ, nm
     θ0[pμ+1] = log(std(res0) + eps())
     θ0[pμ+pσ+1] = log(0.5 * std(res0) + eps())   # σ_b init
     res = Optim.optimize(obj, θ0, Optim.LBFGS(), Optim.Options(g_tol = g_tol); autodiff = :forward)
-    θ̂ = Optim.minimizer(res); V = _vcov_from_hessian(ForwardDiff.hessian(obj, θ̂))
+    θ̂ = Optim.minimizer(res)
+    H = ForwardDiff.hessian(obj, θ̂)
+    # Unit-free stationarity (DRModels.jl#1050, as PR #1044): not the iteration cap,
+    # and the Newton step in SE units, not `g_converged` (absolute 1e-8), which a
+    # rescaled predictor trips on the same stationary fit.
+    converged = !Optim.iteration_limit_reached(res) &&
+        _unitfree_converged(H, ForwardDiff.gradient(obj, θ̂))
+    # `V` is assigned after the gradient call: the objective closure assigns an
+    # outer `V`, which a Dual-valued call would otherwise leave in the fit.
+    V = _vcov_from_hessian(H)
     blocks = [:mu => 1:pμ, :sigma => (pμ+1):(pμ+pσ), :resd => (pμ+pσ+1):(pμ+pσ+1)]
     # Tag the RE-SD name with `_logsigma`: this random intercept lives on the
     # log-σ (scale) axis, so `re_sd`/`vc` surface a value that is NOT comparable to
@@ -1708,7 +1732,7 @@ function _fit_sigma_ranef_gaussian(fam::Gaussian, y, Xμ, Xσ, gidx, G, nmμ, nm
     names = [:mu => nmμ, :sigma => nmσ, :resd => ["$(grp)_logsigma"]]
     means = Dict(:mu => Xμ * θ̂[1:pμ]); obs = Dict(:mu => Vector{Float64}(y))
     scales = Dict(:sigma => exp.(Xσ * θ̂[(pμ+1):(pμ+pσ)]))   # population (b=0) σ
-    fit = _withnll(DrmFit(fam, blocks, names, θ̂, V, -obj(θ̂), n, drm_optim_converged(res), means, obs, scales), obj)
+    fit = _withnll(DrmFit(fam, blocks, names, θ̂, V, -obj(θ̂), n, converged, means, obs, scales), obj)
     laplace && return _withmarginal(fit, :Laplace)
     aghq && return _withmarginal(fit, :AGHQ)
     return fit
@@ -1987,7 +2011,15 @@ function _fit_musigma_ranef_gaussian(fam::Gaussian, y, Xμ, Xσ, gidx, G, nmμ, 
     θ0[pμ+pσ+2] = log(0.3)
     res = Optim.optimize(nll, θ0, Optim.LBFGS(), Optim.Options(g_tol = g_tol); autodiff = :forward)
     θ̂ = Optim.minimizer(res)
-    V = _vcov_from_hessian(ForwardDiff.hessian(nll, θ̂))
+    H = ForwardDiff.hessian(nll, θ̂)
+    # Unit-free stationarity (DRModels.jl#1050, as PR #1044): not the iteration cap,
+    # and the Newton step in SE units, not `g_converged` (absolute 1e-8), which a
+    # rescaled predictor trips on the same stationary fit.
+    converged = !Optim.iteration_limit_reached(res) &&
+        _unitfree_converged(H, ForwardDiff.gradient(nll, θ̂))
+    # `V` is assigned after the gradient call: the objective closure assigns an
+    # outer `V`, which a Dual-valued call would otherwise leave in the fit.
+    V = _vcov_from_hessian(H)
 
     blocks = [:mu => 1:pμ, :sigma => (pμ+1):(pμ+pσ), :resd => (pμ+pσ+1):(pμ+pσ+2)]
     # Same `_logsigma`-suffix convention as `_fit_sigma_ranef_gaussian` (#322):
@@ -2013,7 +2045,7 @@ function _fit_musigma_ranef_gaussian(fam::Gaussian, y, Xμ, Xσ, gidx, G, nmμ, 
     re = Dict(Symbol(grp) => blup_mu, Symbol("$(grp)_logsigma") => blup_sigma)
     _record_cond_fit!(scales, blup_mu[gidx])   # fitted-row mean modes for `fitted(fit)` (Gaussian mean ignores the sigma mode)
 
-    fit = _withranef(_withnll(DrmFit(fam, blocks, names, θ̂, V, -nll(θ̂), n, drm_optim_converged(res), means, obs, scales), nll), re)
+    fit = _withranef(_withnll(DrmFit(fam, blocks, names, θ̂, V, -nll(θ̂), n, converged, means, obs, scales), nll), re)
     return _withmarginal(fit, :Laplace)
 end
 
