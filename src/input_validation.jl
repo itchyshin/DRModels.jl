@@ -779,3 +779,16 @@ function drm(f::FormulaTerm, fam; kwargs...)
         "drm: `formula` must be created with `drm_formula()` or `bf()`. " *
         "Wrap your formulas, e.g. `bf(@formula(y ~ x), @formula(sigma ~ 1))`."))
 end
+
+"""R-style `x1:x2` parses as a Julia range and then fails in `modelcols` with a raw `MethodError`."""
+function _rethrow_formula_build_hint(e)
+    if e isa MethodError
+        msg = sprint(showerror, e)
+        if occursin("StepRangeLen", msg) || occursin("StepRange{", msg)
+            throw(ArgumentError(
+                "drm: Julia parses `x1:x2` as a numeric range, not an interaction. " *
+                "Use `x1 & x2` or `x1 * x2` for an interaction (drmTMB's `x1:x2` spelling)."))
+        end
+    end
+    rethrow(e)
+end
