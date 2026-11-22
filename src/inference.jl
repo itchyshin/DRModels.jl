@@ -4390,6 +4390,8 @@ function _bootstrap_result(
                 ok[b] = true
             end
         catch err
+            # A cancel is not a failed replicate: let it abort the bootstrap.
+            err isa InterruptException && rethrow()
             messages[b] = sprint(showerror, err)
             refit_error[b] = 0x01
         end
@@ -4433,6 +4435,11 @@ function _bootstrap_result(
     end
     kept = draws[ok, :]
     summary = _homtoep_bootstrap_rows(fit0, _bootstrap_summary_rows(fit0, kept, est, level))
+    # One surviving draw gives a zero-width percentile interval; report NaN
+    # limits (the status is `bootstrap_unavailable`) and keep the point estimate.
+    if used < 2
+        summary = [merge(r, (lower=NaN, upper=NaN)) for r in summary]
+    end
     boundary_params = _bootstrap_boundary_params(fit0, kept)
     failed_n = length(failure_rows)
     status = _finish_bootstrap_status(used, failed_n, boundary_params)
