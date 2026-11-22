@@ -1208,15 +1208,35 @@ them.
             "for the bivariate Gaussian route only, `bf(mu1 = …, mu2 = …, …)` with " *
             "`meta_vcov_bivariate`. For a univariate model, known diagonal sampling variances " *
             "go in the formula as `meta_V(v)`; a dense univariate `V` is not implemented yet."))
+    if haskey(kwargs, :se)
+        accepted = collect(Symbol, _accepted_kwargs(_drm_gaussian_fit, f, fam))
+        for k in (:control, :weights)
+            k in accepted || push!(accepted, k)
+        end
+        mu_rhs = nothing
+        for (p, r) in f.forms
+            p === :mu && (mu_rhs = r)
+        end
+        # Refuse user `se = …` off the offset shift path (wave-6 (d)); response name is irrelevant.
+        # On `offset(...)` fits, `se` is stripped below and applied via `_withuncertainty` (#1337).
+        on_offset_path = mu_rhs !== nothing && _has_offset_term(mu_rhs)
+        !on_offset_path && _refuse_unsupported_kwargs((:se,), f, fam, accepted)
+    end
     # #938: `offset(z)` on the identity-link mean is a known additive constant, so
     # the fit of `y ~ x + offset(z)` is exactly the fit of `y - z ~ x` (the same
     # likelihood and the same estimates). Fit the shifted response, then put the
     # offset back into the fitted means and the observed response.
     f_fit, kw_fit, off = _gaussian_offset_shift(f, fam, kwargs)
+    # `_drm_gaussian_fit` does not take `se`; strip only on the offset path (refusal above otherwise).
+    strip_se = haskey(kwargs, :se) && off !== nothing
+    kw_inner = strip_se ? (; (p for p in pairs(kw_fit) if p.first !== :se)...) : kw_fit
     # The residual-variance / structured-variance BOUNDARY advisory (#724, #697) is
     # attached here, once, rather than in each of the fitter's return paths.
-    fit = _apply_design_rank(_warn_variance_boundary(_drm_gaussian_fit(f_fit, fam; kw_fit...)))
-    fit = off === nothing ? fit : _gaussian_offset_restore(fit, f, off)
+    fit = _apply_design_rank(_warn_variance_boundary(_drm_gaussian_fit(f_fit, fam; kw_inner...)))
+    if off !== nothing
+        fit = _gaussian_offset_restore(fit, f, off)
+    end
+    strip_se && (fit = _withuncertainty(fit, kwargs[:se]))
     return _with_prior_table_input(fit, get(kwargs, :priors, nothing))
 end
 
@@ -1248,8 +1268,12 @@ function _gaussian_offset_shift(f::DrmFormula, fam, kwargs)
     _, re, mv, st = _split_ranef(mu_rhs; allow_phylo_slope = true, allow_temporal = true)
     # `meta_V(v)` on its own is admitted: the known sampling variances do not involve
     # the response, so the shifted-response fit is the same likelihood (drmTMB cell H|meta|offset).
-    (isempty(re) && st === nothing) ||
-        _refuse_offset_route(fam, "a random or structured term on the mean")
+    # One ordinary `(1 | g)` is the same shift with the group integral unchanged (#1337).
+    if !isempty(re)
+        _refuse_offset_unless_ordinary_intercept!(fam, re, st, mv)
+    elseif st !== nothing
+        _refuse_offset_route(fam, "a structured term on the mean")
+    end
     # `meta_V` + offset under REML is not verified against drmTMB, so it is refused here
     # (plain `meta_V` REML is itself refused on the generic route).
     mv === nothing || get(kwargs, :method, :ML) === :ML ||
@@ -3139,9 +3163,13 @@ end
 # `simulate(newdata)` skip them too. `:spatial_range` is the fixed median
 # distance of a coordinate spatial kernel (not estimated; `coef(fit, :range)`
 # and `summary` read it). It is not a scale.
+# Keys in `fit.scales` that are bookkeeping / context, not fitted dispersion.
+# Shared by `sigma()`, `simulate(newdata)`, and the R bridge export.
 _sigma_internal_key(k::Symbol) =
-    k === :spatial_range || k === :trials || k in (:cond_blup_unavailable, :cond_logsd_wall) ||
-    k in _COND_FIT_KEYS
+    k === :spatial_range || k in (:cond_blup_unavailable, :cond_logsd_wall) || k in _COND_FIT_KEYS ||
+    k in (:q2_restarts, :sd, :sd_group, :sd_group_index, :sigma_fixed, :sigma_random_effect,
+          :sigma_random_effect_slope, :sigma_group_index, :trials, :aghq_nodes) ||
+    startswith(String(k), "sdtarget_") || startswith(String(k), "cond_")
 
 """
     sigma(fit)
@@ -3794,7 +3822,12 @@ function predict_parameters(fit::DrmFit, newdata; type::Symbol = :response,
             end
             continue
         end
-        haskey(forms, p) || continue          # skip RE-SD / cutpoint blocks (:resd, :recov, :cutpoints, …)
+        if !haskey(forms, p)
+            # Fitted distributional parameters omitted from `bf()` (e.g. implicit
+            # `nu ~ 1` on Student) still live in `fit.blocks`; fitters use
+            # `get(rhs, p, ConstantTerm(1))`. RE / cutpoint blocks stay skipped.
+            (p in _UNIVARIATE_DPARS || p in _BIVARIATE_DPARS) || continue
+        end
         resp = bivar ? (p === :mu2 ? f.response2 : f.response1) : f.response
         allow_sd_animal_slope = fit.family isa Union{Binomial,Gamma} && f isa DrmFormula &&
             any(item.target.level === :animal for item in _sd_target_parts(f))
@@ -3811,8 +3844,13 @@ function predict_parameters(fit::DrmFit, newdata; type::Symbol = :response,
         allow_binomial_spatial_slope = fit.family isa Union{Binomial,Gaussian,Gamma,NegBinomial2} &&
             f isa DrmFormula && any(
                 item.target.level === :spatial for item in _sd_target_parts(f))
-        parameter_rhs = p === :mu ? _strip_fitted_q2_terms(fit, forms[p]) :
-                        p === :sigma ? _strip_sigma_struct_q2_terms(fit, forms[p]) : forms[p]
+        parameter_rhs = if p === :mu
+            _strip_fitted_q2_terms(fit, forms[p])
+        elseif p === :sigma
+            _strip_sigma_struct_q2_terms(fit, forms[p])
+        else
+            get(forms, p, ConstantTerm(1))
+        end
         if p === :mu && fit.family isa Binomial
             interaction = _binomial_phylo_interaction_parts(parameter_rhs)
             interaction === nothing || (parameter_rhs = interaction.fixed_rhs)
@@ -4174,9 +4212,7 @@ end
 # rows, and `_simulate_once` reads none of them (it draws from `:sigma` / `:zi` / ...),
 # so newdata simulation is population level, as for every other fit.
 _simulate_newdata_bookkeeping_key(k::Symbol) =
-    k in (:q2_restarts, :sd, :sd_group, :sd_group_index, :sigma_fixed, :sigma_random_effect,
-          :sigma_random_effect_slope, :sigma_group_index) ||
-    startswith(String(k), "sdtarget_")
+    _sigma_internal_key(k) && k !== :spatial_range && k !== :trials
 
 function _fit_for_simulate_newdata(fit::DrmFit, newdata)
     _is_temporal_fit(fit) && throw(ArgumentError(
@@ -4197,8 +4233,8 @@ function _fit_for_simulate_newdata(fit::DrmFit, newdata)
     for k in keys(fit.scales)
         haskey(scales, k) && continue
         startswith(String(k), "cond_") && continue   # conditional-mode record: population-level newdata has none
-        # `:trials` is hidden from `sigma()` but the Binomial draw needs it; it is rebuilt for the new rows below.
-        k !== :trials && _sigma_internal_key(k) && continue   # fixed spatial range and other non-scale bookkeeping
+        # `:trials` is bookkeeping in `sigma()` but must be rebuilt for Binomial newdata.
+        _sigma_internal_key(k) && k !== :trials && continue
         _simulate_newdata_bookkeeping_key(k) && continue   # per-group / training-row records; the draw never reads them
         if k === :beta_mu
             haskey(pp, :mu) || throw(ArgumentError("simulate: ZeroOneBeta `newdata` needs a :mu prediction"))
