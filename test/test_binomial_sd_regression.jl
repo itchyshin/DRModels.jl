@@ -748,9 +748,11 @@ end
     @test sd_profile_ci.lower <= coef(fit, :sd)[2] <= sd_profile_ci.upper
     # Profile-endpoint status is a workflow smoke check, not interval calibration.
 
-    # Exercise derived SD-slope interval plumbing independently. Two successful
-    # refits are only a software smoke check, not interval calibration.
-    sd_boot_ci = bootstrap_ci(fit; data, B = 2, A,
+    # Exercise derived SD-slope interval plumbing independently. Six refits all
+    # survive for this seed (B = 2 dropped one as degenerate, leaving a single
+    # draw whose interval is now NaN, #1052). A software smoke check, not
+    # interval calibration.
+    sd_boot_ci = bootstrap_ci(fit; data, B = 6, A,
         rng = MersenneTwister(202610251), failures = :error)
     sd_boot_slope_ci = filter(row -> row.param === :sd && row.coef == "z", sd_boot_ci)
     @test length(sd_boot_slope_ci) == 1
