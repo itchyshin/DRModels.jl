@@ -101,6 +101,22 @@ end
     # the advice is true: control = DRMControl(se = false) fits where `se = false` was refused
     fit = _quiet6(() -> drm(bf(@formula(y ~ x + (1 | g))), Gaussian(); data = d, control = DRMControl(se = false)))
     @test fit isa DRModels.DrmFit
+    # refusal does not depend on the response column name (#1443): no offset(...) in the mean
+    dresp = (; resp = copy(y), x, g)
+    msg_resp = _refusal6(bf(@formula(resp ~ x + (1 | g))), Gaussian(), dresp; se = false)
+    @test occursin("does not accept the keyword `se`", msg_resp)
+    @test occursin("control = DRMControl(se = false)", msg_resp)
+    # same refusal with a non-`:y` response and an unrelated covariate offset is not on #1337 path
+    msg_no_off = _refusal6(bf(@formula(resp ~ x + (1 | g)), @formula(sigma ~ 1)), Gaussian(), dresp;
+                            se = false)
+    @test occursin("does not accept the keyword `se`", msg_no_off)
+    # offset + (1 | g) still fits when the response is not named `y` (se stripped on shift path only)
+    offr = randn(StableRNG(23), n)
+    d_off = (; resp = y .+ offr, x, g, offr)
+    fit_off = _quiet6(() -> drm(bf(@formula(resp ~ x + offset(offr) + (1 | g)), @formula(sigma ~ 1)),
+                                Gaussian(); data = d_off, se = false))
+    @test fit_off isa DRModels.DrmFit
+    @test fit_off.converged
 end
 
 using SparseArrays

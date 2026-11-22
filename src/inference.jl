@@ -2518,15 +2518,26 @@ end
 # none, has a structured or `meta_V` term (other routes own those), or keeps its fresh draw.
 # Binomial: every shape except a single `(1 | g)` and several intercept-only terms. Gamma, Beta, Student, LogNormal: two or more ordinary
 # terms, or a single `(0 + x | g)` / `(1 + x | g)`.
+# Poisson and NB2 (#1387): the same, but several intercept-only terms keep their draw. Gaussian (#1387):
+# `(1 + x | g)` and two or more terms that are not all intercepts; a single `(0 + x | g)` keeps its draw.
 function _no_fresh_draw_bars(fit::DrmFit)
-    fit.family isa Union{Gamma,Binomial,Beta,Student,LogNormal} && fit.formula isa DrmFormula || return nothing
+    fit.family isa Union{Gamma,Binomial,Beta,Student,LogNormal,Poisson,NegBinomial2,Gaussian} &&
+        fit.formula isa DrmFormula || return nothing
     rhs = Dict(fit.formula.forms)
     haskey(rhs, :mu) || return nothing
-    _, re, metav, structured, _ = _split_ranef(rhs[:mu]; allow_phylo_slope = true)
+    # Poisson, NB2 and Gaussian fits reach here only when no simulator was built; a formula shape
+    # `_split_ranef` does not parse keeps the existing warning rather than a new error.
+    _, re, metav, structured, _ = try
+        _split_ranef(rhs[:mu]; allow_phylo_slope = true)
+    catch e
+        e isa ArgumentError || rethrow()
+        return nothing
+    end
     metav === nothing && structured === nothing && !isempty(re) || return nothing
     if length(re) >= 2
-        # several intercept-only Binomial terms have a fresh draw (the simulator for several random intercepts)
-        fit.family isa Binomial &&
+        # several intercept-only Binomial, Poisson, NB2 or Gaussian terms have a fresh draw (the simulator
+        # for several random intercepts)
+        fit.family isa Union{Binomial,Poisson,NegBinomial2,Gaussian} &&
             all(r -> first(try _re_kind(r[1]) catch; (:other, nothing) end) === :intercept, re) && return nothing
         return re
     end
@@ -2534,7 +2545,9 @@ function _no_fresh_draw_bars(fit::DrmFit)
         k, _ = try _re_kind(re[1][1]) catch; (:other, nothing) end
         return k === :intercept ? nothing : re
     end
-    return _laplace_lhs_kind(re[1][1]) in (:slope, :corr) ? re : nothing
+    # Gaussian `(0 + x | g)` has a fresh draw; Poisson and NB2 have none for it.
+    kinds = fit.family isa Gaussian ? (:corr,) : (:slope, :corr)
+    return _laplace_lhs_kind(re[1][1]) in kinds ? re : nothing
 end
 
 _is_no_fresh_draw_slope_fit(fit::DrmFit) = _no_fresh_draw_bars(fit) !== nothing
