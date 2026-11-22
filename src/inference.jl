@@ -4435,9 +4435,10 @@ function _bootstrap_result(
     end
     kept = draws[ok, :]
     summary = _homtoep_bootstrap_rows(fit0, _bootstrap_summary_rows(fit0, kept, est, level))
-    # One surviving draw gives a zero-width percentile interval; report NaN
-    # limits (the status is `bootstrap_unavailable`) and keep the point estimate.
-    if used < 2
+    # One surviving draw after dropped replicates gives a zero-width percentile
+    # interval; report NaN limits (status `bootstrap_unavailable`) and keep the
+    # point estimate. A deliberate B = 1 run with no failures is unchanged.
+    if used < 2 && !isempty(failure_rows)
         summary = [merge(r, (lower=NaN, upper=NaN)) for r in summary]
     end
     boundary_params = _bootstrap_boundary_params(fit0, kept)
