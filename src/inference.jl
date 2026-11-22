@@ -2270,6 +2270,20 @@ end
 # (there conditional and marginal simulation coincide and `simulate` is correct).
 # Gaussian LSS bootstrap uses the full marginal model, not fitted random effects.
 # Prepared arrays are read-only; each call allocates its own draws and response.
+
+# Node count a public `drm` refit can repeat as `nAGQ` (#1377). Plain Poisson
+# `(1 | g)` with `marginal = :AGHQ` records it without `:sd_group`. SD-regression
+# routes record it next to `:sd_group`. Binomial's count is forwarded as `nq`.
+function _stored_nagq(fit::DrmFit)
+    haskey(fit.scales, :aghq_nodes) || return nothing
+    plain = fit.family isa Poisson && fit.marginal === :AGHQ && !haskey(fit.scales, :sd_group)
+    sd = (fit.family isa Poisson || fit.family isa TruncatedPoisson ||
+          fit.family isa NegBinomial2 || fit.family isa TruncatedNegBinomial2 ||
+          fit.family isa SkewNormal) && haskey(fit.scales, :sd_group)
+    (plain || sd) || return nothing
+    return round(Int, only(fit.scales[:aghq_nodes]))
+end
+
 # Keywords a bootstrap replicate must repeat so it is the same estimator as
 # the seed fit. `:LA` and `:ML` are the `drm` defaults and are omitted.
 # Gaussian location-scale-scale passes the seed method explicitly, `:ML` or
@@ -2291,17 +2305,10 @@ function _bootstrap_refit_kwargs(fit::DrmFit)
             "bootstrap refit: this fit is :MAP but stores no penalty, so the " *
             "replicate cannot repeat the penalized estimator"))
     end
-    # SD-regression routes with explicit public `nAGQ` support accept that
-    # setting on bootstrap refits (currently Poisson, NB2, zero-truncated NB2,
-    # and SkewNormal).
-    # Binomial also records its private quadrature count, but its public `drm`
-    # method does not accept that keyword, so passing it would break refits.
-    if (fit.family isa Poisson || fit.family isa TruncatedPoisson ||
-        fit.family isa NegBinomial2 ||
-        fit.family isa TruncatedNegBinomial2 || fit.family isa SkewNormal) &&
-       haskey(fit.scales, :sd_group) && haskey(fit.scales, :aghq_nodes)
-        push!(kw, :nAGQ => round(Int, only(fit.scales[:aghq_nodes])))
-    end
+    # SD-regression routes, and plain Poisson `(1 | g)` AGHQ, accept public
+    # `nAGQ` (#1377). Binomial records a private count and is handled below.
+    nagq = _stored_nagq(fit)
+    nagq === nothing || push!(kw, :nAGQ => nagq)
     # Correlated-block and slope-only SD routes record `:aghq_nodes` but not always
     # `:sd_group`; bootstrap refits must still use `_drm_binomial_sd_regression`
     # with the same quadrature order (#1334).
