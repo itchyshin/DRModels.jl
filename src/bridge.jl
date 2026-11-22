@@ -3291,8 +3291,8 @@ Selection is `haskey(fit.scales, :zi)`, which is true for exactly the two
 zero-inflated count fits (`src/poisson.jl` `_fit_poisson_zi` stores
 `scales[:zi]`; `src/negbinomial.jl` `_fit_negbin2_zi` stores `scales[:sigma]`
 and `scales[:zi]`). Hurdle fits store `scales[:hu]` instead and are
-deliberately NOT repaired here: drmTMB's hurdle mean divides by `1 - P(0)` as
-well as scaling, and that route carries no bridge parity receipt yet.
+repaired the same way (drmTMB's hurdle mean divides by `1 - P(0)` as well as
+scaling), through `_fitted_mean`, which is the E[Y] formula `fitted(fit)` uses.
 """
 function _bridge_fitted_marginal(fit::DrmFit)
     # Built on the stored component mean, not `fitted(fit)`: `fitted` is E[Y] for
@@ -3302,6 +3302,12 @@ function _bridge_fitted_marginal(fit::DrmFit)
     fit_vals = fit.means[:mu]
     fit_vals isa AbstractVector || return (fit_vals, residuals(fit; re = :zero))
     plain_resid = fit.obs[:mu] .- fit_vals
+    if haskey(fit.scales, :hu) && haskey(fit.obs, :mu)
+        # Hurdle count fit: drmTMB's fitted() is E[Y] = (1 - hu) * mu / (1 - P(0)).
+        marginal = collect(float.(_fitted_mean(fit)))
+        length(marginal) == length(fit.obs[:mu]) &&
+            return (marginal, collect(float.(fit.obs[:mu])) .- marginal)
+    end
     (haskey(fit.scales, :zi) && haskey(fit.obs, :mu)) || return (fit_vals, plain_resid)
     pz = collect(float.(fit.scales[:zi]))
     mu = collect(float.(fit_vals))
