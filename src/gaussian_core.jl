@@ -3165,18 +3165,24 @@ function residuals(fit::DrmFit; type::Symbol = :response, rng = Random.default_r
     end
 end
 
-# `fit.scales` keys that hold fit context or bookkeeping rather than a fitted
-# distributional parameter. They never appear in `sigma()`, and the bridge and
-# `simulate(newdata)` skip them too. `:spatial_range` is the fixed median
-# distance of a coordinate spatial kernel (not estimated; `coef(fit, :range)`
+# Shared predicate: `fit.scales` keys that are fit context or bookkeeping, not
+# fitted distributional parameters. Used by `sigma()`, `_bridge_dpars`, and
+# `simulate(newdata)` so those loops stay in step. `:spatial_range` is the fixed
+# median distance of a coordinate spatial kernel (not estimated; `coef(fit, :range)`
 # and `summary` read it). It is not a scale.
 # Keys in `fit.scales` that are bookkeeping / context, not fitted dispersion.
 # Shared by `sigma()`, `simulate(newdata)`, and the R bridge export.
-_sigma_internal_key(k::Symbol) =
-    k === :spatial_range || k in (:cond_blup_unavailable, :cond_logsd_wall) || k in _COND_FIT_KEYS ||
-    k in (:q2_restarts, :sd, :sd_group, :sd_group_index, :sigma_fixed, :sigma_random_effect,
-          :sigma_random_effect_slope, :sigma_group_index, :trials, :aghq_nodes) ||
-    startswith(String(k), "sdtarget_") || startswith(String(k), "cond_")
+function _scales_bookkeeping_key(k::Symbol)
+    k === :spatial_range && return true
+    k in (:q2_restarts, :sd, :sd_group, :sd_group_index, :aghq_nodes, :trials,
+          :cond_blup_unavailable, :cond_logsd_wall, :sigma_fixed, :sigma_random_effect,
+          :sigma_random_effect_slope, :sigma_group_index) && return true
+    k in _COND_FIT_KEYS && return true
+    startswith(String(k), "sdtarget_") && return true
+    startswith(String(k), "cond_") && return true
+    return false
+end
+_sigma_internal_key(k::Symbol) = _scales_bookkeeping_key(k)
 
 """
     sigma(fit)
@@ -4218,8 +4224,11 @@ end
 # `sdtarget_*_group`). They describe the training data, have no per-row value for new
 # rows, and `_simulate_once` reads none of them (it draws from `:sigma` / `:zi` / ...),
 # so newdata simulation is population level, as for every other fit.
+# `:trials` stays out of this skip: `simulate(newdata)` rebuilds it below.
+# `:spatial_range` is not a training-length random-effect record; the loop
+# still drops it through `_sigma_internal_key`.
 _simulate_newdata_bookkeeping_key(k::Symbol) =
-    _sigma_internal_key(k) && k !== :spatial_range && k !== :trials
+    _scales_bookkeeping_key(k) && k !== :spatial_range && k !== :trials
 
 function _fit_for_simulate_newdata(fit::DrmFit, newdata)
     _is_temporal_fit(fit) && throw(ArgumentError(
@@ -4241,7 +4250,7 @@ function _fit_for_simulate_newdata(fit::DrmFit, newdata)
         haskey(scales, k) && continue
         startswith(String(k), "cond_") && continue   # conditional-mode record: population-level newdata has none
         # `:trials` is bookkeeping in `sigma()` but must be rebuilt for Binomial newdata.
-        _sigma_internal_key(k) && k !== :trials && continue
+        _scales_bookkeeping_key(k) && k !== :trials && continue
         _simulate_newdata_bookkeeping_key(k) && continue   # per-group / training-row records; the draw never reads them
         if k === :beta_mu
             haskey(pp, :mu) || throw(ArgumentError("simulate: ZeroOneBeta `newdata` needs a :mu prediction"))
