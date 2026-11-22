@@ -405,7 +405,11 @@ end
 # left as fitted; the fit is flagged `:ordinal_separation` so the converged rule
 # reports `:degenerate` (#1221, SHINICHI-1753-1118). Quiet inside bootstrap /
 # profile refits.
-function _cumulative_separation_warn(Xμ, y, K, nmμ)
+function _cumulative_separation_warn(Xμ, y, K, nmμ; w = nothing)
+    if w !== nothing   # positive-weight rows only: zero-weight rows add nothing to the likelihood
+        keep = findall(>(0), w)
+        Xμ = Xμ[keep, :]; y = y[keep]
+    end
     pμ = size(Xμ, 2); n = length(y); nc = K - 1
     (pμ == 0 || n == 0 || nc < 1) && return String[]
     Xs = zeros(n * nc, pμ + nc); s = zeros(n * nc)
@@ -433,7 +437,8 @@ function _cumulative_separation_warn(Xμ, y, K, nmμ)
           coefficients can grow without bound at little or no cost in likelihood, and
           their reported estimates are an arbitrary stopping point of the optimiser.
           Any standard errors printed for this fit (large but finite, or 0) are not
-          meaningful, and `convergence_status` is `:degenerate`.
+          meaningful. A separated fit is classified `:degenerate` unless the
+          optimiser did not finish or the gradient check fails first.
           Consider removing or collapsing the offending predictor, or a penalised fit.$partial
           """ separation = :complete_or_quasi flagged_coefficients = flagged
     return flagged
@@ -525,7 +530,7 @@ function _fit_cumulative(fam::CumulativeLogit, y::Vector{Int}, Xμ, K, nmμ, g_t
     res = _ctl_optimize((x0, opts, method) -> Optim.optimize(nll, x0, method, opts; autodiff = :forward),
                        θ0; g_tol = g_tol)   # control: maxit / start / multi_start (#948 #994)
     θ̂ = Optim.minimizer(res); V = _ctl_se(() -> _vcov_from_hessian(ForwardDiff.hessian(nll, θ̂)), θ̂)
-    separated = !isempty(_cumulative_separation_warn(Xμ, y, K, nmμ))   # #1221
+    separated = !isempty(_cumulative_separation_warn(Xμ, y, K, nmμ; w))   # #1221
     blocks = [:mu => 1:pμ, :cutpoints => (pμ+1):(pμ+nc)]
     names = [:mu => nmμ, :cutpoints => ["theta$k" for k in 1:nc]]
     # fitted = expected category score Σ_k k·P(y=k)

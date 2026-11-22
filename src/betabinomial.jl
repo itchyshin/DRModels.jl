@@ -564,10 +564,13 @@ function _fit_betabinomial(fam::BetaBinomial, s, ntr, Xμ, Xσ, nmμ, nmσ, g_to
     θ̂ = Optim.minimizer(res); V = _ctl_se(() -> _vcov_from_hessian(ForwardDiff.hessian(nll, θ̂)), θ̂)
     # (quasi-)complete separation of the mean block (#1220): the MLE does not exist,
     # so the converged rule reports :degenerate whether or not SEs were computed.
-    sep = try _detect_separation(Xμ, s, ntr) catch; nothing end
+    pos = findall(>(0), w)   # positive-weight rows only: zero-weight rows add nothing to the likelihood
+    sep = try _detect_separation(Xμ[pos, :], s[pos], ntr[pos]) catch err
+        _boundary_diagnostic_failed("BetaBinomial separation", err)
+    end
     separated = sep !== nothing && sep.separated
     separated && !(get(task_local_storage(), :drm_quiet_boundary, false) === true) &&
-        @warn "BetaBinomial fixed-effect fit shows (quasi-)complete separation: the maximum-likelihood estimate does not exist, the affected coefficients are an arbitrary stopping point, and `convergence_status` is `:degenerate`." separation = :complete_or_quasi
+        @warn "BetaBinomial fixed-effect fit shows (quasi-)complete separation: the maximum-likelihood estimate does not exist, the affected coefficients are an arbitrary stopping point, and standard errors are not meaningful. A separated fit is classified `:degenerate` unless the optimiser did not finish or the gradient check fails first." separation = :complete_or_quasi
     blocks = [:mu => 1:pμ, :sigma => (pμ+1):(pμ+pσ)]
     names = [:mu => nmμ, :sigma => nmσ]
     means = Dict(:mu => _logistic.(_eta_with_offset(Xμ, θ̂[1:pμ], offset)))           # fitted mean success probability

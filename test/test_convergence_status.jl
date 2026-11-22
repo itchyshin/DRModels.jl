@@ -247,6 +247,7 @@ end
     @test convergence_info(fitg(0.0)).max_gradient < 1e-6
     @test convergence_status(fitg(50.0)) === :not_converged
     @test convergence_info(fitg(50.0)).max_gradient > 0.1
+    @test convergence_info(fitg(50.0)).max_gradient ≈ 0.5 rtol = 0.05   # |g| / max(1, |loglik|) = 50 / 100
 end
 
 @testset "REML fit: stored ML objective is not a stationarity oracle (b_sxz regression)" begin

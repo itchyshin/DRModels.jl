@@ -4839,7 +4839,8 @@ function check_drm(fit::DrmFit; grad_tol::Real=1e-3)
     conv = status === :converged       # is_converged(fit)
     cinfo = convergence_info(fit)
     fixed_prior = _is_fixed_prior_fit(fit) && penalized
-    ok = _converged_nondegenerate(fit) && ((penalized && !fixed_prior) || isnan(mag) || mag <= grad_tol) && pd && frd === nothing
+    separated_geom = occursin("separation", string(fit.geometry))   # no finite MLE
+    ok = _converged_nondegenerate(fit) && !separated_geom && ((penalized && !fixed_prior) || isnan(mag) || mag <= grad_tol) && pd && frd === nothing
     report = (
         convergence_status=status,
         converged=conv,
