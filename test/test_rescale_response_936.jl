@@ -110,3 +110,35 @@ end
         @test drm(f, Gaussian(); data = dk, weights = fill(1.0, length(dk.y))) isa DRModels.DrmFit
     end
 end
+
+@testset "rescaled fit: Jacobian counts the fitted rows, not the input rows (#936)" begin
+    # A finite response with a missing predictor is dropped by the fitter. The original-scale
+    # log-likelihood must then equal the fit on the complete rows (one log(s) term per fitted row).
+    y = 1e-3 .* [1.0, 3, 2, 5, 4, 8, 6, 9, 7, 11, 10, 12]
+    x = Union{Missing,Float64}[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, missing]
+    f = bf(@formula(y ~ x), @formula(sigma ~ 1))
+    fit = drm(f, Gaussian(); data = (; y, x))
+    keep = .!ismissing.(x)
+    ref = drm(f, Gaussian(); data = (; y = y[keep], x = Float64.(x[keep])))
+    @test fit.nobs == 11
+    @test isapprox(coef(fit), coef(ref); rtol = 1e-6)
+    @test isapprox(loglikelihood(fit), loglikelihood(ref); atol = 1e-6)
+    @test isapprox(fit.nll(fit.theta), -loglikelihood(ref); atol = 1e-6)
+end
+
+@testset "rescale is skipped when a right-hand side reads the response (#936)" begin
+    # `sigma ~ 1 + y` builds its design from the response column. Fitting y / s would build
+    # it on y / s, and the restore only shifts the sigma intercept, so the slice must not apply.
+    rng = StableRNG(936_777)
+    n = 80
+    x = randn(rng, n)
+    y = 1e-3 .* (2.0 .+ 0.5 .* x .+ 0.3 .* randn(rng, n))
+    @test std(y) < 1e-2                                   # outside the window: the hook would fire
+    f = bf(@formula(y ~ x), @formula(sigma ~ 1 + y))
+    @test DRModels._y_rescale_plan(f, Gaussian(), (; data = (; y, x)), (:data, :g_tol)) === nothing
+    f0 = bf(@formula(y ~ x), @formula(sigma ~ 1))
+    @test DRModels._y_rescale_plan(f0, Gaussian(), (; data = (; y, x)), (:data, :g_tol)) !== nothing
+    fit = drm(f, Gaussian(); data = (; y, x))
+    bσ = fit.theta[Dict(fit.blocks)[:sigma]]
+    @test isapprox(fit.scales[:sigma], exp.(hcat(ones(n), y) * bσ); rtol = 1e-8)
+end

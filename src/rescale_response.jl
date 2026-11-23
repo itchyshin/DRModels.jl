@@ -46,6 +46,9 @@ function _y_rescale_plan(f::DrmFormula, fam, kwargs, allowed::Tuple)
             end
         end
         nbar <= 1 || return nothing
+        # A right-hand side that reads the response column would be built on y / s, and
+        # the restore map only shifts the sigma intercept: keep the ordinary path.
+        any(p -> _rhs_mentions(last(p), f.response), f.forms) && return nothing
         data = kwargs[:data]
         raw = _table_column(data, f.response)
         (raw isa AbstractVector && all(v -> v isa Real && isfinite(v), raw) && length(raw) >= 3) ||
@@ -60,11 +63,21 @@ function _y_rescale_plan(f::DrmFormula, fam, kwargs, allowed::Tuple)
     end
 end
 
+# Whether a formula right-hand side (a term, a tuple of terms, or a nested term)
+# refers to the column `sym`.
+function _rhs_mentions(t, sym::Symbol)
+    t isa Term && return t.sym === sym
+    (t isa Tuple || t isa AbstractVector) && return any(x -> _rhs_mentions(x, sym), t)
+    t isa FunctionTerm && return _rhs_mentions(t.args, sym)
+    hasproperty(t, :terms) && return _rhs_mentions(t.terms, sym)   # InteractionTerm
+    return false
+end
+
 # The original-scale fit built from the fit on y / s, or `nothing` when its layout is
 # not the expected one (the caller then fits the original data as before).
 function _y_rescale_restore(fit, plan)
     fit isa DrmFit || return nothing
-    s, n = plan.s, plan.n
+    s, n = plan.s, fit.nobs          # rows the fit used (missing-predictor rows are dropped)
     ls = log(s)
     names = Dict(fit.coefnames)
     blocks = Dict(fit.blocks)
