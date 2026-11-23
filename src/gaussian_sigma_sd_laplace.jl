@@ -1027,6 +1027,7 @@ function _fit_gaussian_musigma_corr_reml(fam::Gaussian, y, Xμ, Xσ, gidx, G, nm
     scales = Dict{Symbol,Vector{Float64}}(
         :sigma => exp.(eta_fixed .+ bb[gidx]),
         :sigma_fixed => exp.(eta_fixed),
+        :mu_population => mean_fixed,
         :sigma_random_effect => bb,
         :sigma_group_index => Float64.(gidx),
         :sd_group => fill(c, G),
