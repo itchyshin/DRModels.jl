@@ -3089,10 +3089,11 @@ The per-family parameter → distribution map lives in `_conditional_dist`
 
 `type = :pearson` returns `(y − E[Y]) / √Var[Y]` with the mean and variance of the fitted
 distribution of each observation, as drmTMB's `residuals(fit, type = "pearson")`. It is
-implemented for fixed-effect Gaussian, Poisson, NegBinomial2, Gamma, Beta and LogNormal
-fits (`LogNormal()` uses the log-scale `(log y − μ̂) / σ̂`, as drmTMB). Any other family
+implemented for fixed-effect Gaussian, Poisson, NegBinomial2, Gamma, Beta, LogNormal and
+Binomial fits (`LogNormal()` uses the log-scale `(log y − μ̂) / σ̂`; `Binomial()` uses the
+proportion scale `(ŷ − p̂) / √(p̂(1 − p̂) / n)`, as drmTMB). Any other family
 or route (random effects, structured or temporal terms, zero inflation, hurdles,
-Student, Binomial, ordinal, bivariate) throws an
+Student, ordinal, bivariate) throws an
 `ArgumentError` that names it, because drmTMB's definition differs or has not been
 checked there. A diagonal `meta_V(v)` without a random effect is a fixed-effect fit and is
 supported. The result has one entry per kept row, as for `:response` and `:quantile` and as in

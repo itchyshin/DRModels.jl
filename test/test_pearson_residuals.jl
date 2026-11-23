@@ -41,6 +41,20 @@ end
     @test residuals(fit; type = :pearson) ≈ (data.y .- mu) ./ sqrt.(mu) rtol = 1e-12
 end
 
+@testset "Pearson residuals: Binomial() uses drmTMB proportion-scale standardisation (#1365)" begin
+    xs = [0.843381, -0.885564, 0.116445, -0.252533, -0.093041, 0.252174, -0.66884, -0.341778,
+        0.079249, 0.943025, 0.642379, -0.641913, 0.990344, 0.63205, -0.116367, 0.853758,
+        -0.131609, 0.288373, -0.354713, 0.520755, 0.112061, 0.321753, -0.161323, -0.728472]
+    s = [3.0, 1.0, 2.0, 1.0, 0.0, 2.0, 4.0, 1.0, 3.0, 5.0, 2.0, 1.0, 4.0, 0.0, 3.0, 2.0,
+        1.0, 2.0, 1.0, 3.0, 2.0, 1.0, 0.0, 1.0]
+    fl = 8.0 .- s
+    data = (; x = xs, s, fl)
+    fit = drm(bf(@formula(cbind(s, fl) ~ x)), Binomial(); data)
+    p = fitted(fit)
+    r = residuals(fit; type = :pearson)
+    @test r ≈ (data.s ./ fit.scales[:trials] .- p) ./ sqrt.(p .* (1 .- p) ./ fit.scales[:trials]) rtol = 1e-12
+end
+
 @testset "Pearson residuals: LogNormal() uses drmTMB log-scale standardisation (#1365)" begin
     xs = [0.843381, -0.885564, 0.116445, -0.252533, -0.093041, 0.252174, -0.66884, -0.341778,
         0.079249, 0.943025, 0.642379, -0.641913, 0.990344, 0.63205, -0.116367, 0.853758,
@@ -79,12 +93,9 @@ end
     s = Float64.(rand(r, 0:8, n))
     d = (; x, g, y = yc, yp = ypos, yn = ycount, s, f = 8.0 .- s)
     student = drm(bf(@formula(y ~ x)), Student(); data = d)
-    binom = drm(bf(@formula(cbind(s, f) ~ x)), Binomial(); data = d)
-    for (label, fit) in (("Student()", student), ("Binomial()", binom))
-        msg = _pmsg(() -> residuals(fit; type = :pearson))
-        @test occursin("not implemented for $label", msg)
-        @test occursin("type = :quantile", msg)
-    end
+    msg = _pmsg(() -> residuals(student; type = :pearson))
+    @test occursin("not implemented for Student()", msg)
+    @test occursin("type = :quantile", msg)
     re = drm(bf(@formula(y ~ x + (1 | g))), DRModels.Gaussian(); data = d)
     msg = _pmsg(() -> residuals(re; type = :pearson))
     @test occursin("fixed-effect fits only", msg)
