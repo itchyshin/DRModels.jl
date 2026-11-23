@@ -4,6 +4,7 @@ module TestIssue1381PredictNoData
 using DRModels
 using Test
 using Random
+using LinearAlgebra
 import Distributions
 
 function _check_predict_insample(fit, data; rtol = 1e-8)
@@ -135,6 +136,55 @@ end
         newdata = (; z = data.z[obs], x = String.(data.x[obs]))
         @test predict(jfit, newdata) ≈ predict(jfit) rtol = 1e-12
         @test predict(jfit, newdata; type = :link) ≈ predict(jfit; type = :link) rtol = 1e-12
+    end
+
+    @testset "one-coefficient non-intercept block is not a constant" begin
+        Random.seed!(1387)
+        n = 60
+        x = rand(n) .+ 0.5
+        y = 0.4 .+ 0.3 .* x .+ exp.(-0.6 .* x) .* randn(n)
+        data = (; y, x)
+        fit = drm(bf(@formula(y ~ x), @formula(sigma ~ 0 + x)), Gaussian(); data)
+        βσ = only(coef(fit, :sigma))
+        @test predict_parameters(fit; type = :link)[:sigma] ≈ x .* βσ rtol = 1e-8
+        @test predict_parameters(fit)[:sigma] ≈ exp.(x .* βσ) rtol = 1e-8
+        _check_predict_parameters_insample(fit, data)
+    end
+
+    @testset "structured Tweedie SD regression: retained modes and per-row SD" begin
+        rng = MersenneTwister(13881)
+        G, m = 16, 8
+        gi = repeat(1:G; inner = m)
+        group = ["g$(k)" for k in gi]
+        zg = repeat([0.0, 1.0], G ÷ 2)
+        K = 0.45 .^ abs.(reshape(1:G, :, 1) .- reshape(1:G, 1, :))
+        x = rand(rng, G * m) .* 2 .- 1
+        latent = cholesky(Symmetric(K)).L * randn(rng, G)
+        eta = 0.35 .+ 0.2 .* x .+ exp.(-0.3 .+ 0.4 .* zg)[gi] .* latent[gi]
+        y = map(eachindex(eta)) do i
+            μ, ϕ, pw = exp(eta[i]), 0.65^2, 1.5
+            c = rand(rng, Distributions.Poisson(μ^(2 - pw) / (ϕ * (2 - pw))))
+            c == 0 ? 0.0 : rand(rng, Distributions.Gamma(c * (2 - pw) / (pw - 1), ϕ * (pw - 1) * μ^(pw - 1)))
+        end
+        data = (; y, x, z = zg[gi], group)
+        f = bf(@formula(y ~ x + relmat(1 | group)), @formula(sigma ~ 1), @formula(nu ~ 1),
+               @formula(sd(group, relmat) ~ z))
+        fit = drm(f, Tweedie(); data, K = K, g_tol = 1e-5)
+        b = only(values(ranef(fit)))
+        gidx = Int.(fit.scales[:sd_group_index])
+        @test maximum(abs, b) > 0.05                         # the modes are not all zero
+        ηpop = predict(fit, data; type = :link)
+        @test predict(fit; type = :link) ≈ ηpop .+ b[gidx] rtol = 1e-8
+        @test predict(fit) ≈ exp.(ηpop .+ b[gidx]) rtol = 1e-8
+        pp = predict_parameters(fit)
+        @test haskey(pp, :sd)
+        @test pp[:sd] ≈ fit.scales[:sd] rtol = 1e-12
+        @test pp[:sd] ≈ predict_parameters(fit, data)[:sd] rtol = 1e-8
+        @test predict_parameters(fit; type = :link)[:sd] ≈ log.(fit.scales[:sd]) rtol = 1e-12
+        # without the row map the modes cannot be placed: refuse by name, not population values
+        bare = deepcopy(fit)
+        delete!(bare.scales, :sd_group_index)
+        @test_throws ArgumentError predict(bare)
     end
 
     @testset "refusals" begin
