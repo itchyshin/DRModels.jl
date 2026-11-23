@@ -154,3 +154,17 @@ end
         end
     end
 end
+
+@testset "simulate(re = :zero): correlated (1 | p | g) mean and sigma, REML (P9i)" begin
+    # The joint REML fitter stores the conditional mean (X beta + mode); re = :zero must draw
+    # around X beta, as the ML route does.
+    d = _p9i_data()
+    fit = drm(bf(@formula(ygau ~ x + (1 | p | g)), @formula(sigma ~ 1 + (1 | p | g))),
+              Gaussian(); data = d, method = :REML)
+    @test fit.estim_method === :REML
+    mupop = hcat(ones(length(d.x)), d.x) * coef(fit, :mu)
+    @test sum(abs.(fit.means[:mu] .- mupop)) / length(mupop) > 0.2   # the stored mean is conditional
+    S = simulate(fit; re = :zero, nsim = 4000, rng = Random.Xoshiro(3))
+    rowmean = vec(sum(S; dims = 2)) ./ size(S, 2)
+    @test sum(abs.(rowmean .- mupop)) / length(mupop) < 0.05     # Monte Carlo SE per row is about 0.01
+end
