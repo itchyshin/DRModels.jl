@@ -503,7 +503,8 @@ end
 # Gaussian and LogNormal closed-form marginals (#1103 / #1102) return the
 # exact z-score and skip Φ⁻¹(Φ(z)), which otherwise loses upper-tail
 # precision and caps |r| at about 8.13.
-function _quantile_residuals(fit::DrmFit, rng)
+function _quantile_residuals(fit::DrmFit, rng; reference::Symbol = :marginal)
+    plugin = reference === :plugin
     _refuse_multi_re_laplace(fit, "residuals(type = :quantile)")
     haskey(fit.means, :mu) ||
         throw(ArgumentError("residuals(type=:quantile) is univariate-only"))
@@ -516,6 +517,10 @@ function _quantile_residuals(fit::DrmFit, rng)
     lo = eps(); hi = 1 - eps()
     std_normal = Distributions.Normal()
 
+    if plugin && (fam isa ZeroOneBeta || fam isa CumulativeLogit) && _fit_mean_has_random_term(fit)
+        throw(ArgumentError("residuals(type=:quantile, quantile_reference=:plugin): not available " *
+            "for $(nameof(typeof(fam))) fits with a random effect; use the default :marginal."))
+    end
     if fam isa ZeroOneBeta
         return _quantile_residuals_zeroonebeta(fit, rng, lo, hi)
     elseif fam isa CumulativeLogit
@@ -537,14 +542,22 @@ function _quantile_residuals(fit::DrmFit, rng)
     # or, Gaussian only, on log σ (#923) over its fitted SD; `nothing` for a
     # fixed-effects-only fit (unchanged behaviour) or a random-effect
     # shape/family this does not cover.
-    mix = _ranef_marginal_mix(fit, fam, μ)
+    mix = plugin ? nothing : _ranef_marginal_mix(fit, fam, μ)
+    if plugin
+        # drmTMB-style plug-in: F at the fitted-row parameters with the modes included
+        # (`fitted(fit)`'s component mean); no averaging over the random effect.
+        _fit_sigma_has_random_term(fit) && throw(ArgumentError(
+            "residuals(type=:quantile, quantile_reference=:plugin): a random effect on `sigma` " *
+            "is not supported; use the default :marginal."))
+        μ = _fitted_component_mu(fit, :conditional, :residuals)
+    end
     # Fits that recorded their conditional random-effect contribution at θ̂
     # (`scales[:cond_eta_re]`, the Laplace modes: the SD-regression q2 / two-field
     # / structured routes) are judged against the distribution CONDITIONAL on
     # those modes, as drmTMB's `drm_quantile_residuals()` is (it evaluates F at
     # `predict()`'s fitted-row parameters, which include the modes). The σ_b-marginal
     # `mix` above has priority and is unchanged for fits that have one.
-    μ = _conditional_mean_at_modes(fit, fam, μ, mix)
+    plugin || (μ = _conditional_mean_at_modes(fit, fam, μ, mix))
     u = Vector{Float64}(undef, n)
     # #1103: N(η, σ² + v_b) is closed form. Returning z = (y − η) / √(σ² + v_b)
     # (or the log-y form for LogNormal) avoids Φ⁻¹(clamp(Φ(z), eps, 1−eps)).
@@ -620,7 +633,7 @@ end
 # Pearson residuals `(y - E[Y]) / sqrt(Var[Y])` from the fitted per-observation distribution
 # (`_conditional_dist`), for fixed-effect fits of the families whose drmTMB Pearson residual
 # is the same quantity. Everything else is refused by name.
-const _PEARSON_FAMILIES = (Gaussian, Poisson, NegBinomial2, Gamma, Beta)
+const _PEARSON_FAMILIES = (Gaussian, Poisson, NegBinomial2, Gamma, Beta, LogNormal)
 
 function _pearson_residuals(fit::DrmFit)
     fam = fit.family
@@ -630,7 +643,7 @@ function _pearson_residuals(fit::DrmFit)
             "bivariate response is not supported"))
     any(fam isa F for F in _PEARSON_FAMILIES) ||
         throw(ArgumentError("residuals(type = :pearson) is not implemented for $fname " *
-            "(supported: Gaussian, Poisson, NegBinomial2, Gamma, Beta, fixed-effect fits). " *
+            "(supported: Gaussian, Poisson, NegBinomial2, Gamma, Beta, LogNormal, fixed-effect fits). " *
             "drmTMB defines its Pearson residual differently for some other families, " *
             "so no number is returned. Use type = :quantile or type = :response."))
     (any(cn -> first(cn) === :resd, fit.coefnames) || any(p -> first(p) in
@@ -646,6 +659,12 @@ function _pearson_residuals(fit::DrmFit)
     μ = fit.means[:mu]
     gsis = _gamma_sigma_is_shape(fit)
     return map(eachindex(y)) do i
+        if fam isa LogNormal
+            # drmTMB standardises on the log scale: (log y − μ̂) / σ̂ with μ̂ the fitted
+            # log-median (η_μ); not (y − E[Y]) / √Var[Y]) on the response scale.
+            m = max(μ[i], eps())
+            return (log(y[i]) - log(m)) / fit.scales[:sigma][i]
+        end
         d = _conditional_dist(fam, i; μ = μ, scales = fit.scales, obs = fit.obs,
                               gamma_sigma_is_shape = gsis)
         (y[i] - Distributions.mean(d)) / sqrt(Distributions.var(d))

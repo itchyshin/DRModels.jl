@@ -147,6 +147,7 @@ function lrtest(reduced::DrmFit, full::DrmFit; mixture::Bool = false)
     _marginal_compare_guard(reduced, full, "lrtest")
     _map_compare_guard(reduced, full, "lrtest")
     _nobs_compare_guard(reduced, full, "lrtest")
+    _unconverged_compare_warn(reduced, full, "lrtest")
     Δdof = dof(full) - dof(reduced)
     Δdof > 0 || throw(ArgumentError(
         "lrtest: `full` must have more parameters than `reduced` " *
@@ -802,6 +803,21 @@ function _nobs_compare_guard(a::DrmFit, b::DrmFit, verb::AbstractString)
         "`update` does not guarantee. Refit both on the same rows."))
 end
 
+# Convergence caveat (#1002): a finite log-likelihood from a fit whose optimiser
+# reported `converged = false` is still compared (the sentinel guard refuses the
+# plateau), but its LR statistic can be off in either direction. Warn, naming the
+# fit. A boundary fit (a variance pinned at its floor) has its own status from
+# `convergence_status` and is not "unconverged", so it is skipped here.
+function _unconverged_compare_warn(reduced::DrmFit, full::DrmFit, verb::AbstractString)
+    bad = String[nm for (nm, f) in (("reduced", reduced), ("full", full))
+                 if !f.converged && convergence_status(f) !== :boundary]
+    isempty(bad) && return nothing
+    @warn "$verb: the $(join(bad, " and ")) fit did not converge (`converged = false`). " *
+          "The likelihood-ratio statistic may be wrong in either direction; refit " *
+          "(different start values, optimiser, or tolerance) before relying on the p-value."
+    return nothing
+end
+
 # A fit whose formula has no random effect integrates nothing, so its `loglik` is
 # the exact log-likelihood whatever `marginal` tag it carries (a fixed-effects fit
 # is tagged `:LA` by default). Conservative: a bivariate formula, attached BLUPs, a
@@ -828,7 +844,7 @@ end
 # pair is a random-effect-free fit (exact log-likelihood) against a non-VA fit,
 # e.g. the fixed-effects model against a `marginal = :Laplace` random intercept.
 function _marginal_compare_guard(a::DrmFit, b::DrmFit, verb::AbstractString)
-    a.marginal === b.marginal && return nothing
+    a.marginal === b.marginal && a.marginal !== :VA && return nothing
     no_va = a.marginal !== :VA && b.marginal !== :VA
     no_va && (_fit_is_re_free(a) || _fit_is_re_free(b)) && return nothing
     reason = if !no_va
@@ -930,7 +946,10 @@ family and every estimation option the fit stores:
 - `method` — `:REML` when `fit.estim_method === :REML` (the default `:ML` is
   `drm`'s own default and is not repeated);
 - `marginal` — when it is not the default `:LA`;
-- `penalty` — the stored [`drm_phylo_penalty`](@ref) specification of a `:MAP` fit.
+- `penalty` — the stored [`drm_phylo_penalty`](@ref) specification of a `:MAP` fit;
+- `nAGQ` — when the fit stores the quadrature count on a route whose public
+  method accepts that keyword (Poisson `(1 | g)` with `marginal = :AGHQ`, and
+  the SD-regression routes that already record it).
 
 Explicit keywords override those stored options (`update(fit, formula; data,
 method = :ML)` refits a REML seed by maximum likelihood). Changing `method`
@@ -945,6 +964,11 @@ keyword and passes it to `drm`. Use `weights = weights(fit)` with the same `data
 `weights = nothing` to refit unweighted on purpose. If rows with a missing response were
 dropped from the seed fit, `weights(fit)` has one entry per kept row and is shorter than
 `data`, so pass the original full-length weight vector (one per row of `data`) instead.
+
+A non-default `control` must be passed again (`control =` the same settings, or
+`control = nothing` for the default control). A fit whose only non-default
+setting is `se = false` may repeat that with `se = false`. A default control,
+including a fit that only set prior `weights`, is left as it is.
 
 `data` must be supplied. A `DrmFit` does not retain its observations, nor the
 options that were only arguments to the original `drm` call: `K`, `A`, `tree`,
@@ -981,6 +1005,14 @@ function update(fit::DrmFit, formula, args...; data, kwargs...)
         "It is never refitted unweighted silently. If rows with a missing response were dropped from " *
         "the fit, `weights(fit)` has one entry per KEPT row and is shorter than `data`: pass the " *
         "original full-length weight vector (one per row of `data`) instead."))
+    # #1377: a non-default control is not replayed. `se = false` on a route that
+    # has an `se` keyword is stored as `DRMControl(se = false)`; repeating `se =`
+    # is the restatement. Any other non-default field needs `control =`.
+    dropped = _update_dropped_control(fit, kwargs)
+    dropped === nothing || throw(ArgumentError(
+        "update: the fit was made with a non-default `control` ($dropped). " *
+        "Pass `control =` again, or `control = nothing` to refit with the default control. " *
+        "A fit whose only non-default setting is `se = false` can repeat that with `se = false`."))
     stored = _update_stored_options(fit)
     # A caller who changes the estimator does not want the old MAP penalty.
     # Passing `penalty` explicitly still overrides that drop.
@@ -1025,5 +1057,26 @@ function _update_stored_options(fit::DrmFit)
         push!(kw, :penalty => fit.penalty)
     end
     fit.marginal === :LA || push!(kw, :marginal => fit.marginal)
+    nagq = _stored_nagq(fit)
+    nagq === nothing || push!(kw, :nAGQ => nagq)
     return NamedTuple(kw)
+end
+
+# True when every field of `a` equals the corresponding field of `b`.
+function _drmcontrol_same(a::DRMControl, b::DRMControl)
+    return a.maxit === b.maxit && a.start == b.start && a.multi_start == b.multi_start &&
+        a.se == b.se && a.seed == b.seed && a.jitter == b.jitter && a.optimizer === b.optimizer
+end
+
+# The non-default control `update` would drop, or `nothing` when the refit may proceed.
+function _update_dropped_control(fit::DrmFit, kwargs)
+    info = fit.control_info
+    info === nothing && return nothing
+    c = info.control
+    _drmcontrol_same(c, DRMControl()) && return nothing
+    haskey(kwargs, :control) && return nothing
+    if _drmcontrol_same(c, DRMControl(se = false)) && haskey(kwargs, :se)
+        return nothing
+    end
+    return c
 end

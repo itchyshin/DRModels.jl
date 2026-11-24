@@ -13,7 +13,7 @@
     summary_doc = docstring_for("bootstrap_summary")
 
     for (name, doc) in (("bootstrap_ci", ci_doc), ("bootstrap_summary", summary_doc))
-        @test occursin("failures = :error", doc)
+        @test occursin("failures = :skip", doc)
         @test occursin("check_converged = true", doc)
         signatures = [strip(line) for line in split(doc, '\n') if startswith(strip(line), "$(name)(")]
         @test length(signatures) == 4
