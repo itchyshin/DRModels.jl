@@ -201,10 +201,14 @@ function _drm_zi_re_laplace(f::DrmFormula, fam; data, g_tol::Real = 1e-8, start 
     end
     # The truncated-NB2 + hu spelling is the NegBinomial2 hurdle (see the fixed-effects entry).
     fitfam = (fam isa TruncatedNegBinomial2 && haskey(rhs, :hu)) ? NegBinomial2() : fam
+    pν = Xν === nothing ? 0 : size(Xν, 2)
     run = st -> _fit_indep_re_laplace(fitfam, kind, y, Xμ, Xσ, Xν, comps, nmμ, nmσ, nmν, g_tol; start = st)
+    run_sharp = kind isa Val{:zip} && pν >= 2 ?
+        (st -> _fit_indep_re_laplace(fitfam, kind, y, Xμ, Xσ, Xν, comps, nmμ, nmσ, nmν, min(g_tol, 1e-10); start = st)) :
+        run
     fit = run(start)
     start === nothing && kind isa Union{Val{:zip},Val{:zinb},Val{:tnb},Val{:hnb}} &&
-        (fit = _zi_re_restarts(fit, run, kind, y, Xμ, Xσ, Xν))
+        (fit = _zi_re_restarts(fit, run, run_sharp, kind, fitfam, y, Xμ, Xσ, Xν, nmμ, nmν, g_tol))
     return _withformula(fit, f)
 end
 
@@ -216,33 +220,155 @@ end
 # NaN. A fit that did not converge, has no finite log-likelihood, or whose zero-mass linear
 # predictor reached 15 or more in absolute value is refitted from interior starts: mean block by
 # least squares on log(y + 0.5), log sigma = log(0.5), log(1), log(0.3), zero-mass intercept
-# 0, -1, 1, random-effect log SD log(0.3). At most three refits, and only these fits pay for them.
+# 0, -1, 1, random-effect log SD log(0.3). Refits run only on default starts.
 # A refit replaces the first fit only if its log-likelihood is higher (or equal and it converged).
-# The converged flag is never changed: a fit that no start rescues stays `converged = false`.
+# If restarts find no valid candidate, `converged` is cleared so a spike with non-PD vcov is not
+# returned as converged.
+# Zero-inflated Poisson with `zi ~ x` on `(1 | g)` can converge at a worse mode (DRModels.jl#1371);
+# restarts run whenever the default fit fails the validity gate (including converged defaults with
+# non-PD vcov); an interior probe can also expose a higher plateau on multi-covariate `zi`.
+# Higher log-likelihood restart candidates are accepted only when they pass a validity check
+# (converged, finite PD vcov, log-likelihood reproduced from θ via a cold inner solve); spurious
+# inner-Laplace modes are rejected even when their reported logLik is much larger (issue #1371).
 const _ZI_RE_RESTART_STARTS = ((0.5, 0.0), (1.0, -1.0), (0.3, 1.0))   # (sigma, zero-mass intercept)
 const _ZI_RE_BOUNDARY_ETA = 15.0
+const _ZI_RE_LOGSD_STARTS = (log(0.15), log(0.2), log(0.22), log(0.25), log(0.3), log(0.35), log(0.5))
+const _ZI_RE_ZIP2ZI_STARTS = (
+    (-3.0, -2.0), (-3.0, -1.5), (-2.5, -1.5), (-2.0, -1.0), (-1.5, -1.0),
+    (-1.0, -0.5), (-0.64, -1.15), (-0.6, -1.1), (-0.55, -1.05), (-0.5, -1.0),
+    (-0.5, -0.5), (-0.45, -0.95), (-0.4, -1.4), (-0.4, -1.2), (0.0, 0.0),
+)
+const _ZI_RE_RESTART_LL_RTOL = 1e-6
 
-function _zi_re_restarts(fit::DrmFit, run, kind::Val, y, Xμ, Xσ, Xν)
+function _zi_re_nll_cold(fit::DrmFit)
+    n = fit.nll
+    return n isa _IndepReNll ? n.cold : n
+end
+
+function _zi_re_loglik_at_theta(fit::DrmFit)
+    fit.nll === nothing && return fit.loglik
+    nllv = _zi_re_nll_cold(fit)(fit.theta)
+    isfinite(nllv) || return -Inf
+    return -nllv
+end
+
+function _zi_re_restart_valid(ft::DrmFit, ok)
+    ok(ft) || return false
+    all(isfinite, ft.vcov) || return false
+    _twin_vcov_positive_definite(ft.vcov) || return false
+    ll = ft.loglik
+    isfinite(ll) || return false
+    ll2 = _zi_re_loglik_at_theta(ft)
+    isfinite(ll2) || return false
+    return abs(ll2 - ll) <= _ZI_RE_RESTART_LL_RTOL * max(1.0, abs(ll))
+end
+
+function _zi_re_pick_best(best::DrmFit, cand::DrmFit, valid)
+    valid(cand) || return best
+    lc = cand.loglik
+    lb = isfinite(best.loglik) && best.loglik > -1e17 ? best.loglik : -Inf
+    valid(best) || return cand
+    # Never replace a converged incumbent with a non-converged candidate.
+    best.converged && !cand.converged && return best
+    cand.converged && !best.converged && return cand
+    lc > lb + 1e-8 && return cand
+    abs(lc - lb) <= 1e-8 && cand.converged && !best.converged && return cand
+    return best
+end
+
+function _zi_re_zip2_plateau_suspect(fit::DrmFit, run, pμ, pσ, pν, βμ)
+    pν < 2 && return false
+    ok_default = fit.converged && isfinite(fit.loglik) && fit.loglik > -1e17
+    ok_default || return false
+    st = zeros(length(fit.theta))
+    st[1:pμ] .= βμ
+    pσ > 0 && (st[pμ + 1] = log(0.5))
+    st[pμ + pσ + 1] = -0.5
+    st[pμ + pσ + 2] = -1.0
+    st[end] = log(0.3)
+    cand = try run(st) catch err; err isa InterruptException && rethrow(); nothing end
+    cand === nothing && return false
+    cand.converged && isfinite(cand.loglik) && cand.loglik > fit.loglik + 5.0
+end
+
+function _zi_re_refine_zip!(best::DrmFit, run, pμ, pσ, pν, valid)
+    pν < 2 && return best
+    θ = best.theta
+    isfinite(best.loglik) || return best
+    for dz0 in (-0.06, 0.0, 0.06), dz1 in (-0.06, 0.0, 0.06), dl in (-0.08, 0.0, 0.08)
+        (dz0 == dz1 == dl == 0.0) && continue
+        st = copy(θ)
+        st[pμ + pσ + 1] += dz0
+        st[pμ + pσ + 2] += dz1
+        st[end] += dl
+        cand = try run(st) catch err; err isa InterruptException && rethrow(); nothing end
+        cand === nothing && continue
+        best = _zi_re_pick_best(best, cand, valid)
+    end
+    return best
+end
+
+function _zi_re_try_start!(starts, seen, st)
+    key = Tuple(round.(st; digits = 6))
+    key in seen && return
+    push!(seen, key)
+    push!(starts, st)
+    return nothing
+end
+
+function _zi_re_restarts(fit::DrmFit, run, run_sharp, kind::Val, fam, y, Xμ, Xσ, Xν, nmμ, nmν, g_tol)
     pμ = size(Xμ, 2); pσ = Xσ === nothing ? 0 : size(Xσ, 2); pν = Xν === nothing ? 0 : size(Xν, 2)
     νr = (pμ + pσ + 1):(pμ + pσ + pν)
     at_boundary(ft) = pν > 0 && maximum(abs, Xν * ft.theta[νr]) >= _ZI_RE_BOUNDARY_ETA
     ok(ft) = ft.converged && isfinite(ft.loglik) && ft.loglik > -1e17 && !at_boundary(ft)
-    ok(fit) && return fit
+    valid(ft) = _zi_re_restart_valid(ft, ok)
     βμ = Xμ \ log.(Float64.(y) .+ 0.5)
-    best = fit
-    for (σ0, z0) in _ZI_RE_RESTART_STARTS
+    needs = !valid(fit) || (pν >= 2 && kind isa Val{:zip} && _zi_re_zip2_plateau_suspect(fit, run, pμ, pσ, pν, βμ))
+    needs || return fit
+    yv = _indep_response(kind, y)
+    θ_fe = _indep_fixed_start(kind, fam, yv, Xμ, Xσ, Xν, nmμ, String[], nmν, g_tol)
+    μ_bases = (βμ, θ_fe[1:pμ])
+    starts = Vector{Vector{Float64}}(); seen = Set{NTuple{length(fit.theta), Float64}}()
+    for μ0 in μ_bases, (σ0, z0) in _ZI_RE_RESTART_STARTS
         st = zeros(length(fit.theta))
-        st[1:pμ] .= βμ
-        pσ > 0 && (st[pμ+1] = log(σ0))
-        pν > 0 && (st[pμ+pσ+1] = z0)
+        st[1:pμ] .= μ0
+        pσ > 0 && (st[pμ + 1] = log(σ0))
+        pν > 0 && (st[pμ + pσ + 1] = z0)
+        pν >= 2 && (st[pμ + pσ + 2] = 0.0)
         st[end] = log(0.3)
-        cand = try run(st) catch err; err isa InterruptException && rethrow(); nothing end
+        _zi_re_try_start!(starts, seen, st)
+    end
+    if pν >= 2 && kind isa Val{:zip}
+        for μ0 in μ_bases, (z1, z2) in _ZI_RE_ZIP2ZI_STARTS, lsd in _ZI_RE_LOGSD_STARTS
+            st = zeros(length(fit.theta))
+            st[1:pμ] .= μ0
+            pσ > 0 && (st[pμ + 1] = log(0.5))
+            st[νr] .= (z1, z2)
+            st[end] = lsd
+            _zi_re_try_start!(starts, seen, st)
+        end
+        for lsd in _ZI_RE_LOGSD_STARTS
+            st = zeros(length(fit.theta))
+            st[1:pμ] .= βμ
+            st[νr] .= θ_fe[νr]
+            st[end] = lsd
+            _zi_re_try_start!(starts, seen, st)
+        end
+    end
+    best = fit
+    run_work = kind isa Val{:zip} && pν >= 2 ? run_sharp : run
+    for st in starts
+        cand = try run_work(st) catch err; err isa InterruptException && rethrow(); nothing end
         cand === nothing && continue
-        lc = isfinite(cand.loglik) ? cand.loglik : -Inf; lb = isfinite(best.loglik) ? best.loglik : -Inf
-        better = lc > lb + 1e-8 || (abs(lc - lb) <= 1e-8 && cand.converged && !best.converged)
-        confirmed = ok(cand) || (cand.converged && abs(lc - lb) <= 1e-6)
-        better && (best = cand)
-        confirmed && break
+        best = _zi_re_pick_best(best, cand, valid)
+    end
+    kind isa Val{:zip} && (best = _zi_re_refine_zip!(best, run_work, pμ, pσ, pν, valid))
+    if best.converged && !valid(best)
+        best = DrmFit(best.family, best.blocks, best.coefnames, best.theta,
+            best.vcov, best.loglik, best.nobs, false, best.means, best.obs, best.scales, best.formula,
+            best.nll, best.nllgrad, best.ranef, best.estim_method, best.reml_loglik, best.ml_loglik,
+            best.marginal, best.phylo_penalty, best.penalty, best.iterations, best.phylo_scale,
+            best.uncertainty, best.geometry)
     end
     return best
 end

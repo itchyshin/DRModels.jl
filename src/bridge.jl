@@ -3224,9 +3224,7 @@ function _bridge_dpars(fit::DrmFit)
     # Those are not response-distribution parameters and must not cross the
     # R bridge as fictitious dpars.
     for (k, v) in pairs(fit.scales)
-        (_sigma_internal_key(k) ||
-         k in (:trials, :q2_restarts, :sd, :sd_group, :sd_group_index, :aghq_nodes) ||
-         startswith(String(k), "sdtarget_") || startswith(String(k), "cond_")) && continue
+        _scales_bookkeeping_key(k) && continue
         out[String(k)] = collect(float.(v))
     end
     if fit.family isa ZeroOneBeta && haskey(out, "beta_mu")

@@ -388,6 +388,10 @@ function _kw_advice(key::Symbol, fam, accepted = Symbol[])
         return "`coords` is read by a `spatial(...)` term, and $famn has no spatial route for " *
                "this model. Drop `coords` and the `spatial(...)` term, or use a family with a " *
                "spatial route." * _kw_r_note(key, fam)
+    elseif key === :contrasts
+        return "DRModels.jl codes every factor with treatment contrasts (StatsModels default). " *
+               "The `contrasts` keyword is not supported; recode the factor in the data instead. " *
+               "See the Formula grammar developer note."
     end
     if key === :se
         return "`se` is not a keyword of this route. Use `control = DRMControl(se = false)`, " *
