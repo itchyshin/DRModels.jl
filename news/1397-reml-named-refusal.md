@@ -1,0 +1,1 @@
+- **REML on Binomial, Beta, Gamma and NegBinomial2 is refused by name (#1397).** `method = :REML` on those families said `unknown method`. The symbol is known; the route is not available, and the error now says so. ML is unchanged, and an unrecognised method symbol still says `unknown method`.

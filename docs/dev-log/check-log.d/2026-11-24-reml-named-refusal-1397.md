@@ -1,0 +1,1 @@
+| 2026-11-24 | **REML named refusal** (#1397 J2) | `include("test/test_reml_named_refusal_1397.jl")` | ✅ 16/16. Binomial, Beta, Gamma and NegBinomial2 `method = :REML` names the refusal; an unknown method symbol still says unknown; a Binomial ML fit on the same data still returns a finite log-likelihood | Shannon |
