@@ -168,8 +168,8 @@ counterpart, keeps the same mean-only scope. drmTMB refuses the temporal
 bootstrap; as an extension, `bootstrap_ci` / `bootstrap_summary` /
 `bootstrap_result` report percentile intervals for the mean coefficients only,
 with no calibration claim. Rows with a missing response are dropped before the
-panel rules apply (as drmTMB); `simulate` then returns one value per data row,
-`NaN` at the dropped rows. Incomplete or unequally spaced panels,
+panel rules apply (as drmTMB); `simulate` then returns the retained rows only (#1352),
+as for every other fit. Incomplete or unequally spaced panels,
 fewer than 3 or more than 12 occasions, fractional occasions and an ordinary
 `(1 | id)` are refused with drmTMB's messages.
 """

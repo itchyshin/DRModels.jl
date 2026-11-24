@@ -1,0 +1,1 @@
+- **Bootstrap response-mask helpers use an all-rows store (j112 hardening).** `_restore_response_mask!` and `_bootstrap_keep_unobserved` no longer use `@inbounds` loops with a store only inside an `if`, matching the `#1326` fix for `_coerce_response_column` (#1374). Output is unchanged on current Julia versions; the change blocks a known 1.12 miscompile class.
