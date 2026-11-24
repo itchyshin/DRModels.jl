@@ -180,6 +180,13 @@ mean. `comps` is a vector of `(w, gidx, G, label)` (the Gaussian multi-RE
 convention; `w` is the slope covariate or ones). θ = [β_μ; β_σ; (β_ν;) log σ_k].
 Blocks `:mu`, `:sigma`, (`:nu`,) `:resd`. Tagged `marginal = :Laplace`.
 """
+# Callable `nll` passed to `DrmFit`, plus `.cold` for reproducibility checks (inner mode from b = 0).
+struct _IndepReNll{F,G}
+    warm::F
+    cold::G
+end
+(f::_IndepReNll)(θ) = f.warm(θ)
+
 function _fit_indep_re_laplace(fam, kind::Val, y, Xμ, Xσ, Xν, comps, nmμ, nmσ, nmν, g_tol;
                                start = nothing)
     n = length(y); yv = _indep_response(kind, y)
@@ -269,7 +276,7 @@ function _fit_indep_re_laplace(fam, kind::Val, y, Xμ, Xσ, Xν, comps, nmμ, nm
     end
 
     last_b = zeros(q)
-    function nll(θ)
+    function nll_at(θ, binit; update_last::Bool)
         T = eltype(θ)
         βμ = θ[1:pμ]; βσ = θ[pμ+1:pμ+pσ]
         lsg = vcat([Zs[k] * θ[sdoffs[k]+1:sdoffs[k+1]] for k in 1:K]...)   # log SD of every effect
@@ -279,10 +286,10 @@ function _fit_indep_re_laplace(fam, kind::Val, y, Xμ, Xσ, Xν, comps, nmμ, nm
         any(l -> abs(_indep_primal(l)) > _INDEP_LOGSD_GUARD, ησ) && return T(1e18)
         invs = exp.(-2 .* lsg)
         f0 = (_indep_primal.(η0), _indep_primal.(ησ), _indep_primal.(ην), _indep_primal.(invs))
-        b̂, ok = inner_mode(f0..., last_b)
+        b̂, ok = inner_mode(f0..., binit)
         ok || ((b̂, ok) = inner_mode(f0..., zeros(q)))
         ok || return T(1e18)
-        T === Float64 && (last_b .= b̂)
+        T === Float64 && update_last && (last_b .= b̂)
         b = Vector{T}(b̂)
         for _ in 1:2                                   # lift b̂ to b̂(θ) in dual arithmetic
             _, grad, H = joint_terms(b, η0, ησ, ην, invs)
@@ -297,6 +304,8 @@ function _fit_indep_re_laplace(fam, kind::Val, y, Xμ, Xσ, Xν, comps, nmμ, nm
         isfinite(val) || return T(1e18)
         return val
     end
+    nll(θ) = nll_at(θ, last_b, update_last = true)
+    nll_cold(θ) = nll_at(θ, zeros(q), update_last = false)
 
     # Interior start. Gamma: the fixed-effects fit (shape and mean are well behaved).
     # Student: OLS mean, sigma at half the residual spread, nu = 2 + e^eta at 12 — NOT the
@@ -384,7 +393,8 @@ function _fit_indep_re_laplace(fam, kind::Val, y, Xμ, Xσ, Xν, comps, nmμ, nm
               "mixture). Profile intervals may not converge at the wall."
     end
     fit = DrmFit(fam, blocks, names, θ̂, V, -nllhat, n, converged, means, obs, scales)
-    return _withiterations(_withmarginal(_withnll(fit, nll), :Laplace), Optim.iterations(res))
+    nll_out = _IndepReNll(nll, nll_cold)
+    return _withiterations(_withmarginal(_withnll(fit, nll_out), :Laplace), Optim.iterations(res))
 end
 
 # Build `(w, gidx, G, label)` components for a mean made only of `(1 | g)` and

@@ -227,6 +227,19 @@ end
 
 # #938: a route that cannot hold the offset at coefficient 1 refuses it by name,
 # instead of letting `_design` build it as an estimated column.
+# #941 / #1337: refuse an offset unless the mean carries at most one ordinary `(1 | g)`.
+function _refuse_offset_unless_ordinary_intercept!(fam, re, st, mv; isva::Bool = false)
+    st !== nothing && _refuse_offset_route(fam, "a phylogenetic/structured random effect")
+    length(re) > 1 && _refuse_offset_route(fam, "crossed/multiple random effects")
+    if length(re) == 1
+        _re_kind(re[1][1])[1] === :intercept ||
+            _refuse_offset_route(fam, "a random slope on the mean")
+        mv !== nothing && _refuse_offset_route(fam, "`meta_V` on the mean with a random effect")
+        isva && _refuse_offset_route(fam, "`marginal = :VA`")
+    end
+    return nothing
+end
+
 _refuse_offset_route(fam, route) = throw(ArgumentError(
     "$(_family_label(fam)): `offset(...)` in the mean formula is not supported with $route; " *
     "the offset (coefficient fixed at 1) is applied on the fixed-effects mean" *
@@ -1189,9 +1202,8 @@ function _fit_poisson_sd_regression(fam::Poisson, y, Xmu, Zg, gidx, G,
     res = Optim.optimize(nll, theta0, Optim.LBFGS(),
                          Optim.Options(g_tol = g_tol); autodiff = :forward)
     thetahat = Optim.minimizer(res)
-    H = ForwardDiff.hessian(nll, thetahat)
-    V = se ? _vcov_from_hessian(H) : fill(NaN, length(thetahat), length(thetahat))
-    converged = !Optim.iteration_limit_reached(res) && _unitfree_converged(H, ForwardDiff.gradient(nll, thetahat))
+    V = se ? _vcov_from_hessian(ForwardDiff.hessian(nll, thetahat)) :
+             fill(NaN, length(thetahat), length(thetahat))
     blocks = [:mu => 1:pmu, :sd => (pmu+1):(pmu+psd)]
     names = [:mu => nmmu, :sd => nmsd]
     sdgroup = exp.(Zg * thetahat[(pmu+1):end])
@@ -1202,7 +1214,7 @@ function _fit_poisson_sd_regression(fam::Poisson, y, Xmu, Zg, gidx, G,
                   :aghq_nodes => [Float64(nAGQ)])
     return _withiterations(
         _withnll(DrmFit(fam, blocks, names, thetahat, V, -nll(thetahat), n,
-                        converged, means, obs, scales), nll),
+                        drm_optim_converged(res), means, obs, scales), nll),
         Optim.iterations(res))
 end
 
@@ -1264,9 +1276,8 @@ function _fit_poisson_zi_sd_regression(fam::Poisson, y, Xmu, Xzi, Zg, w,
     res = Optim.optimize(nll, theta0, Optim.LBFGS(),
                          Optim.Options(g_tol = g_tol); autodiff = :forward)
     theta_hat = Optim.minimizer(res)
-    H = ForwardDiff.hessian(nll, theta_hat)
-    V = se ? _vcov_from_hessian(H) : fill(NaN, length(theta_hat), length(theta_hat))
-    converged = !Optim.iteration_limit_reached(res) && _unitfree_converged(H, ForwardDiff.gradient(nll, theta_hat))
+    V = se ? _vcov_from_hessian(ForwardDiff.hessian(nll, theta_hat)) :
+             fill(NaN, length(theta_hat), length(theta_hat))
     sd_range = (pmu+pzi+1):(pmu+pzi+psd)
     blocks = [:mu => 1:pmu, :zi => (pmu+1):(pmu+pzi), :sd => sd_range]
     names = [:mu => nmmu, :zi => nmzi, :sd => nmsd]
@@ -1279,7 +1290,7 @@ function _fit_poisson_zi_sd_regression(fam::Poisson, y, Xmu, Xzi, Zg, w,
                   :aghq_nodes => [Float64(nAGQ)])
     return _withiterations(
         _withnll(DrmFit(fam, blocks, names, theta_hat, V, -nll(theta_hat), n,
-                        converged, means, obs, scales), nll),
+                        drm_optim_converged(res), means, obs, scales), nll),
         Optim.iterations(res))
 end
 
@@ -1348,8 +1359,7 @@ function _fit_poisson_ranef(fam::Poisson, y, Xμ, gidx, G, nmμ, grp, g_tol; rem
     θ0[1] = log(sum(y) / n + eps()) - sum(off) / n
     θ0[pμ+1] = log(0.5)
     res = Optim.optimize(nll, θ0, Optim.LBFGS(), Optim.Options(g_tol = g_tol); autodiff = :forward)
-    θ̂ = Optim.minimizer(res); H = ForwardDiff.hessian(nll, θ̂)
-    conv = !Optim.iteration_limit_reached(res) && _unitfree_converged(H, ForwardDiff.gradient(nll, θ̂))
+    θ̂ = Optim.minimizer(res); conv = drm_optim_converged(res)
     blocks = [:mu => 1:pμ, :resd => (pμ+1):(pμ+1)]
     names = [:mu => nmμ, :resd => [String(grp)]]
     scales = Dict{Symbol,Vector{Float64}}()
@@ -1366,7 +1376,7 @@ function _fit_poisson_ranef(fam::Poisson, y, Xμ, gidx, G, nmμ, grp, g_tol; rem
         fit = _withnll(DrmFit(fam, blocks, names, θ̂, V, -ml_nll, n, conv, means, obs, scales), nll)
         return _withreml(fit, -reml_nll, -ml_nll)
     end
-    V = _vcov_from_hessian(H)
+    V = _vcov_from_hessian(ForwardDiff.hessian(nll, θ̂))
     means = Dict(:mu => exp.(Xμ * θ̂[1:pμ] .+ off)); obs = Dict(:mu => Vector{Float64}(y))   # population λ (b=0), × exposure
     _record_cond_fit_aghq!(scales, nll, θ̂, bcache, gidx, Zre)   # fitted-row modes for `fitted(fit)`
     return _withiterations(
@@ -1403,8 +1413,7 @@ function _fit_poisson_ranef_aghq(fam::Poisson, y, Xμ, gidx, G, nmμ, grp, g_tol
     θ0[1] = log(sum(y) / n + eps()) - sum(off) / n
     θ0[pμ+1] = log(0.5)
     res = Optim.optimize(nll, θ0, Optim.LBFGS(), Optim.Options(g_tol = g_tol); autodiff = :forward)
-    θ̂ = Optim.minimizer(res); H = ForwardDiff.hessian(nll, θ̂)
-    conv = !Optim.iteration_limit_reached(res) && _unitfree_converged(H, ForwardDiff.gradient(nll, θ̂))
+    θ̂ = Optim.minimizer(res); conv = drm_optim_converged(res)
     # A penalised objective at the optimum means some group posterior could not be
     # evaluated there (#1063): fail cleanly rather than report a meaningless fit.
     nll̂ = nll(θ̂)
@@ -1414,8 +1423,9 @@ function _fit_poisson_ranef_aghq(fam::Poisson, y, Xμ, gidx, G, nmμ, grp, g_tol
         "Use the default marginal = :LA or marginal = :Laplace for this model.")
     blocks = [:mu => 1:pμ, :resd => (pμ+1):(pμ+1)]
     names = [:mu => nmμ, :resd => [String(grp)]]
-    scales = Dict{Symbol,Vector{Float64}}()
-    V = _vcov_from_hessian(H)
+    # #1377: store the node count so `update` and bootstrap refits repeat it.
+    scales = Dict{Symbol,Vector{Float64}}(:aghq_nodes => [Float64(nAGQ)])
+    V = _vcov_from_hessian(ForwardDiff.hessian(nll, θ̂))
     means = Dict(:mu => exp.(Xμ * θ̂[1:pμ] .+ off)); obs = Dict(:mu => Vector{Float64}(y))
     return _withiterations(
         _withnll(DrmFit(fam, blocks, names, θ̂, V, -nll(θ̂), n, conv, means, obs, scales), nll),
@@ -1445,15 +1455,14 @@ function _fit_poisson_corr_ranef(fam::Poisson, y, Xμ, xs, gidx, G, nmμ, grp, g
     θ0[1] = log(sum(y) / n + eps())
     θ0[pμ+1] = log(0.4); θ0[pμ+2] = log(0.4); θ0[pμ+3] = 0.0
     res = Optim.optimize(nll, θ0, Optim.LBFGS(), Optim.Options(g_tol = g_tol); autodiff = :forward)
-    θ̂ = Optim.minimizer(res); H = ForwardDiff.hessian(nll, θ̂); V = _vcov_from_hessian(H)
-    converged = !Optim.iteration_limit_reached(res) && _unitfree_converged(H, ForwardDiff.gradient(nll, θ̂))
+    θ̂ = Optim.minimizer(res); V = _vcov_from_hessian(ForwardDiff.hessian(nll, θ̂))
     blocks = [:mu => 1:pμ, :recov => (pμ+1):(pμ+3)]
     names = [:mu => nmμ, :recov => ["$(grp):L11", "$(grp):L22", "$(grp):L21"]]
     means = Dict(:mu => exp.(Xμ * θ̂[1:pμ])); obs = Dict(:mu => Vector{Float64}(y))
     scales = Dict{Symbol,Vector{Float64}}()
     _record_cond_fit_aghq!(scales, nll, θ̂, bcache, gidx, Zre)   # fitted-row modes for `fitted(fit)`
     return _withiterations(
-        _withnll(DrmFit(fam, blocks, names, θ̂, V, -nll(θ̂), n, converged, means, obs, scales), nll),
+        _withnll(DrmFit(fam, blocks, names, θ̂, V, -nll(θ̂), n, drm_optim_converged(res), means, obs, scales), nll),
         Optim.iterations(res))
 end
 
@@ -1492,15 +1501,13 @@ function _fit_poisson_zi(fam::Poisson, y, Xμ, Xzi, nmμ, nmzi, g_tol; offset = 
     θ0[1:pμ] .= _offset_start(θ0[1:pμ], Xμ, offset)   # #938
     res = _ctl_optimize((x0, opts, method) -> Optim.optimize(nll, x0, method, opts; autodiff = :forward),
                        θ0; g_tol = g_tol)   # control: maxit / start / multi_start (#948 #994)
-    θ̂ = Optim.minimizer(res); H = ForwardDiff.hessian(nll, θ̂)
-    V = _ctl_se(() -> _vcov_from_hessian(H), θ̂)
-    converged = !Optim.iteration_limit_reached(res) && _unitfree_converged(H, ForwardDiff.gradient(nll, θ̂))
+    θ̂ = Optim.minimizer(res); V = _ctl_se(() -> _vcov_from_hessian(ForwardDiff.hessian(nll, θ̂)), θ̂)
     blocks = [:mu => 1:pμ, :zi => (pμ+1):(pμ+pz)]
     names = [:mu => nmμ, :zi => nmzi]
     means = Dict(:mu => exp.(_eta_with_offset(Xμ, θ̂[1:pμ], offset))); obs = Dict(:mu => Vector{Float64}(y))
     scales = Dict(:zi => _logistic.(Xzi * θ̂[(pμ+1):(pμ+pz)]))
     return _withiterations(
-        _withnll(DrmFit(fam, blocks, names, θ̂, V, -nll(θ̂), n, converged, means, obs, scales), nll),
+        _withnll(DrmFit(fam, blocks, names, θ̂, V, -nll(θ̂), n, drm_optim_converged(res), means, obs, scales), nll),
         Optim.iterations(res))
 end
 
@@ -1533,15 +1540,13 @@ function _fit_poisson_hu(fam::Poisson, y, Xμ, Xhu, nmμ, nmhu, g_tol)
     θ0[1] = log((isempty(pos) ? sum(y) / n : sum(pos) / length(pos)) + eps())   # λ from non-zeros
     res = _ctl_optimize((x0, opts, method) -> Optim.optimize(nll, x0, method, opts; autodiff = :forward),
                        θ0; g_tol = g_tol)   # control: maxit / start / multi_start (#948 #994)
-    θ̂ = Optim.minimizer(res); H = ForwardDiff.hessian(nll, θ̂)
-    V = _ctl_se(() -> _vcov_from_hessian(H), θ̂)
-    converged = !Optim.iteration_limit_reached(res) && _unitfree_converged(H, ForwardDiff.gradient(nll, θ̂))
+    θ̂ = Optim.minimizer(res); V = _ctl_se(() -> _vcov_from_hessian(ForwardDiff.hessian(nll, θ̂)), θ̂)
     blocks = [:mu => 1:pμ, :hu => (pμ+1):(pμ+ph)]
     names = [:mu => nmμ, :hu => nmhu]
     means = Dict(:mu => exp.(Xμ * θ̂[1:pμ])); obs = Dict(:mu => Vector{Float64}(y))
     scales = Dict(:hu => _logistic.(Xhu * θ̂[(pμ+1):(pμ+ph)]))
     return _withiterations(
-        _withnll(DrmFit(fam, blocks, names, θ̂, V, -nll(θ̂), n, converged, means, obs, scales), nll),
+        _withnll(DrmFit(fam, blocks, names, θ̂, V, -nll(θ̂), n, drm_optim_converged(res), means, obs, scales), nll),
         Optim.iterations(res))
 end
 
@@ -1561,15 +1566,13 @@ function _fit_poisson(fam::Poisson, y, Xμ, nmμ, g_tol; offset::AbstractVector{
     θ0 = zeros(pμ); θ0[1] = log(sum(y) / n + eps()) - (isempty(off) ? 0.0 : sum(off) / n)
     res = _ctl_optimize((x0, opts, method) -> Optim.optimize(nll, x0, method, opts; autodiff = :forward),
                        θ0; g_tol = g_tol)   # control: maxit / start / multi_start (#948 #994)
-    θ̂ = Optim.minimizer(res); H = ForwardDiff.hessian(nll, θ̂)
-    V = _ctl_se(() -> _vcov_from_hessian(H), θ̂)
-    converged = !Optim.iteration_limit_reached(res) && _unitfree_converged(H, ForwardDiff.gradient(nll, θ̂))
+    θ̂ = Optim.minimizer(res); V = _ctl_se(() -> _vcov_from_hessian(ForwardDiff.hessian(nll, θ̂)), θ̂)
     blocks = [:mu => 1:pμ]; names = [:mu => nmμ]
     means = Dict(:mu => exp.(Xμ * θ̂ .+ off)); obs = Dict(:mu => Vector{Float64}(y))   # response-scale λ
     V, nonexistent = _count_mle_existence_guard(Xμ, y, V, nmμ)   # #1109: detect + warn, SE → Inf
     scales = Dict{Symbol,Vector{Float64}}()
     fit = _withiterations(
-        _withnll(DrmFit(fam, blocks, names, θ̂, V, -nll(θ̂), n, converged, means, obs, scales), nll),
+        _withnll(DrmFit(fam, blocks, names, θ̂, V, -nll(θ̂), n, drm_optim_converged(res), means, obs, scales), nll),
         Optim.iterations(res))
     return nonexistent ? _withgeometry(fit, :count_mle_nonexistent) : fit
 end
