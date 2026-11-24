@@ -4385,13 +4385,9 @@ function _simulate_once(fit::DrmFit, rng; mu = nothing, sigma = nothing)
         σ = sigma === nothing ? _scale_vector(fit, :sigma) : sigma
         a = _gamma_sigma_is_shape(fit) ? σ : inv.(abs2.(σ))
         return Float64[rand(rng, Distributions.Gamma(a[i], μ[i] / a[i])) for i in 1:n]
-    elseif fam isa LogNormal
-        σ = _scale_vector(fit, :sigma)
-        return Float64[exp(log(max(μ[i], eps())) + σ[i] * randn(rng)) for i in 1:n]
-    elseif fam isa Student
-        σ = _scale_vector(fit, :sigma)
-        ν = _scale_vector(fit, :nu)
-        return Float64[μ[i] + σ[i] * rand(rng, Distributions.TDist(ν[i])) for i in 1:n]
+    # `LogNormal`, `Student`, and `CumulativeLogit` draw via typed `DrmFit{...}`
+    # methods in `bivariate_lognormal.jl`, `bivariate_student.jl`, and
+    # `cumulative.jl` (generic branches here were unreachable; #1297).
     elseif fam isa ZeroOneBeta
         μb = _scale_vector(fit, :beta_mu)
         σ = _scale_vector(fit, :sigma); φ = @. 1 / (σ * σ)
@@ -4401,10 +4397,6 @@ function _simulate_once(fit::DrmFit, rng; mu = nothing, sigma = nothing)
         σ = _scale_vector(fit, :sigma)
         p = _scale_vector(fit, :nu)
         return Float64[_rand_tweedie(rng, μ[i], σ[i]^2, p[i]) for i in 1:n]
-    elseif fam isa CumulativeLogit
-        η = _scale_vector(fit, :ordinal_eta)
-        cuts = _scale_vector(fit, :ordinal_cuts)
-        return Float64[_rand_cumulative_logit(rng, η[i], cuts) for i in 1:n]
     elseif fam isa SkewNormal
         # Azzalini's stochastic representation. The PUBLIC parameters are the
         # MOMENT form (μ = mean of y, σ = SD of y, ν = slant α), so a draw has to
