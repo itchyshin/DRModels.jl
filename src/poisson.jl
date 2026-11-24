@@ -227,6 +227,19 @@ end
 
 # #938: a route that cannot hold the offset at coefficient 1 refuses it by name,
 # instead of letting `_design` build it as an estimated column.
+# #941 / #1337: refuse an offset unless the mean carries at most one ordinary `(1 | g)`.
+function _refuse_offset_unless_ordinary_intercept!(fam, re, st, mv; isva::Bool = false)
+    st !== nothing && _refuse_offset_route(fam, "a phylogenetic/structured random effect")
+    length(re) > 1 && _refuse_offset_route(fam, "crossed/multiple random effects")
+    if length(re) == 1
+        _re_kind(re[1][1])[1] === :intercept ||
+            _refuse_offset_route(fam, "a random slope on the mean")
+        mv !== nothing && _refuse_offset_route(fam, "`meta_V` on the mean with a random effect")
+        isva && _refuse_offset_route(fam, "`marginal = :VA`")
+    end
+    return nothing
+end
+
 _refuse_offset_route(fam, route) = throw(ArgumentError(
     "$(_family_label(fam)): `offset(...)` in the mean formula is not supported with $route; " *
     "the offset (coefficient fixed at 1) is applied on the fixed-effects mean" *
