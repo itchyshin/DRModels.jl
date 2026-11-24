@@ -7,6 +7,7 @@
 #
 # drmTMB fits after dropping rows whose grouping factor is NA (nobs = 150 on data_v2).
 # Julia refuses on raw data (#1112) and matches drmTMB via `drm_listwise`.
+# Intended R-vs-Julia difference (option A): keep the refusal — Shinichi, 24 Nov 2026.
 using DRModels
 using Test
 using DelimitedFiles

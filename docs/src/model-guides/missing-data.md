@@ -45,8 +45,14 @@ dropped and which columns caused it (R's `na.omit`, as drmTMB does; #1089).
 `nobs(fit)` counts the rows used, and prior `weights` are dropped with their
 rows. A `NaN` predictor is not dropped: it is an input error. A `relmat`,
 `animal` or `spatial` model whose levels the drop would reorder is refused by
-name, because its matrix is matched to the levels by position. You have two
-choices.
+name, because its matrix is matched to the levels by position.
+
+**Missing grouping labels** are handled differently from drmTMB: a `missing`,
+`NaN` or `Inf` in a random-effect grouping column makes `drm` stop with an
+`ArgumentError` (#1112), while drmTMB drops those rows. Drop the rows first with
+`drm_listwise(formula, data)` when you want drmTMB-compatible complete cases.
+
+You have two choices for missing predictors.
 
 **Complete-case analysis.** Either let `drm` drop the rows, as above, or do it
 yourself first. [`drm_listwise`](@ref) removes every row with a missing or
