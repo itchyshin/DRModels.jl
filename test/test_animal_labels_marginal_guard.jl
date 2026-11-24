@@ -1,5 +1,5 @@
 # Animal `A` label errors (message content) and `_marginal_compare_guard`
-# early return when both fits are `:VA`.
+# refusal when both fits are `:VA`.
 using DRModels
 using Test, Random, LinearAlgebra
 import Distributions
@@ -54,9 +54,7 @@ end
           catch e; e end
     @test err isa ArgumentError && occursin("ELBO", err.msg)
 
-    # Same tag => early return `nothing` (current behaviour)
-    @test DRModels._marginal_compare_guard(va_red, va_full, "lrtest") === nothing
-    # Two ELBOs are not log-likelihoods either; if this should refuse, flip to @test_throws.
-    @test_broken (try DRModels._marginal_compare_guard(va_red, va_full, "lrtest"); false
-                  catch e; e isa ArgumentError end)
+    # Same non-VA tag => early return `nothing`; two ELBOs are refused (#1036)
+    @test DRModels._marginal_compare_guard(la_full, la_full, "lrtest") === nothing
+    @test_throws ArgumentError DRModels._marginal_compare_guard(va_red, va_full, "lrtest")
 end
