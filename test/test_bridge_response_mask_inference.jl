@@ -80,16 +80,20 @@ using DRModels: is_converged, _nondegenerate_fit, niterations
     @test niterations(fit) == niterations(fit_cc)
     @test niterations(fit) > 0
 
-    # DEFECT 2: simulate draws over the full design, and a bootstrap on a
-    # masked response completes instead of losing every replicate.
+    # DEFECT 2: a bootstrap on a masked response completes instead of losing
+    # every replicate.
     #
-    # The DRAW still spans the full design and is finite everywhere -- it must,
-    # because `means`/`scales` are length 60. The mask is re-imposed one step
-    # later, when `_bootstrap_data` builds the replicate table, so every
+    # The internal DRAW still spans the full design and is finite everywhere --
+    # it must, because `means`/`scales` are length 60. The mask is re-imposed one
+    # step later, when `_bootstrap_data` builds the replicate table, so every
     # replicate refits on the same rows the seed fit observed (drmTMB #1188).
+    # The public `simulate(fit)` returns the used rows only (#1352, as drmTMB).
+    ysim_all = DRModels._simulate_all_rows(fit; rng = MersenneTwister(1))
+    @test length(ysim_all) == n
+    @test all(isfinite, ysim_all)
     ysim = DRModels.simulate(fit; rng = MersenneTwister(1))
-    @test length(ysim) == n
-    @test all(isfinite, ysim)
+    @test length(ysim) == n_observed == nobs(fit)
+    @test ysim == ysim_all[obs]
 
     # drmTMB #1188: mask-preserving replicates. Before this fix the replicate
     # table carried no missing values at all and each refit used all 60 rows,
@@ -99,9 +103,9 @@ using DRModels: is_converged, _nondegenerate_fit, niterations
     # 0.895 / 0.820 / 0.720 before the fix at 10% / 30% / 50% masked, and
     # 0.910 / 0.895 / 0.910 after, against a Wald reference of
     # 0.920 / 0.925 / 0.915.
-    datab = DRModels._bootstrap_data(fit.formula, (y = y_masked, x = x), copy(ysim))
+    datab = DRModels._bootstrap_data(fit.formula, (y = y_masked, x = x), copy(ysim_all))
     @test findall(isnan, datab.y) == findall(isnan, y_masked)
-    @test datab.y[obs] == ysim[obs]
+    @test datab.y[obs] == ysim_all[obs]
     @test nobs(drm(f, Gaussian(); data = datab)) == n_observed
 
     boot = bootstrap_result(

@@ -193,8 +193,16 @@ _n3_quiet(f) = redirect_stderr(devnull) do; f(); end
         err = try drm(fslope, Gaussian(); data = d, weights = ones(_N3_N)); nothing catch e; e end
         @test err isa ArgumentError
         @test occursin("fixed-effect routes", sprint(showerror, err))
+        @test occursin("one random intercept", sprint(showerror, err))
+        @test occursin("residual-only bivariate Gaussian", sprint(showerror, err))
         fb = bf(mu1 = @formula(y1 ~ 1 + x), mu2 = @formula(y2 ~ 1 + x))
         db = (y1 = _N3.yg, y2 = _N3.yg .+ randn(MersenneTwister(4), _N3_N), x = _N3.x)
+        # a bivariate model WITH a random term and `weights` keeps the refusal, and the message names the
+        # residual-only bivariate Gaussian route that does accept weights
+        fbre = bf(mu1 = @formula(y1 ~ 1 + x + (1 | g)), mu2 = @formula(y2 ~ 1 + x + (1 | g)))
+        err = try drm(fbre, Gaussian(); data = merge(db, (g = g,)), weights = ones(_N3_N)); nothing catch e; e end
+        @test err isa ArgumentError
+        @test occursin("residual-only bivariate Gaussian", sprint(showerror, err))
         err = try drm(fb, Gaussian(); data = db, control = DRMControl(maxit = 10)); nothing catch e; e end
         @test err isa ArgumentError && occursin("bivariate", sprint(showerror, err))
         # Not a DRMControl
