@@ -1,0 +1,1 @@
+- **NB2 `spatial(1 | g)` with site `coords` (gap map cell `nb2|spatial|lab0|q1|sd-none|cm0|ML`).** Coordinate-based fixed-range kernel; parity vs drmTMB 0.8.1 in `test/test_nb2_spatial_intercept_coords.jl`. refs #1504
