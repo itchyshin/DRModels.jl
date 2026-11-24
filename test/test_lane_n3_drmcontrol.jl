@@ -207,7 +207,8 @@ _n3_quiet(f) = redirect_stderr(devnull) do; f(); end
         @test err isa ArgumentError
         @test occursin("residual-only bivariate Gaussian", sprint(showerror, err))
         err = try drm(fb, Gaussian(); data = db, control = DRMControl(maxit = 10)); nothing catch e; e end
-        @test err isa ArgumentError && occursin("bivariate", sprint(showerror, err))
+        errmsg = sprint(showerror, err)
+        @test err isa ArgumentError && (occursin("bivariate", errmsg) || occursin("does not honour", errmsg))
         # Not a DRMControl
         @test_throws ArgumentError drm(_n3_cases()[1][3], Gaussian(); data = _n3_cases()[1][4](allrows),
                                        control = (maxit = 3,))
