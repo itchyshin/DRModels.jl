@@ -23,7 +23,10 @@ cells <- list(
     fit = function(d) drmTMB(bf(mu = y ~ x, sigma = ~ 1), family = Gamma(link = "log"), data = d)),
   beta = list(
     sim = function(x) { m <- plogis(0.2 + 0.6 * x); rbeta(n, m * 8, (1 - m) * 8) },
-    fit = function(d) drmTMB(bf(mu = y ~ x, sigma = ~ 1), family = beta_family(), data = d))
+    fit = function(d) drmTMB(bf(mu = y ~ x, sigma = ~ 1), family = beta_family(), data = d)),
+  lognormal = list(
+    sim = function(x) exp(0.3 + 0.4 * x + 0.35 * rnorm(length(x))),
+    fit = function(d) drmTMB(bf(mu = y ~ x, sigma = ~ 1), family = lognormal(), data = d))
 )
 set.seed(20261113)
 for (nm in names(cells)) {
