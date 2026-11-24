@@ -1,0 +1,3 @@
+# Verified converged optimum on the #1371 ZIP+RI data (Julia Laplace route; refs DRModels.jl#1371, drmTMB#1800).
+route = "issue_1371_zip_ri"
+loglik = -90.4223960153169
