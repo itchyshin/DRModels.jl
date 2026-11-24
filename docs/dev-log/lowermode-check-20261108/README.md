@@ -54,8 +54,7 @@ with one thread per fit.
   Without it each R process opened 385 threads and the host load average hit about
   3000 before I stopped them.
 
-Reproduce: generate data with `gen_data.jl`, run `agree.jl` and `agree.R` on a jobs
-file with columns `route<TAB>fam|kind|lab0|qN|sd-z|cm0|ML<TAB>seed`.
+The original R runner was removed from the release tree because it contained GPL source. The independently authored `agree_independent.R` can rerun selected cells using generated data and a jobs file with columns `route<TAB>fam|kind|lab0|qN|sd-z|cm0|ML<TAB>seed`. Its five-case reproduction and limits are recorded in `docs/dev-log/check-log.d/2026-11-15-lowermode-cleanroom.md`; it was not the generator of the historical results.
 
 ## Follow-up: do the forced Gamma restarts need to vary the first field's SD z-coefficients?
 

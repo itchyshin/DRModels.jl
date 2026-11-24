@@ -43,7 +43,15 @@ function _contract_checks(fit, data, y, k, ll_ref; support)
     rq = residuals(fit; type = :quantile)
     @test length(rq) == n && all(isfinite, rq)
     @test abs(mean(rq)) < 0.25 && 0.7 < std(rq) < 1.3
-    @test_throws ArgumentError residuals(fit; type = :pearson)
+    rp = residuals(fit; type = :pearson)
+    @test length(rp) == n && all(isfinite, rp)
+    if fit.family isa LogNormal
+        pp = predict_parameters(fit, data)
+        @test rp ≈ (log.(y) .- log.(pp[:mu])) ./ pp[:sigma] rtol = 1e-12
+    else
+        @test sign.(rp) == sign.(y .- fitted(fit))
+        fit.family isa Poisson && @test rp ≈ (y .- fitted(fit)) ./ sqrt.(fitted(fit)) rtol = 1e-12
+    end
 
     s1 = simulate(fit; rng = MersenneTwister(5))
     s2 = simulate(fit; rng = MersenneTwister(5))

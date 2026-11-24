@@ -65,12 +65,20 @@ extract_interval_status <- function(fit) {
   "wald_unavailable"
 }
 
-simulate_cell <- function(seed, n_tip, n_each, with_x = TRUE) {
+# Evidence-only helper; this file imports no package-engine source.
+generate_bivtree <- function(seed, n_tip) {
   set.seed(seed)
   tree <- ape::rcoal(n_tip)
   tree$tip.label <- paste0("sp_", seq_len(n_tip))
-  A <- ape::vcv(tree, corr = TRUE)
-  L <- t(chol(A))
+  K <- ape::vcv.phylo(tree, corr = TRUE)
+  factor <- t(chol(K))
+  list(tree = tree, factor = factor)
+}
+
+simulate_cell <- function(seed, n_tip, n_each, with_x = TRUE) {
+  fixture <- generate_bivtree(seed, n_tip)
+  tree <- fixture$tree
+  L <- fixture$factor
   Lam <- matrix(c(
     0.25, 0.10, 0.05, 0.00,
     0.10, 0.25, 0.00, 0.04,

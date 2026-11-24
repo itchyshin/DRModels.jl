@@ -51,9 +51,15 @@ end
 # non-PD boundary direction from poisoning the whole SE vector with NaN.
 _boundary_se(v::Real) = (isfinite(v) && v > 0) ? sqrt(v) : Inf
 
+# `scale` names the scale of `estimate`, `lower` and `upper`: `:log_sd` for a random-effect SD
+# row on the log SD scale, `:sd` for one on the SD scale, `:link` for every other row (a
+# coefficient on its own link scale).
 const _CIRow = NamedTuple{
-    (:param, :coef, :estimate, :lower, :upper),Tuple{Symbol,String,Float64,Float64,Float64}
+    (:param, :coef, :estimate, :lower, :upper, :scale),
+    Tuple{Symbol,String,Float64,Float64,Float64,Symbol},
 }
+
+_ci_row_scale(param::Symbol) = _is_log_sd_profile_param(param) ? :log_sd : :link
 
 const _BootstrapSummaryRow = NamedTuple{
     (:param, :coef, :estimate, :std_error, :lower, :upper),
@@ -175,7 +181,7 @@ end
     confint(fit; level = 0.95, method = :wald, threads = false, parm = nothing)
 
 Confidence intervals for every coefficient, as a vector of
-`(param, coef, estimate, lower, upper)` rows on each parameter's working scale
+`(param, coef, estimate, lower, upper, scale)` rows on each parameter's working scale
 (μ on the response scale; σ on `log σ`; ρ12 on `atanh ρ12`; random-effect SDs on
 `log σ_b`).
 
@@ -217,6 +223,16 @@ Confidence intervals for every coefficient, as a vector of
   A random-effect SD (`:resd`) whose lower arm reaches the numerical floor
   without an LR crossing is reported on the SD scale as `[0, u]` (drmTMB
   `profile.boundary`), not as a thrown error and not as `(-Inf, Inf)`.
+  The upper limit `u` is where the profile deviance reaches the `χ²₁` quantile at
+  `level` (3.84 at 0.95). When the SD estimate is at or near zero (about 1e-4 or
+  less) the upper-limit search starts one log unit above the estimate, because the
+  Wald standard error there is not a usable scale; interior SDs are unchanged.
+
+Every row also carries a `scale` field that names the scale of `estimate`, `lower`
+and `upper`: `:log_sd` for a random-effect SD row on the log SD scale (the scale of
+`coef(fit, :resd)` and of the Wald row), `:sd` for a row on the SD scale (the `[0, u]`
+boundary row above), and `:link` for every other row. The numbers of a row do not
+depend on this field.
 
 Mirrors drmTMB's `confint(fit, method = "wald" | "profile")`.
 """
@@ -294,7 +310,7 @@ function _glsp_stored_profile_rows(fit::DrmFit)
         lo, hi = fit.scales[sdkey]
         est = exp(coef(fit, param)[1])                 # SD-scale point estimate
         push!(rows, (param=param, coef=namemap[param][1], estimate=Float64(est),
-                     lower=Float64(lo), upper=Float64(hi)))
+                     lower=Float64(lo), upper=Float64(hi), scale=:sd))
     end
     return rows
 end
@@ -526,7 +542,8 @@ function _wald_ci(fit::DrmFit, level::Real, parm)
             s = se[idx]
             push!(
                 rows,
-                (param=p, coef=nms[j], estimate=est, lower=est - z * s, upper=est + z * s),
+                (param=p, coef=nms[j], estimate=est, lower=est - z * s, upper=est + z * s,
+                 scale=_ci_row_scale(p)),
             )
         end
     end
@@ -593,6 +610,7 @@ function _ls_profile_result(fit::DrmFit; level::Real=0.95, threads::Bool=false, 
                 estimate=fit.theta[job.k],
                 lower=ci.lower,
                 upper=ci.upper,
+                scale=_ci_row_scale(job.param),
             )
             lower_status = ci.lower_status
             upper_status = ci.upper_status
@@ -743,7 +761,8 @@ function _loconly_profile_row_result(
     end
     rewritten = _rewrite_log_sd_boundary_ci(job, est, lo, hi, lstats, rstats)
     rewritten === nothing || return rewritten
-    row = (param=job.param, coef=job.coef, estimate=est, lower=lo, upper=hi)
+    row = (param=job.param, coef=job.coef, estimate=est, lower=lo, upper=hi,
+           scale=_ci_row_scale(job.param))
     stats = (
         param=job.param,
         coef=job.coef,
@@ -954,6 +973,10 @@ const _PROFILE_MIN_STEP = 1e-6
 
 _is_log_sd_profile_param(param::Symbol) =
     param === :resd || param === :resd_mu || param === :resd_sigma
+
+# A log SD at or below this value is an SD of about 1e-4 or less: effectively zero, where
+# the pseudo-inverse Wald SE is not a scale for the search (it can be 1e7 on the log scale).
+const _PROFILE_SD_ZERO_LOG = log(1e-4)
 
 function _profile_usable_step(se_k::Real, est::Real)
     (isfinite(se_k) && se_k > _PROFILE_MIN_STEP) && return Float64(se_k)
@@ -1488,6 +1511,12 @@ function _profile_row_result(
     est = θ̂[k]
     allow_lower = _is_log_sd_profile_param(job.param)
     s = _profile_usable_step(se[k], est)
+    # Zero-anchored SD: a variance at (or numerically at) zero has no usable Wald scale. A
+    # starting step of 1e7 on the log scale never brackets the crossing within the
+    # root-finder's iteration budget, so the upper arm was reported as failed. Start from one
+    # log unit instead; the bracket then grows by 1.6 per step up to the crossing. Interior
+    # SDs (above 1e-4) keep the Wald step unchanged.
+    allow_lower && est <= _PROFILE_SD_ZERO_LOG && (s = 1.0)
     u0 = θ̂[[i for i in 1:length(θ̂) if i != k]]
     if endpoint_threads && Threads.nthreads() > 1
         left = Threads.@spawn _profile_endpoint_result(
@@ -1510,7 +1539,8 @@ function _profile_row_result(
     end
     rewritten = _rewrite_log_sd_boundary_ci(job, est, lo, hi, lstats, rstats)
     rewritten === nothing || return rewritten
-    row = (param=job.param, coef=job.coef, estimate=est, lower=lo, upper=hi)
+    row = (param=job.param, coef=job.coef, estimate=est, lower=lo, upper=hi,
+           scale=_ci_row_scale(job.param))
     stats = (
         param=job.param,
         coef=job.coef,
@@ -1543,7 +1573,7 @@ function _rewrite_log_sd_boundary_ci(job, log_est, lo, hi, lstats, rstats)
     sd_est = log_est <= _PROFILE_SD_LOG_FLOOR ? 0.0 : exp(log_est)
     upper_ok = isfinite(hi) && !rstats.endpoint_failed && !rstats.unbounded
     sd_hi = upper_ok ? exp(hi) : Inf
-    row = (param=job.param, coef=job.coef, estimate=sd_est, lower=0.0, upper=sd_hi)
+    row = (param=job.param, coef=job.coef, estimate=sd_est, lower=0.0, upper=sd_hi, scale=:sd)
     stats = (
         param=job.param,
         coef=job.coef,
@@ -1588,10 +1618,10 @@ function _warn_bootstrap_sigma_percentile(formula, rows)
 end
 
 """
-    bootstrap_ci(formula, family::Gaussian; data, B = 300, level = 0.95, rng = default_rng(), K = nothing, A = nothing, tree = nothing, coords = nothing, threads = false, failures = :error, check_converged = true, algorithm = :auto, g_tol = 1e-8)
-    bootstrap_ci(formula, family; data, B = 300, level = 0.95, rng = default_rng(), K = nothing, A = nothing, tree = nothing, coords = nothing, threads = false, failures = :error, check_converged = true)
-    bootstrap_ci(fit::DrmFit{<:Gaussian}; data, B = 300, level = 0.95, rng = default_rng(), K = nothing, A = nothing, tree = nothing, coords = nothing, threads = false, failures = :error, check_converged = true, algorithm = :auto, g_tol = 1e-8)
-    bootstrap_ci(fit::DrmFit; data, B = 300, level = 0.95, rng = default_rng(), K = nothing, A = nothing, tree = nothing, coords = nothing, threads = false, failures = :error, check_converged = true)
+    bootstrap_ci(formula, family::Gaussian; data, B = 300, level = 0.95, rng = default_rng(), K = nothing, A = nothing, tree = nothing, coords = nothing, threads = false, failures = :skip, check_converged = true, algorithm = :auto, g_tol = 1e-8)
+    bootstrap_ci(formula, family; data, B = 300, level = 0.95, rng = default_rng(), K = nothing, A = nothing, tree = nothing, coords = nothing, threads = false, failures = :skip, check_converged = true)
+    bootstrap_ci(fit::DrmFit{<:Gaussian}; data, B = 300, level = 0.95, rng = default_rng(), K = nothing, A = nothing, tree = nothing, coords = nothing, threads = false, failures = :skip, check_converged = true, algorithm = :auto, g_tol = 1e-8)
+    bootstrap_ci(fit::DrmFit; data, B = 300, level = 0.95, rng = default_rng(), K = nothing, A = nothing, tree = nothing, coords = nothing, threads = false, failures = :skip, check_converged = true)
 
 Parametric bootstrap confidence intervals: fit the model, then `simulate` `B`
 replicate responses, refit each, and take percentile intervals per coefficient.
@@ -1601,9 +1631,10 @@ in parallel. Pass through the structured-provider keywords (`K` / `A` / `tree` /
 `tree1` / `tree2` / `coords`)
 and, for Gaussian fits, the solver controls (`algorithm` / `g_tol`) exactly as
 to [`drm`](@ref). Use `bootstrap_result` when you need attempted/used/failed
-counts and per-replicate failure messages. A thrown refit is recorded; the
-default `failures = :error` then aborts. Pass `failures = :skip` to keep the
-successful draws.
+counts and per-replicate failure messages. A thrown refit is recorded and
+dropped (default `failures = :skip`): the intervals use the completed draws and a
+warning names how many of the `B` draws failed. Pass `failures = :error` to abort
+instead.
 If you already have
 `fit = drm(...)`, pass the fit directly to avoid refitting the base model before
 the bootstrap replicates. A homogeneous Toeplitz `temporal()` fit returns the
@@ -1631,7 +1662,7 @@ function bootstrap_ci(
     tree=nothing,
     coords=nothing,
     threads::Bool=false,
-    failures::Symbol=:error,
+    failures::Symbol=:skip,
     check_converged::Bool=true,
     algorithm::Symbol=:auto,
     g_tol::Real=1e-8,
@@ -1676,7 +1707,7 @@ function bootstrap_ci(
     tree2=nothing,
     coords=nothing,
     threads::Bool=false,
-    failures::Symbol=:error,
+    failures::Symbol=:skip,
     check_converged::Bool=true,
 )
     rows = bootstrap_summary(
@@ -1700,7 +1731,7 @@ function bootstrap_ci(
     tree2=nothing,
     coords=nothing,
     threads::Bool=false,
-    failures::Symbol=:error,
+    failures::Symbol=:skip,
     check_converged::Bool=true,
 )
     _refuse_selected_optimizer_refit(fit, "bootstrap_ci")
@@ -1722,7 +1753,7 @@ function bootstrap_ci(
     tree=nothing,
     coords=nothing,
     threads::Bool=false,
-    failures::Symbol=:error,
+    failures::Symbol=:skip,
     check_converged::Bool=true,
     algorithm::Symbol=:auto,
     g_tol::Real=1e-8,
@@ -1749,19 +1780,20 @@ function bootstrap_ci(
 end
 
 """
-    bootstrap_summary(formula, family::Gaussian; data, B = 300, level = 0.95, rng = default_rng(), K = nothing, A = nothing, tree = nothing, coords = nothing, threads = false, failures = :error, check_converged = true, algorithm = :auto, g_tol = 1e-8)
-    bootstrap_summary(formula, family; data, B = 300, level = 0.95, rng = default_rng(), K = nothing, A = nothing, tree = nothing, coords = nothing, threads = false, failures = :error, check_converged = true)
-    bootstrap_summary(fit::DrmFit{<:Gaussian}; data, B = 300, level = 0.95, rng = default_rng(), K = nothing, A = nothing, tree = nothing, coords = nothing, threads = false, failures = :error, check_converged = true, algorithm = :auto, g_tol = 1e-8)
-    bootstrap_summary(fit::DrmFit; data, B = 300, level = 0.95, rng = default_rng(), K = nothing, A = nothing, tree = nothing, coords = nothing, threads = false, failures = :error, check_converged = true)
+    bootstrap_summary(formula, family::Gaussian; data, B = 300, level = 0.95, rng = default_rng(), K = nothing, A = nothing, tree = nothing, coords = nothing, threads = false, failures = :skip, check_converged = true, algorithm = :auto, g_tol = 1e-8)
+    bootstrap_summary(formula, family; data, B = 300, level = 0.95, rng = default_rng(), K = nothing, A = nothing, tree = nothing, coords = nothing, threads = false, failures = :skip, check_converged = true)
+    bootstrap_summary(fit::DrmFit{<:Gaussian}; data, B = 300, level = 0.95, rng = default_rng(), K = nothing, A = nothing, tree = nothing, coords = nothing, threads = false, failures = :skip, check_converged = true, algorithm = :auto, g_tol = 1e-8)
+    bootstrap_summary(fit::DrmFit; data, B = 300, level = 0.95, rng = default_rng(), K = nothing, A = nothing, tree = nothing, coords = nothing, threads = false, failures = :skip, check_converged = true)
 
 Parametric bootstrap coefficient summaries in one pass: point estimate,
 bootstrap standard error, and percentile confidence interval. This is the
 bootstrap analogue of using `stderror(fit)` plus `confint(fit)`, avoiding a
 second bootstrap run when both SEs and intervals are needed. Row fields are
 `(param, coef, estimate, std_error, lower, upper)`. By default, a thrown refit
-is recorded and then aborts (`failures = :error`). Set `failures = :skip` to
-compute summaries from successful replicates; call `bootstrap_result` to
-inspect the skipped failures. A homogeneous Toeplitz `temporal()` fit returns
+is recorded and dropped (`failures = :skip`): summaries use the completed
+replicates and a warning names how many of the `B` draws failed; call
+`bootstrap_result` to inspect the failures. Set `failures = :error` to abort
+instead. A homogeneous Toeplitz `temporal()` fit returns
 the mean-coefficient rows only, as [`bootstrap_ci`](@ref). For the direct Julia
 Binomial `phylo_interaction()` SD route, supply `tree1` and `tree2` to preserve
 the fitted pair field during refits.
@@ -1780,7 +1812,7 @@ function bootstrap_summary(
     tree=nothing,
     coords=nothing,
     threads::Bool=false,
-    failures::Symbol=:error,
+    failures::Symbol=:skip,
     check_converged::Bool=true,
     algorithm::Symbol=:auto,
     g_tol::Real=1e-8,
@@ -1822,7 +1854,7 @@ function bootstrap_summary(
     tree2=nothing,
     coords=nothing,
     threads::Bool=false,
-    failures::Symbol=:error,
+    failures::Symbol=:skip,
     check_converged::Bool=true,
 )
     result = bootstrap_result(
@@ -1845,7 +1877,7 @@ function bootstrap_summary(
     tree2=nothing,
     coords=nothing,
     threads::Bool=false,
-    failures::Symbol=:error,
+    failures::Symbol=:skip,
     check_converged::Bool=true,
 )
     _refuse_selected_optimizer_refit(fit, "bootstrap_summary")
@@ -1866,7 +1898,7 @@ function bootstrap_summary(
     tree=nothing,
     coords=nothing,
     threads::Bool=false,
-    failures::Symbol=:error,
+    failures::Symbol=:skip,
     check_converged::Bool=true,
     algorithm::Symbol=:auto,
     g_tol::Real=1e-8,
@@ -1892,16 +1924,18 @@ function bootstrap_summary(
 end
 
 """
-    bootstrap_result(formula, family::Gaussian; data, B = 300, level = 0.95, rng = default_rng(), K = nothing, A = nothing, tree = nothing, coords = nothing, threads = false, failures = :error, check_converged = true, algorithm = :auto, g_tol = 1e-8, method = :ML, marginal = :LA, penalty = nothing)
-    bootstrap_result(formula, family; data, B = 300, level = 0.95, rng = default_rng(), K = nothing, A = nothing, tree = nothing, coords = nothing, threads = false, failures = :error, check_converged = true, method = :ML, marginal = :LA, penalty = nothing)
-    bootstrap_result(fit::DrmFit{<:Gaussian}; data, B = 300, level = 0.95, rng = default_rng(), K = nothing, A = nothing, tree = nothing, coords = nothing, threads = false, failures = :error, check_converged = true, algorithm = :auto, g_tol = 1e-8)
-    bootstrap_result(fit; data, B = 300, level = 0.95, rng = default_rng(), K = nothing, A = nothing, tree = nothing, coords = nothing, threads = false, failures = :error, check_converged = true)
+    bootstrap_result(formula, family::Gaussian; data, B = 300, level = 0.95, rng = default_rng(), K = nothing, A = nothing, tree = nothing, coords = nothing, threads = false, failures = :skip, check_converged = true, algorithm = :auto, g_tol = 1e-8, method = :ML, marginal = :LA, penalty = nothing)
+    bootstrap_result(formula, family; data, B = 300, level = 0.95, rng = default_rng(), K = nothing, A = nothing, tree = nothing, coords = nothing, threads = false, failures = :skip, check_converged = true, method = :ML, marginal = :LA, penalty = nothing)
+    bootstrap_result(fit::DrmFit{<:Gaussian}; data, B = 300, level = 0.95, rng = default_rng(), K = nothing, A = nothing, tree = nothing, coords = nothing, threads = false, failures = :skip, check_converged = true, algorithm = :auto, g_tol = 1e-8)
+    bootstrap_result(fit; data, B = 300, level = 0.95, rng = default_rng(), K = nothing, A = nothing, tree = nothing, coords = nothing, threads = false, failures = :skip, check_converged = true)
 
 Auditable parametric bootstrap. Returns a `NamedTuple` with:
 
 - `summary`: the same rows returned by `bootstrap_summary`;
 - `failures`: rows `(replicate, seed, message)` for failed refits;
-- `attempted`, `used`, `failed`: replicate counts;
+- `attempted`, `used`, `failed`: replicate counts (`used` is the denominator of
+  every summary);
+- `bootstrap_incomplete`: `true` when any replicate was dropped;
 - `status`: `"bootstrap"` when every replicate was kept, `"bootstrap_incomplete"`
   when any replicate was dropped and at least two remain, `"bootstrap_at_boundary"`
   when those retained draws pile up on a variance-component or correlation bound,
@@ -1918,9 +1952,10 @@ Auditable parametric bootstrap. Returns a `NamedTuple` with:
 - `worker_threads`, `julia_threads`, `blas_threads`, `blas_oversubscribed`,
   `elapsed`: CPU context and wall-clock time for the simulated-refit phase.
 
-`failures = :error` (default) records a thrown refit and then aborts. Pass
-`failures = :skip` to keep the successful draws and return
-`status = "bootstrap_incomplete"` with a warning. A refit that does
+`failures = :skip` (default) records a thrown refit, keeps the successful draws
+and returns `status = "bootstrap_incomplete"` (also `bootstrap_incomplete = true`)
+with a warning naming how many of the `B` draws failed. Pass `failures = :error`
+to record the thrown refit and then abort. A refit that does
 not converge, or that lands on a degenerate optimum, is not that kind of
 error: with `check_converged = true` (the default) it is dropped, `status` is
 `"bootstrap_incomplete"` (or `"bootstrap_at_boundary"` when the retained draws
@@ -1956,9 +1991,10 @@ rather than refitting with default settings.
     from the CONDITIONAL `simulate(fit)` (random effects held at `b = 0`), which
     collapses variance-component intervals (#459), and it does so **without a
     warning**. Known cases, kept as `@test_broken` in
-    `test/test_marginal_simulator_fallback_997.jl`: crossed ordinary bars
-    `(1 | g1) + (1 | g2)` on the mean, a mean grouping column missing from `data`,
-    and a correlated slope `(1 + x | g)`. Only a `meta_V(...)` + random-effect fit
+    `test/test_marginal_simulator_fallback_997.jl`: a mean grouping column missing
+    from `data`, a correlated slope `(1 + x | g)`, and several ordinary bars that
+    repeat a group or mix intercepts with slopes. (Crossed ordinary intercepts on
+    distinct groups, `(1 | g1) + (1 | g2)`, now get a proper marginal draw.) Only a `meta_V(...)` + random-effect fit
     throws. Pass the same `data` (and `tree` / `K` / `A`) used to fit, and treat
     variance-component intervals from these fits as unreliable.
 """
@@ -1974,7 +2010,7 @@ function bootstrap_result(
     tree=nothing,
     coords=nothing,
     threads::Bool=false,
-    failures::Symbol=:error,
+    failures::Symbol=:skip,
     check_converged::Bool=true,
     algorithm::Symbol=:auto,
     g_tol::Real=1e-8,
@@ -2004,7 +2040,7 @@ function bootstrap_result(
     tree=nothing,
     coords=nothing,
     threads::Bool=false,
-    failures::Symbol=:error,
+    failures::Symbol=:skip,
     check_converged::Bool=true,
     algorithm::Symbol=:auto,
     g_tol::Real=1e-8,
@@ -2069,7 +2105,7 @@ function bootstrap_result(
     tree2=nothing,
     coords=nothing,
     threads::Bool=false,
-    failures::Symbol=:error,
+    failures::Symbol=:skip,
     check_converged::Bool=true,
     g_tol::Real=1e-8,
     method::Symbol=:ML,
@@ -2127,7 +2163,7 @@ function bootstrap_result(
     tree2=nothing,
     coords=nothing,
     threads::Bool=false,
-    failures::Symbol=:error,
+    failures::Symbol=:skip,
     check_converged::Bool=true,
     g_tol::Real=1e-8,
 )
@@ -2234,6 +2270,20 @@ end
 # (there conditional and marginal simulation coincide and `simulate` is correct).
 # Gaussian LSS bootstrap uses the full marginal model, not fitted random effects.
 # Prepared arrays are read-only; each call allocates its own draws and response.
+
+# Node count a public `drm` refit can repeat as `nAGQ` (#1377). Plain Poisson
+# `(1 | g)` with `marginal = :AGHQ` records it without `:sd_group`. SD-regression
+# routes record it next to `:sd_group`. Binomial's count is forwarded as `nq`.
+function _stored_nagq(fit::DrmFit)
+    haskey(fit.scales, :aghq_nodes) || return nothing
+    plain = fit.family isa Poisson && fit.marginal === :AGHQ && !haskey(fit.scales, :sd_group)
+    sd = (fit.family isa Poisson || fit.family isa TruncatedPoisson ||
+          fit.family isa NegBinomial2 || fit.family isa TruncatedNegBinomial2 ||
+          fit.family isa SkewNormal) && haskey(fit.scales, :sd_group)
+    (plain || sd) || return nothing
+    return round(Int, only(fit.scales[:aghq_nodes]))
+end
+
 # Keywords a bootstrap replicate must repeat so it is the same estimator as
 # the seed fit. `:LA` and `:ML` are the `drm` defaults and are omitted.
 # Gaussian location-scale-scale passes the seed method explicitly, `:ML` or
@@ -2255,19 +2305,14 @@ function _bootstrap_refit_kwargs(fit::DrmFit)
             "bootstrap refit: this fit is :MAP but stores no penalty, so the " *
             "replicate cannot repeat the penalized estimator"))
     end
-    # SD-regression routes with explicit public `nAGQ` support accept that
-    # setting on bootstrap refits (currently Poisson, NB2, zero-truncated NB2,
-    # and SkewNormal).
-    # Binomial also records its private quadrature count, but its public `drm`
-    # method does not accept that keyword, so passing it would break refits.
-    if (fit.family isa Poisson || fit.family isa TruncatedPoisson ||
-        fit.family isa NegBinomial2 ||
-        fit.family isa TruncatedNegBinomial2 || fit.family isa SkewNormal) &&
-       haskey(fit.scales, :sd_group) && haskey(fit.scales, :aghq_nodes)
-        push!(kw, :nAGQ => round(Int, only(fit.scales[:aghq_nodes])))
-    end
-    if fit.family isa Binomial && haskey(fit.scales, :sd_group) &&
-       haskey(fit.scales, :aghq_nodes)
+    # SD-regression routes, and plain Poisson `(1 | g)` AGHQ, accept public
+    # `nAGQ` (#1377). Binomial records a private count and is handled below.
+    nagq = _stored_nagq(fit)
+    nagq === nothing || push!(kw, :nAGQ => nagq)
+    # Correlated-block and slope-only SD routes record `:aghq_nodes` but not always
+    # `:sd_group`; bootstrap refits must still use `_drm_binomial_sd_regression`
+    # with the same quadrature order (#1334).
+    if fit.family isa Binomial && haskey(fit.scales, :aghq_nodes)
         push!(kw, :nq => round(Int, only(fit.scales[:aghq_nodes])))
     end
     if _is_fixed_prior_fit(fit)
@@ -2301,10 +2346,15 @@ _bootstrap_estimator(fit::DrmFit) = (estimation_method(fit), fit.marginal)
 _bootstrap_estimator(fit) = (:unknown, :unknown)
 
 # Keywords the bivariate Gaussian bootstrap refit may pass to `drm`.
-# `method` is included only when the seed kwargs contain it. `marginal` is
+# `method` and `weights` are included only when the seed kwargs contain them. `marginal` is
 # left off, because that method does not accept it.
 function _bootstrap_bivariate_refit_kwargs(refit_options)
-    haskey(refit_options, :method) ? (; method = refit_options.method) : NamedTuple()
+    kw = Pair{Symbol,Any}[]
+    haskey(refit_options, :method) && push!(kw, :method => refit_options.method)
+    # Prior weights are part of the likelihood: every replicate refit uses them, as the
+    # univariate path does (`_bootstrap_refit_kwargs`).
+    haskey(refit_options, :weights) && push!(kw, :weights => refit_options.weights)
+    return NamedTuple(kw)
 end
 
 _is_gaussian_lss(fit::DrmFit) = fit.family isa Gaussian &&
@@ -2420,6 +2470,7 @@ function _marginal_simulator(fit::DrmFit, data; K=nothing, A=nothing, tree=nothi
                              tree1=nothing, tree2=nothing,
                              Ainv=nothing, coords=nothing)
     sim = _marginal_simulator_build(fit, data; K, A, Ainv, tree, tree1, tree2, coords)
+    sim === nothing && _refuse_multi_re_laplace(fit, "a simulation or bootstrap with fresh random effects")
     # `nothing` sends `bootstrap` to the CONDITIONAL `simulate`. On the Gaussian
     # `meta_V(...)` + random-effect route (`_fit_meta_gaussian_re`) that fallback
     # is a different model: `means[:mu]` is Xβ and `scales[:sigma]` is √(v + σ²),
@@ -2429,7 +2480,127 @@ function _marginal_simulator(fit::DrmFit, data; K=nothing, A=nothing, tree=nothi
             "`meta_V(...)` + random-effect fit (pass the same `data` and `tree` / `K` / `A` " *
             "used to fit it); the conditional fallback would drop the random effect"))
     end
+    # Gamma, Beta, Student, LogNormal and Binomial fits whose random effects have no fresh-draw simulator
+    # (every Binomial shape except one `(1 | g)`; two or more ordinary terms, or one `(0 + x | g)` /
+    # `(1 + x | g)`, on the other four) would fall back to the conditional draw (random effects at zero).
+    # That collapses the variance-component interval without a message, so refuse, naming the fitted terms.
+    # The check does not depend on whether the fit stores its trial counts.
+    if sim === nothing && _is_no_fresh_draw_slope_fit(fit)
+        throw(ArgumentError(_no_fresh_draw_message(fit)))
+    end
+    if sim === nothing && _mu_has_random_effect(fit)
+        @warn "bootstrap: could not build the marginal simulator for this fit with a random effect " *
+              "on the mean (a missing grouping column or covariance input, or an unsupported " *
+              "random-effect shape). Falling back to the conditional `simulate`, which reuses the " *
+              "fitted random effects, so random-effect SD and correlation intervals from this " *
+              "bootstrap are too narrow (#459, #997). Pass the same `data` and covariance " *
+              "provider used to fit, or use `profile` intervals for the variance components."
+    end
     return sim
+end
+
+# True when the mean formula carries an ordinary or structured random effect, so a `nothing` marginal
+# simulator means a conditional draw that drops it (#997). `meta_V` alone is not one: the conditional
+# draw N(Xb, v + sigma^2) is already the marginal, and `meta_V` + RE throws earlier.
+function _mu_has_random_effect(fit::DrmFit)
+    fit.formula isa DrmFormula || return false
+    rhs = Dict(fit.formula.forms)
+    haskey(rhs, :mu) || return false
+    _, re, metav, structured, _, temporal = try
+        # Every `allow_*` flag on: animal / relmat / spatial slopes, temporal and labelled terms all
+        # parse (the fit route enables them case by case), so none is mistaken for "no random effect".
+        _split_ranef(rhs[:mu]; allow_phylo_slope = true, allow_temporal = true,
+                     allow_animal_slope = true, allow_animal_intercept_slope = true,
+                     allow_relmat_slope = true, allow_relmat_intercept_slope = true,
+                     allow_spatial_slope = true, allow_spatial_intercept_slope = true,
+                     allow_labelled_intercept_slope = true)
+    catch e
+        e isa ArgumentError || rethrow()
+        # The fit already parsed this formula; an unparseable shape here is a random-effect shape
+        # this helper does not know, so keep the warning rather than silence it.
+        return true
+    end
+    return !isempty(re) || structured !== nothing || temporal !== nothing
+end
+
+# The ordinary random-effect bars of a fit that has no fresh-draw simulator, or `nothing` when the fit has
+# none, has a structured or `meta_V` term (other routes own those), or keeps its fresh draw.
+# Binomial: every shape except a single `(1 | g)` and several intercept-only terms. Gamma, Beta, Student, LogNormal: two or more ordinary
+# terms, or a single `(0 + x | g)` / `(1 + x | g)`.
+# Poisson and NB2 (#1387): the same, but several intercept-only terms keep their draw. Gaussian (#1387):
+# `(1 + x | g)` and two or more terms that are not all intercepts; a single `(0 + x | g)` keeps its draw.
+function _no_fresh_draw_bars(fit::DrmFit)
+    fit.family isa Union{Gamma,Binomial,Beta,Student,LogNormal,Poisson,NegBinomial2,Gaussian} &&
+        fit.formula isa DrmFormula || return nothing
+    rhs = Dict(fit.formula.forms)
+    haskey(rhs, :mu) || return nothing
+    # Poisson, NB2 and Gaussian fits reach here only when no simulator was built; a formula shape
+    # `_split_ranef` does not parse keeps the existing warning rather than a new error.
+    _, re, metav, structured, _ = try
+        _split_ranef(rhs[:mu]; allow_phylo_slope = true)
+    catch e
+        e isa ArgumentError || rethrow()
+        return nothing
+    end
+    metav === nothing && structured === nothing && !isempty(re) || return nothing
+    if length(re) >= 2
+        # several intercept-only Binomial, Poisson, NB2 or Gaussian terms have a fresh draw (the simulator
+        # for several random intercepts)
+        fit.family isa Union{Binomial,Poisson,NegBinomial2,Gaussian} &&
+            all(r -> first(try _re_kind(r[1]) catch; (:other, nothing) end) === :intercept, re) && return nothing
+        return re
+    end
+    if fit.family isa Binomial
+        k, _ = try _re_kind(re[1][1]) catch; (:other, nothing) end
+        return k === :intercept ? nothing : re
+    end
+    # Gaussian `(0 + x | g)` has a fresh draw; Poisson and NB2 have none for it.
+    kinds = fit.family isa Gaussian ? (:corr,) : (:slope, :corr)
+    return _laplace_lhs_kind(re[1][1]) in kinds ? re : nothing
+end
+
+_is_no_fresh_draw_slope_fit(fit::DrmFit) = _no_fresh_draw_bars(fit) !== nothing
+
+# The refusal text names the terms the user fitted and the kind of shape. For Binomial the several-term
+# shapes are reported as "several random-effect terms"; the other families name the shape.
+function _no_fresh_draw_message(fit::DrmFit)
+    re = _no_fresh_draw_bars(fit)
+    rk = [try _re_kind(lhs) catch; (:other, nothing) end for (lhs, _) in re]
+    kinds = first.(rk)
+    bar(k, v, lhs, grp) = k === :intercept ? "(1 | $grp)" : k === :slope ? "(0 + $v | $grp)" :
+                          k === :corr ? "(1 + $v | $grp)" : "($lhs | $grp)"
+    terms = join((bar(k, v, lhs, grp) for ((k, v), (lhs, grp)) in zip(rk, re)), " + ")
+    groups = [grp for (_, grp) in re]
+    shape = if length(re) == 1 && kinds[1] === :slope
+        "a random slope without an intercept"
+    elseif length(re) == 1 && kinds[1] === :corr
+        "a correlated random intercept and slope"
+    elseif length(re) == 1
+        "a random-slope term"
+    elseif fit.family isa Binomial
+        "several random-effect terms"
+    elseif all(==(:intercept), kinds)
+        "crossed or nested random intercepts"
+    elseif length(unique(groups)) == 1 && all(in((:intercept, :slope)), kinds) && :intercept in kinds
+        "an independent random slope with an intercept"
+    elseif length(unique(groups)) == 1 && all(==(:slope), kinds)
+        "independent random slopes without an intercept"
+    elseif all(==(:slope), kinds)
+        "random slopes on different groups"
+    elseif all(in((:intercept, :slope)), kinds)
+        "a mix of random intercepts and slopes"
+    else
+        "a mix of random-effect terms"
+    end
+    fam = string(nameof(typeof(fit.family)), "()")
+    keep = fit.family isa Binomial ? " A single `(1 | g)` keeps its fresh draw." : ""
+    return "no fresh random-effect draw is implemented for $fam with $shape ($terms), so " *
+        "`bootstrap_summary` / `bootstrap_result` / `bootstrap_ci` and the default " *
+        "`simulate(fit; data = data)` are refused: the fallback would draw responses with the random " *
+        "effects set to zero, which collapses the variance-component interval without a message. " *
+        "To draw responses with the random effects set to zero (a conditional draw, not a fresh draw), " *
+        "call `simulate(fit; data = data, re = :zero)` where the fitted object supports it; " *
+        "the bootstrap has no such option." * keep
 end
 
 function _is_meta_gaussian_re(fit::DrmFit)
@@ -2648,7 +2819,7 @@ function _binomial_sd_marginal_simulator(fit::DrmFit, data, re;
             "bootstrap: data are missing structured grouping column `$group`"))
         gidx, G = _group_index(getproperty(data, group))
         provider === :spatial && (matrix = _spatial_covariance_from_coords(
-            group, G, coords, nothing; legacy_mean_range = true))   # mirrors the binomial fit
+            group, G, coords, nothing))   # mirrors the binomial fit: drmTMB's fixed median-distance kernel
         matrix === nothing && throw(ArgumentError(
             "bootstrap: supply the same structured covariance `$matrix_name` used to fit the Binomial $provider SD model"))
         C = Matrix{Float64}(matrix)
@@ -3630,12 +3801,105 @@ function _simulate_ainv_to_A(fit::DrmFit, data, A, Ainv)
     return Acov
 end
 
+# Several ORDINARY random intercepts on the mean, `(1 | g) + (1 | g2) [+ ...]`: the
+# fields are independent, so a fresh draw is one `N(0, sd_k^2)` vector per grouping
+# factor, summed on the linear-predictor scale (response scale for Gaussian). `re_sd`
+# is keyed by group, so only intercepts on DISTINCT groups are covered; a slope term, a
+# repeated group, an `sd(g) ~ ...` part or a ZeroOneBeta mean is not, and returns
+# `nothing` (the caller then refuses, as before).
+# Binomial / BetaBinomial draws need the trials per row. A fit from a route that did not
+# store them (`fit.scales[:trials]`, for example a fit saved by an earlier version) gets
+# them from the response columns of `data`
+# (0/1 response: all ones; `cbind(successes, failures)`: their sum). Returns the fit
+# unchanged for other families or when the trials are stored, and `nothing` when the
+# trials cannot be rebuilt from `data` (the caller then refuses, naming `data =`).
+function _fit_with_simulate_trials(fit::DrmFit, data)
+    (fit.family isa Binomial || fit.family isa BetaBinomial) || return fit
+    haskey(fit.scales, :trials) && return fit
+    fit.formula isa DrmFormula || return nothing
+    # The fitter's own parse of the response (`_binomial_response`), so the rebuild accepts
+    # exactly what the fit accepted: non-negative integer successes and failures (rows with
+    # zero trials included) or a 0/1 vector, and refuses everything else.
+    tr = try
+        Vector{Float64}(last(_binomial_response(fit.formula, data)))
+    catch err
+        err isa InterruptException && rethrow(err)
+        return nothing
+    end
+    (length(tr) == fit.nobs && all(isfinite, tr)) || return nothing
+    scales = merge(fit.scales, Dict{Symbol,Vector{Float64}}(:trials => tr))
+    return DrmFit(
+        fit.family, fit.blocks, fit.coefnames, fit.theta, fit.vcov,
+        fit.loglik, fit.nobs, fit.converged, fit.means, fit.obs, scales,
+        fit.formula, fit.nll, fit.nllgrad, fit.ranef,
+        fit.estim_method, fit.reml_loglik, fit.ml_loglik, fit.marginal,
+        fit.phylo_penalty, fit.penalty, fit.iterations, fit.phylo_scale,
+        fit.uncertainty, fit.geometry,
+    )
+end
+
+function _ordinary_multi_marginal_simulator(fit::DrmFit, data, re)
+    isempty(_sd_parts(fit.formula)) && isempty(_sdphylo_parts(fit.formula)) || return nothing
+    fit.family isa ZeroOneBeta && return nothing
+    fit = _fit_with_simulate_trials(fit, data)
+    fit === nothing && return nothing
+    groups = Symbol[g for (_, g) in re]
+    length(unique(groups)) == length(groups) || return nothing
+    all(t -> first(_re_kind(t[1])) === :intercept, re) || return nothing
+    sds = re_sd(fit)
+    sds isa AbstractDict || return nothing
+    comps = Tuple{Vector{Int},Int,Float64}[]
+    for g in groups
+        (hasproperty(data, g) && haskey(sds, g)) || return nothing
+        labels = getproperty(data, g)
+        any(ismissing, labels) && return nothing
+        gidx, G = _group_index(labels; col = g)
+        length(gidx) == fit.nobs || return nothing
+        sd = Float64(sds[g])
+        isfinite(sd) || return nothing
+        push!(comps, (gidx, G, sd))
+    end
+    draw_re(rng) = sum(sd .* randn(rng, G)[gidx] for (gidx, G, sd) in comps)
+    if fit.family isa Gaussian
+        mu_fixed = try
+            v = Vector{Float64}(predict(fit, data))
+            length(v) == length(fit.means[:mu]) ? v : nothing
+        catch e
+            e isa InterruptException && rethrow()
+            nothing
+        end
+        mu_fixed === nothing && return nothing
+        sigma = Vector{Float64}(_scale_vector(fit, :sigma))
+        sig = _sigma_ranef_components(fit, data)
+        n = length(mu_fixed)
+        return function (rng)
+            σ = sig === nothing ? sigma : sigma .* exp.(sig.τ .* randn(rng, sig.G)[sig.gidx])
+            return mu_fixed .+ draw_re(rng) .+ σ .* randn(rng, n)
+        end
+    end
+    eta_fixed = try
+        Vector{Float64}(predict(fit, data; type = :link))
+    catch e
+        e isa InterruptException && rethrow()
+        nothing
+    end
+    (eta_fixed === nothing || length(eta_fixed) != fit.nobs) && return nothing
+    return function (rng)
+        mu_star = _mean_response(fit.family, eta_fixed .+ draw_re(rng))
+        return _simulate_once(fit, rng; mu = mu_star)
+    end
+end
+
 function _marginal_simulator_build(fit::DrmFit, data; K=nothing, A=nothing,
                                    Ainv=nothing, tree=nothing, tree1=nothing,
                                    tree2=nothing, coords=nothing)
     # temporal(): `simulate` already draws the full marginal model (a fresh chain
     # per series and a fresh `(1 | id)` intercept), so it IS the marginal simulator.
     _is_temporal_fit(fit) && return rng -> _temporal_simulate(fit, rng)
+    # sigma random effects with constant SDs (src/sigma_ranef_blocks_laplace.jl)
+    let sim = _sigma_blocks_marginal_simulator(fit, data)
+        sim === nothing || return sim
+    end
     fit.nll isa LocScaleObjective &&
         return _ls_marginal_simulator(fit, data; K, A, tree, coords)
     # NB2/Gamma structured sigma fields (src/sigma_structured_laplace.jl)
@@ -3955,6 +4219,7 @@ function _marginal_simulator_build(fit::DrmFit, data; K=nothing, A=nothing,
     else
         # Ordinary independent scalar effect. A slope uses the supplied numeric
         # covariate as its observation-level loading on the group coefficient.
+        length(re) > 1 && return _ordinary_multi_marginal_simulator(fit, data, re)
         length(re) == 1 || return nothing
         re_kind, re_slope = _re_kind(re[1][1])
         re_kind in (:intercept, :slope) || return nothing
@@ -4093,7 +4358,7 @@ function _bootstrap_result(
     rng,
     threads::Bool,
     refit;
-    failures::Symbol=:error,
+    failures::Symbol=:skip,
     check_converged::Bool=true,
     simulate_fn=nothing,
 )
@@ -4107,8 +4372,8 @@ function _bootstrap_result(
     # silently lose a successful replicate. Byte-addressable flags are independent.
     ok = fill(false, B)
     messages = Vector{Union{Nothing,String}}(nothing, B)
-    # A thrown refit is recorded. The default `failures = :error` then aborts
-    # after every replicate is recorded. `failures = :skip` keeps the
+    # A thrown refit is recorded. `failures = :error` aborts after every
+    # replicate is recorded. The default `failures = :skip` keeps the
     # successful draws and sets `bootstrap_incomplete`. A non-converged refit
     # is always a drop: it warns and does not abort under `failures = :error`.
     # `Vector{Bool}` is bit-packed, so parallel writes can drop a flag.
@@ -4123,7 +4388,7 @@ function _bootstrap_result(
             # `simulate(fit0; re = :zero)` is conditional and collapses a variance-component CI.
             # `re = :zero` keeps the fallback's previous draw (#1092 changed the
             # `simulate` default; this path is reached only without a simulator).
-            ysim = simulate_fn === nothing ? simulate(fit0; rng=rr, re=:zero) : simulate_fn(rr)
+            ysim = simulate_fn === nothing ? _simulate_all_rows(fit0; rng=rr, re=:zero) : simulate_fn(rr)
             datab = _bootstrap_data(formula, data, ysim)
             fitb = _without_boundary_warnings(() -> refit(datab))
             # Not the raw `.converged` field: this gate also rejects a degenerate
@@ -4198,6 +4463,7 @@ function _bootstrap_result(
         attempted=B,
         used=used,
         failed=failed_n,
+        bootstrap_incomplete=failed_n > 0,
         seeds=seeds,
         estimation_method=seed_method,
         marginal=seed_marginal,
@@ -4254,7 +4520,7 @@ function _bootstrap_keep_unobserved(orig::AbstractVector, sim::AbstractVector)
     length(orig) == length(sim) || throw(ArgumentError(
         "bivariate bootstrap draw has length $(length(sim)), expected $(length(orig))"))
     out = similar(orig, promote_type(eltype(orig), Float64))
-    @inbounds for i in eachindex(out)
+    for i in eachindex(out)
         o = orig[i]
         out[i] = _is_response_missing(o) ? o : sim[i]
     end
@@ -4292,10 +4558,8 @@ function _restore_response_mask!(ysim::AbstractVector{Float64}, raw)
         "per row of `data`); pass the same `data` the model was fitted to. If `drm` " *
         "dropped rows with a missing value when it fitted the model (#1089), pass " *
         "`drm_listwise(formula, data)` as `data`"))
-    @inbounds for i in eachindex(ysim)
-        if _is_response_missing(raw[i])
-            ysim[i] = NaN
-        end
+    for i in eachindex(ysim)
+        ysim[i] = _is_response_missing(raw[i]) ? NaN : ysim[i]
     end
     return ysim
 end
@@ -4319,15 +4583,51 @@ end
 
 function _bootstrap_ci_rows(rows)
     return _CIRow[
-        (param=r.param, coef=r.coef, estimate=r.estimate, lower=r.lower, upper=r.upper) for
+        (param=r.param, coef=r.coef, estimate=r.estimate, lower=r.lower, upper=r.upper,
+         scale=_ci_row_scale(r.param)) for
         r in rows
     ]
+end
+
+# A 2x2 log-Cholesky block (`:recov`, `:phylocov`) stores `L = [L11 0; L21 L22]`
+# with log diagonals (`[logL11, logL22, L21]` or `[logL11, L21, logL22]`; the
+# coefficient names say which). Unpack each draw into the intercept SD (L11),
+# slope SD (sqrt(L21^2 + L22^2)) and correlation (L21 / slope SD), and reuse the
+# natural-scale `sd_*` / `cor_*` cutoffs. Blocks of any other shape are skipped.
+function _bootstrap_cholesky_boundary_names(pp, r, nms, draws)
+    length(nms) == 3 || return String[]
+    idx = Dict{String,Int}()
+    grp = ""
+    for (j, n) in enumerate(nms)
+        parts = rsplit(String(n), ":"; limit = 2)
+        length(parts) == 2 && parts[2] in ("L11", "L21", "L22") || return String[]
+        idx[parts[2]] = j
+        grp = parts[1]
+    end
+    length(idx) == 3 || return String[]
+    c(k) = r[idx[k]]
+    L11 = exp.(@view draws[:, c("L11")])
+    L22 = exp.(@view draws[:, c("L22")])
+    L21 = @view draws[:, c("L21")]
+    slope = sqrt.(L21 .^ 2 .+ L22 .^ 2)
+    cor = L21 ./ slope
+    out = String[]
+    for (nm, vals, key) in (("sd_intercept", L11, :sd_intercept),
+                            ("sd_slope", slope, :sd_slope),
+                            ("cor", cor, :cor_slope_intercept))
+        _bootstrap_param_at_boundary(key, vals) && push!(out, string(pp, ":", grp, ":", nm))
+    end
+    return out
 end
 
 function _bootstrap_boundary_params(fit0, draws)
     names = String[]
     size(draws, 1) < _BOOTSTRAP_BOUNDARY_MIN_DRAWS && return names
     for ((pp, r), (_, nms)) in zip(fit0.blocks, fit0.coefnames)
+        if pp === :recov || pp === :phylocov
+            append!(names, _bootstrap_cholesky_boundary_names(pp, r, nms, draws))
+            continue
+        end
         for (j, col) in enumerate(r)
             _bootstrap_param_at_boundary(pp, @view draws[:, col]) || continue
             push!(names, string(pp, ":", nms[j]))
@@ -4449,6 +4749,13 @@ end
 function _check_max_abs_grad(fit::DrmFit)
     nll = fit.nll
     nll === nothing && return (magnitude = NaN, source = :none)
+    if nll isa _AGHQDiagnosticObjective && fit.nllgrad === nothing
+        snapshot = copy(nll.bcache)
+        isolated = θ -> nll.diagnostic(θ, copy(snapshot))
+        m = _check_grad_attempt(() -> maximum(abs, ForwardDiff.gradient(isolated, fit.theta)))
+        isnan(m) || return (magnitude = m, source = :forward)
+        return _check_grad_fallback(isolated, fit.theta)
+    end
     if nll isa LocScaleObjective
         base = size(nll.Xμ, 2) + size(nll.Xψ, 2)
         perm = vcat(collect(1:base), [base + 1, base + 3, base + 2])  # recov->engine

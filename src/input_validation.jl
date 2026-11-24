@@ -17,7 +17,7 @@
 #
 # Every message names the offending argument.
 
-using StatsModels: StatsModels
+using StatsModels: StatsModels, FormulaTerm, FunctionTerm, ConstantTerm
 
 # ── #1027: secondary parameters each family models ──────────────────────────
 #
@@ -211,6 +211,20 @@ function _structured_marker_kinds(f::DrmFormula)
 end
 
 """
+    _refuse_spatial_k_and_coords(coords_only::Bool)
+
+A `spatial(1 | g)` term takes its covariance from `K` or from `coords`, never
+both: the fitters used one and dropped the other without a word. `coords_only`
+is true for the routes that build `spatial()` from coordinates alone.
+"""
+function _refuse_spatial_k_and_coords(coords_only::Bool)
+    which = coords_only ? "Give `coords = …` only (this route builds the spatial covariance from site coordinates)." :
+                          "Give either `coords = …` (the covariance is built from site coordinates) or `K = …` (a precomputed covariance matrix), not both."
+    throw(ArgumentError("drm: `spatial()` was given both `K = …` and `coords = …`, and only one of them " *
+        "can define the spatial covariance. " * which))
+end
+
+"""
     _require_structured_keywords_used(f, fam; tree, K, A, coords)
 
 A supplied `tree`, `K`, `A` or `coords` must have a formula marker that reads
@@ -223,6 +237,8 @@ function _require_structured_keywords_used(f::DrmFormula, fam; tree = nothing, K
     (tree === nothing && K === nothing && A === nothing && Ainv === nothing &&
      coords === nothing) && return nothing
     kinds = _structured_marker_kinds(f)
+    (K !== nothing && coords !== nothing && :spatial in kinds && !(:relmat in kinds)) &&
+        _refuse_spatial_k_and_coords(fam isa Union{Gaussian,Binomial})
     unused(kw, marker) = throw(ArgumentError("drm: `$kw = …` was supplied but the formula " *
         "has no $marker term, so `$kw` would be ignored and an unstructured model fitted. " *
         "Add the marker to the formula or drop the `$kw` argument."))
@@ -268,12 +284,40 @@ column lengths (#1022) and unused structured keywords (#1010).
 """
 function _drm_entry_guard(f::DrmFormula, fam, data; tree = nothing, K = nothing,
                           A = nothing, Ainv = nothing, coords = nothing)
+    _require_no_r_minus_one(f)
+    _require_simple_bar_groups(f)
     _require_family_dpars(f, fam)
     _require_supported_random_terms(f, data)
     _require_offset_supported(f, fam)
     _require_formula_column_lengths(f, data)
     _require_sd_group_levels(f, data)
     _require_structured_keywords_used(f, fam; tree = tree, K = K, A = A, Ainv = Ainv, coords = coords)
+    _require_one_structured_marker(f, fam)
+    return nothing
+end
+
+"""
+    _require_one_structured_marker(f, fam)
+
+Every non-Gaussian univariate route fits at most ONE structured marker (`phylo`, `relmat`,
+`animal`, `spatial`) per formula. `_split_ranef` returns only the first one, so a second marker
+(`y ~ x + spatial(1 | g) + relmat(1 | h)`) was neither stored nor refused on routes that read
+only that slot: the fit used the first term alone and the second was dropped silently. This
+refuses it, naming both terms. Gaussian and LogNormal are exempt: the Gaussian mean route fits two
+structured terms (`phylo(1 | species) + relmat(1 | id)`) and keeps its own checks, and LogNormal
+passes its structured markers to it on `log(y)`.
+"""
+function _require_one_structured_marker(f::DrmFormula, fam)
+    (fam isa Gaussian || fam isa LogNormal) && return nothing   # LogNormal delegates to the Gaussian two-structured router
+    for (p, rhs) in f.forms
+        marks = _collect_structured(rhs)
+        length(marks) > 1 || continue
+        show1(m) = "`$(m[1])(… | $(m[2]))`"
+        more = length(marks) > 2 ? " (and $(length(marks) - 2) more)" : ""
+        throw(ArgumentError("drm: the $(nameof(typeof(fam))) route fits one structured term per formula, " *
+            "but `$p` has two: $(show1(marks[1])) and $(show1(marks[2]))$more. Keep one structured term, " *
+            "or use `Gaussian()`, whose mean can carry two (for example `phylo(1 | species) + relmat(1 | id)`)."))
+    end
     return nothing
 end
 
@@ -316,6 +360,136 @@ function _require_supported_random_terms(f::DrmFormula, data)
                     "a factor (element type $(nonmissingtype(eltype(col)))). drmTMB refuses this " *
                     "too. Use a numeric 0/1 indicator column for one level, e.g. `(0 + $(v)_b | g)`, " *
                     "or put the factor in the fixed effects and keep `(1 | g)`."))
+            end
+        end
+    end
+    return nothing
+end
+
+# ── #1349: R's `y ~ x - 1` parses as minus, not "drop intercept" ───────────
+function _is_r_minus_one_term(t)
+    return t isa FunctionTerm && t.f === (-) && length(t.args) == 2 &&
+           t.args[2] isa ConstantTerm && isequal(t.args[2].n, 1)
+end
+
+function _refuse_r_minus_one(rhs, param::Symbol)
+    for t in _rhs_terms(rhs)
+        if _is_r_minus_one_term(t)
+            throw(ArgumentError(
+                "drm: the `$param` formula uses `$(t)` (R's `x - 1` spelling); StatsModels " *
+                "does not treat that as 'no intercept'. Write `0 + x` instead."))
+        end
+        t isa FunctionTerm || continue
+        bar = if t.f === (|)
+            t
+        elseif t.f in (phylo, relmat, animal, spatial, temporal) && !isempty(t.args) &&
+               t.args[1] isa FunctionTerm && t.args[1].f === (|)
+            t.args[1]
+        else
+            nothing
+        end
+        bar === nothing || _refuse_r_minus_one_bar(bar, param)
+    end
+    return nothing
+end
+
+# Inside a random-effect bar the slope-only spelling is `0 + x` (`_re_kind`); `-1 + x`
+# is not read as dropping the intercept there, so the hint names `0 + x` only.
+function _refuse_r_minus_one_bar(bar::FunctionTerm, param::Symbol)
+    lhs = bar.args[1]
+    if _is_r_minus_one_term(lhs)
+        throw(ArgumentError(
+            "drm: the random-effect term `($lhs | $(_bar_text(bar.args[2])))` in the `$param` " *
+            "formula uses R's `x - 1` spelling on the left of the bar; StatsModels does not " *
+            "treat that as 'no intercept'. For a slope without a random intercept write " *
+            "`(0 + x | g)` instead."))
+    elseif lhs isa FunctionTerm && lhs.f === (|)
+        _refuse_r_minus_one_bar(lhs, param)
+    end
+    return nothing
+end
+
+function _require_no_r_minus_one(f::Union{DrmFormula,BivariateDrmFormula})
+    for (p, rhs) in f.forms
+        _refuse_r_minus_one(rhs, p)
+    end
+    return nothing
+end
+
+# ── nested and compound random-effect groupings ─────────────────────────────
+#
+# A random-effect bar groups by ONE plain column: `(1 | g)`. `(1 | g / h)`, `(1 | g & h)`,
+# `(1 | h %in% g)`, `(1 | g:h)` and `(1 | f(g))` put an expression after the bar. They reached
+# `_split_ranef`, which read `.sym` off a `FunctionTerm` and leaked "type FunctionTerm has no
+# field sym" (a FieldError on Julia 1.12 and later). drmTMB refuses the same terms with
+# "Random-effect grouping terms must be simple variables", so this is a refusal that names the
+# term and the spelling that works: one column per grouping, `(1 | g) + (1 | gh)`.
+# Source text of a term: the original expression, with R's `h %in% g` (which Julia reads as
+# `(h % in) % g`) written back the way the user typed it.
+function _bar_expr_label(t::FunctionTerm)
+    if t.f === (%) && length(t.args) == 2 && t.args[1] isa FunctionTerm && t.args[1].f === (%) &&
+       length(t.args[1].args) == 2 && t.args[1].args[2] isa Term && t.args[1].args[2].sym === :in
+        return string(_bar_text(t.args[1].args[1]), " %in% ", _bar_text(t.args[2]))
+    end
+    return string(t.exorig)
+end
+_bar_text(t::FunctionTerm) = _bar_expr_label(t)
+_bar_text(t) = string(t)
+
+# The two plain columns an `a / b`, `a & b`, `a:b` or `b %in% a` grouping is made of, as
+# `(op, a, b)` with `a` the outer column, or `nothing` when it is not that shape.
+function _bar_pair(grp)
+    grp isa FunctionTerm || return nothing
+    if grp.f === (%) && length(grp.args) == 2 && grp.args[1] isa FunctionTerm && grp.args[1].f === (%) &&
+       length(grp.args[1].args) == 2 && grp.args[1].args[2] isa Term && grp.args[1].args[2].sym === :in
+        b, a = grp.args[1].args[1], grp.args[2]
+        return (a isa Term && b isa Term) ? (:in, a.sym, b.sym) : nothing
+    end
+    (grp.f in (/, &, :) && length(grp.args) == 2 && all(x -> x isa Term, grp.args)) || return nothing
+    return (grp.f === (/) ? :nest : :inter, grp.args[1].sym, grp.args[2].sym)
+end
+
+function _refuse_bar_group(lhs::AbstractString, glabel::AbstractString, pair)
+    what = pair === nothing ? "an expression" :
+           pair[1] === :nest ? "the nested spelling `/`" :
+           pair[1] === :in ? "the nested spelling `%in%`" : "an interaction of two columns"
+    fix = if pair === nothing
+        "Create a plain column first and group by it."
+    else
+        a, b = pair[2], pair[3]; col = string(a, "_", b)
+        make = "add a column `$col = string.($a, \":\", $b)` to the data"
+        spell = pair[1] === :nest ? "`($lhs | $a) + ($lhs | $col)`" : "`($lhs | $col)`"
+        "To get this model, $make and write $spell."
+    end
+    throw(ArgumentError("drm: the random-effect term `($lhs | $glabel)` groups by `$glabel`, " *
+        "$what rather than one plain column, and this is not supported (drmTMB refuses it too: " *
+        "\"Random-effect grouping terms must be simple variables\"). $fix"))
+end
+
+# `bar` is a `(lhs | g)` FunctionTerm. `(lhs | label | g)` stores the label inside lhs.
+function _require_plain_bar_group(bar::FunctionTerm)
+    length(bar.args) == 2 || return nothing
+    grp = bar.args[2]
+    grp isa Term && return nothing
+    # `(1 | p | phylo(species))`: a structured marker is a valid group spelling.
+    grp isa FunctionTerm && grp.f in (phylo, relmat, animal, spatial, temporal) && return nothing
+    _refuse_bar_group(_bar_text(bar.args[1]), _bar_text(grp), _bar_pair(grp))
+end
+
+function _require_simple_bar_groups(f::Union{DrmFormula,BivariateDrmFormula})
+    for (_, rhs) in f.forms
+        for t in _rhs_terms(rhs)
+            t isa FunctionTerm || continue
+            if t.f === (|)
+                _require_plain_bar_group(t)
+            elseif t.f === (:) && length(t.args) == 2 && t.args[1] isa FunctionTerm && t.args[1].f === (|)
+                # `(1 | g:h)` parses as `(1 | g):h` because `:` binds looser than `|`.
+                inner = t.args[1]; g1 = inner.args[2]; h1 = t.args[2]
+                pair = (g1 isa Term && h1 isa Term) ? (:inter, g1.sym, h1.sym) : nothing
+                _refuse_bar_group(_bar_text(inner.args[1]), string(_bar_text(g1), ":", _bar_text(h1)), pair)
+            elseif t.f in (phylo, relmat, animal, spatial, temporal) && !isempty(t.args) &&
+                   t.args[1] isa FunctionTerm && t.args[1].f === (|)
+                _require_plain_bar_group(t.args[1])
             end
         end
     end
@@ -597,4 +771,24 @@ function _resolve_coords_labels(f::DrmFormula, data, coords, ids)
             (length(absent) > 3 ? ", …" : "") * "). Every level must be one of the labels of `coords`."))
     perm = [pos[string(l)] for l in levels]
     return isvec ? Vector{Float64}(M)[perm] : Matrix{Float64}(M)[perm, :]
+end
+
+# #1351: a bare `@formula(...)` passed to `drm` used to fall through to MethodError.
+function drm(f::FormulaTerm, fam; kwargs...)
+    throw(ArgumentError(
+        "drm: `formula` must be created with `drm_formula()` or `bf()`. " *
+        "Wrap your formulas, e.g. `bf(@formula(y ~ x), @formula(sigma ~ 1))`."))
+end
+
+"""R-style `x1:x2` parses as a Julia range and then fails in `modelcols` with a raw `MethodError`."""
+function _rethrow_formula_build_hint(e)
+    if e isa MethodError
+        msg = sprint(showerror, e)
+        if occursin("StepRangeLen", msg) || occursin("StepRange{", msg)
+            throw(ArgumentError(
+                "drm: Julia parses `x1:x2` as a numeric range, not an interaction. " *
+                "Use `x1 & x2` or `x1 * x2` for an interaction (drmTMB's `x1:x2` spelling)."))
+        end
+    end
+    rethrow(e)
 end

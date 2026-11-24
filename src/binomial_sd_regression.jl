@@ -1245,8 +1245,8 @@ function _drm_binomial_related_sd_regression(f::DrmFormula, fam::Binomial;
     gidx, G = _group_index(labels)
     C = if level === :spatial
         coords isa AbstractDict && (coords = _resolve_coords_labels(f, data, coords, nothing))   # red team: label => coordinate Dict, as on the other families
-        _spatial_covariance_from_coords(descriptor.group, G, coords, nothing;
-                                        legacy_mean_range = true)   # no drmTMB binomial spatial: see docs/dev-log/spatial-kernel-audit
+        # drmTMB's fixed kernel: exp(-d / median positive distance) + 1e-6 I (the range is fixed, not estimated)
+        _spatial_covariance_from_coords(descriptor.group, G, coords, nothing)
     else
         covariance === nothing ? nothing : Matrix{Float64}(covariance)
     end
@@ -2468,12 +2468,13 @@ function _fit_binomial_sd_regression(fam::Binomial, s, ntr, Xmu, Zgs, nmsds,
     ncor = correlated ? q * (q - 1) ÷ 2 : 0
     corr_range = offset + 1:offset + ncor
     offset += ncor
-    function nll(theta)
+    # `nll_modes(theta, bcache)` is the objective with the per-group modes written into `bcache`
+    # (cold start: the caller passes zeros). `nll` is the same objective with a fresh cache.
+    function nll_modes(theta, bcache)
         betamu = @view theta[1:pmu]
         eta0 = Xmu * betamu
         sdgroup = hcat((_binomial_sd_scale(Zgs[j] * @view(theta[sd_ranges[j]])) for j in 1:q)...)
         ll = (i, eta) -> _binomial_link_ll(fam, nint[i], sint[i], eta, lc[i])
-        bcache = zeros(eltype(theta), q, G)
         total = zero(eltype(theta))
         correlation_eta = correlated ? @view(theta[corr_range]) : eltype(theta)[]
         Lcorr = correlated ? _binomial_partial_correlation_cholesky(correlation_eta, q) : nothing
@@ -2485,11 +2486,13 @@ function _fit_binomial_sd_regression(fam::Binomial, s, ntr, Xmu, Zgs, nmsds,
             end
             value, bhat = _aghq_group_logint(ll, members[gi], eta0, Zre, Lg,
                                                rule, @view(bcache[:, gi]))
+            all(isfinite, bhat) || Threads.atomic_add!(_AGHQ_MODE_RESETS, 1)   # `fitted()` must not read a reset mode
             bcache[:, gi] .= ifelse.(isfinite.(bhat), bhat, zero(eltype(theta)))
             total += value
         end
         return -total
     end
+    nll(theta) = nll_modes(theta, zeros(eltype(theta), q, G))
     theta0 = zeros(offset)
     pbar = clamp(sum(s) / max(sum(ntr), 1), 1e-3, 1 - 1e-3)
     theta0[1] = _binomial_start(fam, pbar)
@@ -2506,6 +2509,35 @@ function _fit_binomial_sd_regression(fam::Binomial, s, ntr, Xmu, Zgs, nmsds,
     correlated && (theta0[corr_range] .= 0.0)
     run_from(th0) = _optimize_with_fallback(nll, th0, g_tol)
     res = run_from(theta0)
+    corr_retry = zeros(3) # attempted, accepted, objective difference in nats
+    if correlated && q == 2 && isfinite(Optim.minimum(res)) &&
+       all(isfinite, Optim.minimizer(res)) && any(abs.(Optim.minimizer(res)[corr_range]) .>= 12)
+        # The soft correlation guard has a nearly flat tail.  A line search can
+        # jump far into that tail, where the raw parameter is poorly identified.
+        # Retry the unchanged objective from a finite near-boundary point; use
+        # it only if the full gradient converges and the objective is equivalent
+        # to within 1e-8 nats. Otherwise retain the original optimization result.
+        corr_retry[1] = 1.0
+        start = copy(Optim.minimizer(res))
+        start[corr_range] .= clamp.(start[corr_range], -8.3, 8.3)
+        trial = try
+            Optim.optimize(_safe_objective(nll), start, Optim.BFGS(),
+                           Optim.Options(g_tol = g_tol); autodiff = :forward)
+        catch err
+            err isa AssertionError || rethrow()
+            nothing
+        end
+        if trial !== nothing && drm_optim_converged(trial) &&
+           isfinite(Optim.minimum(trial)) && all(isfinite, Optim.minimizer(trial)) &&
+           all(abs.(Optim.minimizer(trial)[corr_range]) .< 12)
+            loss = Optim.minimum(trial) - Optim.minimum(res)
+            grad = ForwardDiff.gradient(nll, Optim.minimizer(trial))
+            if abs(loss) <= 1e-8 && all(isfinite, grad) && maximum(abs, grad) <= g_tol
+                corr_retry[2:3] .= (1.0, loss)
+                res = trial
+            end
+        end
+    end
     # Restarts for independent random effects (see `_q2_boundary_restarts`). With a
     # covariate in an SD formula (`sd(g, coef(.)) ~ z`) the objective is a ridge in the
     # SD coefficients: the single default start can stop at a smooth interior point,
@@ -2557,6 +2589,7 @@ function _fit_binomial_sd_regression(fam::Binomial, s, ntr, Xmu, Zgs, nmsds,
     scales = Dict(:trials => Float64.(nint),
                   :sd_group_index => Float64.(gidx),
                   :aghq_nodes => [Float64(nq)])
+    corr_retry[1] == 1.0 && (scales[:corr_boundary_retry] = corr_retry)
     (correlated || q < 2) || (scales[:q2_restarts] = [ri.ran ? 1.0 : 0.0, Float64(ri.winner), Float64(ri.gain), ri.flipped ? 1.0 : 0.0])
     if correlated
         eta_corr = @view thetahat[corr_range]
@@ -2576,6 +2609,13 @@ function _fit_binomial_sd_regression(fam::Binomial, s, ntr, Xmu, Zgs, nmsds,
     # needs its own row-level values under that exact fitted block name.
     for j in 1:q
         is_constant[j] || (scales[target_blocks[j]] = sdobs[j])
+    end
+    bcache_fit = zeros(q, G)
+    _record_cond_fit_aghq!(scales, th -> nll_modes(th, bcache_fit), thetahat, bcache_fit, gidx, Zre)   # fitted-row modes for `fitted(fit)`
+    # Quantile residuals use `:cond_eta_re` (structured-field export); AGHQ SD routes
+    # already store modes in `:cond_fit_eta_re` for `fitted()`.
+    if haskey(scales, :cond_fit_eta_re) && !haskey(scales, :cond_eta_re)
+        scales[:cond_eta_re] = copy(scales[:cond_fit_eta_re])
     end
     fit = DrmFit(fam, blocks, names, thetahat, V, -nll(thetahat), n,
         drm_optim_converged(res), means, obs, scales)

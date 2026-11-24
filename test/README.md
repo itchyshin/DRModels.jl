@@ -19,9 +19,11 @@ two legs never saw the same data. Measured on this repo (2026-08-07): with
    shapes, identities, guards, and cross-estimator same-draw checks.
 2. **Literal deterministic fixtures** — explicit arrays / committed CSV
    (parity fixtures under `test/parity/` are the model).
-3. **`StableRNGs` in the test env only** — already listed in
-   `test/Project.toml`; use for a residual case that must stay in CI and
-   cannot be fixtured. Example: `test_mixed_family.jl`.
+3. **`StableRNGs` in the test env only** — already listed in `test/Project.toml`;
+   use for a residual case that must stay in CI and cannot be fixtured. Example:
+   `test_mixed_family.jl`. `test_issue_1378_rng_fixture_guard.jl` fails when a
+   new `test_*.jl` calls `randperm` / `shuffle` without `StableRNG` on that line
+   (66 legacy files sit in an allow-list until migrated).
 
 Safer patterns already in the suite: native ≈ bridge on one draw
 (`test_bridge.jl`); sparse ≈ dense; public ≈ direct locscale; Workflow G
