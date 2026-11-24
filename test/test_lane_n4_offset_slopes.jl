@@ -65,9 +65,12 @@ end
         @test_throws ErrorException drm(bf(@formula(y ~ 1 + x + offset(logexp) + (1 | g) + (1 | z))), Poisson(); data = z)
         @test_throws ErrorException drm(bf(@formula(y ~ 1 + x + offset(logexp) + (1 | g))), Poisson();
                                         data = z, marginal = :VA)
-        # offset + (1 | g) on another family under :Laplace is refused, not turned into a free regressor
-        @test_throws ArgumentError drm(bf(@formula(y ~ 1 + x + offset(logexp) + (1 | g))), Binomial();
-                                       data = z, marginal = :Laplace)
+        # offset + (1 | g) on Binomial under :Laplace applies the offset (#1337)
+        rb = merge(rate, (; yb = Float64.(rate.y .> sum(rate.y) / length(rate.y))))
+        fb = drm(bf(@formula(yb ~ 1 + x + offset(logexp) + (1 | g))), Binomial();
+                 data = rb, marginal = :Laplace)
+        @test fb.converged
+        @test length(coef(fb, :mu)) == 2
     end
 
     @testset "#960 Gaussian (1 + x | g) mean + sigma (1 | g)" begin
