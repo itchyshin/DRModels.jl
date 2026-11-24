@@ -330,6 +330,14 @@ function _ctl_preflight(scope::_ControlScope, f, fam)
     wants_w && push!(what, "`weights`")
     kind = f isa DrmFormula ? "a model with random, structured, `meta_V` or `sd()` terms" :
                               "a bivariate or multi-response model"
+    if wants_w && !wants_optim
+        throw(ArgumentError("drm: `weights` is supported on fixed-effect routes of univariate " *
+            "families, on a Gaussian or Poisson mean with one random intercept `(1 | g)`, and " *
+            "on a Gaussian mean with `meta_V`, and on a residual-only bivariate Gaussian model " *
+            "(no random terms). This is " * kind * " of another shape " *
+            "($(typeof(fam))), so the fit was refused before it started, not run with the " *
+            "weights ignored."))
+    end
     throw(ArgumentError("drm: " * join(what, " and ") * " is supported only on the " *
         "fixed-effect routes of univariate families for now (#948, #994, #931). This is " *
         kind * " ($(typeof(fam))), so the fit was refused before it started, not run " *
@@ -380,6 +388,10 @@ function _kw_advice(key::Symbol, fam, accepted = Symbol[])
         return "`coords` is read by a `spatial(...)` term, and $famn has no spatial route for " *
                "this model. Drop `coords` and the `spatial(...)` term, or use a family with a " *
                "spatial route." * _kw_r_note(key, fam)
+    elseif key === :contrasts
+        return "DRModels.jl codes every factor with treatment contrasts (StatsModels default). " *
+               "The `contrasts` keyword is not supported; recode the factor in the data instead. " *
+               "See the Formula grammar developer note."
     end
     if key === :se
         return "`se` is not a keyword of this route. Use `control = DRMControl(se = false)`, " *

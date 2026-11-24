@@ -171,9 +171,12 @@ end
     fr = drm(bf(@formula(y ~ 1 + x + offset(z))), Gaussian(); data = d, method = :REML)
     frs = drm(bf(@formula(ys ~ 1 + x)), Gaussian(); data = merge(d, (; ys = d.y .- d.z)), method = :REML)
     @test loglik(fr) ≈ loglik(frs) rtol = 1e-10
-    # routes that do not take it refuse it by name
+    # one ordinary (1 | g) is the fit of y - z (#1337); a random slope still refuses
     dg = merge(d, (; g = repeat(string.("g", 1:30), inner = 50)))
-    @test_throws ArgumentError drm(bf(@formula(y ~ 1 + x + offset(z) + (1 | g))), Gaussian(); data = dg)
+    fzri = drm(bf(@formula(y ~ 1 + x + offset(z) + (1 | g))), Gaussian(); data = dg)
+    f0ri = drm(bf(@formula(ys ~ 1 + x + (1 | g))), Gaussian(); data = merge(dg, (; ys = dg.y .- dg.z)))
+    @test loglik(fzri) ≈ loglik(f0ri) rtol = 1e-8
+    @test_throws ArgumentError drm(bf(@formula(y ~ 1 + x + offset(z) + (1 + x | g))), Gaussian(); data = dg)
     @test_throws ArgumentError drm(bf(@formula(y ~ 1 + x * offset(z))), Gaussian(); data = d)
 end
 
