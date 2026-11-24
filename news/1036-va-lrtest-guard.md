@@ -1,0 +1,1 @@
+- **`lrtest` and `anova` refuse two `marginal = :VA` fits.** A VA `loglik` is an ELBO, not a Laplace log-likelihood; the same-marginal early-return in `_marginal_compare_guard` no longer bypasses that check when both fits are `:VA` (#1036). Matches the existing refusal on `aic` / `bic` / `aicc`.
