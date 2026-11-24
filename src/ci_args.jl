@@ -50,7 +50,7 @@ const _BOOTSTRAP_BOUNDARY_MIN_DRAWS = 20
 # Log-scale random-effect / structured SDs. Residual and distributional scales
 # (`:sigma`, `:sigma1`, `:sigma2`, `:resid`) are regular parameters and are not
 # flagged. Cholesky blocks (`:recov`, `:phylocov`) are not one SD or one
-# correlation, so they are not classified here.
+# correlation; `_bootstrap_cholesky_boundary_names` unpacks them first.
 const _BOOTSTRAP_LOG_SD_PARAMS = (:resd, :sd, :sd_phylo, :resd_mu, :resd_sigma)
 const _BOOTSTRAP_ATANH_COR_PARAMS = (:rho12,)
 

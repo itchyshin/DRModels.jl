@@ -49,12 +49,18 @@ using Optim: Optim
 function _variance_component_indices(fit::DrmFit)
     # Location-scale-scale fits (#544): group-varying RE SD makes "the" variance
     # component ill-defined, exactly like the heteroscedastic-residual rejection below.
-    _has_sd_regression_block(fit) &&
+    _split_logsd_decode(fit) === nothing && _has_sd_regression_block(fit) &&
         error("heritability/repeatability: this fit models the random-effect SD with " *
             "covariates (`sd(group) ~ ...`), so a single variance component is not defined. " *
             "The estimand is covariate-CONDITIONAL, R(z) = σ_b(z)² / (σ_b(z)² + σ_e(z)²) " *
             "(h²(z) = σ_a(z)² / (σ_a(z)² + σ_e(z)²) for `sd(g, phylogenetic)`): pass the " *
             "covariate values you want, e.g. `repeatability(fit, (; sex = [0.0, 1.0]))`.")
+    # Poisson / NegBinomial2 `:Laplace` (1 + x | g): a random slope is a 2 x 2 covariance, not one
+    # variance component, so no single R or h2 is defined (the layout is not an SD regression).
+    _split_logsd_decode(fit) === nothing ||
+        error("heritability/repeatability: this fit has a random intercept and slope " *
+            "`(1 + x | g)`, so a single variance component is not defined. Use `vc(fit)` " *
+            "for the 2 x 2 covariance.")
     comps = Pair{Symbol,Int}[]
     omega = Int[]
     resid_idx = nothing
