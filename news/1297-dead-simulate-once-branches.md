@@ -1,0 +1,1 @@
+- **Removed unreachable `_simulate_once` branches for `LogNormal`, `Student`, and `CumulativeLogit` in `gaussian_core.jl`.** Simulation for those families already dispatches to typed methods in `bivariate_lognormal.jl`, `bivariate_student.jl`, and `cumulative.jl` (#1297). No change to draws or bootstrap behaviour.
