@@ -1618,10 +1618,10 @@ function _warn_bootstrap_sigma_percentile(formula, rows)
 end
 
 """
-    bootstrap_ci(formula, family::Gaussian; data, B = 300, level = 0.95, rng = default_rng(), K = nothing, A = nothing, tree = nothing, coords = nothing, threads = false, failures = :error, check_converged = true, algorithm = :auto, g_tol = 1e-8)
-    bootstrap_ci(formula, family; data, B = 300, level = 0.95, rng = default_rng(), K = nothing, A = nothing, tree = nothing, coords = nothing, threads = false, failures = :error, check_converged = true)
-    bootstrap_ci(fit::DrmFit{<:Gaussian}; data, B = 300, level = 0.95, rng = default_rng(), K = nothing, A = nothing, tree = nothing, coords = nothing, threads = false, failures = :error, check_converged = true, algorithm = :auto, g_tol = 1e-8)
-    bootstrap_ci(fit::DrmFit; data, B = 300, level = 0.95, rng = default_rng(), K = nothing, A = nothing, tree = nothing, coords = nothing, threads = false, failures = :error, check_converged = true)
+    bootstrap_ci(formula, family::Gaussian; data, B = 300, level = 0.95, rng = default_rng(), K = nothing, A = nothing, tree = nothing, coords = nothing, threads = false, failures = :skip, check_converged = true, algorithm = :auto, g_tol = 1e-8)
+    bootstrap_ci(formula, family; data, B = 300, level = 0.95, rng = default_rng(), K = nothing, A = nothing, tree = nothing, coords = nothing, threads = false, failures = :skip, check_converged = true)
+    bootstrap_ci(fit::DrmFit{<:Gaussian}; data, B = 300, level = 0.95, rng = default_rng(), K = nothing, A = nothing, tree = nothing, coords = nothing, threads = false, failures = :skip, check_converged = true, algorithm = :auto, g_tol = 1e-8)
+    bootstrap_ci(fit::DrmFit; data, B = 300, level = 0.95, rng = default_rng(), K = nothing, A = nothing, tree = nothing, coords = nothing, threads = false, failures = :skip, check_converged = true)
 
 Parametric bootstrap confidence intervals: fit the model, then `simulate` `B`
 replicate responses, refit each, and take percentile intervals per coefficient.
@@ -1631,9 +1631,10 @@ in parallel. Pass through the structured-provider keywords (`K` / `A` / `tree` /
 `tree1` / `tree2` / `coords`)
 and, for Gaussian fits, the solver controls (`algorithm` / `g_tol`) exactly as
 to [`drm`](@ref). Use `bootstrap_result` when you need attempted/used/failed
-counts and per-replicate failure messages. A thrown refit is recorded; the
-default `failures = :error` then aborts. Pass `failures = :skip` to keep the
-successful draws.
+counts and per-replicate failure messages. A thrown refit is recorded and
+dropped (default `failures = :skip`): the intervals use the completed draws and a
+warning names how many of the `B` draws failed. Pass `failures = :error` to abort
+instead.
 If you already have
 `fit = drm(...)`, pass the fit directly to avoid refitting the base model before
 the bootstrap replicates. A homogeneous Toeplitz `temporal()` fit returns the
@@ -1661,7 +1662,7 @@ function bootstrap_ci(
     tree=nothing,
     coords=nothing,
     threads::Bool=false,
-    failures::Symbol=:error,
+    failures::Symbol=:skip,
     check_converged::Bool=true,
     algorithm::Symbol=:auto,
     g_tol::Real=1e-8,
@@ -1706,7 +1707,7 @@ function bootstrap_ci(
     tree2=nothing,
     coords=nothing,
     threads::Bool=false,
-    failures::Symbol=:error,
+    failures::Symbol=:skip,
     check_converged::Bool=true,
 )
     rows = bootstrap_summary(
@@ -1730,7 +1731,7 @@ function bootstrap_ci(
     tree2=nothing,
     coords=nothing,
     threads::Bool=false,
-    failures::Symbol=:error,
+    failures::Symbol=:skip,
     check_converged::Bool=true,
 )
     _refuse_selected_optimizer_refit(fit, "bootstrap_ci")
@@ -1752,7 +1753,7 @@ function bootstrap_ci(
     tree=nothing,
     coords=nothing,
     threads::Bool=false,
-    failures::Symbol=:error,
+    failures::Symbol=:skip,
     check_converged::Bool=true,
     algorithm::Symbol=:auto,
     g_tol::Real=1e-8,
@@ -1779,19 +1780,20 @@ function bootstrap_ci(
 end
 
 """
-    bootstrap_summary(formula, family::Gaussian; data, B = 300, level = 0.95, rng = default_rng(), K = nothing, A = nothing, tree = nothing, coords = nothing, threads = false, failures = :error, check_converged = true, algorithm = :auto, g_tol = 1e-8)
-    bootstrap_summary(formula, family; data, B = 300, level = 0.95, rng = default_rng(), K = nothing, A = nothing, tree = nothing, coords = nothing, threads = false, failures = :error, check_converged = true)
-    bootstrap_summary(fit::DrmFit{<:Gaussian}; data, B = 300, level = 0.95, rng = default_rng(), K = nothing, A = nothing, tree = nothing, coords = nothing, threads = false, failures = :error, check_converged = true, algorithm = :auto, g_tol = 1e-8)
-    bootstrap_summary(fit::DrmFit; data, B = 300, level = 0.95, rng = default_rng(), K = nothing, A = nothing, tree = nothing, coords = nothing, threads = false, failures = :error, check_converged = true)
+    bootstrap_summary(formula, family::Gaussian; data, B = 300, level = 0.95, rng = default_rng(), K = nothing, A = nothing, tree = nothing, coords = nothing, threads = false, failures = :skip, check_converged = true, algorithm = :auto, g_tol = 1e-8)
+    bootstrap_summary(formula, family; data, B = 300, level = 0.95, rng = default_rng(), K = nothing, A = nothing, tree = nothing, coords = nothing, threads = false, failures = :skip, check_converged = true)
+    bootstrap_summary(fit::DrmFit{<:Gaussian}; data, B = 300, level = 0.95, rng = default_rng(), K = nothing, A = nothing, tree = nothing, coords = nothing, threads = false, failures = :skip, check_converged = true, algorithm = :auto, g_tol = 1e-8)
+    bootstrap_summary(fit::DrmFit; data, B = 300, level = 0.95, rng = default_rng(), K = nothing, A = nothing, tree = nothing, coords = nothing, threads = false, failures = :skip, check_converged = true)
 
 Parametric bootstrap coefficient summaries in one pass: point estimate,
 bootstrap standard error, and percentile confidence interval. This is the
 bootstrap analogue of using `stderror(fit)` plus `confint(fit)`, avoiding a
 second bootstrap run when both SEs and intervals are needed. Row fields are
 `(param, coef, estimate, std_error, lower, upper)`. By default, a thrown refit
-is recorded and then aborts (`failures = :error`). Set `failures = :skip` to
-compute summaries from successful replicates; call `bootstrap_result` to
-inspect the skipped failures. A homogeneous Toeplitz `temporal()` fit returns
+is recorded and dropped (`failures = :skip`): summaries use the completed
+replicates and a warning names how many of the `B` draws failed; call
+`bootstrap_result` to inspect the failures. Set `failures = :error` to abort
+instead. A homogeneous Toeplitz `temporal()` fit returns
 the mean-coefficient rows only, as [`bootstrap_ci`](@ref). For the direct Julia
 Binomial `phylo_interaction()` SD route, supply `tree1` and `tree2` to preserve
 the fitted pair field during refits.
@@ -1810,7 +1812,7 @@ function bootstrap_summary(
     tree=nothing,
     coords=nothing,
     threads::Bool=false,
-    failures::Symbol=:error,
+    failures::Symbol=:skip,
     check_converged::Bool=true,
     algorithm::Symbol=:auto,
     g_tol::Real=1e-8,
@@ -1852,7 +1854,7 @@ function bootstrap_summary(
     tree2=nothing,
     coords=nothing,
     threads::Bool=false,
-    failures::Symbol=:error,
+    failures::Symbol=:skip,
     check_converged::Bool=true,
 )
     result = bootstrap_result(
@@ -1875,7 +1877,7 @@ function bootstrap_summary(
     tree2=nothing,
     coords=nothing,
     threads::Bool=false,
-    failures::Symbol=:error,
+    failures::Symbol=:skip,
     check_converged::Bool=true,
 )
     _refuse_selected_optimizer_refit(fit, "bootstrap_summary")
@@ -1896,7 +1898,7 @@ function bootstrap_summary(
     tree=nothing,
     coords=nothing,
     threads::Bool=false,
-    failures::Symbol=:error,
+    failures::Symbol=:skip,
     check_converged::Bool=true,
     algorithm::Symbol=:auto,
     g_tol::Real=1e-8,
@@ -1922,16 +1924,18 @@ function bootstrap_summary(
 end
 
 """
-    bootstrap_result(formula, family::Gaussian; data, B = 300, level = 0.95, rng = default_rng(), K = nothing, A = nothing, tree = nothing, coords = nothing, threads = false, failures = :error, check_converged = true, algorithm = :auto, g_tol = 1e-8, method = :ML, marginal = :LA, penalty = nothing)
-    bootstrap_result(formula, family; data, B = 300, level = 0.95, rng = default_rng(), K = nothing, A = nothing, tree = nothing, coords = nothing, threads = false, failures = :error, check_converged = true, method = :ML, marginal = :LA, penalty = nothing)
-    bootstrap_result(fit::DrmFit{<:Gaussian}; data, B = 300, level = 0.95, rng = default_rng(), K = nothing, A = nothing, tree = nothing, coords = nothing, threads = false, failures = :error, check_converged = true, algorithm = :auto, g_tol = 1e-8)
-    bootstrap_result(fit; data, B = 300, level = 0.95, rng = default_rng(), K = nothing, A = nothing, tree = nothing, coords = nothing, threads = false, failures = :error, check_converged = true)
+    bootstrap_result(formula, family::Gaussian; data, B = 300, level = 0.95, rng = default_rng(), K = nothing, A = nothing, tree = nothing, coords = nothing, threads = false, failures = :skip, check_converged = true, algorithm = :auto, g_tol = 1e-8, method = :ML, marginal = :LA, penalty = nothing)
+    bootstrap_result(formula, family; data, B = 300, level = 0.95, rng = default_rng(), K = nothing, A = nothing, tree = nothing, coords = nothing, threads = false, failures = :skip, check_converged = true, method = :ML, marginal = :LA, penalty = nothing)
+    bootstrap_result(fit::DrmFit{<:Gaussian}; data, B = 300, level = 0.95, rng = default_rng(), K = nothing, A = nothing, tree = nothing, coords = nothing, threads = false, failures = :skip, check_converged = true, algorithm = :auto, g_tol = 1e-8)
+    bootstrap_result(fit; data, B = 300, level = 0.95, rng = default_rng(), K = nothing, A = nothing, tree = nothing, coords = nothing, threads = false, failures = :skip, check_converged = true)
 
 Auditable parametric bootstrap. Returns a `NamedTuple` with:
 
 - `summary`: the same rows returned by `bootstrap_summary`;
 - `failures`: rows `(replicate, seed, message)` for failed refits;
-- `attempted`, `used`, `failed`: replicate counts;
+- `attempted`, `used`, `failed`: replicate counts (`used` is the denominator of
+  every summary);
+- `bootstrap_incomplete`: `true` when any replicate was dropped;
 - `status`: `"bootstrap"` when every replicate was kept, `"bootstrap_incomplete"`
   when any replicate was dropped and at least two remain, `"bootstrap_at_boundary"`
   when those retained draws pile up on a variance-component or correlation bound,
@@ -1948,9 +1952,10 @@ Auditable parametric bootstrap. Returns a `NamedTuple` with:
 - `worker_threads`, `julia_threads`, `blas_threads`, `blas_oversubscribed`,
   `elapsed`: CPU context and wall-clock time for the simulated-refit phase.
 
-`failures = :error` (default) records a thrown refit and then aborts. Pass
-`failures = :skip` to keep the successful draws and return
-`status = "bootstrap_incomplete"` with a warning. A refit that does
+`failures = :skip` (default) records a thrown refit, keeps the successful draws
+and returns `status = "bootstrap_incomplete"` (also `bootstrap_incomplete = true`)
+with a warning naming how many of the `B` draws failed. Pass `failures = :error`
+to record the thrown refit and then abort. A refit that does
 not converge, or that lands on a degenerate optimum, is not that kind of
 error: with `check_converged = true` (the default) it is dropped, `status` is
 `"bootstrap_incomplete"` (or `"bootstrap_at_boundary"` when the retained draws
@@ -2005,7 +2010,7 @@ function bootstrap_result(
     tree=nothing,
     coords=nothing,
     threads::Bool=false,
-    failures::Symbol=:error,
+    failures::Symbol=:skip,
     check_converged::Bool=true,
     algorithm::Symbol=:auto,
     g_tol::Real=1e-8,
@@ -2035,7 +2040,7 @@ function bootstrap_result(
     tree=nothing,
     coords=nothing,
     threads::Bool=false,
-    failures::Symbol=:error,
+    failures::Symbol=:skip,
     check_converged::Bool=true,
     algorithm::Symbol=:auto,
     g_tol::Real=1e-8,
@@ -2100,7 +2105,7 @@ function bootstrap_result(
     tree2=nothing,
     coords=nothing,
     threads::Bool=false,
-    failures::Symbol=:error,
+    failures::Symbol=:skip,
     check_converged::Bool=true,
     g_tol::Real=1e-8,
     method::Symbol=:ML,
@@ -2158,7 +2163,7 @@ function bootstrap_result(
     tree2=nothing,
     coords=nothing,
     threads::Bool=false,
-    failures::Symbol=:error,
+    failures::Symbol=:skip,
     check_converged::Bool=true,
     g_tol::Real=1e-8,
 )
@@ -2265,6 +2270,20 @@ end
 # (there conditional and marginal simulation coincide and `simulate` is correct).
 # Gaussian LSS bootstrap uses the full marginal model, not fitted random effects.
 # Prepared arrays are read-only; each call allocates its own draws and response.
+
+# Node count a public `drm` refit can repeat as `nAGQ` (#1377). Plain Poisson
+# `(1 | g)` with `marginal = :AGHQ` records it without `:sd_group`. SD-regression
+# routes record it next to `:sd_group`. Binomial's count is forwarded as `nq`.
+function _stored_nagq(fit::DrmFit)
+    haskey(fit.scales, :aghq_nodes) || return nothing
+    plain = fit.family isa Poisson && fit.marginal === :AGHQ && !haskey(fit.scales, :sd_group)
+    sd = (fit.family isa Poisson || fit.family isa TruncatedPoisson ||
+          fit.family isa NegBinomial2 || fit.family isa TruncatedNegBinomial2 ||
+          fit.family isa SkewNormal) && haskey(fit.scales, :sd_group)
+    (plain || sd) || return nothing
+    return round(Int, only(fit.scales[:aghq_nodes]))
+end
+
 # Keywords a bootstrap replicate must repeat so it is the same estimator as
 # the seed fit. `:LA` and `:ML` are the `drm` defaults and are omitted.
 # Gaussian location-scale-scale passes the seed method explicitly, `:ML` or
@@ -2286,19 +2305,14 @@ function _bootstrap_refit_kwargs(fit::DrmFit)
             "bootstrap refit: this fit is :MAP but stores no penalty, so the " *
             "replicate cannot repeat the penalized estimator"))
     end
-    # SD-regression routes with explicit public `nAGQ` support accept that
-    # setting on bootstrap refits (currently Poisson, NB2, zero-truncated NB2,
-    # and SkewNormal).
-    # Binomial also records its private quadrature count, but its public `drm`
-    # method does not accept that keyword, so passing it would break refits.
-    if (fit.family isa Poisson || fit.family isa TruncatedPoisson ||
-        fit.family isa NegBinomial2 ||
-        fit.family isa TruncatedNegBinomial2 || fit.family isa SkewNormal) &&
-       haskey(fit.scales, :sd_group) && haskey(fit.scales, :aghq_nodes)
-        push!(kw, :nAGQ => round(Int, only(fit.scales[:aghq_nodes])))
-    end
-    if fit.family isa Binomial && haskey(fit.scales, :sd_group) &&
-       haskey(fit.scales, :aghq_nodes)
+    # SD-regression routes, and plain Poisson `(1 | g)` AGHQ, accept public
+    # `nAGQ` (#1377). Binomial records a private count and is handled below.
+    nagq = _stored_nagq(fit)
+    nagq === nothing || push!(kw, :nAGQ => nagq)
+    # Correlated-block and slope-only SD routes record `:aghq_nodes` but not always
+    # `:sd_group`; bootstrap refits must still use `_drm_binomial_sd_regression`
+    # with the same quadrature order (#1334).
+    if fit.family isa Binomial && haskey(fit.scales, :aghq_nodes)
         push!(kw, :nq => round(Int, only(fit.scales[:aghq_nodes])))
     end
     if _is_fixed_prior_fit(fit)
@@ -2513,15 +2527,26 @@ end
 # none, has a structured or `meta_V` term (other routes own those), or keeps its fresh draw.
 # Binomial: every shape except a single `(1 | g)` and several intercept-only terms. Gamma, Beta, Student, LogNormal: two or more ordinary
 # terms, or a single `(0 + x | g)` / `(1 + x | g)`.
+# Poisson and NB2 (#1387): the same, but several intercept-only terms keep their draw. Gaussian (#1387):
+# `(1 + x | g)` and two or more terms that are not all intercepts; a single `(0 + x | g)` keeps its draw.
 function _no_fresh_draw_bars(fit::DrmFit)
-    fit.family isa Union{Gamma,Binomial,Beta,Student,LogNormal} && fit.formula isa DrmFormula || return nothing
+    fit.family isa Union{Gamma,Binomial,Beta,Student,LogNormal,Poisson,NegBinomial2,Gaussian} &&
+        fit.formula isa DrmFormula || return nothing
     rhs = Dict(fit.formula.forms)
     haskey(rhs, :mu) || return nothing
-    _, re, metav, structured, _ = _split_ranef(rhs[:mu]; allow_phylo_slope = true)
+    # Poisson, NB2 and Gaussian fits reach here only when no simulator was built; a formula shape
+    # `_split_ranef` does not parse keeps the existing warning rather than a new error.
+    _, re, metav, structured, _ = try
+        _split_ranef(rhs[:mu]; allow_phylo_slope = true)
+    catch e
+        e isa ArgumentError || rethrow()
+        return nothing
+    end
     metav === nothing && structured === nothing && !isempty(re) || return nothing
     if length(re) >= 2
-        # several intercept-only Binomial terms have a fresh draw (the simulator for several random intercepts)
-        fit.family isa Binomial &&
+        # several intercept-only Binomial, Poisson, NB2 or Gaussian terms have a fresh draw (the simulator
+        # for several random intercepts)
+        fit.family isa Union{Binomial,Poisson,NegBinomial2,Gaussian} &&
             all(r -> first(try _re_kind(r[1]) catch; (:other, nothing) end) === :intercept, re) && return nothing
         return re
     end
@@ -2529,7 +2554,9 @@ function _no_fresh_draw_bars(fit::DrmFit)
         k, _ = try _re_kind(re[1][1]) catch; (:other, nothing) end
         return k === :intercept ? nothing : re
     end
-    return _laplace_lhs_kind(re[1][1]) in (:slope, :corr) ? re : nothing
+    # Gaussian `(0 + x | g)` has a fresh draw; Poisson and NB2 have none for it.
+    kinds = fit.family isa Gaussian ? (:corr,) : (:slope, :corr)
+    return _laplace_lhs_kind(re[1][1]) in kinds ? re : nothing
 end
 
 _is_no_fresh_draw_slope_fit(fit::DrmFit) = _no_fresh_draw_bars(fit) !== nothing
@@ -4331,7 +4358,7 @@ function _bootstrap_result(
     rng,
     threads::Bool,
     refit;
-    failures::Symbol=:error,
+    failures::Symbol=:skip,
     check_converged::Bool=true,
     simulate_fn=nothing,
 )
@@ -4345,8 +4372,8 @@ function _bootstrap_result(
     # silently lose a successful replicate. Byte-addressable flags are independent.
     ok = fill(false, B)
     messages = Vector{Union{Nothing,String}}(nothing, B)
-    # A thrown refit is recorded. The default `failures = :error` then aborts
-    # after every replicate is recorded. `failures = :skip` keeps the
+    # A thrown refit is recorded. `failures = :error` aborts after every
+    # replicate is recorded. The default `failures = :skip` keeps the
     # successful draws and sets `bootstrap_incomplete`. A non-converged refit
     # is always a drop: it warns and does not abort under `failures = :error`.
     # `Vector{Bool}` is bit-packed, so parallel writes can drop a flag.
@@ -4436,6 +4463,7 @@ function _bootstrap_result(
         attempted=B,
         used=used,
         failed=failed_n,
+        bootstrap_incomplete=failed_n > 0,
         seeds=seeds,
         estimation_method=seed_method,
         marginal=seed_marginal,

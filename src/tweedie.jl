@@ -824,7 +824,7 @@ function predict_parameters(fit::DrmFit{Tweedie}, newdata;
         # its target under a group-specific key such as `:sd_group`. Resolve
         # SD targets from the retained formula below instead of silently
         # skipping them at this generic parameter-presence check.
-        (p === :sd || haskey(forms, p)) || continue
+        (p === :sd || haskey(forms, p) || p in _UNIVARIATE_DPARS) || continue
         if p === :sd
             targets = _gamma_sd_targets(f)
             length(targets) == 1 || throw(ArgumentError(
@@ -872,7 +872,7 @@ function predict_parameters(fit::DrmFit{Tweedie}, newdata;
             continue
         end
 
-        fixed, _, _, _ = _split_ranef(forms[p]; allow_phylo_slope = true)
+        fixed, _, _, _ = _split_ranef(get(forms, p, ConstantTerm(1)); allow_phylo_slope = true)
         Xp, eta = _predict_design(fit, f.response, fixed, ndr, p,
                                   f.schema_cache, nothing)
         value = type === :link ? eta : _param_response(fit.family, p, eta)
