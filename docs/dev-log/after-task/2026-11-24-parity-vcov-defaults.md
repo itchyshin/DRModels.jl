@@ -6,7 +6,7 @@ Perspectives: **Shannon** (slice), **Hopper** (fixture comparison), **Rose** (cl
 
 - New always-on test `test/test_parity_vcov_defaults.jl`. For every in-cohort fixture that stores `[vcov]`, it refits with the same dispatch as `test/parity/runparity.jl` (`drm` / `drm_bridge`) and compares through `compare_fit` / `compare_bridge` after removing `rtol_vcov`, `atol_vcov`, `rtol_se`, and `atol_se` from the loaded `[tol]`. The keyword defaults in `test/parity/compare.jl` then apply: `rtol_vcov = 1e-3`, `atol_vcov = 1e-8`, `rtol_se = 1e-3`, `atol_se = 1e-8`.
 - Other `[tol]` keys (log-likelihood, AIC, coefficients) are left untouched. No fixture file, no existing test, and no default in `compare.jl` was edited.
-- `meta-analysis-V` and `robust-student` are not asserted on the vcov entries. Their other axes, including SE, still have to pass. `xfam-external-gllvm` stays out of the cohort, as in `runparity.jl`.
+- **EXCLUDED from vcov only** (excluded per Shinichi 24 Nov 2026): `meta-analysis-V` (`|Δ| = 1.4619471914728503e-8` on `vcov[mu_(Intercept),sigma_(Intercept)]`) and `robust-student` (`|Δ| = 2.0435463875702732e-8` on `vcov[mu_x,nu_(Intercept)]`). All other parity axes, including SE, still run for both. Default `atol_vcov = 1e-8` unchanged. `xfam-external-gllvm` stays out of the cohort, as in `runparity.jl`.
 
 ## Evidence
 
@@ -21,4 +21,4 @@ Both sit between the default `atol_vcov = 1e-8` and the fixture's existing `atol
 
 ## Rose
 
-**Claim:** stored fixture covariances and standard errors are now asserted at the compare.jl defaults, except the two cells above, which are listed rather than given a wider bar. **Evidence:** the test, and the two measured cross-terms. **Scope honesty:** this does not change the likelihood, the optimiser, any convergence rule, or any published tolerance. Bridge fixtures have no `[se]` block, so no standard-error numbers were invented for them. The draft stays open until Shinichi decides what to do with `meta-analysis-V` and `robust-student`.
+**Claim:** stored fixture covariances and standard errors are asserted at the compare.jl defaults for 16 in-cohort cells; the two named cells are **EXCLUDED from vcov only** per Shinichi 24 Nov 2026, with measured deltas recorded and no tolerance widening. **Evidence:** `test/test_parity_vcov_defaults.jl`, the two symmetric cross-terms above. **Scope honesty:** likelihood, optimiser, convergence rules, and default tolerances unchanged. Bridge fixtures have no `[se]` block, so no standard-error numbers were invented for them.

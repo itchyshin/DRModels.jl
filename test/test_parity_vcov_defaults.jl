@@ -9,14 +9,11 @@
 # `rtol_se = 1e-3`, `atol_se = 1e-8`). Other `[tol]` keys (loglik, aic, coef)
 # are left as the fixture wrote them. This file does not edit any fixture.
 #
-# Two cells miss `atol_vcov = 1e-8` and are not given a new or looser bar
-# (refs #1503, waiting on Shinichi). Measured on Julia 1.13.4 at a029c2710
-# with the vcov keys removed:
+# EXCLUDED from the vcov comparison only (other axes, including SE, still run):
 #   meta-analysis-V — vcov[mu_(Intercept), sigma_(Intercept)] |Δ| = 1.4619471914728503e-8
 #   robust-student  — vcov[mu_x, nu_(Intercept)]              |Δ| = 2.0435463875702732e-8
-# (each entry is symmetric). Their other axes, including SE, are still checked.
-# A later fit that brings either cell inside 1e-8 still passes; this file
-# does not pin the disagreement, and it does not assert a wider tolerance.
+# (symmetric pairs; measured on Julia 1.13.4 at a029c2710 with vcov tol keys removed).
+# excluded per Shinichi 24 Nov 2026 — default `atol_vcov = 1e-8` unchanged; no looser bar.
 
 module ParityVcovDefaults
 
@@ -38,9 +35,8 @@ include_string(@__MODULE__,
     _RUNPARITY_SRC[1:prevind(_RUNPARITY_SRC, first(_RUNPARITY_CUT))],
     "parity/runparity_helpers.jl")
 
-# Cells whose stored atol_vcov is looser than compare.jl's default. Not asserted
-# on the vcov axis. Do not add them by widening the default.
-const _VCOV_HELD = Set(("meta-analysis-V", "robust-student"))
+# Vcov axis only — see header for measured |Δ| and "excluded per Shinichi 24 Nov 2026".
+const _VCOV_EXCLUDED = Set(("meta-analysis-V", "robust-student"))
 
 const _VCOV_SE_TOL_KEYS = ("rtol_vcov", "atol_vcov", "rtol_se", "atol_se")
 
@@ -169,7 +165,9 @@ end
     @test length(cases) == 18
     for dir in cases
         casename = basename(dir)
-        @testset "$casename" begin
+        label = casename in _VCOV_EXCLUDED ?
+            "$casename (vcov excluded per Shinichi 24 Nov 2026)" : casename
+        @testset "$label" begin
             expected = load_expected(dir)
             @test expected.vcov !== nothing
             strict = _at_compare_defaults(expected)
@@ -177,13 +175,12 @@ end
                 @test !haskey(strict.tol, key)
             end
             result = _fit_and_compare(dir, casename, strict)
-            if casename in _VCOV_HELD
-                # Vcov-element misses stay unasserted. Anything else (coef,
-                # loglik, aic, SE, a missing vcov name) still has to pass
-                # at the bars this comparison already uses.
+            if casename in _VCOV_EXCLUDED
+                # excluded per Shinichi 24 Nov 2026: vcov[...] failures ignored;
+                # coef, loglik, aic, SE, and vcov name/order still must pass.
                 other = filter(f -> !startswith(f, "vcov["), result.failures)
                 if !isempty(other)
-                    @error "Non-vcov parity failure for held cell `$casename`" failures = other
+                    @error "Non-vcov parity failure for excluded cell `$casename`" failures = other
                 end
                 @test isempty(other)
             else
