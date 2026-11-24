@@ -66,4 +66,28 @@ using Test, DRModels, DelimitedFiles, LinearAlgebra
         @test sd[:g_x1] ≈ sds[2] rtol = 1e-12
         @test sd[:g_x2] ≈ sds[3] rtol = 1e-12
     end
+
+    # #1364: Poisson and NegBinomial2 `:Laplace` keep log SD, log SD, atanh rho as two
+    # one-coefficient SD blocks plus `g:atanh_rho`. re_sd / vc used to refuse them.
+    @testset "Poisson / NegBinomial2 (1 + x | g), marginal = :Laplace ($nm)" for (nm, fam2) in
+            (("Poisson", DRModels.Poisson()), ("NegBinomial2", DRModels.NegBinomial2()))
+        d2 = merge(d, (; y = round.(Int, d.s)))
+        fit = drm(bf(@formula(y ~ x1 + (1 + x1 | g))), fam2; data = d2, marginal = :Laplace)
+        names = Dict(fit.coefnames)
+        @test names[:recov] == ["g:atanh_rho"]
+        th = fit.theta
+        sd = re_sd(fit)
+        V = vc(fit)[:g]
+        # drmTMB 0.8.1 reference (same file, y = round(s), y ~ x1 + (1 + x1 | g), convergence 0;
+        # NegBinomial2 collapses to Poisson, log sigma = -12.2): logLik -453.430495557,
+        # log SD = -1.2428489876, -1.0282558899, atanh(rho) = 0.1971334836.
+        @test abs(log(sd[:g_intercept]) + 1.2428489876) < 5e-3
+        @test abs(log(sd[:g_slope]) + 1.0282558899) < 5e-3
+        @test abs(atanh(V[1, 2] / sqrt(V[1, 1] * V[2, 2])) - 0.1971334836) < 5e-3
+        @test sqrt.(diag(V)) ≈ [sd[:g_intercept], sd[:g_slope]] rtol = 1e-12
+        # rho is bounded: rho = _Q2_RHO_BOUND * tanh(theta), as negbinomial.jl / inference.jl
+        @test V[1, 2] / sqrt(V[1, 1] * V[2, 2]) ≈ DRModels._Q2_RHO_BOUND * tanh(th[end]) rtol = 1e-10
+        # the layout is not an SD regression: heritability refuses with the slope message
+        @test_throws ErrorException heritability(fit)
+    end
 end
