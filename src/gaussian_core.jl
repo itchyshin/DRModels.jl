@@ -724,6 +724,11 @@ end
 
 _observed_response_mask(y) = .!isnan.(Vector{Float64}(y))
 
+# True when no entry is `missing` or `NaN`. The prior routes refuse an incomplete
+# response by name; `missing` must reach that refusal, not a `Vector{Float64}`
+# conversion error inside `_observed_response_mask`.
+_complete_response(y) = !any(ismissing, y) && all(_observed_response_mask(y))
+
 function _table_column(data, name::Symbol)
     if data isa NamedTuple
         return getproperty(data, name)
@@ -823,11 +828,18 @@ function _design(response::Symbol, rhs, data; schema_cache = nothing, schema_key
     _, X = try
         modelcols(ft, design_data)
     catch e
-        predict_build || rethrow(e)
-        throw(ArgumentError("predict: could not build the `$(schema_key)` design matrix " *
-            "from `newdata`: " * sprint(showerror, e)))
+        if predict_build
+            throw(ArgumentError("predict: could not build the `$(schema_key)` design matrix " *
+                "from `newdata`: " * sprint(showerror, e)))
+        else
+            _rethrow_formula_build_hint(e)
+        end
     end
-    Xm = X isa AbstractMatrix ? Matrix{Float64}(X) : reshape(Float64.(collect(X)), :, 1)
+    Xm = try
+        X isa AbstractMatrix ? Matrix{Float64}(X) : reshape(Float64.(collect(X)), :, 1)
+    catch e
+        _rethrow_formula_build_hint(e)
+    end
     names = String.(vec(coefnames(ft.rhs)))
     # Catches a finite column that a transform (`log`, `I(1 / x)`, …) turned
     # non-finite. Plain `NaN`/`Inf` columns are already named above. The same
@@ -1203,15 +1215,35 @@ them.
             "for the bivariate Gaussian route only, `bf(mu1 = …, mu2 = …, …)` with " *
             "`meta_vcov_bivariate`. For a univariate model, known diagonal sampling variances " *
             "go in the formula as `meta_V(v)`; a dense univariate `V` is not implemented yet."))
+    if haskey(kwargs, :se)
+        accepted = collect(Symbol, _accepted_kwargs(_drm_gaussian_fit, f, fam))
+        for k in (:control, :weights)
+            k in accepted || push!(accepted, k)
+        end
+        mu_rhs = nothing
+        for (p, r) in f.forms
+            p === :mu && (mu_rhs = r)
+        end
+        # Refuse user `se = …` off the offset shift path (wave-6 (d)); response name is irrelevant.
+        # On `offset(...)` fits, `se` is stripped below and applied via `_withuncertainty` (#1337).
+        on_offset_path = mu_rhs !== nothing && _has_offset_term(mu_rhs)
+        !on_offset_path && _refuse_unsupported_kwargs((:se,), f, fam, accepted)
+    end
     # #938: `offset(z)` on the identity-link mean is a known additive constant, so
     # the fit of `y ~ x + offset(z)` is exactly the fit of `y - z ~ x` (the same
     # likelihood and the same estimates). Fit the shifted response, then put the
     # offset back into the fitted means and the observed response.
     f_fit, kw_fit, off = _gaussian_offset_shift(f, fam, kwargs)
+    # `_drm_gaussian_fit` does not take `se`; strip only on the offset path (refusal above otherwise).
+    strip_se = haskey(kwargs, :se) && off !== nothing
+    kw_inner = strip_se ? (; (p for p in pairs(kw_fit) if p.first !== :se)...) : kw_fit
     # The residual-variance / structured-variance BOUNDARY advisory (#724, #697) is
     # attached here, once, rather than in each of the fitter's return paths.
-    fit = _apply_design_rank(_warn_variance_boundary(_drm_gaussian_fit(f_fit, fam; kw_fit...)))
-    fit = off === nothing ? fit : _gaussian_offset_restore(fit, f, off)
+    fit = _apply_design_rank(_warn_variance_boundary(_drm_gaussian_fit(f_fit, fam; kw_inner...)))
+    if off !== nothing
+        fit = _gaussian_offset_restore(fit, f, off)
+    end
+    strip_se && (fit = _withuncertainty(fit, kwargs[:se]))
     return _with_prior_table_input(fit, get(kwargs, :priors, nothing))
 end
 
@@ -1219,7 +1251,9 @@ end
 # the response. Returns `(formula, kwargs, offset)`, the inputs unchanged (and
 # `nothing`) without an offset. Only the fixed-effects mean (with an optional
 # `meta_V(v)`) is covered: a random or structured term, an `sd()` part, a joint `mi()` model, missing
-# responses or a non-default `marginal` refuse it by name.
+# a non-default `marginal` refuse it by name. Missing/NaN responses are
+# listwise-dropped with a warning (`_drop_missing_response_rows`), like other
+# Gaussian routes.
 # True when a right-hand side carries any `(… | g)` random-effect term.
 function _rhs_has_bar(rhs)
     terms = rhs isa Tuple ? collect(rhs) : Any[rhs]
@@ -1233,12 +1267,20 @@ function _gaussian_offset_shift(f::DrmFormula, fam, kwargs)
     end
     (mu_rhs !== nothing && _has_offset_term(mu_rhs)) || return f, kwargs, nothing
     haskey(kwargs, :data) || return f, kwargs, nothing     # the missing-`data` error is raised downstream
+    # #1382: narrow to complete predictors (including the offset column) before
+    # building the offset vector — same as `_drop_missing_predictor_rows` inside
+    # `_drm_gaussian_fit`, but offset shift runs earlier.
+    kwargs = merge((; kwargs...), (; data = _drop_missing_predictor_rows(f, kwargs[:data])))
     _has_joint_mi(f) && _refuse_offset_route(fam, "a joint `mi()` missing-predictor model")
     _, re, mv, st = _split_ranef(mu_rhs; allow_phylo_slope = true, allow_temporal = true)
     # `meta_V(v)` on its own is admitted: the known sampling variances do not involve
     # the response, so the shifted-response fit is the same likelihood (drmTMB cell H|meta|offset).
-    (isempty(re) && st === nothing) ||
-        _refuse_offset_route(fam, "a random or structured term on the mean")
+    # One ordinary `(1 | g)` is the same shift with the group integral unchanged (#1337).
+    if !isempty(re)
+        _refuse_offset_unless_ordinary_intercept!(fam, re, st, mv)
+    elseif st !== nothing
+        _refuse_offset_route(fam, "a structured term on the mean")
+    end
     # `meta_V` + offset under REML is not verified against drmTMB, so it is refused here
     # (plain `meta_V` REML is itself refused on the generic route).
     mv === nothing || get(kwargs, :method, :ML) === :ML ||
@@ -1254,10 +1296,9 @@ function _gaussian_offset_shift(f::DrmFormula, fam, kwargs)
         _refuse_offset_route(fam, "`marginal = :$(kwargs[:marginal])`")
     rhs_fixed, offset_term = _extract_offset(mu_rhs)
     offset_term === nothing && return f, kwargs, nothing  # nested only: the `_design` backstop refuses it
-    data = kwargs[:data]
+    data = _drop_missing_response_rows(f, kwargs[:data])
+    kwargs = merge((; kwargs...), (; data = data))
     raw = _table_column(data, f.response)
-    (any(ismissing, raw) || any(v -> v isa Real && isnan(v), raw)) &&
-        _refuse_offset_route(fam, "missing or `NaN` responses (drop those rows first)")
     off = _offset_for_fit(fam, offset_term, data, length(raw))
     forms = Pair{Symbol,Any}[p => (p === :mu ? rhs_fixed : r) for (p, r) in f.forms]
     f_shift = DrmFormula(f.response, forms, f.response2, f.schema_cache)
@@ -1378,7 +1419,7 @@ function _drm_gaussian_fit(f::DrmFormula, fam::Gaussian; data, K = nothing, A = 
     if has_sd_prior && any(ismissing, _table_column(data, f.response))
         throw(ArgumentError("SD priors require complete responses"))
     end
-    if priors !== nothing && !all(_observed_response_mask(_table_column(data, f.response)))
+    if priors !== nothing && !_complete_response(_table_column(data, f.response))
         has_sd_prior && throw(ArgumentError("SD priors currently require complete responses"))
         throw(ArgumentError("fixed-effect priors currently require complete responses"))
     end
@@ -2233,11 +2274,14 @@ function _drm_gaussian_fit(f::DrmFormula, fam::Gaussian; data, K = nothing, A = 
         return _withformula(_fit_ranef_gaussian(fam, y, Xμ, Xσ, gidx, G, w, nmμ, nmσ, grp, g_tol;
                                                reml = reml_here, prior_w = prior_w), f)
     end
+    repeated_grp = Set(g for g in last.(re) if count(==(g), last.(re)) > 1)
     comps = map(zip(re, re_kinds)) do ((_, grp), (kind, var))  # multiple scalar components
         kind === :intercept || _require_finite_data_column(data, var)
         w = kind === :intercept ? ones(length(y)) : Float64.(getproperty(data, var))
         gidx, Gk = _group_index(getproperty(data, grp); col = grp)
-        (w, gidx, Gk, String(grp))
+        # a slope on a group that carries more than one component is labelled `g:x`, so
+        # `(1 | g) + (0 + x | g)` has unique SD labels (#1756); other labels are unchanged.
+        (w, gidx, Gk, (kind !== :intercept && grp in repeated_grp) ? "$(grp):$(var)" : String(grp))
     end
     return _withformula(_fit_multi_ranef_gaussian(fam, y, Xμ, Xσ, comps, nmμ, nmσ, g_tol;
                                                  reml = method === :REML), f)
@@ -3048,9 +3092,10 @@ The per-family parameter → distribution map lives in `_conditional_dist`
 
 `type = :pearson` returns `(y − E[Y]) / √Var[Y]` with the mean and variance of the fitted
 distribution of each observation, as drmTMB's `residuals(fit, type = "pearson")`. It is
-implemented for fixed-effect Gaussian, Poisson, NegBinomial2, Gamma and Beta fits.
-Any other family or route (random effects, structured or temporal terms, zero
-inflation, hurdles, Student, LogNormal, Binomial, ordinal, bivariate) throws an
+implemented for fixed-effect Gaussian, Poisson, NegBinomial2, Gamma, Beta and LogNormal
+fits (`LogNormal()` uses the log-scale `(log y − μ̂) / σ̂`, as drmTMB). Any other family
+or route (random effects, structured or temporal terms, zero inflation, hurdles,
+Student, Binomial, ordinal, bivariate) throws an
 `ArgumentError` that names it, because drmTMB's definition differs or has not been
 checked there. A diagonal `meta_V(v)` without a random effect is a fixed-effect fit and is
 supported. The result has one entry per kept row, as for `:response` and `:quantile` and as in
@@ -3123,13 +3168,24 @@ function residuals(fit::DrmFit; type::Symbol = :response, rng = Random.default_r
     end
 end
 
-# `fit.scales` keys that hold fit context or bookkeeping rather than a fitted
-# distributional parameter. They never appear in `sigma()`, and the bridge and
-# `simulate(newdata)` skip them too. `:spatial_range` is the fixed median
-# distance of a coordinate spatial kernel (not estimated; `coef(fit, :range)`
+# Shared predicate: `fit.scales` keys that are fit context or bookkeeping, not
+# fitted distributional parameters. Used by `sigma()`, `_bridge_dpars`, and
+# `simulate(newdata)` so those loops stay in step. `:spatial_range` is the fixed
+# median distance of a coordinate spatial kernel (not estimated; `coef(fit, :range)`
 # and `summary` read it). It is not a scale.
-_sigma_internal_key(k::Symbol) =
-    k === :spatial_range || k in (:cond_blup_unavailable, :cond_logsd_wall) || k in _COND_FIT_KEYS
+# Keys in `fit.scales` that are bookkeeping / context, not fitted dispersion.
+# Shared by `sigma()`, `simulate(newdata)`, and the R bridge export.
+function _scales_bookkeeping_key(k::Symbol)
+    k === :spatial_range && return true
+    k in (:q2_restarts, :sd, :sd_group, :sd_group_index, :aghq_nodes, :trials,
+          :cond_blup_unavailable, :cond_logsd_wall, :sigma_fixed, :sigma_random_effect,
+          :sigma_random_effect_slope, :sigma_group_index) && return true
+    k in _COND_FIT_KEYS && return true
+    startswith(String(k), "sdtarget_") && return true
+    startswith(String(k), "cond_") && return true
+    return false
+end
+_sigma_internal_key(k::Symbol) = _scales_bookkeeping_key(k)
 
 """
     sigma(fit)
@@ -3597,11 +3653,16 @@ end
 # E[Y] at `newdata` (drmTMB `predict(type = "mean")`): the component parameters
 # from `predict_parameters`, combined as in `fitted`. Population level.
 function _predict_mean(fit::DrmFit, newdata)
-    fit.family isa CumulativeLogit && throw(ArgumentError(
-        "predict: `type = :mean` is not available for CumulativeLogit; " *
-        "`fitted(fit)` is the expected category score"))
     fit.formula isa DrmFormula || throw(ArgumentError(
         "predict: `type = :mean` is defined for univariate fits; use `type = :response`"))
+    if fit.family isa CumulativeLogit
+        # expected category score at `newdata` (drmTMB `ordinal_expected_score()`): the
+        # intercept-free `Xβ̂` from `predict(type = :link)` and the fitted cutpoints.
+        η = predict(fit, newdata; type = :link)
+        δ = coef(fit, :cutpoints)
+        cuts = cumsum(vcat(δ[1], exp.(δ[2:end])))
+        return _cumulative_score(η, cuts, length(δ) + 1)
+    end
     pp = predict_parameters(fit, newdata)
     if fit.family isa ZeroOneBeta
         return (1 .- pp[:zoi]) .* pp[:mu] .+ pp[:zoi] .* pp[:coi]
@@ -3800,7 +3861,8 @@ Population-level prediction of **every** distributional parameter at `newdata`
 The returned `Dict` has one entry per
 distributional parameter the model carries — always `:mu` and (when the family
 uses it) `:sigma`, plus any family extras present (`:nu`, `:zi`, `:hu`, `:zoi`,
-`:coi`). For supported Binomial, BetaBinomial, Poisson, NB2, zero-truncated NB2, Gamma, Beta,
+`:coi`; a ZeroOneBeta fit always returns `:zoi` and `:coi`, intercept-only when no
+formula was written for them). For supported Binomial, BetaBinomial, Poisson, NB2, zero-truncated NB2, Gamma, Beta,
 Student, or Tweedie random-effect SD fits with `sd(group) ~ …`, it also contains
 `:sd`: the random-effect SD evaluated for
 each row's group, repeated for rows in the same group.
@@ -3849,6 +3911,13 @@ function predict_parameters(fit::DrmFit, newdata; type::Symbol = :response,
     f === nothing && error("predict_parameters: this fit did not retain its formula")
     type in (:response, :link) || error("predict_parameters: `type` must be :response or :link")
     forms = Dict(f.forms)
+    if fit.family isa ZeroOneBeta
+        # `zoi` and `coi` are always estimated, intercept-only when the user wrote no formula
+        # for them; `bf()` keeps only the formulas that were written (#1389).
+        for (p, _) in fit.blocks
+            p in (:zoi, :coi) && !haskey(forms, p) && (forms[p] = ConstantTerm(1))
+        end
+    end
     nd = NamedTuple(pairs(newdata))
     # Same label-response handling as `predict` (CumulativeLogit univariate fits only).
     fit.family isa CumulativeLogit && f isa DrmFormula &&
@@ -3945,7 +4014,12 @@ function predict_parameters(fit::DrmFit, newdata; type::Symbol = :response,
             end
             continue
         end
-        haskey(forms, p) || continue          # skip RE-SD / cutpoint blocks (:resd, :recov, :cutpoints, …)
+        if !haskey(forms, p)
+            # Fitted distributional parameters omitted from `bf()` (e.g. implicit
+            # `nu ~ 1` on Student) still live in `fit.blocks`; fitters use
+            # `get(rhs, p, ConstantTerm(1))`. RE / cutpoint blocks stay skipped.
+            (p in _UNIVARIATE_DPARS || p in _BIVARIATE_DPARS) || continue
+        end
         resp = bivar ? (p === :mu2 ? f.response2 : f.response1) : f.response
         allow_sd_animal_slope = fit.family isa Union{Binomial,Gamma} && f isa DrmFormula &&
             any(item.target.level === :animal for item in _sd_target_parts(f))
@@ -3962,8 +4036,13 @@ function predict_parameters(fit::DrmFit, newdata; type::Symbol = :response,
         allow_binomial_spatial_slope = fit.family isa Union{Binomial,Gaussian,Gamma,NegBinomial2} &&
             f isa DrmFormula && any(
                 item.target.level === :spatial for item in _sd_target_parts(f))
-        parameter_rhs = p === :mu ? _strip_fitted_q2_terms(fit, forms[p]) :
-                        p === :sigma ? _strip_sigma_struct_q2_terms(fit, forms[p]) : forms[p]
+        parameter_rhs = if p === :mu
+            _strip_fitted_q2_terms(fit, forms[p])
+        elseif p === :sigma
+            _strip_sigma_struct_q2_terms(fit, forms[p])
+        else
+            get(forms, p, ConstantTerm(1))
+        end
         if p === :mu && fit.family isa Binomial
             interaction = _binomial_phylo_interaction_parts(parameter_rhs)
             interaction === nothing || (parameter_rhs = interaction.fixed_rhs)
@@ -4152,6 +4231,10 @@ Return value (univariate / random-effect / meta models):
 - `nsim == 1` → a length-`nobs` response `Vector` (back-compatible).
 - `nsim  > 1` → a `nobs × nsim` `Matrix`, one independent replicate per column.
 
+Only the rows used in the fit are simulated, as in drmTMB (#1352): a row dropped
+for a missing response is not drawn, so the result has the same rows as
+`fitted(fit)` and `nobs(fit)`. This holds for the default (no `newdata`) draw.
+
 Bivariate Gaussian models return `Dict(:mu1=>…, :mu2=>…)` for `nsim == 1`, or a
 length-`nsim` `Vector` of such `Dict`s for `nsim > 1` (a matrix of paired
 responses is not well defined).
@@ -4164,8 +4247,7 @@ Tweedie, and CumulativeLogit.
 # Example
 ```julia
 fit = drm(bf(@formula(y ~ x), @formula(sigma ~ x)), Gaussian(); data)
-y1  = simulate(fit)               # Vector, length nobs (a homtoep fit that dropped
-                                  # missing responses: one per data row, NaN there)
+y1  = simulate(fit)               # Vector, length nobs (rows with a missing response are not drawn)
 Y   = simulate(fit; nsim = 100)   # 100 columns, one per draw
 ys  = simulate(fit; newdata = (x = [0.0, 1.0],))  # one row per newdata row
 ```
@@ -4177,6 +4259,49 @@ parameters. Omit it to draw for the training design. Temporal fits refuse
 `newdata`.
 """
 function simulate(fit::DrmFit; nsim::Integer = 1, rng = default_rng(), newdata = nothing,
+                  kwargs...)
+    out = _simulate_all_rows(fit; nsim, rng, newdata, kwargs...)
+    newdata === nothing || return out
+    return _simulate_on_used_rows(fit, out)
+end
+
+# `simulate(fit)` returns the rows used in the fit (`nobs`), as drmTMB does (#1352): a row
+# dropped for a missing response is not simulated. `_simulate_all_rows` keeps one draw per
+# DATA row, which `bootstrap_ci` needs to merge a replicate back into the original table.
+# A temporal (homtoep) fit that dropped missing responses marks the retained data rows in
+# `fit.ranef.temporal.keep` rather than by `NaN` in `fit.obs`.
+function _simulate_used_mask(fit::DrmFit)
+    if _is_temporal_fit(fit)
+        info = fit.ranef.temporal       # only the homtoep metadata has `keep`
+        return hasproperty(info, :keep) ? info.keep : nothing
+    end
+    m = _used_row_mask(fit)
+    # A Binomial row with zero trials has `NaN` for the observed proportion (0 / 0) but it IS a
+    # fitted row (it counts in `nobs` and contributes nothing); only rows dropped by the
+    # missing-data policy are cut. The draw there is zero.
+    if m !== nothing && haskey(fit.scales, :trials)
+        tr = fit.scales[:trials]
+        length(tr) == length(m) && (m = m .| (tr .== 0))
+    end
+    # A fit that does not keep the trials (rebuilt from `data`) cannot tell a zero-trial row from a
+    # dropped one by `fit.obs`; the rows used are exactly `nobs` of them, so a mask that does not
+    # count to `nobs` is not the missing-data policy and cuts nothing.
+    (m !== nothing && count(m) != fit.nobs) && return nothing
+    return m
+end
+function _simulate_on_used_rows(fit::DrmFit, out::AbstractVector{<:Real})
+    m = _simulate_used_mask(fit)
+    (m === nothing || length(out) != length(m)) && return out
+    return out[m]
+end
+function _simulate_on_used_rows(fit::DrmFit, out::AbstractMatrix)
+    m = _simulate_used_mask(fit)
+    (m === nothing || size(out, 1) != length(m)) && return out
+    return out[m, :]
+end
+_simulate_on_used_rows(fit::DrmFit, out) = out
+
+function _simulate_all_rows(fit::DrmFit; nsim::Integer = 1, rng = default_rng(), newdata = nothing,
                   re::Symbol = :marginal, data = nothing, K = nothing, A = nothing,
                   tree = nothing, coords = nothing)
     _is_fixed_prior_fit(fit) && fit.estim_method === :MAP && throw(ArgumentError("simulate: simulation from a $(_prior_kind_label(fit)) fit is not yet qualified"))
@@ -4278,10 +4403,11 @@ end
 # `sdtarget_*_group`). They describe the training data, have no per-row value for new
 # rows, and `_simulate_once` reads none of them (it draws from `:sigma` / `:zi` / ...),
 # so newdata simulation is population level, as for every other fit.
+# `:trials` stays out of this skip: `simulate(newdata)` rebuilds it below.
+# `:spatial_range` is not a training-length random-effect record; the loop
+# still drops it through `_sigma_internal_key`.
 _simulate_newdata_bookkeeping_key(k::Symbol) =
-    k in (:q2_restarts, :sd, :sd_group, :sd_group_index, :sigma_fixed, :sigma_random_effect,
-          :sigma_random_effect_slope, :sigma_group_index) ||
-    startswith(String(k), "sdtarget_")
+    _scales_bookkeeping_key(k) && k !== :spatial_range && k !== :trials
 
 function _fit_for_simulate_newdata(fit::DrmFit, newdata)
     _is_temporal_fit(fit) && throw(ArgumentError(
@@ -4302,7 +4428,8 @@ function _fit_for_simulate_newdata(fit::DrmFit, newdata)
     for k in keys(fit.scales)
         haskey(scales, k) && continue
         startswith(String(k), "cond_") && continue   # conditional-mode record: population-level newdata has none
-        _sigma_internal_key(k) && continue           # fixed spatial range and other non-scale bookkeeping
+        # `:trials` is bookkeeping in `sigma()` but must be rebuilt for Binomial newdata.
+        _scales_bookkeeping_key(k) && k !== :trials && continue
         _simulate_newdata_bookkeeping_key(k) && continue   # per-group / training-row records; the draw never reads them
         if k === :beta_mu
             haskey(pp, :mu) || throw(ArgumentError("simulate: ZeroOneBeta `newdata` needs a :mu prediction"))
@@ -4760,6 +4887,32 @@ function _recov_is_sd_corr(fit)
     return !isempty(nms) && occursin(":log_sd_", first(nms))
 end
 
+# The Poisson / NegBinomial2 `marginal = :Laplace` (1 + x | g) route keeps the same three numbers
+# as one-coefficient SD blocks (`:sd_intercept` -> `g:log_sd_intercept`, `:sd_slope` -> `g:log_sd_x`)
+# plus a one-coefficient `:recov` block (`g:atanh_rho`). These are plain log SDs, not an SD
+# regression and not a Cholesky triple. Keyed on the coefficient names. Returns
+# `(group, labels, sds, covariance)` or `nothing` when the fit has a different layout.
+function _split_logsd_decode(fit)
+    ri = findfirst(cn -> cn[1] === :recov, fit.coefnames)
+    ri === nothing && return nothing
+    rn = fit.coefnames[ri][2]
+    (length(rn) == 1 && endswith(rn[1], ":atanh_rho")) || return nothing
+    grp = String(split(rn[1], ":")[1])
+    sdblocks = [(p, r) for (p, r) in fit.blocks if startswith(String(p), "sd_")]
+    length(sdblocks) == 2 || return nothing
+    sds = Float64[]
+    for (p, r) in sdblocks
+        ci = findfirst(cn -> cn[1] === p, fit.coefnames)
+        ci === nothing && return nothing
+        nm = fit.coefnames[ci][2]
+        (length(nm) == 1 && startswith(nm[1], grp * ":log_sd_")) || return nothing
+        push!(sds, exp(fit.theta[first(r)]))
+    end
+    rho = _Q2_RHO_BOUND * tanh(fit.theta[first(last(fit.blocks[findfirst(pb -> pb[1] === :recov, fit.blocks)]))])
+    Σ = [sds[1]^2 rho*sds[1]*sds[2]; rho*sds[1]*sds[2] sds[2]^2]
+    return grp, ["intercept", "slope"], sds, Σ
+end
+
 # -> (group, labels, sds, covariance) for an SD/partial-correlation `:recov` block.
 function _recov_sd_corr_decode(fit, r)
     nms = first(cn[2] for cn in fit.coefnames if cn[1] === :recov)
@@ -4821,7 +4974,8 @@ existed.
 function re_sd(fit::DrmFit; scale::Symbol = :native, tree = nothing)
     # Location–scale–scale fits (#544) model the RE SD with covariates, so a
     # single per-grouping SD is ill-defined — refuse rather than misreport.
-    _has_sd_regression_block(fit) &&
+    split_logsd = _split_logsd_decode(fit)
+    split_logsd === nothing && _has_sd_regression_block(fit) &&
         throw(ArgumentError("re_sd: this fit models the random-effect SD with covariates " *
             "(`sd(group) ~ …`), so a single SD per grouping is not defined. Use " *
             "`coef(fit, :sd)` for the log-SD coefficients."))
@@ -4830,7 +4984,14 @@ function re_sd(fit::DrmFit; scale::Symbol = :native, tree = nothing)
     d = Dict{Symbol,Float64}()
     isd = _intercept_only_sd(fit)
     isd === nothing || (d[isd.group] = isd.sd)
+    if split_logsd !== nothing
+        grp, labels, sds, _ = split_logsd
+        for (lab, sd) in zip(labels, sds)
+            d[Symbol(grp * "_" * lab)] = sd
+        end
+    end
     for (p, r) in fit.blocks
+        split_logsd !== nothing && p === :recov && continue
         if p === :resd
             nms = first(cn[2] for cn in fit.coefnames if cn[1] === :resd)
             for (j, nm) in enumerate(nms)

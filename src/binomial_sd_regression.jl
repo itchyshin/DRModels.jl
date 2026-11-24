@@ -2622,6 +2622,11 @@ function _fit_binomial_sd_regression(fam::Binomial, s, ntr, Xmu, Zgs, nmsds,
     end
     bcache_fit = zeros(q, G)
     _record_cond_fit_aghq!(scales, th -> nll_modes(th, bcache_fit), thetahat, bcache_fit, gidx, Zre)   # fitted-row modes for `fitted(fit)`
+    # Quantile residuals use `:cond_eta_re` (structured-field export); AGHQ SD routes
+    # already store modes in `:cond_fit_eta_re` for `fitted()`.
+    if haskey(scales, :cond_fit_eta_re) && !haskey(scales, :cond_eta_re)
+        scales[:cond_eta_re] = copy(scales[:cond_fit_eta_re])
+    end
     fit = DrmFit(fam, blocks, names, thetahat, V, -nll(thetahat), n,
         drm_optim_converged(res), means, obs, scales)
     return _withiterations(_withnll(fit, nll), Optim.iterations(res))
