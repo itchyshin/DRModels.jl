@@ -59,6 +59,19 @@ bf(y ~ 0 + x)    # no intercept
 
 This applies to every parameter's formula, mean and scale alike.
 
+### Factor contrasts
+
+Every grouping or categorical predictor is coded with **treatment contrasts** (the
+StatsModels.jl default: a reference level and dummy columns for the other levels).
+Unlike drmTMB, `drm(...)` does **not** accept a `contrasts` keyword (or R-style
+`contrasts(g) <- contr.sum(3)` before the call). The keyword is refused by name
+before any fitting starts.
+
+To match sum, Helmert, or other codings from an R script, recode the factor in
+your data frame (or build the design columns by hand) before calling `drm`. Changing
+the contrast scheme changes coefficient labels and values; the marginal likelihood
+is unchanged only when the implied model matrix is the same.
+
 ## Random effects and structured markers
 
 Random-effect terms use the familiar `lme4` / `brms` spelling inside any
