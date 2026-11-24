@@ -577,6 +577,21 @@ function _poisson_fixed_start(y, X)
     return β
 end
 
+# Fitted-row modes for `fitted(fit)` on the single-`phylo(1 | g)` Laplace routes. `mode_at(θ, b0)`
+# is the SAME inner-mode evaluation the Laplace objective uses (the family `*_fg` function with its
+# default settings, `grad = false`), called once at the final θ̂ and warm-started from the objective's
+# last mode `last_b`. It returns `(val, b, ok)`. The record never touches `last_b`, the fit's values
+# or its closures. Row i loads latent `b[leaf_node[i]]` (identity loading on the link scale).
+function _record_laplace_modes!(scales::AbstractDict, mode_at, θ̂, last_b, leaf_node)
+    delete!(scales, :cond_fit_failed); delete!(scales, :cond_fit_eta_re)
+    _, b, ok = mode_at(θ̂, copy(last_b))
+    if !ok
+        _, b, ok = mode_at(θ̂, zeros(length(last_b)))
+    end
+    ok || (scales[:cond_fit_failed] = [1.0]; return scales)
+    return _record_cond_fit!(scales, b[leaf_node])
+end
+
 function _poisson_phylo_setup(tree, labels)
     phy = tree isa AugmentedPhy ? tree : augmented_phy(tree)
     # #996: these routes keep raw branch lengths too, so `sd_phylo` is on the
@@ -849,7 +864,7 @@ function _fit_poisson_phylo_laplace(fam::Poisson, y, Xμ, labels, tree, nmμ, gr
     Q, leaf_node, _ = _poisson_phylo_setup(tree, labels)
     fit = _fit_poisson_general_laplace(fam, y, Xμ, Q, leaf_node, nmμ, grp, g_tol;
                                        se = se, polish_iterations = polish_iterations,
-                                       reml = reml)
+                                       reml = reml, record_modes = true)
     return _with_phylo_tipvar(fit, Q, leaf_node)
 end
 
@@ -910,7 +925,8 @@ end
 function _fit_poisson_general_laplace(fam::Poisson, y, Xμ, Q, leaf_node, nmμ, grp,
                                       g_tol; se::Bool = true,
                                       polish_iterations::Int = 15,
-                                      reml::Bool = false)
+                                      reml::Bool = false,
+                                      record_modes::Bool = false)
     n = length(y)
     pμ = size(Xμ, 2)
     q = size(Q, 1)
@@ -997,6 +1013,8 @@ function _fit_poisson_general_laplace(fam::Poisson, y, Xμ, Q, leaf_node, nmμ, 
     means = Dict(:mu => exp.(Xμ * θ̂[1:pμ]))
     obs = Dict(:mu => Vector{Float64}(y))
     scales = Dict{Symbol,Vector{Float64}}()
+    mode_at = (θ, b0) -> _poisson_phylo_laplace_fg(y, Xμ, leaf_node, Q, logdetQ, lf, θ; grad = false, b0 = b0)
+    record_modes && _record_laplace_modes!(scales, mode_at, θ̂, last_b, leaf_node)   # for `fitted(fit)`
     fit = DrmFit(fam, blocks, names, θ̂, Matrix(V), -nllhat, n, converged, means, obs, scales)
     _warn_laplace_clamp(fit)   # #959: say when a clamp is active
     fit = _withnll(fit, nll, grad!)
@@ -1008,6 +1026,7 @@ function _fit_poisson_general_laplace(fam::Poisson, y, Xμ, Q, leaf_node, nmμ, 
         _glsp_reml_refit_clean(nll, grad_fn, θ̂, pμ; ml_converged = converged)
     V = _glsp_reml_vcov(grad_fn, θ̂, pμ)
     means = Dict(:mu => exp.(Xμ * θ̂[1:pμ]))
+    record_modes && _record_laplace_modes!(scales, mode_at, θ̂, last_b, leaf_node)   # at the REML θ̂
     fit = DrmFit(fam, blocks, names, θ̂, Matrix(V), -ml_nll, n, conv, means, obs, scales)
     return _withreml(_withnll(fit, nll, grad!), -reml_nll, -ml_nll)
 end
@@ -1184,13 +1203,15 @@ function _fit_phylo_mean_laplace_nuisance(fam, kind, aux_from, n::Int, Xμ, labe
                                           θσ0::Real, sigma_scale,
                                           se::Bool = false,
                                           polish_iterations::Int = 0,
-                                          extra_scales = Dict{Symbol,Vector{Float64}}())
+                                          extra_scales = Dict{Symbol,Vector{Float64}}(),
+                                          record_modes::Bool = false)
     Q, leaf_node, _ = _poisson_phylo_setup(tree, labels)
     fit = _fit_general_mean_laplace_nuisance(
         fam, kind, aux_from, n, Xμ, Q, leaf_node, nmμ, nmσ, grp, g_tol;
         θβ0 = θβ0, θσ0 = θσ0, sigma_scale = sigma_scale, se = se,
         polish_iterations = polish_iterations, extra_scales = extra_scales,
-        prec_error = "phylo(1 | $grp) tree precision is not positive definite after root conditioning"
+        prec_error = "phylo(1 | $grp) tree precision is not positive definite after root conditioning",
+        record_modes = record_modes
     )
     return _with_phylo_tipvar(fit, Q, leaf_node)
 end
@@ -1208,7 +1229,8 @@ function _fit_general_mean_laplace_nuisance(fam, kind, aux_from, n::Int, Xμ, Q,
                                             se::Bool = false,
                                             polish_iterations::Int = 0,
                                             extra_scales = Dict{Symbol,Vector{Float64}}(),
-                                            prec_error::AbstractString = "structured(1 | $grp) precision is not positive definite")
+                                            prec_error::AbstractString = "structured(1 | $grp) precision is not positive definite",
+                                            record_modes::Bool = false)
     q = size(Q, 1)
     pμ = size(Xμ, 2)
     qchol = cholesky(Symmetric(Q); check = false)
@@ -1301,6 +1323,8 @@ function _fit_general_mean_laplace_nuisance(fam, kind, aux_from, n::Int, Xμ, Q,
     means = Dict(:mu => [_laplace_mean(kind, dot(@view(Xμ[i, :]), θ̂[1:pμ])) for i in 1:n])
     obs = Dict(:mu => [_laplace_obs(kind, auxhat, i) for i in 1:n])
     scales = merge(Dict(:sigma => fill(sigma_scale(θ̂[pμ+1]), n)), extra_scales)
+    record_modes && _record_laplace_modes!(scales, (θ, b0) -> _phylo_mean_laplace_nuisance_fg(
+        kind, aux_from, n, Xμ, leaf_node, Q, logdetQ, θ; grad = false, b0 = b0), θ̂, last_b, leaf_node)   # for `fitted(fit)`
     fit = DrmFit(fam, blocks, names, θ̂, Matrix(V), -nllhat, n, converged, means, obs, scales)
     _warn_laplace_clamp(fit; logsigma = θ̂[pμ+1:pμ+1])   # #959: say when a clamp is active
     return _withnll(fit, nll, grad!)
@@ -1410,7 +1434,8 @@ end
 function _fit_phylo_mean_laplace_hetero(fam, kind, aux_from, n::Int, Xμ, Xσ,
                                         labels, tree, nmμ, nmσ, grp, g_tol; θβ0,
                                         θσ0, sigma_scale, se::Bool = false,
-                                        polish_iterations::Int = 0)
+                                        polish_iterations::Int = 0,
+                                        record_modes::Bool = false)
     Q, leaf_node, _ = _poisson_phylo_setup(tree, labels)
     q = size(Q, 1)
     pμ = size(Xμ, 2)
@@ -1510,6 +1535,8 @@ function _fit_phylo_mean_laplace_hetero(fam, kind, aux_from, n::Int, Xμ, Xσ,
     means = Dict(:mu => [_laplace_mean(kind, dot(@view(Xμ[i, :]), θ̂[1:pμ])) for i in 1:n])
     obs = Dict(:mu => [_laplace_obs(kind, auxhat, i) for i in 1:n])
     scales = Dict(:sigma => [sigma_scale(ησ̂[i]) for i in 1:n])
+    record_modes && _record_laplace_modes!(scales, (θ, b0) -> _phylo_mean_laplace_hetero_fg(
+        kind, aux_from, n, Xμ, Xσ, leaf_node, Q, logdetQ, θ; grad = false, b0 = b0), θ̂, last_b, leaf_node)   # for `fitted(fit)`
     fit = DrmFit(fam, blocks, names, θ̂, Matrix(V), -nllhat, n, converged, means, obs, scales)
     _warn_laplace_clamp(fit; logsigma = Xσ * θ̂[pμ+1:pμ+pσ])   # #959: say when a clamp is active
     return _with_phylo_tipvar(_withnll(fit, nll, grad!), Q, leaf_node)
@@ -1518,11 +1545,11 @@ end
 function _phylo_mean_laplace_fg(kind, aux, n::Int, Xμ, leaf_node, Q, logdetQ, θ;
                                 grad::Bool = false, b0 = nothing,
                                 newton_tol::Real = 1e-10, newton_maxiter::Int = 60,
-                                raw_scales::Bool = false)
+                                raw_scales::Bool = false, offset = nothing)
     pμ = length(θ) - 1
     βμ = θ[1:pμ]
     logσ = raw_scales ? θ[pμ+1] : clamp(θ[pμ+1], -8.0, 3.0)   # see `_poisson_phylo_laplace_fg`
-    η0 = Xμ * βμ
+    η0 = _eta_with_offset(Xμ, βμ, offset)       # #1337: offset at coefficient 1
     b, ch, _, ok = _phylo_mean_mode(kind, aux, η0, leaf_node, Q, logσ; b0 = b0,
                                     tol = newton_tol, maxiter = newton_maxiter)
     if !ok
@@ -1580,7 +1607,8 @@ end
 function _fit_phylo_mean_laplace(fam, kind, aux, n::Int, Xμ, labels, tree, nmμ,
                                  grp, g_tol; θβ0, se::Bool = false,
                                  polish_iterations::Int = 0,
-                                 scales = Dict{Symbol,Vector{Float64}}())
+                                 scales = Dict{Symbol,Vector{Float64}}(),
+                                 record_modes::Bool = false)
     Q, leaf_node, _ = _poisson_phylo_setup(tree, labels)
     q = size(Q, 1)
     pμ = size(Xμ, 2)
@@ -1669,6 +1697,8 @@ function _fit_phylo_mean_laplace(fam, kind, aux, n::Int, Xμ, labels, tree, nmμ
     names = [:mu => nmμ, :resd => [String(grp)]]
     means = Dict(:mu => [_laplace_mean(kind, dot(@view(Xμ[i, :]), θ̂[1:pμ])) for i in 1:n])
     obs = Dict(:mu => [_laplace_obs(kind, aux, i) for i in 1:n])
+    record_modes && _record_laplace_modes!(scales, (θ, b0) -> _phylo_mean_laplace_fg(
+        kind, aux, n, Xμ, leaf_node, Q, logdetQ, θ; grad = false, b0 = b0), θ̂, last_b, leaf_node)   # for `fitted(fit)`
     fit = DrmFit(fam, blocks, names, θ̂, Matrix(V), -nllhat, n, converged, means, obs, scales)
     _warn_laplace_clamp(fit)   # #959: say when a clamp is active
     return _with_phylo_tipvar(_withnll(fit, nll, grad!), Q, leaf_node)
@@ -1702,7 +1732,8 @@ function _fit_nb2_phylo_laplace(fam, y, Xμ, Xσ, labels, tree, nmμ, nmσ, grp,
         return _fit_phylo_mean_laplace_nuisance(
             fam, Val(:nb2_fixed), aux_from, length(y), Xμ, labels, tree, nmμ, nmσ,
             grp, g_tol; θβ0 = θβ0, θσ0 = θσ0,
-            sigma_scale = exp, se = se, polish_iterations = polish_iterations
+            sigma_scale = exp, se = se, polish_iterations = polish_iterations,
+            record_modes = true
         )
     end
     # Covariate dispersion (#164): log-size is a per-observation linear predictor
@@ -1721,7 +1752,8 @@ function _fit_nb2_phylo_laplace(fam, y, Xμ, Xσ, labels, tree, nmμ, nmσ, grp,
     return _fit_phylo_mean_laplace_hetero(
         fam, Val(:nb2_hetero), aux_from_hetero, length(y), Xμ, Xσ, labels, tree,
         nmμ, nmσ, grp, g_tol; θβ0 = _poisson_fixed_start(y, Xμ), θσ0 = θσ0,
-        sigma_scale = exp, se = se, polish_iterations = polish_iterations
+        sigma_scale = exp, se = se, polish_iterations = polish_iterations,
+        record_modes = true
     )
 end
 
@@ -2203,7 +2235,7 @@ function _fit_binomial_phylo_laplace(fam, s, ntr, Xμ, labels, tree, nmμ, grp,
     return _fit_phylo_mean_laplace(
         fam, Val(:binomial), aux, length(s), Xμ, labels, tree, nmμ, grp, g_tol;
         θβ0 = θβ0, se = se, polish_iterations = polish_iterations,
-        scales = Dict(:trials => Float64.(nint))
+        scales = Dict(:trials => Float64.(nint)), record_modes = true
     )
 end
 
@@ -2236,7 +2268,7 @@ function _fit_gamma_phylo_laplace(fam, y, Xμ, Xσ, labels, tree, nmμ, nmσ, gr
         return _fit_phylo_mean_laplace_nuisance(
             fam, Val(:gamma_fixed), aux_from, length(y), Xμ, labels, tree, nmμ, nmσ,
             grp, g_tol; θβ0 = θβ0, θσ0 = θσ0, sigma_scale = exp,
-            se = se, polish_iterations = polish_iterations
+            se = se, polish_iterations = polish_iterations, record_modes = true
         )
     end
     # Covariate dispersion (#164): the σ-axis is a per-observation linear
@@ -2258,7 +2290,7 @@ function _fit_gamma_phylo_laplace(fam, y, Xμ, Xσ, labels, tree, nmμ, nmσ, gr
     return _fit_phylo_mean_laplace_hetero(
         fam, Val(:gamma_hetero), aux_from_hetero, length(yv), Xμ, Xσ, labels, tree,
         nmμ, nmσ, grp, g_tol; θβ0 = θβ0, θσ0 = θσ0, sigma_scale = exp,
-        se = se, polish_iterations = polish_iterations
+        se = se, polish_iterations = polish_iterations, record_modes = true
     )
 end
 
@@ -2318,7 +2350,7 @@ function _fit_beta_phylo_laplace(fam, y, Xμ, Xσ, labels, tree, nmμ, nmσ, grp
         return _fit_phylo_mean_laplace_nuisance(
             fam, Val(:beta_fixed), aux_from, length(y), Xμ, labels, tree, nmμ, nmσ,
             grp, g_tol; θβ0 = θβ0, θσ0 = θσ0, sigma_scale = exp,
-            se = se, polish_iterations = polish_iterations
+            se = se, polish_iterations = polish_iterations, record_modes = true
         )
     end
     # Covariate dispersion (#164): the σ-axis is a per-observation linear
@@ -2341,7 +2373,7 @@ function _fit_beta_phylo_laplace(fam, y, Xμ, Xσ, labels, tree, nmμ, nmσ, grp
     return _fit_phylo_mean_laplace_hetero(
         fam, Val(:beta_hetero), aux_from_hetero, length(yv), Xμ, Xσ, labels, tree,
         nmμ, nmσ, grp, g_tol; θβ0 = θβ0, θσ0 = θσ0, sigma_scale = exp,
-        se = se, polish_iterations = polish_iterations
+        se = se, polish_iterations = polish_iterations, record_modes = true
     )
 end
 
@@ -2414,7 +2446,7 @@ function _fit_betabinomial_phylo_laplace(fam, s, ntr, Xμ, labels, tree, nmμ, n
         fam, Val(:betabinomial_fixed), aux_from, length(s), Xμ, labels, tree, nmμ, nmσ,
         grp, g_tol; θβ0 = θβ0, θσ0 = θσ0, sigma_scale = exp,
         se = se, polish_iterations = polish_iterations,
-        extra_scales = Dict(:trials => Float64.(nint))
+        extra_scales = Dict(:trials => Float64.(nint)), record_modes = true
     )
 end
 
@@ -2731,6 +2763,12 @@ function _fit_poisson_crossed_intercepts_laplace(fam::Poisson, y, Xμ, gidx, G, 
     means = Dict(:mu => exp.(Xμ * θ̂[1:pμ]))
     obs = Dict(:mu => Vector{Float64}(y))
     scales = Dict{Symbol,Vector{Float64}}()
+    # fitted-row modes for `fitted(fit)` (conditional default): fresh mode solve at θ̂ (step tolerance 1e-8)
+    let (bm, _, _, okm) = _poisson_crossed_mode(y, Xμ * θ̂[1:pμ], gidx, G, hidx, Hh,
+                                                clamp.(θ̂[pμ+1:pμ+2], -8.0, 3.0);
+                                                b0 = zeros(G + Hh), tol = 1e-8)
+        okm ? _record_cond_fit!(scales, bm[gidx] .+ bm[G .+ hidx]) : (scales[:cond_fit_failed] = [1.0])
+    end
     fit = DrmFit(fam, blocks, names, θ̂, Matrix(V), -nllhat, n, converged, means, obs, scales)
     _warn_laplace_clamp(fit)   # #959: say when a clamp is active
     return _withnll(fit, nll, grad!)
@@ -2931,6 +2969,12 @@ function _fit_poisson_crossed_laplace(fam::Poisson, y, Xμ, comps, nmμ, g_tol; 
     gfinal = zeros(length(θ̂))
     grad!(gfinal, θ̂)
     converged = _laplace_outer_converged(res, nllhat, gfinal, θ̂, n, g_tol)
+    # fitted-row modes for `fitted(fit)` (conditional default): fresh mode solve at θ̂ (step tolerance 1e-8)
+    let (bm, _, _, okm) = _poisson_laplace_mode(y, Xμ * θ̂[1:pμ], Z, compid,
+                                                clamp.(θ̂[pμ+1:pμ+K], -8.0, 3.0);
+                                                b0 = zeros(size(Z, 2)), tol = 1e-8)
+        okm ? _record_cond_fit!(scales, Z * bm) : (scales[:cond_fit_failed] = [1.0])
+    end
     fit = DrmFit(fam, blocks, names, θ̂, Matrix(V), -nllhat, n, converged, means, obs, scales)
     _warn_laplace_clamp(fit)   # #959: say when a clamp is active
     return _withnll(fit, nll, grad!)
@@ -3828,7 +3872,8 @@ end
 
 function _fit_crossed_mean_laplace(fam, kind, aux, n::Int, Xμ, gidx, G, hidx, Hh,
                                    nmμ, labels, g_tol; θβ0 = nothing,
-                                   se::Bool = false, polish_iterations::Int = 0)
+                                   se::Bool = false, polish_iterations::Int = 0,
+                                   extra_scales = Dict{Symbol,Vector{Float64}}())
     pμ = size(Xμ, 2)
     last_b = zeros(G + Hh)
 
@@ -3968,7 +4013,13 @@ function _fit_crossed_mean_laplace(fam, kind, aux, n::Int, Xμ, gidx, G, hidx, H
     names = [:mu => nmμ, :resd => labels]
     means = Dict(:mu => [_laplace_mean(kind, dot(@view(Xμ[i, :]), θ̂[1:pμ])) for i in 1:n])
     obs = Dict(:mu => [_laplace_obs(kind, aux, i) for i in 1:n])
-    scales = Dict{Symbol,Vector{Float64}}()
+    scales = Dict{Symbol,Vector{Float64}}(extra_scales)  # e.g. Binomial `:trials`, read by `simulate`
+    # fitted-row modes for `fitted(fit)` (conditional default): fresh mode solve at θ̂ (step tolerance 1e-8)
+    let (bm, _, _, okm) = _crossed_mean_mode(kind, aux, Xμ * θ̂[1:pμ], gidx, G, hidx, Hh,
+                                             clamp.(θ̂[pμ+1:pμ+2], -8.0, 3.0);
+                                             b0 = zeros(G + Hh), tol = 1e-8)
+        okm ? _record_cond_fit!(scales, bm[gidx] .+ bm[G .+ hidx]) : (scales[:cond_fit_failed] = [1.0])
+    end
     fit = DrmFit(fam, blocks, names, θ̂, Matrix(V), -nllhat, n, converged, means, obs, scales)
     _warn_laplace_clamp(fit)   # #959: say when a clamp is active
     return _withnll(fit, nll, grad!)
@@ -4203,6 +4254,12 @@ function _fit_crossed_mean_laplace_nuisance(fam, kind, aux_from, n::Int, Xμ, gi
     means = Dict(:mu => [_laplace_mean(kind, dot(@view(Xμ[i, :]), θ̂[1:pμ])) for i in 1:n])
     obs = Dict(:mu => [_laplace_obs(kind, auxhat, i) for i in 1:n])
     scales = merge(Dict(:sigma => fill(sigma_scale(θ̂[pμ+1]), n)), extra_scales)
+    # fitted-row modes for `fitted(fit)` (conditional default): fresh mode solve at θ̂ (step tolerance 1e-8)
+    let (bm, _, _, okm) = _crossed_mean_mode(kind, auxhat, Xμ * θ̂[1:pμ], gidx, G, hidx, Hh,
+                                             clamp.(θ̂[pμ+2:pμ+3], -8.0, 3.0);
+                                             b0 = zeros(G + Hh), tol = 1e-8)
+        okm ? _record_cond_fit!(scales, bm[gidx] .+ bm[G .+ hidx]) : (scales[:cond_fit_failed] = [1.0])
+    end
     fit = DrmFit(fam, blocks, names, θ̂, Matrix(V), -nllhat, n, converged, means, obs, scales)
     _warn_laplace_clamp(fit; logsigma = θ̂[pμ+1:pμ+1])   # #959: say when a clamp is active
     return _withnll(fit, nll, grad!)
@@ -4220,11 +4277,14 @@ function _fit_binomial_crossed_laplace(fam, s, ntr, Xμ, comps, nmμ, g_tol; se:
     p̄ = clamp(sum(s) / max(sum(ntr), 1), 1e-4, 1 - 1e-4)
     θβ0 = zeros(size(Xμ, 2))
     θβ0[1] = log(p̄ / (1 - p̄))
-    return _fit_crossed_mean_laplace(
+    fit = _fit_crossed_mean_laplace(
         fam, Val(:binomial), aux, length(s), Xμ, comps[1][2], comps[1][3],
         comps[2][2], comps[2][3], nmμ, [comps[1][4], comps[2][4]], g_tol;
-        θβ0 = θβ0, se = se, polish_iterations = polish_iterations
+        θβ0 = θβ0, se = se, polish_iterations = polish_iterations,
+        extra_scales = Dict(:trials => Float64.(nint))   # `simulate` needs the trials
     )
+    fit.scales[:trials] = Float64.(nint)    # per-row trials, as every other Binomial route
+    return fit
 end
 
 # ---------------------------------------------------------------------------
@@ -4275,7 +4335,8 @@ rule (`K_h` nodes per axis, default `_crossed_aghq_default_kh(H)`, at most
 """
 function _fit_crossed_mean_aghq(fam, ll, n::Int, Xμ, comps, nmμ, g_tol; θ0,
                                 meanfun, obsvec, K_g::Int = _CROSSED_AGHQ_KG,
-                                K_h::Union{Nothing,Int} = nothing, se::Bool = true)
+                                K_h::Union{Nothing,Int} = nothing, se::Bool = true,
+                                extra_scales = Dict{Symbol,Vector{Float64}}())
     length(comps) == 2 && all(==(1.0), comps[1][1]) && all(==(1.0), comps[2][1]) ||
         throw(ArgumentError("marginal = :AGHQ on crossed random effects supports exactly two " *
                             "random intercepts `(1 | g) + (1 | h)`"))
@@ -4317,7 +4378,7 @@ function _fit_crossed_mean_aghq(fam, ll, n::Int, Xμ, comps, nmμ, g_tol; θ0,
     names = [:mu => nmμ, :resd => labels]
     means = Dict(:mu => [meanfun(dot(@view(Xμ[i, :]), θ̂[1:pμ])) for i in 1:n])
     obs = Dict(:mu => Vector{Float64}(obsvec))
-    scales = Dict{Symbol,Vector{Float64}}()
+    scales = Dict{Symbol,Vector{Float64}}(extra_scales)
     fit = DrmFit(fam, blocks, names, θ̂, Matrix(V), -nllhat, n, converged, means, obs, scales)
     _warn_laplace_clamp(fit)   # #959: say when a clamp is active
     return _withiterations(_withmarginal(_withnll(fit, nll, grad!), :AGHQ), Optim.iterations(res))
@@ -4433,7 +4494,8 @@ function _fit_binomial_crossed_aghq(fam, s, ntr, Xμ, comps, nmμ, g_tol; se::Bo
                                   θ0 = _crossed_aghq_start(lap, size(Xμ, 2)),
                                   meanfun = η -> _laplace_mean(Val(:binomial), η),
                                   obsvec = [_laplace_obs(Val(:binomial), aux, i) for i in eachindex(sint)],
-                                  K_g = K_g, K_h = K_h, se = se)
+                                  K_g = K_g, K_h = K_h, se = se,
+                                  extra_scales = Dict(:trials => Float64.(nint)))
 end
 
 """

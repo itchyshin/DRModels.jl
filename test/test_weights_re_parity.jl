@@ -138,6 +138,16 @@ _wr_rep(d, w) = (idx = reduce(vcat, [fill(i, Int(w[i])) for i in eachindex(w)]);
         # a meta model with a random effect is still refused (REML with meta_V alone: test_meta_v_reml_weights.jl)
         @test_throws ArgumentError drm(bf(@formula(yi ~ x1 + meta_V(vi) + (1 | g)), @formula(sigma ~ 1)),
                                        Gaussian(); data = d, weights = d.w)
+        # `weights` with `meta_V` and REML is refused by name (a weighted restriction term is not
+        # implemented), whether or not `meta_V` REML exists. `meta_V` beside a random intercept is
+        # refused earlier, as a weighted latent-term shape that has no weighted fitter.
+        err = try drm(f, Gaussian(); data = d, weights = d.w, method = :REML); nothing catch e; e end
+        @test err isa ArgumentError
+        @test err isa Exception && occursin("`weights` together with `meta_V` and method = :REML", sprint(showerror, err))
+        err = try drm(bf(@formula(yi ~ x1 + meta_V(vi) + (1 | g)), @formula(sigma ~ 1)), Gaussian();
+                      data = d, weights = d.w, method = :REML); nothing catch e; e end
+        @test err isa ArgumentError
+        @test err isa Exception && occursin("`weights`", sprint(showerror, err))
     end
 
     @testset "bivariate Gaussian (residual route)" begin
@@ -246,7 +256,7 @@ end
 
     @testset "large non-integer weights, Poisson default marginal vs brute-force quadrature" begin
         # Gap (fit minus brute-force quadgk of the weighted likelihood at the fitted parameters), measured
-        # on Totoro for max weight 1.97 / 9.4 / 37 / 71 / 187: -3.7e-5, -2.9e-4, -1.9e-4, -1.6e-4, -1.6e-4.
+        # on a Linux server for max weight 1.97 / 9.4 / 37 / 71 / 187: -3.7e-5, -2.9e-4, -1.9e-4, -1.6e-4, -1.6e-4.
         # It does not grow with the weights (finite-node adaptive quadrature), so 1e-3 is the largest
         # measured gap (2.9e-4) with 3x headroom.
         fp = bf(@formula(y_pois ~ x1 + (1 | g)))

@@ -153,5 +153,5 @@ end
                     @formula(nu ~ z), sd_formula)
     @test_throws ArgumentError drm(varying_nu, Student(); data)
 
-    @test_throws ArgumentError drm(ordinary, Student(); data, marginal = :Laplace)
+    @test drm(ordinary, Student(); data, marginal = :Laplace).marginal === :Laplace   # laplace-parity: now fitted
 end

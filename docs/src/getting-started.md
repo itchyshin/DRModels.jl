@@ -164,9 +164,11 @@ show(stdout, MIME"text/plain"(), summary(fit)); nothing # hide
 
 ## Confidence intervals
 
-`confint(fit)` returns one row `(param, coef, estimate, lower, upper)` per
+`confint(fit)` returns one row `(param, coef, estimate, lower, upper, scale)` per
 coefficient, on each block's working scale (μ on the response scale, σ on
-`log σ`). The default is a 95% Wald interval:
+`log σ`). The `scale` field names the scale of the three numbers (`:link` for a
+coefficient, `:log_sd` for a random-effect SD on the log SD scale, `:sd` for a
+profile row that is reported on the SD scale because its lower limit is 0). The default is a 95% Wald interval:
 
 ```@example getstarted
 confint(fit)

@@ -71,7 +71,7 @@ end
     @test cuts[2] > cuts[1]
     @test size(DRModels.vcov(fit)) == (8, 8) # raw alpha/cut coordinates
     @test DRModels.vcov(fit) == DRModels.vcov(fit.prepared.fit)
-    @test length(DRModels.fitted(fit)) == reference["n"]
+    @test length(DRModels.fitted(fit)) == DRModels.nobs(fit)   # rows used, as drmTMB's fitted()
     @test DRModels.joint_missing_summary(fit).conditional_probabilities ≈
           DRModels.joint_missing_summary(fit.prepared).conditional_probabilities
 

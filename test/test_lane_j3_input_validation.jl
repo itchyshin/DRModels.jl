@@ -310,8 +310,10 @@ end
         # refused: every shape the Laplace route does not cover still raises, with the offset
         @test_throws ArgumentError drm(bf(@formula(c ~ x + offset(logb))), P;
                                        data = d, marginal = :Laplace, se = false)          # no (1 | g)
-        @test_throws ArgumentError drm(bf(@formula(c ~ x + offset(logb) + (1 + x | g))), P;
-                                       data = d, marginal = :Laplace, se = false)          # slope
+        # a correlated (1 + x | g) with a Poisson offset is applied (agrees with drmTMB 0.8.1; R-pinned in test_laplace_parity.jl)
+        fcorr = drm(bf(@formula(c ~ x + offset(logb) + (1 + x | g))), P; data = d, marginal = :Laplace, se = false)
+        @test length(coef(fcorr, :mu)) == 2
+        @test fcorr.marginal === :Laplace
         @test_throws ArgumentError drm(bf(@formula(c ~ x + offset(logb) + (1 | g) + (1 | h))), P;
                                        data = d, marginal = :Laplace, se = false)          # crossed
         @test_throws ArgumentError drm(bf(@formula(c ~ x + offset(logb) + relmat(1 | g))), P;
@@ -320,15 +322,15 @@ end
         @test_throws ArgumentError drm(bf(@formula(c ~ x + offset(logb) + (1 | g)),
                                           @formula(zi ~ offset(logb))), P;
                                        data = d, marginal = :Laplace, se = false)          # zi
-        # #938: NegBinomial2 applies it on :Laplace too; Binomial refuses it, never frees it
+        # #938 / #1337: NegBinomial2 and Binomial apply offset + (1 | g) on :Laplace
         nbl = drm(bf(@formula(c ~ x + offset(logb) + (1 | g)), @formula(sigma ~ 1)),
                   NegBinomial2(); data = d, marginal = :Laplace, se = false)
         @test length(coef(nbl, :mu)) == 2
-        @test_throws ArgumentError drm(bf(@formula(c ~ x + offset(logb) + (1 | g))),
-                                       Binomial(); data = d, marginal = :Laplace, se = false)
-        @test occursin("offset(...)", _j3_msg(() -> drm(
-            bf(@formula(c ~ x + offset(logb) + (1 | g))),
-            Binomial(); data = d, marginal = :Laplace, se = false)))
+        db = merge(d, (; b = Float64.(c .> sum(c) / length(c))))
+        bnl = drm(bf(@formula(b ~ x + offset(logb) + (1 | g))),
+                  Binomial(); data = db, marginal = :Laplace, se = false)
+        @test length(coef(bnl, :mu)) == 2
+        @test bnl.converged
     end
 
     @testset "#939: CumulativeLogit refuses a sigma formula with covariates" begin

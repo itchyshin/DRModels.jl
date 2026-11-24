@@ -164,8 +164,10 @@ end
         @formula(sigma ~ 1), @formula(sd(g) ~ z)); method = :REML)
     @test_throws ArgumentError route(bf(@formula(y ~ x + (1 | g)),
         @formula(sigma ~ 1), @formula(sd(g) ~ z)); marginal = :VA)
-    @test_throws ArgumentError route(bf(@formula(y ~ x + (1 | g)),
-        @formula(sigma ~ 1), @formula(sd(g) ~ z)); marginal = :Laplace)
+    # `marginal = :Laplace` with one `(1 | g)` and `sd(g) ~ z` is a shape the Laplace-parity work fits (drmTMB's objective);
+    # its agreement with drmTMB 0.8.1 is pinned by the cell nb2|ordinary|lab0|q1|sd-z|cm0|ML in test_laplace_parity.jl.
+    lapfit = route(bf(@formula(y ~ x + (1 | g)), @formula(sigma ~ 1), @formula(sd(g) ~ z)); marginal = :Laplace)
+    @test lapfit.marginal === :Laplace
 
     varying = merge(data, (; z = copy(data.z)))
     varying.z[1] = -varying.z[1]

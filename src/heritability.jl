@@ -49,12 +49,18 @@ using Optim: Optim
 function _variance_component_indices(fit::DrmFit)
     # Location-scale-scale fits (#544): group-varying RE SD makes "the" variance
     # component ill-defined, exactly like the heteroscedastic-residual rejection below.
-    _has_sd_regression_block(fit) &&
+    _split_logsd_decode(fit) === nothing && _has_sd_regression_block(fit) &&
         error("heritability/repeatability: this fit models the random-effect SD with " *
             "covariates (`sd(group) ~ ...`), so a single variance component is not defined. " *
             "The estimand is covariate-CONDITIONAL, R(z) = σ_b(z)² / (σ_b(z)² + σ_e(z)²) " *
             "(h²(z) = σ_a(z)² / (σ_a(z)² + σ_e(z)²) for `sd(g, phylogenetic)`): pass the " *
             "covariate values you want, e.g. `repeatability(fit, (; sex = [0.0, 1.0]))`.")
+    # Poisson / NegBinomial2 `:Laplace` (1 + x | g): a random slope is a 2 x 2 covariance, not one
+    # variance component, so no single R or h2 is defined (the layout is not an SD regression).
+    _split_logsd_decode(fit) === nothing ||
+        error("heritability/repeatability: this fit has a random intercept and slope " *
+            "`(1 + x | g)`, so a single variance component is not defined. Use `vc(fit)` " *
+            "for the 2 x 2 covariance.")
     comps = Pair{Symbol,Int}[]
     omega = Int[]
     resid_idx = nothing
@@ -92,8 +98,8 @@ function _variance_component_indices(fit::DrmFit)
     end
 
     isempty(comps) && !isempty(omega) && error("heritability/repeatability: this fit " *
-        "has a random intercept only on the scale (`sigma ~ (1 | g)`). Its SD lives on " *
-        "the log σ scale and is not a variance component of the response, so there is " *
+        "has random effects only on the scale (`sigma ~ (1 | g)` or a `sigma` slope). Their SDs live on " *
+        "the log σ scale and are not variance components of the response, so there is " *
         "no mean random-effect variance to put in the ratio. Add a mean random " *
         "intercept (e.g. `y ~ x + (1 | g)`), as drmTMB requires too.")
     isempty(comps) && error("heritability/repeatability: no structured variance " *
@@ -104,10 +110,11 @@ function _variance_component_indices(fit::DrmFit)
     return comps, resid_idx, omega
 end
 
-# Is the `:resd` entry `nm` a random intercept on log σ? The routes name it
-# `<group>_logsigma` (#322), but a mean grouping column could carry that suffix
-# too, so the name only counts when the `sigma` formula really has a random term
-# on `<group>`. A fit without a retained formula falls back to the suffix.
+# Is the `:resd` entry `nm` a random effect on log σ? The routes name an intercept
+# `<group>_logsigma` (#322) and a slope `<group>_<slope>_logsigma`, but a mean grouping
+# column could carry that suffix too, so the name only counts when the `sigma` formula
+# really has a random term on `<group>` (and, for a slope name, on that slope). A fit
+# without a retained formula falls back to the suffix.
 function _is_logsigma_re(fit::DrmFit, nm)
     s = String(nm)
     endswith(s, "_logsigma") || return false
@@ -115,9 +122,27 @@ function _is_logsigma_re(fit::DrmFit, nm)
     f isa DrmFormula || return true
     i = findfirst(p -> first(p) === :sigma, f.forms)
     i === nothing && return false
-    grp = s[1:end-length("_logsigma")]
+    base = s[1:end-length("_logsigma")]
     rhs = replace(string(last(f.forms[i])), r"\s+" => " ")
-    return occursin("| $grp)", rhs)
+    occursin("| $base)", rhs) && return true
+    return base in _sigma_re_stored_names(last(f.forms[i]))
+end
+
+# The SD names a `sigma` random-effect formula can store a slope under: `<group>_<slope>` for
+# `(0 + x | g)` and for the slope half of `(1 + x | g)`. Empty when the term cannot be parsed
+# (a structured or labelled term): the intercept check above is then the only rule.
+function _sigma_re_stored_names(rhs)
+    out = String[]
+    try
+        _, sre = _split_ranef(rhs)
+        for t in sre
+            kind, sym = _re_kind(t[1])
+            kind === :intercept || push!(out, string(t[2], "_", sym))
+        end
+    catch e
+        e isa InterruptException && rethrow()
+    end
+    return out
 end
 
 # Variance contributed by θ index `idx` to a ratio. A component's variance is
@@ -593,7 +618,7 @@ end
 function _emit_ratio(fit::DrmFit, focal::Int, denom::Vector{Int}; level, method,
                      resid::Int = 0, omega::Vector{Int} = Int[])
     _is_fixed_prior_fit(fit) && fit.estim_method === :MAP && throw(ArgumentError(
-        "variance-ratio intervals are not qualified for fixed-prior MAP fits; covariance is local curvature"))
+        "variance-ratio intervals are not qualified for $(_prior_kind_label(fit)) MAP fits; covariance is local curvature"))
     if method === :delta
         r = _ratio_delta(fit, focal, denom; level = level, resid = resid, omega = omega)
         st = _ratio_status(fit, isfinite(r.se) ? :ok : :vcov_unavailable)
