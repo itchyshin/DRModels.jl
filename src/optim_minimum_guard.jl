@@ -121,7 +121,7 @@ import LinearAlgebra
 # with `SE_i = sqrt((H⁻¹)_ii)`. A non-finite Hessian returns false. A Hessian
 # that is singular or not positive definite is not usable for that ratio. A saddle (a negative
 # eigenvalue) is not a minimum. A singular Hessian falls back to the absolute
-# rule `max |g| ≤ 1e-3`, which still rejects a runaway and accepts a stall
+# rule `max |g| ≤ 1e-3` on the diagonal-scaled gradient (#1049), which still rejects a runaway and accepts a stall
 # that only missed the absolute 1e-8 bar.
 const _UNITFREE_SE_TOL = 1e-3
 const _UNITFREE_ABS_TOL = 1e-3
@@ -129,7 +129,6 @@ const _UNITFREE_ABS_TOL = 1e-3
 function _unitfree_converged(H::AbstractMatrix, g::AbstractVector)
     length(g) == size(H, 1) == size(H, 2) || return false
     all(isfinite, g) || return false
-    abs_ok = maximum(abs, g) <= _UNITFREE_ABS_TOL
     # A non-finite Hessian is not converged for any caller (#1114, #983).
     all(isfinite, H) || return false
     Hs = Matrix{Float64}(H)
@@ -145,6 +144,10 @@ function _unitfree_converged(H::AbstractMatrix, g::AbstractVector)
         Hs = Hs .* (D * D')
         gs = gs .* D
     end
+    # #1049: the singular-Hessian fallback judges the gradient in the same
+    # scaled units as the Newton test (`gs`, equal to `g` when the diagonal is
+    # not positive), so the verdict does not move with parameter units.
+    abs_ok = maximum(abs, gs) <= _UNITFREE_ABS_TOL
     # A near-zero diagonal makes D overflow, so the scaled Hessian is not
     # finite. That is not a usable minimum, so it is not converged.
     all(isfinite, Hs) || return false
