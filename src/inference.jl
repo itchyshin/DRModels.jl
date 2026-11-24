@@ -3890,6 +3890,79 @@ function _ordinary_multi_marginal_simulator(fit::DrmFit, data, re)
     end
 end
 
+# Fresh draw for ONE ordinary slope shape on the mean (#1496): a correlated `(1 + x | g)` or an
+# independent `(1 | g) + (0 + x | g)`. The per-group effects (b0, b1) are drawn from the fitted
+# covariance `vc(fit)` (the same quantity drmTMB's `re.form = NA` draw uses), added on the link
+# scale, then passed through the existing family draw. A single `(0 + x | g)` has its own path.
+function _ordinary_slope_marginal_simulator(fit::DrmFit, data, re)
+    isempty(_sd_parts(fit.formula)) && isempty(_sdphylo_parts(fit.formula)) || return nothing
+    fit.family isa Union{Gaussian,Student,Poisson,NegBinomial2,Gamma,LogNormal,Beta} || return nothing
+    kinds = [try _re_kind(t[1]) catch; (:other, nothing) end for t in re]
+    grp = re[1][2]
+    all(t -> t[2] === grp, re) || return nothing
+    slope = nothing
+    corr = false
+    if length(re) == 1 && kinds[1][1] === :corr
+        slope = kinds[1][2]; corr = true
+    elseif length(re) == 2 && Set(first.(kinds)) == Set((:intercept, :slope))
+        slope = kinds[findfirst(k -> k[1] === :slope, kinds)][2]
+    else
+        return nothing
+    end
+    (hasproperty(data, grp) && hasproperty(data, slope)) || return nothing
+    x = getproperty(data, slope)
+    x isa AbstractVector{<:Real} && all(isfinite, x) || return nothing
+    labels = getproperty(data, grp)
+    any(ismissing, labels) && return nothing
+    gidx, G = _group_index(labels; col = grp)
+    length(gidx) == fit.nobs == length(x) || return nothing
+    V = try vc(fit) catch e; e isa InterruptException && rethrow(); nothing end
+    V isa AbstractDict || return nothing
+    A = if corr
+        haskey(V, grp) || return nothing
+        S = Matrix{Float64}(V[grp])
+        size(S) == (2, 2) && all(isfinite, S) || return nothing
+        F = eigen(Symmetric(S))
+        F.vectors * Diagonal(sqrt.(max.(F.values, 0.0)))
+    else
+        ks = Symbol(string(grp, ":", slope))
+        (haskey(V, grp) && haskey(V, ks)) || return nothing
+        v0 = Float64(only(V[grp])); v1 = Float64(only(V[ks]))
+        (isfinite(v0) && isfinite(v1)) || return nothing
+        Matrix(Diagonal([sqrt(max(v0, 0.0)), sqrt(max(v1, 0.0))]))
+    end
+    xf = Float64.(x)
+    draw_re(rng) = (U = A * randn(rng, 2, G); @views(U[1, :])[gidx] .+ xf .* @views(U[2, :])[gidx])
+    if fit.family isa Gaussian
+        mu_fixed = try
+            v = Vector{Float64}(predict(fit, data))
+            length(v) == length(fit.means[:mu]) ? v : nothing
+        catch e
+            e isa InterruptException && rethrow()
+            nothing
+        end
+        mu_fixed === nothing && return nothing
+        sigma = Vector{Float64}(_scale_vector(fit, :sigma))
+        sig = _sigma_ranef_components(fit, data)
+        n = length(mu_fixed)
+        return function (rng)
+            σ = sig === nothing ? sigma : sigma .* exp.(sig.τ .* randn(rng, sig.G)[sig.gidx])
+            return mu_fixed .+ draw_re(rng) .+ σ .* randn(rng, n)
+        end
+    end
+    eta_fixed = try
+        Vector{Float64}(predict(fit, data; type = :link))
+    catch e
+        e isa InterruptException && rethrow()
+        nothing
+    end
+    (eta_fixed === nothing || length(eta_fixed) != fit.nobs) && return nothing
+    return function (rng)
+        mu_star = _mean_response(fit.family, eta_fixed .+ draw_re(rng))
+        return _simulate_once(fit, rng; mu = mu_star)
+    end
+end
+
 function _marginal_simulator_build(fit::DrmFit, data; K=nothing, A=nothing,
                                    Ainv=nothing, tree=nothing, tree1=nothing,
                                    tree2=nothing, coords=nothing)
@@ -4219,6 +4292,9 @@ function _marginal_simulator_build(fit::DrmFit, data; K=nothing, A=nothing,
     else
         # Ordinary independent scalar effect. A slope uses the supplied numeric
         # covariate as its observation-level loading on the group coefficient.
+        let sim = _ordinary_slope_marginal_simulator(fit, data, re)
+            sim === nothing || return sim
+        end
         length(re) > 1 && return _ordinary_multi_marginal_simulator(fit, data, re)
         length(re) == 1 || return nothing
         re_kind, re_slope = _re_kind(re[1][1])
