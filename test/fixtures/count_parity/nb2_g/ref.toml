@@ -1,0 +1,10 @@
+route = "nb2_g"
+drmTMB_version = "0.7.1"
+R_version = "4.3.3"
+note = "NB2, mean (1 | g), constant sigma; generated outputs only"
+tmb_names = ["beta_mu", "beta_mu", "beta_sigma", "log_sd_mu"]
+names = ["mu_(Intercept)", "mu_x", "sigma_(Intercept)", "resd_g"]
+loglik = -486.82111919745938
+max_grad = 1.237858e-09
+theta = [0.28627075712835881, 0.45483866364671932, -0.72150820870700261, -0.55003123548305688]
+se = [0.12310603506747955, 0.056454549584435208, 0.15261717980277067, 0.1736809188792344]

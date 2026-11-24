@@ -821,6 +821,7 @@ function fit_q4_reml(prob::AugProblem, Q_cond::SparseMatrixCSC;
     # ‖∇_z J‖ so the convergence flag can require the mode to have been found,
     # not merely the outer optimiser to have stopped.
     gz_last = Ref(Inf)
+    have_certified = Ref(false)
     fg! = function (F, G, phiv)
         eval_cnt[] += 1
         pv = Vector{Float64}(phiv)
@@ -835,6 +836,20 @@ function fit_q4_reml(prob::AugProblem, Q_cond::SparseMatrixCSC;
             return Inf
         end
         (isfinite(nllv) && all(isfinite, gv)) || return Inf
+        # A trial whose joint (u, beta) Newton did NOT reach a stationary point
+        # (large ||grad_z J||: the cold-ish line-search probe fell in a basin
+        # where the solve fails; seen on Julia 1.12 with a different missing-cell
+        # draw, gz ~ 27 against 1e-11 at certified points) carries an inflated
+        # objective and an invalid exact gradient. Once a certified point exists,
+        # treat such a trial like a non-PD one: return Inf so the line search
+        # backs off, and do NOT let its (u, beta) overwrite the warm caches --
+        # otherwise the next trial AND the final evaluation at phi_hat start from
+        # a bad mode and report an uncertified optimum.
+        if !(isfinite(gz) && gz < 1e-6)
+            have_certified[] && return Inf
+        else
+            have_certified[] = true
+        end
         u_cache[]    = uv
         beta_cache[] = (mu1=bv.mu1, mu2=bv.mu2, s1=bv.s1, s2=bv.s2)
         gz_last[]    = gz

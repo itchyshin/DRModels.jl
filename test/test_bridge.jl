@@ -128,6 +128,51 @@ using Test, Random, LinearAlgebra
     # in-sample block is unchanged by asking for fresh rows
     @test withnd["dpars"]["mu"] ≈ bridged["dpars"]["mu"]
 
+    # SD-regression predictions are model-level outputs, not response dpars.
+    sd_g = repeat(1:12, inner = 4)
+    sd_z_group = repeat([0.0, 1.0], inner = 6)
+    sd_s = rand(0:8, 48)
+    sd_data = (; s = Float64.(sd_s), fail = Float64.(8 .- sd_s),
+        x = randn(48), z = sd_z_group[sd_g], g = sd_g)
+    sd_bridge = drm_bridge(
+        ; formula = "cbind(s, fail) ~ x + (1 | g); sd(g) ~ z",
+        family = "binomial",
+        data = sd_data,
+        newdata = (; x = sd_data.x[1:3], z = sd_data.z[1:3], g = sd_data.g[1:3]),
+    )
+    @test Set(keys(sd_bridge["dpars_newdata"])) == Set(["mu"])
+    @test all(isfinite, sd_bridge["dpars_newdata"]["mu"])
+
+    # The selector-derived names must stay private when a fit has multiple SD
+    # targets too; only the response distribution's `mu` is a bridge dpar.
+    rng_sd2 = MersenneTwister(20261019)
+    groups_sd2, per_group_sd2 = 20, 20
+    g_sd2 = repeat(1:groups_sd2, inner = per_group_sd2)
+    x_sd2 = randn(rng_sd2, length(g_sd2))
+    z0_group_sd2 = repeat([0.0, 1.0], inner = groups_sd2 ÷ 2)
+    z1_group_sd2 = repeat([0.0, 1.0, 1.0, 0.0], inner = groups_sd2 ÷ 4)
+    z0_sd2, z1_sd2 = z0_group_sd2[g_sd2], z1_group_sd2[g_sd2]
+    b0_sd2 = exp.(-0.9 .+ 0.3 .* z0_group_sd2) .* randn(rng_sd2, groups_sd2)
+    b1_sd2 = exp.(-1.1 .+ 0.25 .* z1_group_sd2) .* randn(rng_sd2, groups_sd2)
+    p_sd2 = 1 ./ (1 .+ exp.(-(-0.2 .+ 0.35 .* x_sd2 .+ b0_sd2[g_sd2] .+
+        x_sd2 .* b1_sd2[g_sd2])))
+    trials_sd2 = 8
+    success_sd2 = Float64.([
+        count(_ -> rand(rng_sd2) < p_sd2[i], 1:trials_sd2) for i in eachindex(p_sd2)
+    ])
+    data_sd2 = (; s = success_sd2, fail = trials_sd2 .- success_sd2,
+        x = x_sd2, z0 = z0_sd2, z1 = z1_sd2, g = g_sd2)
+    sd_bridge_q2 = drm_bridge(
+        ; formula = "cbind(s, fail) ~ x + (1 | g) + (0 + x | g); " *
+            "sd(g, coef(intercept)) ~ z0; sd(g, coef(x)) ~ z1",
+        family = "binomial",
+        data = data_sd2,
+        newdata = (; x = x_sd2[1:5], z0 = z0_sd2[1:5], z1 = z1_sd2[1:5],
+            g = g_sd2[1:5]),
+    )
+    @test Set(keys(sd_bridge_q2["dpars_newdata"])) == Set(["mu"])
+    @test all(isfinite, sd_bridge_q2["dpars_newdata"]["mu"])
+
     keyed = drm_bridge(;
         formula = Dict(:mu => "y ~ x", :sigma => "sigma ~ x"),
         family = "gaussian",

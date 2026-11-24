@@ -4,6 +4,7 @@
 # ledger can count them; mirrors `test_bridge_lss_labels.jl`'s payload shape
 # and comparison style.
 using DRModels, Test, Random, LinearAlgebra
+import Distributions
 
 # ---- shared fixture builders ------------------------------------------------
 
@@ -187,6 +188,36 @@ end
     @test out_reml["nobs"] == nobs(direct_reml)
     @test out_reml["loglik"] ≈ reml_loglik(direct_reml) atol = 1e-8
     @test out_reml["coefficients"] ≈ coef(direct_reml) atol = 1e-8
+end
+
+@testset "Gamma animal-slope SD bridge labels" begin
+    rng = MersenneTwister(563607)
+    G, m = 24, 10
+    gidx = repeat(1:G, inner = m)
+    g = string.(gidx)
+    A = 0.4 .^ abs.(reshape(1:G, :, 1) .- reshape(1:G, 1, :))
+    z_group = repeat([-1.0, 1.0], outer = G ÷ 2)
+    z = z_group[gidx]
+    x = repeat(collect(range(-1.0, 1.0; length = m)), outer = G)
+    b = exp.(0.2 .+ 0.35 .* z_group) .* (cholesky(Symmetric(A)).L * randn(rng, G))
+    eta = 0.25 .+ 0.3 .* x .+ x .* b[gidx]
+    sigma = 0.4
+    shape = 1 / sigma^2
+    y = [rand(rng, Distributions.Gamma(shape, exp(v) / shape)) for v in eta]
+    data = (; y, x, z, g)
+    formula = bf(@formula(y ~ x + animal(0 + x | g)),
+                 @formula(sigma ~ 1), @formula(sd(g, animal) ~ z))
+
+    direct = drm(formula, Gamma(); data, A)
+    bridged = drm_bridge(
+        formula = "y ~ x + animal(0 + x | g); sigma ~ 1; sd(g, animal) ~ z",
+        family = "gamma", data = data, A = A,
+    )
+
+    @test bridged["converged"]
+    @test bridged["coef_names"] == bridged["vcov_names"]
+    @test bridged["coefficients"] ≈ coef(direct) atol = 1e-8
+    @test bridged["loglik"] ≈ loglik(direct) atol = 1e-8
 end
 
 @testset "#546 unknown univariate formula part key errors loudly (#563 S6)" begin

@@ -1,0 +1,62 @@
+{
+  "schema_version": 1,
+  "kind": "generated synthetic data; no drmTMB source code",
+  "files": [
+    {
+      "file": "gamma-K-labels.tsv",
+      "sha256": "db1d996dfabfe8d5f3a36b99bb461bd5dcebc0ff422fc40694fb95269319f282"
+    },
+    {
+      "file": "gamma-K.tsv",
+      "sha256": "19ac707095d9e3b7d7f1b134418ba79b8fd0f038a5909be8daf102a8e3544185"
+    },
+    {
+      "file": "gamma-data.tsv",
+      "sha256": "c1822b46d8410aff5c796326d6c9f97ce852d0ada23231e920aac37a428a6867"
+    }
+  ],
+  "inputs": [
+    {
+      "file": "gamma-sd-data.tsv",
+      "sha256": "c1822b46d8410aff5c796326d6c9f97ce852d0ada23231e920aac37a428a6867"
+    },
+    {
+      "file": "gamma-sd-K.tsv",
+      "sha256": "19ac707095d9e3b7d7f1b134418ba79b8fd0f038a5909be8daf102a8e3544185"
+    },
+    {
+      "file": "gamma-sd-K-labels.txt",
+      "sha256": "bb087ca94e4e9c77bbc18d4ab8f9ab0652589e73f2e8d02040f1e6eb3a913c03"
+    }
+  ],
+  "transformations": [
+    "Data and K copied byte-for-byte; added id header to the K label sidecar."
+  ],
+  "direct_julia_runtime": {
+    "state": "checked_single_example",
+    "engine_ref": "f4fa3aed451636b6ffa442ce2632515513d23b1f",
+    "source_tree_sha256": "794c4ae8323e61680ea49f46ac0a8c6591e6b1badccc51207a11440eae709fdf",
+    "source_tree_hash_definition": "SHA-256 of compact JSON mapping sorted src/**/*.jl paths to file SHA-256 values; separators comma/colon, sort_keys=true",
+    "method": "ML; structured Gamma Laplace; one supplied-K mean intercept and sd(id, relmat) ~ z; estimated constant sigma",
+    "loglik": -572.3288655328454,
+    "alpha": [
+      -0.5135359187018407,
+      0.07043084782335204
+    ],
+    "sigma": 0.4975113016673914,
+    "estimated_one_unit_ratio": 1.0729703686286995,
+    "true_one_unit_ratio": 1.49182469764127,
+    "fitted_vs_predict_max_abs_gap": 0.0,
+    "independent_laplace_reference": -572.328865533046,
+    "independent_laplace_abs_gap": 2.006572685786523e-10,
+    "prespecified_loglik_abs_tolerance": 1e-05,
+    "runtime_log_sha256": "951c4cf456301db852cdf5a9d3fc9e700e238cd059aef1c8ee91cc11d395ad7f",
+    "executed_script_sha256": "084b7de11792cbb5eab2028a6390ac81f054af696955f4b9cc487b6079ca8ff5",
+    "scope": "One generated data set; point outputs only. No coverage or broad route qualification."
+  },
+  "reference_fit_results_sha256": "23a2f41b8e39298c949fe0148ec1fb851cbfb10600952c456ffc1c5df8254071",
+  "reference_fit_interfaces": [
+    "R/native TMB",
+    "R/Julia bridge"
+  ]
+}

@@ -158,8 +158,10 @@ end
         @test any(l -> occursin("bootstrap_incomplete", string(l.message)), logs)
         @test any(l -> occursin("dropping", string(l.message)), logs)
 
-        # Default `failures = :error` still aborts a thrown refit. A replicate
-        # that merely did not converge is dropped, warned, and does not abort.
+        # A replicate that merely did not converge is dropped, warned, and does
+        # not abort. A thrown refit is recorded and dropped by default (#1052);
+        # `failures = :error` aborts. `used == 0` still errors and names the
+        # first failure.
         calls[] = 0
         elogs, edrop = Test.collect_test_logs() do
             DRModels._bootstrap_result(

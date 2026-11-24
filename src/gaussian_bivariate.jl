@@ -28,6 +28,9 @@ end
 BivariateDrmFormula(response1::Symbol, response2::Symbol, forms::Vector{Pair{Symbol,Any}}) =
     BivariateDrmFormula(response1, response2, forms, Ref(Dict{Symbol,Any}()))
 
+_fresh_formula_cache(f::BivariateDrmFormula) =
+    BivariateDrmFormula(f.response1, f.response2, f.forms, Ref(Dict{Symbol,Any}()))
+
 _rhs_or_intercept(f) = f === nothing ? ConstantTerm(1) : f.rhs
 
 # Validate a bivariate placeholder formula's LHS. The σ1/σ2/ρ12 formulas carry a
@@ -108,14 +111,19 @@ end
 """
     drm(formula::BivariateDrmFormula, Gaussian(); data, tree = nothing,
         K = nothing, A = nothing, coords = nothing, g_tol = 1e-8,
-        q4_g_tol = 1e-3, q4_iterations = 300, q4_n_newton = 40,
-        q4_vcov = true, method = :ML) -> DrmFit
+        q4_g_tol = 1e-3, q4_f_reltol = 1e-7, q4_iterations = 300,
+        q4_n_newton = 40, q4_vcov = true, method = :ML) -> DrmFit
 
 Fit a bivariate Gaussian distributional regression model.
 
 With no structured-effect marker, this is the residual-correlation model:
 `mu1`, `mu2`, `sigma1`, `sigma2`, and residual `rho12` each have their own fixed
 effect formula.
+
+`q4_f_reltol` (default `1e-7`) is the relative objective change at which the q=4 ML
+optimiser stops (it ignores `q4_g_tol` near a flat ridge). The default can stop up to
+about `1e-3` in log-likelihood short of the optimum on flat q=4 ridges; use
+`q4_f_reltol = 1e-12` to converge tightly, at a higher run time. REML q=4 ignores it.
 
 With matching structured markers on `mu1` and `mu2` only, this routes to the
 q=2 exact-Gaussian point-fit cell, `method = :ML` (default) or `method =
@@ -126,10 +134,9 @@ q=2 exact-Gaussian point-fit cell, `method = :ML` (default) or `method =
 mean fixed-effect designs, and intercept-only `sigma1`, `sigma2`, and `rho12`.
 `spatial(1 | group)` supplies a covariance exactly as `relmat`/`animal` do: the
 exponential kernel `exp(-d / rho)` at a FIXED range `rho` (keyword
-`spatial_range`, else the mean off-diagonal pairwise distance), the same rule
-the q=4 structured route uses. It does NOT estimate the range jointly the way
-the univariate spatial route (`_fit_spatial_gaussian`) does, so the two are not
-the same model and must not be compared as one. The range in force is recorded
+`spatial_range`, else drmTMB's native kernel: the median positive pairwise
+distance with a 1e-6 diagonal ridge), the same rule the q=4 structured route and the
+univariate spatial route use. The range is never estimated. The range in force is recorded
 as `fit.ranef.spatial_range`.
 
 Row `k` of `coords` is the `k`-th level of `group` **in the order the levels
@@ -161,20 +168,26 @@ fit = drm(
              K = nothing, A = nothing, coords = nothing,
              spatial_range = nothing,
              g_tol::Real = 1e-8, q4_g_tol::Real = 1e-3,
-             q4_iterations::Int = 300, q4_n_newton::Int = 40,
+             q4_f_reltol::Real = 1e-7, q4_iterations::Int = 300, q4_n_newton::Int = 40,
              q4_vcov::Bool = true, method::Symbol = :ML, V = nothing,
-             marginal::Union{Nothing,Symbol} = nothing)
+             marginal::Union{Nothing,Symbol} = nothing, missing = nothing)
     # #1094: this route has no `marginal` integrator choice. Refuse it by name
     # rather than with a bare MethodError; the default `:LA` is a no-op.
     (marginal === nothing || marginal === :LA) ||
         throw(ArgumentError("drm: `marginal = :$marginal` is not supported for the bivariate " *
             "Gaussian route (it has no `marginal` choice; the default `:LA` is the only value accepted)."))
+    _require_no_r_minus_one(f)   # #1349: R's `x - 1` is not 'no intercept' here
+    _require_simple_bar_groups(f)   # nested `g / h` and other compound groupings: a named refusal
     _require_formula_column_lengths(f, data)   # #1022: no ragged columns under @inbounds
     data = _drop_missing_predictor_rows(f, data)   # #1089: R's na.omit, with a count
+    data = _apply_bivariate_response_policy(f, data, missing)   # drmTMB's miss_control(response =): default "drop"
     method in (:ML, :REML) ||
         throw(ArgumentError("drm: `method` must be :ML (default) or :REML (got :$method)"))
     rhs = Dict(f.forms)
     fixed, structured_marker = _bivariate_q4_marker(rhs)
+    (structured_marker !== nothing && structured_marker[1] in (:structured_q2, :structured_q4) &&
+     structured_marker[2] === :spatial && K !== nothing && coords !== nothing) &&
+        _refuse_spatial_k_and_coords(true)
     # A8: known bivariate sampling covariance (drmTMB's meta_vcov_bivariate) is
     # consumed by the residual route only in this slice.
     V !== nothing && structured_marker !== nothing &&
@@ -200,7 +213,7 @@ fit = drm(
     if structured_marker !== nothing && structured_marker[1] === :phylo_q4
         return _withuncertainty(_fit_bivariate_q4_phylo(
             f, fam, data, fixed, structured_marker, tree;
-            q4_g_tol = q4_g_tol,
+            q4_g_tol = q4_g_tol, q4_f_reltol = q4_f_reltol,
             q4_iterations = q4_iterations,
             q4_n_newton = q4_n_newton,
             q4_vcov = q4_vcov,
@@ -210,7 +223,7 @@ fit = drm(
         return _withuncertainty(_fit_bivariate_q4_structured(
             f, fam, data, fixed, structured_marker, tree, K, A, coords;
             spatial_range = spatial_range,
-            q4_g_tol = q4_g_tol,
+            q4_g_tol = q4_g_tol, q4_f_reltol = q4_f_reltol,
             q4_iterations = q4_iterations,
             q4_n_newton = q4_n_newton,
             q4_vcov = q4_vcov,
@@ -305,6 +318,14 @@ function _fit_bivariate_residual(f::BivariateDrmFormula, fam::Gaussian, data, rh
     # with a positive-definiteness sentinel where the guarded rho cannot save us
     # (V's own correlation plus the heterogeneity correlation can exceed 1).
     meta_v = _resolve_biv_meta_v(V, n)
+    # drmTMB `weights`: row i's whole log-density contribution is multiplied by pw[i]
+    # (a row with one observed response is weighted the same). `nothing` = unit weights, and
+    # the unweighted arithmetic below is then untouched. R refuses weights with a known
+    # sampling covariance (`check_weights_known_covariance`); so does this route.
+    pw = _ctl_weights_or_nothing(n)
+    pw === nothing || meta_v === nothing || throw(ArgumentError(
+        "drm: `weights` cannot be combined with a known sampling covariance `V` on the bivariate " *
+        "Gaussian route (drmTMB refuses this too); drop one of them."))
 
     function nll(θ)
         b1 = θ[rng(1)]; b2 = θ[rng(2)]; bs1 = θ[rng(3)]; bs2 = θ[rng(4)]; br = θ[rng(5)]
@@ -319,14 +340,17 @@ function _fit_bivariate_residual(f::BivariateDrmFormula, fam::Gaussian, data, rh
                     z1 = (y1[i] - η1[i]) * exp(-ls1[i])     # standardised residuals
                     z2 = (y2[i] - η2[i]) * exp(-ls2[i])
                     # −log φ₂ = log(2π) + (½ log|Σ|) + (½ rᵀΣ⁻¹r)
-                    s += log(2π) + ls1[i] + ls2[i] + 0.5 * log(om) +
-                         0.5 * (z1 * z1 - 2ρ * z1 * z2 + z2 * z2) / om
+                    c = log(2π) + ls1[i] + ls2[i] + 0.5 * log(om) +
+                        0.5 * (z1 * z1 - 2ρ * z1 * z2 + z2 * z2) / om
+                    s += pw === nothing ? c : pw[i] * c
                 elseif obs1[i]
                     z1 = (y1[i] - η1[i]) * exp(-ls1[i])
-                    s += 0.5 * log(2π) + ls1[i] + 0.5 * z1 * z1
+                    c = 0.5 * log(2π) + ls1[i] + 0.5 * z1 * z1
+                    s += pw === nothing ? c : pw[i] * c
                 elseif obs2[i]
                     z2 = (y2[i] - η2[i]) * exp(-ls2[i])
-                    s += 0.5 * log(2π) + ls2[i] + 0.5 * z2 * z2
+                    c = 0.5 * log(2π) + ls2[i] + 0.5 * z2 * z2
+                    s += pw === nothing ? c : pw[i] * c
                 end
             end
         else
@@ -451,6 +475,8 @@ end
 # mu1/mu2 designs stays correct rather than silently under-reporting.
 function _fit_bivariate_residual_reml(f::BivariateDrmFormula, fam::Gaussian, data, rhs, g_tol::Real)
     d = _biv_residual_designs(f, rhs, data)
+    # The restricted likelihood of a weighted model is not implemented here: refuse by name.
+    _ctl_weights(d.n; supported = false, route = "the bivariate Gaussian REML route (`method = :REML`)")
     y1, X1, nm1 = d.y1, d.X1, d.nm1
     y2, X2, nm2 = d.y2, d.X2, d.nm2
     Xs1, nms1 = d.Xs1, d.nms1
@@ -971,15 +997,18 @@ end
 # Shared by the q=2 and q=4 bivariate structured routes so both cells build the
 # same G-by-G matrix from the same coordinates, and so every fail-closed check on
 # `coords` is stated exactly once. The range is `spatial_range` when supplied,
-# else the mean off-diagonal pairwise distance; the 1e-8 ridge keeps the kernel
-# positive definite at near-coincident sites. Row k of `coords` is the k-th
+# else drmTMB's native kernel (median positive pairwise distance, 1e-6 ridge, as
+# `_gaussian_spatial_sd_kernel`). An explicit `spatial_range`, and the retired
+# mean-distance rule behind `legacy_mean_range = true` (no fitting route uses it), use a 1e-8
+# ridge to keep the kernel positive definite at near-coincident sites. Row k of `coords` is the k-th
 # level of `grp` in `_group_index` order (stable FIRST-SEEN order in the data),
 # which is the same contract the q=4 route has always had.
 #
 # This is NOT the univariate spatial route: `_fit_spatial_gaussian`
 # (gaussian_structured.jl) carries log rho as a free parameter and rebuilds the
 # kernel each evaluation. Here rho is fixed, so the two are different models.
-function _spatial_covariance_from_coords(grp::Symbol, G::Int, coords, spatial_range)
+function _spatial_covariance_from_coords(grp::Symbol, G::Int, coords, spatial_range;
+                                         legacy_mean_range::Bool = false)
     coords === nothing && error("spatial(1 | $grp) needs `coords = …`")
     _require_finite_inputs(; coords=coords)
     G >= 2 || error("spatial(1 | $grp) needs at least 2 distinct sites; got G=$G")
@@ -1007,6 +1036,12 @@ function _spatial_covariance_from_coords(grp::Symbol, G::Int, coords, spatial_ra
     Ddist = [sqrt(sum(abs2, Cmat[k, :] .- Cmat[l, :])) for k in 1:G, l in 1:G]
     any(Ddist .> 0) ||
         error("spatial(1 | $grp): all site coordinates coincide; the spatial range is not identified")
+    if spatial_range === nothing && !legacy_mean_range
+        # Default = drmTMB's native kernel: exp(-d / median positive distance) + 1e-6 I
+        # (`drm_spatial_coords_precision`). The old default was the MEAN pairwise
+        # distance with 1e-8 jitter, which is a different fixed-range model.
+        return Matrix{Float64}(_gaussian_spatial_sd_kernel(Cmat, G, grp))
+    end
     rho = if spatial_range === nothing
         sum(Ddist) / (G^2 - G)
     else
@@ -1017,8 +1052,8 @@ function _spatial_covariance_from_coords(grp::Symbol, G::Int, coords, spatial_ra
 end
 
 # Build a G×G SPD precision for level-indexed q=4 structured providers (#189).
-# Spatial uses a *fixed* range (keyword `spatial_range`, else mean pairwise
-# distance) — joint ρ estimation is deferred.
+# Spatial uses a *fixed* range (keyword `spatial_range`, else the native median
+# positive pairwise distance) — joint ρ estimation is deferred.
 function _q4_structured_precision(kind::Symbol, grp::Symbol, G::Int;
                                   K, A, coords, spatial_range)
     if kind === :relmat
@@ -1037,6 +1072,8 @@ function _q4_structured_precision(kind::Symbol, grp::Symbol, G::Int;
         return Matrix(inv(cholesky(Symmetric(C))))
     elseif kind === :spatial
         Ksp = _spatial_covariance_from_coords(grp, G, coords, spatial_range)
+        isposdef(Symmetric(Matrix{Float64}(Ksp))) ||
+            error("spatial(1 | $grp) kernel is not positive definite (coincident or near-coincident site coordinates?)")
         return Matrix(inv(cholesky(Symmetric(Matrix{Float64}(Ksp)))))
     else
         error("internal error: unsupported q4 structured kind `$kind`")
@@ -1050,13 +1087,13 @@ q=4 PLSM front end for level-indexed structured providers (`relmat` / `animal` /
 `spatial`) — issue #189. Reuses [`fit_q4_sparse_tmb`](@ref) via
 [`make_problem_from_Q`](@ref); does not rewrite the verified Laplace engine.
 
-Spatial uses a fixed range (`spatial_range`, default = mean pairwise distance).
+Spatial uses a fixed range (`spatial_range`, default = median positive pairwise distance, as drmTMB).
 Non-tree `bootstrap_sigma_a` is deliberately unsupported.
 """
 function _fit_bivariate_q4_structured(f::BivariateDrmFormula, fam::Gaussian, data, fixed, marker,
                                       tree, K, A, coords;
                                       spatial_range = nothing,
-                                      q4_g_tol::Real, q4_iterations::Int,
+                                      q4_g_tol::Real, q4_iterations::Int, q4_f_reltol::Real = 1e-7,
                                       q4_n_newton::Int, q4_vcov::Bool, method::Symbol = :ML)
     marker[1] === :structured_q4 || error("internal error: expected q4 structured marker")
     kind = marker[2]
@@ -1128,6 +1165,7 @@ function _fit_bivariate_q4_structured(f::BivariateDrmFormula, fam::Gaussian, dat
             β0 = β0,
             Λ0 = Λ0,
             g_tol = Float64(q4_g_tol),
+            f_reltol = Float64(q4_f_reltol),
             iterations = q4_iterations,
             n_newton = q4_n_newton,
             lc_zero = lc_zero,
@@ -1202,13 +1240,18 @@ end
 
 function _q4_default_spatial_range(coords, G::Int)
     _require_finite_inputs(; coords=coords)
-    Cmat = Matrix{Float64}(coords)
+    Cmat = coords isa AbstractVector{<:Real} ? reshape(Float64.(coords), :, 1) :
+           Matrix{Float64}(coords)
     Ddist = [sqrt(sum(abs2, Cmat[k, :] .- Cmat[l, :])) for k in 1:G, l in 1:G]
-    return sum(Ddist) / (G^2 - G)
+    # Same rule as `_gaussian_spatial_sd_kernel` / drmTMB: median positive distance
+    # (maximum if that is not positive).
+    pos = [Ddist[k, l] for k in 1:G for l in (k+1):G if Ddist[k, l] > 0]
+    rng = median(pos)
+    return (isfinite(rng) && rng > 0) ? rng : maximum(pos)
 end
 
 function _fit_bivariate_q4_phylo(f::BivariateDrmFormula, fam::Gaussian, data, fixed, marker, tree;
-                                 q4_g_tol::Real, q4_iterations::Int,
+                                 q4_g_tol::Real, q4_iterations::Int, q4_f_reltol::Real = 1e-7,
                                  q4_n_newton::Int, q4_vcov::Bool, method::Symbol = :ML)
     marker[1] === :phylo_q4 || error("internal error: expected q4 phylo marker")
     grp = marker[2]
@@ -1289,6 +1332,7 @@ function _fit_bivariate_q4_phylo(f::BivariateDrmFormula, fam::Gaussian, data, fi
             β0 = β0,
             Λ0 = Λ0,
             g_tol = Float64(q4_g_tol),
+            f_reltol = Float64(q4_f_reltol),
             iterations = q4_iterations,
             n_newton = q4_n_newton,
             lc_zero = lc_zero,

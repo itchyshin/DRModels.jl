@@ -1,0 +1,44 @@
+{
+  "assessment_performed": true,
+  "draft_sha256": "2a3834fe67449f45797bbf13a59b60e7d50dbdd52830e41d5500561c44718cd8",
+  "draft_version": "validation-final-v1",
+  "requested_mode": "independent",
+  "assessor_type": "self",
+  "reviewer": "Codex parent",
+  "method": "Whole-draft self-review against source-pinned receipts; an independent integration reviewer verified the result and corrected stale report wording.",
+  "genre": "Technical validation report, check log or recovery record",
+  "coverage": "Whole /Users/z3437171/.codex/worktrees/drmodels-fixed-priors-20261105/DRM.jl/docs/dev-log/check-log.d/2026-11-05-prior-timeout-validation.md",
+  "score": 2,
+  "style_status": "assessed",
+  "score_reason": "Concrete measurements and limitations; audit structure and source identifiers add necessary density.",
+  "confidence": "medium",
+  "confidence_reason": "Self-assessment with independent fact review; no held-out prose calibration or human authorship assessment.",
+  "examples": [
+    {
+      "location": "Line 1",
+      "line": 1,
+      "quote": "Fixed-prior full-suite timeout diagnosis and validation",
+      "cue": "Concrete purpose, measurement or scope statement",
+      "impact": "Separates validated results from broader untested claims",
+      "repair": "no change needed"
+    },
+    {
+      "location": "Line 1",
+      "line": 1,
+      "quote": "Totoro Julia 1.10.10, source aggregate `a30e3472`: eight native `Pkg.test()` shards exit 0; 554/554 selected files; JET executed; optional parity off; 949 code/test/project and 202 auxiliary hashes plus runtime provenance verified; six verifier negative controls pass",
+      "cue": "Concrete purpose, measurement or scope statement",
+      "impact": "Separates validated results from broader untested claims",
+      "repair": "no change needed"
+    }
+  ],
+  "evidence_none_reason": null,
+  "science_gate": "pass",
+  "science_gate_reason": "No new estimator or calibration claim; default-suite checks are distinguished from parity, intervals and release readiness.",
+  "facts_gate": "pass",
+  "facts_gate_reason": "All eight exits,554ordered file completions,raw/transcript hashes and source/runtime checks pass; old90minute run remains historical and incomplete.",
+  "references_gate": "not_applicable",
+  "references_gate_reason": "No literature claim; primary operational run evidence was verified separately.",
+  "date": "2026-11-05",
+  "calibration_status": "No held-out calibration examples used.",
+  "interpretation": "perceived_style_not_authorship"
+}

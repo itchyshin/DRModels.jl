@@ -12,8 +12,8 @@
 using DRModels, Test, Random
 import Distributions
 
-@testset "coeftable/show z-p suppression (#320, #323.2)" begin
-    @testset "sigma block z/p blanked; mu kept (#320)" begin
+@testset "coeftable/show working-scale z-p and boundary handling (#320, #323.2)" begin
+    @testset "sigma block z/p reported on log-scale working values (#320)" begin
         Random.seed!(1)
         n = 300
         x = randn(n)
@@ -38,7 +38,7 @@ import Distributions
         @test !occursin("NaN", s)
     end
 
-    @testset "random-effect SD (:resd) z/p blanked (#320)" begin
+    @testset "random-effect SD (:resd) z/p reported on log-scale values (#320)" begin
         Random.seed!(3)
         G = 25; nper = 10; n = G * nper
         g = repeat(1:G, inner = nper); x = randn(n)

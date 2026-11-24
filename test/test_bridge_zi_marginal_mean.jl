@@ -57,7 +57,7 @@ _zim_bridge(formula, family) =
         # i.e. the count-component mean, which is the `mu` dpar drmTMB wants
         direct = drm(bf(@formula(y ~ x), @formula(sigma ~ 1), @formula(zi ~ w)),
                      NegBinomial2(); data = _ZIM_DATA)
-        @test isapprox(mu, fitted(direct); atol = 1e-8)
+        @test isapprox(mu, direct.means[:mu]; atol = 1e-8)
     end
 
     @testset "(b) zero-inflated Poisson: the same repair" begin
@@ -82,17 +82,18 @@ _zim_bridge(formula, family) =
         end
     end
 
-    @testset "(d) hurdle fits are deliberately NOT repaired here" begin
-        # drmTMB's hurdle mean divides by `1 - P(0)` as well as scaling, and
-        # that route has no bridge parity receipt yet. `scales` carries `:hu`,
-        # not `:zi`, so `_bridge_fitted_marginal` must leave it alone.
+    @testset "(d) hurdle NB2: fitted is E[Y] = (1 - hu) * mu / (1 - P(0))" begin
         out = _zim_bridge(Dict("mu" => "y ~ x", "sigma" => "sigma ~ 1",
                                "hu" => "hu ~ w"), "nbinom2")
         @test haskey(out["dpars"], "hu")
         @test !haskey(out["dpars"], "zi")
-        @test isapprox(out["fitted"], out["dpars"]["mu"]; atol = 1e-12)
-        @test isapprox(out["residuals"], _ZIM_DATA.y .- out["dpars"]["mu"];
-                       atol = 1e-12)
+        mu = out["dpars"]["mu"]; hu = out["dpars"]["hu"]
+        s2 = out["dpars"]["sigma"] .^ 2
+        p0 = exp.(-log1p.(mu .* s2) ./ s2)
+        ey = (1 .- hu) .* mu ./ (1 .- p0)
+        @test isapprox(out["fitted"], ey; atol = 1e-10)
+        @test isapprox(out["residuals"], _ZIM_DATA.y .- ey; atol = 1e-10)
+        @test maximum(abs.(out["fitted"] .- mu)) > 1e-3   # a real change
     end
 
     @testset "(e) a non-count family is untouched" begin

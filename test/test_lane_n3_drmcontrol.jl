@@ -182,13 +182,27 @@ _n3_quiet(f) = redirect_stderr(devnull) do; f(); end
         d = (y = _N3.yg, x = _N3.x, g = g)
         fre = bf(@formula(y ~ 1 + x + (1 | g)), @formula(sigma ~ 1))
         for kw in ((control = DRMControl(maxit = 10),), (control = DRMControl(start = [1.0]),),
-                   (control = DRMControl(multi_start = 2),), (weights = ones(_N3_N),))
+                   (control = DRMControl(multi_start = 2),))
             err = try drm(fre, Gaussian(); data = d, kw...); nothing catch e; e end
             @test err isa ArgumentError
             @test occursin("fixed-effect routes", sprint(showerror, err))
         end
+        # `weights` are read by the single `(1 | g)` Gaussian route since the weights-latent-routes change
+        # (test_weights_re_parity.jl); a shape without a weighted fitter keeps the refusal.
+        fslope = bf(@formula(y ~ 1 + x + (1 + x | g)), @formula(sigma ~ 1))
+        err = try drm(fslope, Gaussian(); data = d, weights = ones(_N3_N)); nothing catch e; e end
+        @test err isa ArgumentError
+        @test occursin("fixed-effect routes", sprint(showerror, err))
+        @test occursin("one random intercept", sprint(showerror, err))
+        @test occursin("residual-only bivariate Gaussian", sprint(showerror, err))
         fb = bf(mu1 = @formula(y1 ~ 1 + x), mu2 = @formula(y2 ~ 1 + x))
         db = (y1 = _N3.yg, y2 = _N3.yg .+ randn(MersenneTwister(4), _N3_N), x = _N3.x)
+        # a bivariate model WITH a random term and `weights` keeps the refusal, and the message names the
+        # residual-only bivariate Gaussian route that does accept weights
+        fbre = bf(mu1 = @formula(y1 ~ 1 + x + (1 | g)), mu2 = @formula(y2 ~ 1 + x + (1 | g)))
+        err = try drm(fbre, Gaussian(); data = merge(db, (g = g,)), weights = ones(_N3_N)); nothing catch e; e end
+        @test err isa ArgumentError
+        @test occursin("residual-only bivariate Gaussian", sprint(showerror, err))
         err = try drm(fb, Gaussian(); data = db, control = DRMControl(maxit = 10)); nothing catch e; e end
         @test err isa ArgumentError && occursin("bivariate", sprint(showerror, err))
         # Not a DRMControl
@@ -301,6 +315,8 @@ _n3_quiet(f) = redirect_stderr(devnull) do; f(); end
         fit = _n3_quiet(() -> drm(f, Gamma(); data = d, control = DRMControl(se = false, maxit = 500)))
         @test all(isnan, vcov(fit))
         @test control_info(fit).se === :skipped
-        @test_throws DimensionMismatch _n3_quiet(() -> drm(f, Gamma(); data = d, weights = ones(_N3_N)))
+        # weights follow their rows (R's `na.omit`): one weight per row of `data` fits on the observed rows
+        @test isfinite(loglikelihood(_n3_quiet(() -> drm(f, Gamma(); data = d, weights = ones(_N3_N)))))
+        @test_throws DimensionMismatch _n3_quiet(() -> drm(f, Gamma(); data = d, weights = ones(_N3_N - 2)))
     end
 end

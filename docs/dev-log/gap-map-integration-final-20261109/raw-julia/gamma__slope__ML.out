@@ -1,0 +1,6 @@
+S	1	gamma|slope|lab0|q1|sd-none|cm0|ML
+R	1	gamma|slope|lab0|q1|sd-none|cm0|ML	FITS				-617.6481663510	true	se_finite=true;npar=6	24.39	
+S	2	gamma|slope|lab0|q1|sd-one|cm0|ML
+R	2	gamma|slope|lab0|q1|sd-one|cm0|ML	FITS				-617.8088379141	true	se_finite=true;npar=6	12.99	
+S	3	gamma|slope|lab0|q1|sd-z|cm0|ML
+R	3	gamma|slope|lab0|q1|sd-z|cm0|ML	FITS				-617.0390735554	true	se_finite=true;npar=7	14.16	

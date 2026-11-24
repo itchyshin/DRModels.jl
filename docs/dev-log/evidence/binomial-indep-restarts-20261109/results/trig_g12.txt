@@ -1,0 +1,6 @@
+off	q2	ll=-255.2241	conv=true	restarts=[0.0, 0.0, 0.0, 0.0]	t=34.0
+off	q3	ll=-254.5596	conv=true	restarts=[0.0, 0.0, 0.0, 0.0]	t=30.31
+trigger	q2	ll=-255.2241	conv=true	restarts=[0.0, 0.0, 0.0, 0.0]	t=0.11
+trigger	q3	ll=-254.5596	conv=true	restarts=[0.0, 0.0, 0.0, 0.0]	t=0.64
+force	q2	ll=-253.145	conv=true	restarts=[1.0, 1.0, 2.0790946055695656, 0.0]	t=1.16
+force	q3	ll=-253.128	conv=true	restarts=[1.0, 1.0, 1.4315783769904442, 0.0]	t=8.85

@@ -23,6 +23,7 @@
 # through. Both "Gaussian-only" comments are deleted.
 using DRModels
 using Test, Random, LinearAlgebra
+using StableRNGs
 import Distributions
 
 @testset "#480 formula-based non-Gaussian bootstrap threads K/A/tree" begin
@@ -33,26 +34,30 @@ import Distributions
         # correlation matrix is INVISIBLE on a height-1 tree, so round-trip
         # across several heights.
         for (seed, branch_length) in ((20260930, 0.2), (20260931, 1.0), (20260932, 3.0))
-            Random.seed!(seed)
+            # StableRNG, not the global RNG, so the simulated data are identical
+            # on every Julia version. With the global RNG, Julia 1.13 drew a
+            # height-0.2 dataset whose sd_phylo estimate sat on its lower clamp,
+            # below the percentile interval, failing the interior check below.
+            drng = StableRNG(seed)
             p = 16
             m = 4
             phy = random_balanced_tree(p; branch_length = branch_length)
             species = repeat(1:p, inner = m)
             n = length(species)
-            x = randn(n)
+            x = randn(drng, n)
             β = [0.15, 0.35]
             σphy = 0.45
             C = sigma_phy_dense(phy; σ²_phy = σphy^2)
-            u = cholesky(Symmetric(C)).L * randn(p)
+            u = cholesky(Symmetric(C)).L * randn(drng, p)
             λ = exp.(β[1] .+ β[2] .* x .+ u[species])
-            y = Float64.([rand(Distributions.Poisson(λi)) for λi in λ])
+            y = Float64.([rand(drng, Distributions.Poisson(λi)) for λi in λ])
             dat = (; y, x, species)
             form = bf(@formula(y ~ x + phylo(1 | species)))
 
             # Before the fix: this threw `MethodError: no keyword argument tree` --
             # the formula-based non-Gaussian method declared no K/A/tree at all.
             res = bootstrap_result(form, Poisson(); data = dat, tree = phy, B = 12,
-                                    rng = MersenneTwister(seed + 1),
+                                    rng = StableRNG(seed + 1),
                                     failures = :skip, check_converged = false)
             @test res.attempted == 12
             @test res.used >= 9   # allow a few genuinely hard resampled refits
@@ -73,7 +78,7 @@ import Distributions
     end
 
     @testset "Poisson relmat -- K threaded through bootstrap_ci/summary/result" begin
-        rng = MersenneTwister(20260940)
+        rng = StableRNG(20260940)
         G = 24
         m = 4
         pos = rand(rng, G, 2) .* 6.0
@@ -94,13 +99,13 @@ import Distributions
 
         # Before the fix: raised a bare MethodError, not a domain message.
         rows_ci = bootstrap_ci(form, Poisson(); data = dat, K = Matrix(C), B = 12,
-                                rng = MersenneTwister(20260941), failures = :skip,
+                                rng = StableRNG(20260941), failures = :skip,
                                 check_converged = false)
         rows_sum = bootstrap_summary(form, Poisson(); data = dat, K = Matrix(C), B = 12,
-                                      rng = MersenneTwister(20260941), failures = :skip,
+                                      rng = StableRNG(20260941), failures = :skip,
                                       check_converged = false)
         res = bootstrap_result(form, Poisson(); data = dat, K = Matrix(C), B = 12,
-                                rng = MersenneTwister(20260941), failures = :skip,
+                                rng = StableRNG(20260941), failures = :skip,
                                 check_converged = false)
         @test res.attempted == 12
         @test res.used >= 9
@@ -116,7 +121,7 @@ import Distributions
         # and build the same marginal simulator.
         fit = drm(form, Poisson(); data = dat, K = Matrix(C), se = false)
         res_fit = bootstrap_result(fit; data = dat, K = Matrix(C), B = 12,
-                                    rng = MersenneTwister(20260941), failures = :skip,
+                                    rng = StableRNG(20260941), failures = :skip,
                                     check_converged = false)
         @test res_fit.seeds == res.seeds
     end
@@ -137,7 +142,7 @@ import Distributions
 
         err = nothing
         try
-            bootstrap_result(form, Poisson(); data = dat, B = 3, rng = MersenneTwister(1))
+            bootstrap_result(form, Poisson(); data = dat, B = 3, rng = StableRNG(1))
         catch e
             err = e
         end
@@ -161,7 +166,7 @@ import Distributions
         form = bf(@formula(yln ~ x), @formula(sigma ~ 1))
         dat = (; yln, x)
         res = bootstrap_result(form, LogNormal(); data = dat, B = 8,
-                                rng = MersenneTwister(1))
+                                rng = StableRNG(1))
         @test res.attempted == res.used == 8
         xr = first(r for r in res.summary if r.param === :mu && r.coef == "x")
         @test xr.lower < xr.estimate < xr.upper

@@ -88,7 +88,7 @@ function _variance_boundary(fit::DrmFit; ratio::Real = _VARIANCE_BOUNDARY_RATIO)
     rblock = haskey(have, :resid) ? have[:resid] : get(have, :sigma, nothing)
     (rblock !== nothing && length(rblock) == 1) || return nothing
     haskey(have, :resd) || return nothing                      # structured SDs live here
-    any(p -> first(p) in (:sd, :sd_phylo), fit.blocks) && return nothing
+    _has_sd_regression_block(fit) && return nothing
     fit.ranef isa AbstractDict || return nothing
     ci = findfirst(cn -> cn[1] === :resd, fit.coefnames)
     ci === nothing && return nothing

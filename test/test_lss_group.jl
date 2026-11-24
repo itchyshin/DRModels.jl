@@ -22,7 +22,7 @@ end
 
 @testset "lss sd(group): grammar" begin
     f = bf(@formula(y ~ sex + (1 | id)), @formula(sigma ~ sex), @formula(sd(id) ~ sex))
-    @test any(p -> first(p) === :sd_id, f.forms)
+    @test any(item -> item.target.group === :id, DRModels._sd_target_parts(f))
     # duplicate sd() formula
     @test_throws ArgumentError bf(@formula(y ~ x + (1 | g)),
                                   @formula(sd(g) ~ 1), @formula(sd(g) ~ 1))
@@ -33,10 +33,13 @@ end
 @testset "lss sd(group): router refusals are loud" begin
     dat = _lss_sim()
     fsd = bf(@formula(y ~ sex + (1 | id)), @formula(sigma ~ sex), @formula(sd(id) ~ sex))
-    # non-Gaussian family: refused, never silently dropped
+    # non-Gaussian family: the sd() part is either refused or fitted as an
+    # `:sd` block (Poisson ordinary IID SD regression is now implemented);
+    # it is never silently dropped.
     datp = (y = round.(Int, abs.(dat.y) .* 3) .* 1.0, sex = dat.sex, id = dat.id)
-    @test_throws ArgumentError drm(bf(@formula(y ~ sex + (1 | id)), @formula(sd(id) ~ sex)),
-                                   Poisson(); data = datp)
+    fitp = drm(bf(@formula(y ~ sex + (1 | id)), @formula(sd(id) ~ sex)),
+               Poisson(); data = datp, se = false)
+    @test :sd in first.(fitp.blocks)
     # sd() names a group with no matching (1 | g)
     @test_throws ArgumentError drm(bf(@formula(y ~ sex + (1 | id)), @formula(sd(sex) ~ 1)),
                                    Gaussian(); data = dat)

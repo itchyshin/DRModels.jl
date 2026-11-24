@@ -27,6 +27,8 @@ import Distributions
     @test fit.converged
     @test all(0 .< fitted(fit) .< 1)
     # correlated slope (1 + x | g) is now supported (#753) — see test_binomial_slope_re.jl;
-    # independent slope (0 + x | g) remains out of scope here — must be rejected
-    @test_throws ErrorException drm(bf(@formula(cbind(s, fail) ~ x + (0 + x | g))), Binomial(); data = data)
+    # independent slope (0 + x | g) now fits on the Laplace route (test_nongauss_indep_routes.jl);
+    # a correlated block beside another term is still rejected
+    @test drm(bf(@formula(cbind(s, fail) ~ x + (0 + x | g))), Binomial(); data = data).converged
+    @test_throws ErrorException drm(bf(@formula(cbind(s, fail) ~ x + (1 | g) + (1 + x | g))), Binomial(); data = data)
 end

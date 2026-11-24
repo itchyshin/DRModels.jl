@@ -1,0 +1,1098 @@
+{
+  "run_id": 42056992643,
+  "job_id": 127349180304,
+  "commit": "24ac6ca925a5c0f870b345b18804c9e592d0d275",
+  "raw_log_sha256": "00f875c49e2868b51150942e99dfb5d79b19390f523a966e29f61f3c7f965c40",
+  "test_step_seconds": 10872,
+  "summary_seconds": 10801.199999999999,
+  "summaries": [
+    {
+      "seconds": 7351.1,
+      "line": "Julia 1.10 - shard 4/4\tUNKNOWN STEP\t2026-11-05T18:09:19.8609135Z #737 Tweedie crossed random effects (1|g)+(1|h) |    9      9  122m31.1s"
+    },
+    {
+      "seconds": 485.4,
+      "line": "Julia 1.10 - shard 4/4\tUNKNOWN STEP\t2026-11-05T16:03:36.8232985Z Bernoulli animal random-slope SD regression |   30     30  8m05.4s"
+    },
+    {
+      "seconds": 235.5,
+      "line": "Julia 1.10 - shard 4/4\tUNKNOWN STEP\t2026-11-05T18:40:17.3731325Z Tweedie relmat predictor-dependent mean-intercept SD |   43     43  3m55.5s"
+    },
+    {
+      "seconds": 138.1,
+      "line": "Julia 1.10 - shard 4/4\tUNKNOWN STEP\t2026-11-05T18:30:49.1824188Z q4 perf identities (leaf-S5/S5d) |    7      7  2m18.1s"
+    },
+    {
+      "seconds": 133.6,
+      "line": "Julia 1.10 - shard 4/4\tUNKNOWN STEP\t2026-11-05T18:28:30.9060964Z profile_sigma_a \u2014 q4 among-axis SD profile CIs (boundary lower = 0) |   20     20  2m13.6s"
+    },
+    {
+      "seconds": 101.6,
+      "line": "Julia 1.10 - shard 4/4\tUNKNOWN STEP\t2026-11-05T15:50:59.7751858Z Binomial non-logit correlated q3 SD regression |   24     24  1m41.6s"
+    },
+    {
+      "seconds": 85.3,
+      "line": "Julia 1.10 - shard 4/4\tUNKNOWN STEP\t2026-11-05T15:49:17.4809432Z Binomial correlated q4 SD regression |   40     40  1m25.3s"
+    },
+    {
+      "seconds": 82.5,
+      "line": "Julia 1.10 - shard 4/4\tUNKNOWN STEP\t2026-11-05T15:54:44.6879917Z Bernoulli correlated-block SD regression |   39     39  1m22.5s"
+    },
+    {
+      "seconds": 79.5,
+      "line": "Julia 1.10 - shard 4/4\tUNKNOWN STEP\t2026-11-05T18:19:12.6411118Z #559 Location-scale-scale missing response |   59     59  1m19.5s"
+    },
+    {
+      "seconds": 66.5,
+      "line": "Julia 1.10 - shard 4/4\tUNKNOWN STEP\t2026-11-05T18:16:14.3495303Z lane J3: fit-entry input validation |  134    134  1m06.5s"
+    },
+    {
+      "seconds": 53.1,
+      "line": "Julia 1.10 - shard 4/4\tUNKNOWN STEP\t2026-11-05T15:44:34.0558050Z issue #575: exact q4 REML gradient matches a tight central difference |   12     12  53.1s"
+    },
+    {
+      "seconds": 52.7,
+      "line": "Julia 1.10 - shard 4/4\tUNKNOWN STEP\t2026-11-05T15:52:28.6537748Z Binomial probit phylogenetic SD slope has finite profile endpoints |    5      5  52.7s"
+    },
+    {
+      "seconds": 47.0,
+      "line": "Julia 1.10 - shard 4/4\tUNKNOWN STEP\t2026-11-05T18:35:32.4138779Z Tweedie (1|g)/(0+x|g): sigma_b recovery + fitted nll vs exact QuadGK at theta_hat |    4      4  47.0s"
+    },
+    {
+      "seconds": 42.9,
+      "line": "Julia 1.10 - shard 4/4\tUNKNOWN STEP\t2026-11-05T18:21:53.4092302Z #977 sparse multi-RE kernel: identity with the dense route |   51     51  42.9s"
+    },
+    {
+      "seconds": 42.7,
+      "line": "Julia 1.10 - shard 4/4\tUNKNOWN STEP\t2026-11-05T18:23:56.2839091Z #938 no route estimates or drops offset(): random-effect routes |   81     81  42.7s"
+    },
+    {
+      "seconds": 42.2,
+      "line": "Julia 1.10 - shard 4/4\tUNKNOWN STEP\t2026-11-05T18:36:19.0156966Z Tweedie (1|g)/(0+x|g): production route (no K arg) vs exact QuadGK at theta_hat \u2014 genuine numeric red |    2      2  42.2s"
+    },
+    {
+      "seconds": 40.8,
+      "line": "Julia 1.10 - shard 4/4\tUNKNOWN STEP\t2026-11-05T16:04:38.6043568Z Parametric bootstrap \u2014 non-Gaussian families |   45     45  40.8s"
+    },
+    {
+      "seconds": 40.5,
+      "line": "Julia 1.10 - shard 4/4\tUNKNOWN STEP\t2026-11-05T15:46:12.9514956Z staged association (drmTMB associate_pairs) |   43     43  40.5s"
+    },
+    {
+      "seconds": 39.5,
+      "line": "Julia 1.10 - shard 4/4\tUNKNOWN STEP\t2026-11-05T18:22:56.8698214Z Zero-inflated NB2 sigma random-intercept SD regression |   10     10  39.5s"
+    },
+    {
+      "seconds": 39.2,
+      "line": "Julia 1.10 - shard 4/4\tUNKNOWN STEP\t2026-11-05T18:13:36.7296707Z Hurdle NB2 independent random-slope SD regression |   22     22  39.2s"
+    },
+    {
+      "seconds": 37.0,
+      "line": "Julia 1.10 - shard 4/4\tUNKNOWN STEP\t2026-11-05T15:42:57.6362623Z #1102 / #1104 structured PIT remainders |   13     13  37.0s"
+    },
+    {
+      "seconds": 37.0,
+      "line": "Julia 1.10 - shard 4/4\tUNKNOWN STEP\t2026-11-05T18:12:57.4981675Z Hurdle NB2 random-intercept SD regression |   17     17  37.0s"
+    },
+    {
+      "seconds": 33.4,
+      "line": "Julia 1.10 - shard 4/4\tUNKNOWN STEP\t2026-11-05T15:43:31.0642944Z CumulativeLogit predict on new data (#1121) |   23     23  33.4s"
+    },
+    {
+      "seconds": 32.0,
+      "line": "Julia 1.10 - shard 4/4\tUNKNOWN STEP\t2026-11-05T15:53:10.6497268Z Binomial correlated SD profile threading uses ordinary quadrature |    4      4  32.0s"
+    },
+    {
+      "seconds": 31.9,
+      "line": "Julia 1.10 - shard 4/4\tUNKNOWN STEP\t2026-11-05T15:42:02.9114937Z #1088: NB2 crossed fit reaches drmTMB's point (size ~0.002) |   28     28  31.9s"
+    },
+    {
+      "seconds": 29.9,
+      "line": "Julia 1.10 - shard 4/4\tUNKNOWN STEP\t2026-11-05T18:42:00.0307848Z ZeroOneBeta predictor-dependent random-slope SD |   13     13  29.9s"
+    },
+    {
+      "seconds": 29.2,
+      "line": "Julia 1.10 - shard 4/4\tUNKNOWN STEP\t2026-11-05T18:09:49.1309502Z CumulativeLogit mu random effects (#563 S8) |   14     14  29.2s"
+    },
+    {
+      "seconds": 26.3,
+      "line": "Julia 1.10 - shard 4/4\tUNKNOWN STEP\t2026-11-05T18:33:51.4369302Z Student-t correlated random slope (1+x|g) \u2014 recovery |    6      6  26.3s"
+    },
+    {
+      "seconds": 25.4,
+      "line": "Julia 1.10 - shard 4/4\tUNKNOWN STEP\t2026-11-05T18:31:58.9223710Z mixed_family sentinel guards |   22     22  25.4s"
+    },
+    {
+      "seconds": 24.9,
+      "line": "Julia 1.10 - shard 4/4\tUNKNOWN STEP\t2026-11-05T18:26:07.5483488Z ZIP independent mean-slope SD regression |   16     16  24.9s"
+    },
+    {
+      "seconds": 24.5,
+      "line": "Julia 1.10 - shard 4/4\tUNKNOWN STEP\t2026-11-05T15:55:17.1795525Z binomial latent SD regression: q1 fit and reduction |   12     12  24.5s"
+    },
+    {
+      "seconds": 24.4,
+      "line": "Julia 1.10 - shard 4/4\tUNKNOWN STEP\t2026-11-05T18:17:30.8797384Z structured non-Gaussian location\u2013scale (cluster \u2463) |   29     29  24.4s"
+    },
+    {
+      "seconds": 24.3,
+      "line": "Julia 1.10 - shard 4/4\tUNKNOWN STEP\t2026-11-05T18:40:51.3170232Z ZeroOneBeta random intercept (1|g) \u2014 recovery (#723) |    7      7  24.3s"
+    },
+    {
+      "seconds": 24.2,
+      "line": "Julia 1.10 - shard 4/4\tUNKNOWN STEP\t2026-11-05T15:47:28.9295581Z BetaBinomial sigma random-slope SD regression |   18     18  24.2s"
+    },
+    {
+      "seconds": 23.8,
+      "line": "Julia 1.10 - shard 4/4\tUNKNOWN STEP\t2026-11-05T18:10:46.9353642Z Gamma sigma random-intercept SD regression |   13     13  23.8s"
+    },
+    {
+      "seconds": 22.8,
+      "line": "Julia 1.10 - shard 4/4\tUNKNOWN STEP\t2026-11-05T18:34:36.3904582Z triage G: level, update options, bootstrap status |  135    135  22.8s"
+    },
+    {
+      "seconds": 22.6,
+      "line": "Julia 1.10 - shard 4/4\tUNKNOWN STEP\t2026-11-05T18:33:03.5466729Z relmat(K = I) + (1 | h) is the two-bar (1 | id) + (1 | h) model |    7      7  22.6s"
+    },
+    {
+      "seconds": 21.8,
+      "line": "Julia 1.10 - shard 4/4\tUNKNOWN STEP\t2026-11-05T16:05:09.7295953Z bridge base-R coefficient names (design 258 \u00a72, RED measurement) |   20     20  21.8s"
+    },
+    {
+      "seconds": 21.8,
+      "line": "Julia 1.10 - shard 4/4\tUNKNOWN STEP\t2026-11-05T18:14:47.4101702Z joint missing-predictor formula frontend |   44     44  21.8s"
+    },
+    {
+      "seconds": 21.0,
+      "line": "Julia 1.10 - shard 4/4\tUNKNOWN STEP\t2026-11-05T15:45:12.0489358Z #996 non-Gaussian phylo PIT uses sigma_b^2 C_ii |   12     12  21.0s"
+    },
+    {
+      "seconds": 20.2,
+      "line": "Julia 1.10 - shard 4/4\tUNKNOWN STEP\t2026-11-05T15:45:32.3313905Z Poisson (1|g) :AGHQ \u2014 robust inner mode (#1063) |   33     33  20.2s"
+    },
+    {
+      "seconds": 18.8,
+      "line": "Julia 1.10 - shard 4/4\tUNKNOWN STEP\t2026-11-05T18:14:25.5991654Z finite-state fit result retains raw order and conditional outputs |   22     22  18.8s"
+    },
+    {
+      "seconds": 18.7,
+      "line": "Julia 1.10 - shard 4/4\tUNKNOWN STEP\t2026-11-05T18:25:20.2393343Z Gaussian two-SD phylogenetic random slope phylo(1 + x | species) (#620) |   51     51  18.7s"
+    },
+    {
+      "seconds": 18.5,
+      "line": "Julia 1.10 - shard 4/4\tUNKNOWN STEP\t2026-11-05T18:34:13.0408574Z temporal OU (Gaussian mean) |   95     95  18.5s"
+    },
+    {
+      "seconds": 17.3,
+      "line": "Julia 1.10 - shard 4/4\tUNKNOWN STEP\t2026-11-05T15:51:17.0658869Z Binomial probit/cloglog ordinary random-slope SD |   32     32  17.3s"
+    },
+    {
+      "seconds": 17.1,
+      "line": "Julia 1.10 - shard 4/4\tUNKNOWN STEP\t2026-11-05T18:41:24.5165002Z VA marginal scaffold (#136) |   15     15  17.1s"
+    },
+    {
+      "seconds": 15.7,
+      "line": "Julia 1.10 - shard 4/4\tUNKNOWN STEP\t2026-11-05T18:20:13.2004120Z meta_V + random effect: the random effect is fitted, not dropped |   12     12  15.7s"
+    },
+    {
+      "seconds": 15.7,
+      "line": "Julia 1.10 - shard 4/4\tUNKNOWN STEP\t2026-11-05T18:23:12.9278998Z non-constant sigma (sigma ~ x) WITH a random effect \u2014 non-Gaussian (#164) |   21     21  15.7s"
+    },
+    {
+      "seconds": 15.2,
+      "line": "Julia 1.10 - shard 4/4\tUNKNOWN STEP\t2026-11-05T18:16:30.3575831Z coupled Gamma public bootstrap B2 |   15     15  15.2s"
+    },
+    {
+      "seconds": 15.0,
+      "line": "Julia 1.10 - shard 4/4\tUNKNOWN STEP\t2026-11-05T18:12:08.4183149Z heritability/ICC \u2014 two structured components (closed-form anchor) |   10     10  15.0s"
+    },
+    {
+      "seconds": 14.9,
+      "line": "Julia 1.10 - shard 4/4\tUNKNOWN STEP\t2026-11-05T18:11:36.6821845Z Gaussian \u03c3-phylo: coupled-block correlation recovery |    4      4  14.9s"
+    },
+    {
+      "seconds": 14.7,
+      "line": "Julia 1.10 - shard 4/4\tUNKNOWN STEP\t2026-11-05T15:47:00.1459753Z Beta-binomial random intercept (1|g) \u2014 recovery |    5      5  14.7s"
+    },
+    {
+      "seconds": 14.3,
+      "line": "Julia 1.10 - shard 4/4\tUNKNOWN STEP\t2026-11-05T18:13:55.6521478Z J3a: crossed-mean (binomial) SEs vs an independent ForwardDiff Hessian |    3      3  14.3s"
+    },
+    {
+      "seconds": 14.3,
+      "line": "Julia 1.10 - shard 4/4\tUNKNOWN STEP\t2026-11-05T18:16:56.2273874Z location\u2013scale inner joint: grad/Hessian vs ForwardDiff |    4      4  14.3s"
+    },
+    {
+      "seconds": 13.6,
+      "line": "Julia 1.10 - shard 4/4\tUNKNOWN STEP\t2026-11-05T18:32:23.3059646Z Poisson spatial(1|site, coords) \u2014 joint range estimation + recovery |    7      7  13.6s"
+    },
+    {
+      "seconds": 13.4,
+      "line": "Julia 1.10 - shard 4/4\tUNKNOWN STEP\t2026-11-05T18:20:26.6559219Z meta_V + random effect: sigma ~ x keeps the known variances additive |    3      3  13.4s"
+    },
+    {
+      "seconds": 13.3,
+      "line": "Julia 1.10 - shard 4/4\tUNKNOWN STEP\t2026-11-05T18:17:44.1561362Z LogNormal random intercept (1|g) \u2014 recovery |    4      4  13.3s"
+    },
+    {
+      "seconds": 13.2,
+      "line": "Julia 1.10 - shard 4/4\tUNKNOWN STEP\t2026-11-05T18:31:13.9139339Z Poisson/NB2/Gamma relmat(1 | g) intercept use raw K (dense Laplace oracle) |    9      9  13.2s"
+    },
+    {
+      "seconds": 13.0,
+      "line": "Julia 1.10 - shard 4/4\tUNKNOWN STEP\t2026-11-05T18:11:50.5384831Z Gaussian spatial(1|site, coords) \u2014 fit + recovery |    4      4  13.0s"
+    },
+    {
+      "seconds": 13.0,
+      "line": "Julia 1.10 - shard 4/4\tUNKNOWN STEP\t2026-11-05T18:19:40.2845415Z lsss multi: iid + phylo, both sd ~ x (fixture A) |    9      9  13.0s"
+    },
+    {
+      "seconds": 13.0,
+      "line": "Julia 1.10 - shard 4/4\tUNKNOWN STEP\t2026-11-05T18:25:33.3203134Z Poisson animal random-slope SD regression |   25     25  13.0s"
+    },
+    {
+      "seconds": 12.6,
+      "line": "Julia 1.10 - shard 4/4\tUNKNOWN STEP\t2026-11-05T15:51:29.7507347Z Binomial ordinary and phylogenetic SD regressions jointly |   27     27  12.6s"
+    },
+    {
+      "seconds": 12.5,
+      "line": "Julia 1.10 - shard 4/4\tUNKNOWN STEP\t2026-11-05T18:19:52.7754013Z lsss multi: three REs, five submodels (fixture B) |    5      5  12.5s"
+    },
+    {
+      "seconds": 12.2,
+      "line": "Julia 1.10 - shard 4/4\tUNKNOWN STEP\t2026-11-05T18:31:33.1935594Z REML vcov includes restricted-penalty curvature (#310) |    8      8  12.2s"
+    },
+    {
+      "seconds": 12.0,
+      "line": "Julia 1.10 - shard 4/4\tUNKNOWN STEP\t2026-11-05T15:47:52.0201218Z Binomial animal random-slope SD accepts direct precision |   10     10  12.0s"
+    },
+    {
+      "seconds": 11.9,
+      "line": "Julia 1.10 - shard 4/4\tUNKNOWN STEP\t2026-11-05T18:12:20.3810771Z heritability \u2014 degenerate anchors (component\u21920 and residual\u21920) |    5      5  11.9s"
+    },
+    {
+      "seconds": 11.8,
+      "line": "Julia 1.10 - shard 4/4\tUNKNOWN STEP\t2026-11-05T16:05:43.7162315Z sd_phylo REML bridge vs direct (#563 S6) |    6      6  11.8s"
+    },
+    {
+      "seconds": 11.6,
+      "line": "Julia 1.10 - shard 4/4\tUNKNOWN STEP\t2026-11-05T18:21:10.4703572Z cross-family fit_mixed_family: aghq = true |   10     10  11.6s"
+    },
+    {
+      "seconds": 11.3,
+      "line": "Julia 1.10 - shard 4/4\tUNKNOWN STEP\t2026-11-05T18:16:41.7082238Z drm() location\u2013scale routing via (1|p|group) |   10     10  11.3s"
+    },
+    {
+      "seconds": 11.0,
+      "line": "Julia 1.10 - shard 4/4\tUNKNOWN STEP\t2026-11-05T18:10:58.6743214Z Gamma sigma random-slope SD regression |    9      9  11.0s"
+    },
+    {
+      "seconds": 11.0,
+      "line": "Julia 1.10 - shard 4/4\tUNKNOWN STEP\t2026-11-05T18:22:15.7576980Z NB2 relmat location-intercept SD regression |   26     26  11.0s"
+    },
+    {
+      "seconds": 10.6,
+      "line": "Julia 1.10 - shard 4/4\tUNKNOWN STEP\t2026-11-05T15:53:21.3066187Z Binomial related-matrix random-slope SD regression |   11     11  10.6s"
+    },
+    {
+      "seconds": 10.2,
+      "line": "Julia 1.10 - shard 4/4\tUNKNOWN STEP\t2026-11-05T15:41:30.5543396Z Q-gate: JET type-stability (lc_to_\u039b / \u039b_to_lc) |    2      2  10.2s"
+    },
+    {
+      "seconds": 10.2,
+      "line": "Julia 1.10 - shard 4/4\tUNKNOWN STEP\t2026-11-05T15:46:32.0150532Z Beta relmat/animal(1 | g) intercept uses raw K (dense Laplace oracle) |    8      8  10.2s"
+    },
+    {
+      "seconds": 10.1,
+      "line": "Julia 1.10 - shard 4/4\tUNKNOWN STEP\t2026-11-05T18:32:37.9963231Z phylo(1 | sp) + (1 | h): the ordinary bar is kept (was dropped) |   12     12  10.1s"
+    },
+    {
+      "seconds": 10.0,
+      "line": "Julia 1.10 - shard 4/4\tUNKNOWN STEP\t2026-11-05T15:52:38.6686980Z Binomial SD profile threading admits independent quadrature routes |    3      3  10.0s"
+    },
+    {
+      "seconds": 10.0,
+      "line": "Julia 1.10 - shard 4/4\tUNKNOWN STEP\t2026-11-05T16:06:13.9932725Z Bridge boundary: zero-inflation (`zi`) count mixtures |   45     45  10.0s"
+    },
+    {
+      "seconds": 9.5,
+      "line": "Julia 1.10 - shard 4/4\tUNKNOWN STEP\t2026-11-05T15:44:50.6736127Z #979: sparse sigma ~ 1 route reports sd_phylo on the correlation scale |   16     16  9.5s"
+    },
+    {
+      "seconds": 9.4,
+      "line": "Julia 1.10 - shard 4/4\tUNKNOWN STEP\t2026-11-05T15:46:45.4513594Z Beta animal sd(g, animal) ~ z uses raw A; simulator draws from raw A |    8      8  9.4s"
+    },
+    {
+      "seconds": 9.4,
+      "line": "Julia 1.10 - shard 4/4\tUNKNOWN STEP\t2026-11-05T18:24:58.2333713Z phylo penalty \u2014 the two-SD blocks |   12     12  9.4s"
+    },
+    {
+      "seconds": 9.2,
+      "line": "Julia 1.10 - shard 4/4\tUNKNOWN STEP\t2026-11-05T16:03:46.0591286Z biv_lognormal simulate()/bootstrap no longer throw KeyError |   17     17  9.2s"
+    },
+    {
+      "seconds": 9.0,
+      "line": "Julia 1.10 - shard 4/4\tUNKNOWN STEP\t2026-11-05T18:25:42.5975796Z Poisson relmat random-slope SD regression |   28     28  9.0s"
+    },
+    {
+      "seconds": 8.9,
+      "line": "Julia 1.10 - shard 4/4\tUNKNOWN STEP\t2026-11-05T18:10:15.4746198Z Gamma animal random-effect SD regression |   15     15  8.9s"
+    },
+    {
+      "seconds": 8.8,
+      "line": "Julia 1.10 - shard 4/4\tUNKNOWN STEP\t2026-11-05T16:04:47.4336103Z bootstrap_ci warns on sigma terms in a mixed model (#1119) |    4      4  8.8s"
+    },
+    {
+      "seconds": 8.7,
+      "line": "Julia 1.10 - shard 4/4\tUNKNOWN STEP\t2026-11-05T18:24:13.9731658Z optimizer robustness / mode accuracy (#314, #317, #325.4) |   22     22  8.7s"
+    },
+    {
+      "seconds": 8.4,
+      "line": "Julia 1.10 - shard 4/4\tUNKNOWN STEP\t2026-11-05T18:19:21.0995361Z Gaussian LSS predictor-dependent SD for an independent slope |   19     19  8.4s"
+    },
+    {
+      "seconds": 8.3,
+      "line": "Julia 1.10 - shard 4/4\tUNKNOWN STEP\t2026-11-05T18:30:57.7145412Z quantile residuals: random-intercept axis routing (#923) |   29     29  8.3s"
+    },
+    {
+      "seconds": 8.2,
+      "line": "Julia 1.10 - shard 4/4\tUNKNOWN STEP\t2026-11-05T16:06:27.4612790Z Gaussian correlated random slope (1+x|g) \u2014 recovery |    4      4  8.2s"
+    },
+    {
+      "seconds": 8.0,
+      "line": "Julia 1.10 - shard 4/4\tUNKNOWN STEP\t2026-11-05T18:11:21.7297642Z Gaussian \u03c3-phylo: separate-block recovery |    5      5  8.0s"
+    },
+    {
+      "seconds": 8.0,
+      "line": "Julia 1.10 - shard 4/4\tUNKNOWN STEP\t2026-11-05T18:20:49.3818693Z dense phylo routes map rows to tips by name and bootstrap their own fit |   28     28  8.0s"
+    },
+    {
+      "seconds": 7.9,
+      "line": "Julia 1.10 - shard 4/4\tUNKNOWN STEP\t2026-11-05T18:17:06.3988363Z location-scale profile endpoint status |  111    111  7.9s"
+    },
+    {
+      "seconds": 7.6,
+      "line": "Julia 1.10 - shard 4/4\tUNKNOWN STEP\t2026-11-05T15:54:52.6209860Z Bernoulli independent intercept and slope have separate SD regressions |   25     25  7.6s"
+    },
+    {
+      "seconds": 7.6,
+      "line": "Julia 1.10 - shard 4/4\tUNKNOWN STEP\t2026-11-05T18:10:23.1385101Z Gamma phylogenetic random-effect SD regression |   29     29  7.6s"
+    },
+    {
+      "seconds": 7.6,
+      "line": "Julia 1.10 - shard 4/4\tUNKNOWN STEP\t2026-11-05T18:40:27.0499212Z #471 bivariate LogNormal: animal/spatial structured markers |   24     24  7.6s"
+    },
+    {
+      "seconds": 7.5,
+      "line": "Julia 1.10 - shard 4/4\tUNKNOWN STEP\t2026-11-05T16:06:37.9141751Z cross-family formula front end (A11) |   18     18  7.5s"
+    },
+    {
+      "seconds": 7.1,
+      "line": "Julia 1.10 - shard 4/4\tUNKNOWN STEP\t2026-11-05T18:22:04.6841547Z NB2 animal slope SD oracle, raw A, Ainv equivalence |    7      7  7.1s"
+    },
+    {
+      "seconds": 7.0,
+      "line": "Julia 1.10 - shard 4/4\tUNKNOWN STEP\t2026-11-05T15:44:41.0918324Z #949 converged surfaces agree with is_converged |   12     12  7.0s"
+    },
+    {
+      "seconds": 6.9,
+      "line": "Julia 1.10 - shard 4/4\tUNKNOWN STEP\t2026-11-05T15:43:39.3692161Z #1190: NB2 crossed fit with a log SD at the floor |   21     21  6.9s"
+    },
+    {
+      "seconds": 6.9,
+      "line": "Julia 1.10 - shard 4/4\tUNKNOWN STEP\t2026-11-05T18:20:41.3700493Z phylo bootstrap draws the field on the fitted tree leaves |   21     21  6.9s"
+    },
+    {
+      "seconds": 6.9,
+      "line": "Julia 1.10 - shard 4/4\tUNKNOWN STEP\t2026-11-05T18:33:10.4721638Z (1 | sp) + phylo(1 | sp) is the sd() router with intercept-only sd() parts |    6      6  6.9s"
+    },
+    {
+      "seconds": 6.8,
+      "line": "Julia 1.10 - shard 4/4\tUNKNOWN STEP\t2026-11-05T18:24:03.1712074Z #938 no route estimates or drops offset(): zi / hu |   10     10  6.8s"
+    },
+    {
+      "seconds": 6.8,
+      "line": "Julia 1.10 - shard 4/4\tUNKNOWN STEP\t2026-11-05T18:41:07.3695376Z Poisson public VA frontend (#136 Arc 0) |   43     43  6.8s"
+    },
+    {
+      "seconds": 6.3,
+      "line": "Julia 1.10 - shard 4/4\tUNKNOWN STEP\t2026-11-05T15:42:20.4670977Z #1088: all-or-none BetaBinomial crossed fit warns and is not converged |    7      7  6.3s"
+    },
+    {
+      "seconds": 6.3,
+      "line": "Julia 1.10 - shard 4/4\tUNKNOWN STEP\t2026-11-05T18:17:50.4751727Z #563 LogNormal structured mean (phylo/relmat) |   17     17  6.3s"
+    },
+    {
+      "seconds": 6.1,
+      "line": "Julia 1.10 - shard 4/4\tUNKNOWN STEP\t2026-11-05T15:51:35.9147549Z Binomial phylogenetic intercept SD regression |   23     23  6.1s"
+    },
+    {
+      "seconds": 6.1,
+      "line": "Julia 1.10 - shard 4/4\tUNKNOWN STEP\t2026-11-05T16:05:19.2648060Z drm_bridge Gaussian relmat/spatial slope-only SD |    6      6  6.1s"
+    },
+    {
+      "seconds": 6.1,
+      "line": "Julia 1.10 - shard 4/4\tUNKNOWN STEP\t2026-11-05T18:19:27.2689544Z Sparse multi-component LSS exact gradient (#563 S7b.2/S7b.2b) |    8      8  6.1s"
+    },
+    {
+      "seconds": 6.0,
+      "line": "Julia 1.10 - shard 4/4\tUNKNOWN STEP\t2026-11-05T15:55:31.3677839Z Bernoulli animal-intercept SD regression |   15     15  6.0s"
+    },
+    {
+      "seconds": 6.0,
+      "line": "Julia 1.10 - shard 4/4\tUNKNOWN STEP\t2026-11-05T16:03:52.0718036Z bivariate Student-t (drmTMB biv_student) |   17     17  6.0s"
+    },
+    {
+      "seconds": 5.8,
+      "line": "Julia 1.10 - shard 4/4\tUNKNOWN STEP\t2026-11-05T18:11:13.7219071Z Gaussian \u03c3-phylo: no silent drop (B1 route fires) |    5      5  5.8s"
+    },
+    {
+      "seconds": 5.8,
+      "line": "Julia 1.10 - shard 4/4\tUNKNOWN STEP\t2026-11-05T18:31:19.6878938Z REML q4: restricted correction reaches all four axes (#18) |    9      9  5.8s"
+    },
+    {
+      "seconds": 5.7,
+      "line": "Julia 1.10 - shard 4/4\tUNKNOWN STEP\t2026-11-05T15:46:18.6866165Z beta Newton trust radius: ill-conditioned design |   17     17  5.7s"
+    },
+    {
+      "seconds": 5.6,
+      "line": "Julia 1.10 - shard 4/4\tUNKNOWN STEP\t2026-11-05T18:10:06.5347758Z FX2 inverse links (Student \u03bd / SkewNormal \u03bd / ZeroOneBeta \u03bc) |   29     29  5.6s"
+    },
+    {
+      "seconds": 5.5,
+      "line": "Julia 1.10 - shard 4/4\tUNKNOWN STEP\t2026-11-05T15:42:09.1792557Z #1088: Gamma crossed run-off is recovered (default recover_runoff=true) |   12     12  5.5s"
+    },
+    {
+      "seconds": 5.5,
+      "line": "Julia 1.10 - shard 4/4\tUNKNOWN STEP\t2026-11-05T18:14:58.5378216Z two Gaussian derivatives, masks, and input validation |   10     10  5.5s"
+    },
+    {
+      "seconds": 5.4,
+      "line": "Julia 1.10 - shard 4/4\tUNKNOWN STEP\t2026-11-05T15:41:20.2963405Z Aqua.jl quality assurance |    9      9  5.4s"
+    },
+    {
+      "seconds": 5.4,
+      "line": "Julia 1.10 - shard 4/4\tUNKNOWN STEP\t2026-11-05T18:14:01.1592171Z J3a: which Hessian is used when a coordinate is at its clamp (review fixes) |   28     28  5.4s"
+    },
+    {
+      "seconds": 5.3,
+      "line": "Julia 1.10 - shard 4/4\tUNKNOWN STEP\t2026-11-05T18:15:07.1620946Z two Gaussian fit freezes inputs and reports covariance status |    6      6  5.3s"
+    },
+    {
+      "seconds": 5.2,
+      "line": "Julia 1.10 - shard 4/4\tUNKNOWN STEP\t2026-11-05T16:03:57.5910674Z fit-based non-Gaussian bootstrap accepts g_tol |    6      6  5.2s"
+    },
+    {
+      "seconds": 5.2,
+      "line": "Julia 1.10 - shard 4/4\tUNKNOWN STEP\t2026-11-05T16:05:54.6175533Z Gamma animal-slope SD bridge labels |    4      4  5.2s"
+    },
+    {
+      "seconds": 5.2,
+      "line": "Julia 1.10 - shard 4/4\tUNKNOWN STEP\t2026-11-05T18:24:48.8039347Z phylo penalty (A4c) \u2014 penalized MAP phylogenetic variance components |   52     52  5.2s"
+    },
+    {
+      "seconds": 5.2,
+      "line": "Julia 1.10 - shard 4/4\tUNKNOWN STEP\t2026-11-05T18:40:56.7532336Z twin #745: simultaneous mean + sigma random intercepts |   28     28  5.2s"
+    },
+    {
+      "seconds": 5.0,
+      "line": "Julia 1.10 - shard 4/4\tUNKNOWN STEP\t2026-11-05T15:42:14.1791048Z #1088: Beta crossed run-off (precision near 0) is recovered |   12     12  5.0s"
+    },
+    {
+      "seconds": 5.0,
+      "line": "Julia 1.10 - shard 4/4\tUNKNOWN STEP\t2026-11-05T16:06:03.9493423Z q2 bridge entry points reject unknown option keys (#1011) |   10     10  5.0s"
+    },
+    {
+      "seconds": 4.8,
+      "line": "Julia 1.10 - shard 4/4\tUNKNOWN STEP\t2026-11-05T18:33:18.7478745Z variants this route does not fit are refused by name, never dropped |    7      7  4.8s"
+    },
+    {
+      "seconds": 4.7,
+      "line": "Julia 1.10 - shard 4/4\tUNKNOWN STEP\t2026-11-05T18:11:07.9444099Z Bivariate residual-\u03c3 seed floor for saturated design (#324.3) |    6      6  4.7s"
+    },
+    {
+      "seconds": 4.7,
+      "line": "Julia 1.10 - shard 4/4\tUNKNOWN STEP\t2026-11-05T18:26:16.2782133Z #1092 predict sets random effects to zero (b = 0), not the marginal mean |   14     14  4.7s"
+    },
+    {
+      "seconds": 4.7,
+      "line": "Julia 1.10 - shard 4/4\tUNKNOWN STEP\t2026-11-05T18:33:25.1703518Z Student() accessor contract (fixed effects) |   61     61  4.7s"
+    },
+    {
+      "seconds": 4.6,
+      "line": "Julia 1.10 - shard 4/4\tUNKNOWN STEP\t2026-11-05T15:47:04.7246067Z BetaBinomial sigma slope SD target validation |    4      4  4.6s"
+    },
+    {
+      "seconds": 4.6,
+      "line": "Julia 1.10 - shard 4/4\tUNKNOWN STEP\t2026-11-05T18:32:05.4932342Z SkewNormal() accessor contract |   34     34  4.6s"
+    },
+    {
+      "seconds": 4.5,
+      "line": "Julia 1.10 - shard 4/4\tUNKNOWN STEP\t2026-11-05T16:06:42.4981406Z Generic crossed sparse-Laplace non-Gaussian kernels |   31     31  4.5s"
+    },
+    {
+      "seconds": 4.5,
+      "line": "Julia 1.10 - shard 4/4\tUNKNOWN STEP\t2026-11-05T18:11:03.2302340Z Bivariate Gaussian location-scale + rho12 \u2014 recovery |    6      6  4.5s"
+    },
+    {
+      "seconds": 4.4,
+      "line": "Julia 1.10 - shard 4/4\tUNKNOWN STEP\t2026-11-05T15:47:39.9977841Z bias_correct \u2014 on a real DrmFit (DrmFit method == manual \u03b8\u0302,V form)  |   13     13  4.4s"
+    },
+    {
+      "seconds": 4.4,
+      "line": "Julia 1.10 - shard 4/4\tUNKNOWN STEP\t2026-11-05T16:05:23.6973877Z sd ML bridge vs direct (#563 S6) |    5      5  4.4s"
+    },
+    {
+      "seconds": 4.4,
+      "line": "Julia 1.10 - shard 4/4\tUNKNOWN STEP\t2026-11-05T16:05:31.9279727Z sd_phylo ML bridge vs direct (#563 S6) |    5      5  4.4s"
+    },
+    {
+      "seconds": 4.3,
+      "line": "Julia 1.10 - shard 4/4\tUNKNOWN STEP\t2026-11-05T18:35:36.7468465Z Tweedie (1|g)/(0+x|g): existing R-oracle fixtures move by ~1e-6, not 1e-3 (#563 S8) |   12     12  4.3s"
+    },
+    {
+      "seconds": 4.2,
+      "line": "Julia 1.10 - shard 4/4\tUNKNOWN STEP\t2026-11-05T18:32:09.7384486Z TruncatedPoisson() (no hu) accessor contract |   27     27  4.2s"
+    },
+    {
+      "seconds": 4.1,
+      "line": "Julia 1.10 - shard 4/4\tUNKNOWN STEP\t2026-11-05T16:06:48.7810425Z Crossed sparse-Laplace public routing smoke |    6      6  4.1s"
+    },
+    {
+      "seconds": 4.1,
+      "line": "Julia 1.10 - shard 4/4\tUNKNOWN STEP\t2026-11-05T18:21:57.5333088Z NB2 animal random-slope SD regression |    8      8  4.1s"
+    },
+    {
+      "seconds": 4.0,
+      "line": "Julia 1.10 - shard 4/4\tUNKNOWN STEP\t2026-11-05T15:46:36.0460127Z ZeroOneBeta relmat/animal(1 | g) intercept uses raw K (dense Laplace oracle) |    8      8  4.0s"
+    },
+    {
+      "seconds": 4.0,
+      "line": "Julia 1.10 - shard 4/4\tUNKNOWN STEP\t2026-11-05T16:05:58.8896881Z drm_bridge Poisson relmat slope-only SD |    4      4  4.0s"
+    },
+    {
+      "seconds": 4.0,
+      "line": "Julia 1.10 - shard 4/4\tUNKNOWN STEP\t2026-11-05T18:20:30.6762800Z meta_V + random effect: v \u2192 0 recovers the verified no-meta routes |    7      7  4.0s"
+    },
+    {
+      "seconds": 4.0,
+      "line": "Julia 1.10 - shard 4/4\tUNKNOWN STEP\t2026-11-05T18:26:11.5636222Z ZIP mean random-intercept SD regression |   17     17  4.0s"
+    },
+    {
+      "seconds": 4.0,
+      "line": "Julia 1.10 - shard 4/4\tUNKNOWN STEP\t2026-11-05T18:34:41.3130061Z TruncatedPoisson() + hu is the same fit as Poisson() + hu (bit-identical) |   10     10  4.0s"
+    },
+    {
+      "seconds": 3.8,
+      "line": "Julia 1.10 - shard 4/4\tUNKNOWN STEP\t2026-11-05T16:05:27.4992332Z sd REML bridge vs direct (#563 S6) |    6      6  3.8s"
+    },
+    {
+      "seconds": 3.7,
+      "line": "Julia 1.10 - shard 4/4\tUNKNOWN STEP\t2026-11-05T16:05:47.4071854Z sparse bridge vs direct forced route (#563 S6) |   10     10  3.7s"
+    },
+    {
+      "seconds": 3.7,
+      "line": "Julia 1.10 - shard 4/4\tUNKNOWN STEP\t2026-11-05T18:32:27.0106113Z Poisson spatial(1|site, coords) \u2014 FD gate: ForwardDiff vs central FD \u2264 1e-6 |    3      3  3.7s"
+    },
+    {
+      "seconds": 3.4,
+      "line": "Julia 1.10 - shard 4/4\tUNKNOWN STEP\t2026-11-05T18:34:45.3887737Z Tweedie (1|g)/(0+x|g) adaptive GHQ: single group, sigma_b = 6, vs exact QuadGK |    8      8  3.4s"
+    },
+    {
+      "seconds": 3.3,
+      "line": "Julia 1.10 - shard 4/4\tUNKNOWN STEP\t2026-11-05T16:05:13.1549107Z bridge coef_labels echo (design 258 \u00a77, #563) |   42     42  3.3s"
+    },
+    {
+      "seconds": 3.3,
+      "line": "Julia 1.10 - shard 4/4\tUNKNOWN STEP\t2026-11-05T16:06:17.3351170Z chi-bar-square boundary p-values |   40     40  3.3s"
+    },
+    {
+      "seconds": 3.3,
+      "line": "Julia 1.10 - shard 4/4\tUNKNOWN STEP\t2026-11-05T18:09:55.1552294Z route: Poisson crossed sparse Laplace |    6      6  3.3s"
+    },
+    {
+      "seconds": 3.3,
+      "line": "Julia 1.10 - shard 4/4\tUNKNOWN STEP\t2026-11-05T18:41:30.1300101Z ZeroOneBeta contract |   45     45  3.3s"
+    },
+    {
+      "seconds": 3.2,
+      "line": "Julia 1.10 - shard 4/4\tUNKNOWN STEP\t2026-11-05T15:55:20.3483275Z Binomial non-logit links retain predictor-dependent random-effect SDs |   24     24  3.2s"
+    },
+    {
+      "seconds": 3.2,
+      "line": "Julia 1.10 - shard 4/4\tUNKNOWN STEP\t2026-11-05T18:25:01.4405779Z drm_phylo_penalty_sweep |    9      9  3.2s"
+    },
+    {
+      "seconds": 3.1,
+      "line": "Julia 1.10 - shard 4/4\tUNKNOWN STEP\t2026-11-05T15:55:25.0183018Z binomial latent SD regression: independent fixed-parameter integral |   12     12  3.1s"
+    },
+    {
+      "seconds": 3.1,
+      "line": "Julia 1.10 - shard 4/4\tUNKNOWN STEP\t2026-11-05T18:15:01.8403901Z two Gaussian imputation uses the full raw covariance |   25     25  3.1s"
+    },
+    {
+      "seconds": 3.0,
+      "line": "Julia 1.10 - shard 4/4\tUNKNOWN STEP\t2026-11-05T18:41:00.3820355Z #766: fe_biv_student profile and bootstrap return finite CI endpoints |   15     15  3.0s"
+    },
+    {
+      "seconds": 2.9,
+      "line": "Julia 1.10 - shard 4/4\tUNKNOWN STEP\t2026-11-05T15:46:21.8371054Z beta Newton trust radius: well-conditioned fixture is a no-op |    5      5  2.9s"
+    },
+    {
+      "seconds": 2.9,
+      "line": "Julia 1.10 - shard 4/4\tUNKNOWN STEP\t2026-11-05T16:06:30.3705623Z engine + constructor coverage |   26     26  2.9s"
+    },
+    {
+      "seconds": 2.9,
+      "line": "Julia 1.10 - shard 4/4\tUNKNOWN STEP\t2026-11-05T18:09:58.0318112Z route: bivariate q=2 structured relmat |    5      5  2.9s"
+    },
+    {
+      "seconds": 2.8,
+      "line": "Julia 1.10 - shard 4/4\tUNKNOWN STEP\t2026-11-05T18:14:05.0147043Z finite-state primitive transport |   16     16  2.8s"
+    },
+    {
+      "seconds": 2.8,
+      "line": "Julia 1.10 - shard 4/4\tUNKNOWN STEP\t2026-11-05T18:19:57.5210380Z sparse phylo-mean variance-block SEs (#556) |    5      5  2.8s"
+    },
+    {
+      "seconds": 2.8,
+      "line": "Julia 1.10 - shard 4/4\tUNKNOWN STEP\t2026-11-05T18:24:43.5269403Z phylo_count_large_p \u2014 Julia-side standing gate |   31     31  2.8s"
+    },
+    {
+      "seconds": 2.7,
+      "line": "Julia 1.10 - shard 4/4\tUNKNOWN STEP\t2026-11-05T18:13:41.3535694Z J3a: grouseticks NB2 crossed SEs vs drmTMB sdreport (#1073) |    7      7  2.7s"
+    },
+    {
+      "seconds": 2.7,
+      "line": "Julia 1.10 - shard 4/4\tUNKNOWN STEP\t2026-11-05T18:36:21.7440041Z Tweedie relmat mode polish handles objective roundoff |    7      7  2.7s"
+    },
+    {
+      "seconds": 2.5,
+      "line": "Julia 1.10 - shard 4/4\tUNKNOWN STEP\t2026-11-05T18:14:53.0590006Z two Gaussian exact likelihood and conditional 2-by-2 moments |   29     29  2.5s"
+    },
+    {
+      "seconds": 2.5,
+      "line": "Julia 1.10 - shard 4/4\tUNKNOWN STEP\t2026-11-05T18:32:40.9176401Z bootstrap refuses marker + ordinary bar (the simulator draws one field) |    3      3  2.5s"
+    },
+    {
+      "seconds": 2.4,
+      "line": "Julia 1.10 - shard 4/4\tUNKNOWN STEP\t2026-11-05T15:47:35.6213563Z bias_correct \u2014 level controls CI width; se=0 \u21d2 point interval |    4      4  2.4s"
+    },
+    {
+      "seconds": 2.4,
+      "line": "Julia 1.10 - shard 4/4\tUNKNOWN STEP\t2026-11-05T18:33:12.8861635Z phylo(1 | sp) + (0 + x | h) and two ordinary bars |    5      5  2.4s"
+    },
+    {
+      "seconds": 2.3,
+      "line": "Julia 1.10 - shard 4/4\tUNKNOWN STEP\t2026-11-05T18:14:50.5150382Z joint model requires exogenous complete covariates |    9      9  2.3s"
+    },
+    {
+      "seconds": 2.3,
+      "line": "Julia 1.10 - shard 4/4\tUNKNOWN STEP\t2026-11-05T18:20:33.0273815Z meta_V + phylo + (1 | study): two fields, dense reference |    3      3  2.3s"
+    },
+    {
+      "seconds": 2.2,
+      "line": "Julia 1.10 - shard 4/4\tUNKNOWN STEP\t2026-11-05T18:20:55.1385730Z meta_V + random effect: unsupported shapes refuse loudly |    7      7  2.2s"
+    },
+    {
+      "seconds": 2.2,
+      "line": "Julia 1.10 - shard 4/4\tUNKNOWN STEP\t2026-11-05T18:24:37.5357559Z parity harness (self-consistency, no R) |   17     17  2.2s"
+    },
+    {
+      "seconds": 2.2,
+      "line": "Julia 1.10 - shard 4/4\tUNKNOWN STEP\t2026-11-05T18:33:53.6560961Z coeftable/show working-scale z-p and boundary handling (#320, #323.2) |   34     34  2.2s"
+    },
+    {
+      "seconds": 2.1,
+      "line": "Julia 1.10 - shard 4/4\tUNKNOWN STEP\t2026-11-05T18:20:58.7741964Z Bivariate Gaussian response-missing rows |   12     12  2.1s"
+    },
+    {
+      "seconds": 2.0,
+      "line": "Julia 1.10 - shard 4/4\tUNKNOWN STEP\t2026-11-05T16:05:49.3800504Z missing response bridge vs direct (#563 S6) |   11     11  2.0s"
+    },
+    {
+      "seconds": 2.0,
+      "line": "Julia 1.10 - shard 4/4\tUNKNOWN STEP\t2026-11-05T16:06:44.6575555Z Crossed sparse-Laplace nuisance exact gradient |    9      9  2.0s"
+    },
+    {
+      "seconds": 2.0,
+      "line": "Julia 1.10 - shard 4/4\tUNKNOWN STEP\t2026-11-05T18:20:51.4158263Z meta_V + random effect: same target as drmTMB (committed native-fit.R numbers) |    8      8  2.0s"
+    },
+    {
+      "seconds": 2.0,
+      "line": "Julia 1.10 - shard 4/4\tUNKNOWN STEP\t2026-11-05T18:24:05.2224532Z #938 bivariate and mixed-family fits refuse offset() in mu1 |    5      5  2.0s"
+    },
+    {
+      "seconds": 1.9,
+      "line": "Julia 1.10 - shard 4/4\tUNKNOWN STEP\t2026-11-05T18:19:54.6961676Z lsss multi: refusals |    6      6  1.9s"
+    },
+    {
+      "seconds": 1.8,
+      "line": "Julia 1.10 - shard 4/4\tUNKNOWN STEP\t2026-11-05T15:47:30.7659878Z bias_correct \u2014 identity anchor (linear g \u21d2 zero correction) |    9      9  1.8s"
+    },
+    {
+      "seconds": 1.8,
+      "line": "Julia 1.10 - shard 4/4\tUNKNOWN STEP\t2026-11-05T18:11:52.3426107Z heritability/ICC \u2014 closed-form anchor (single phylo component) |   11     11  1.8s"
+    },
+    {
+      "seconds": 1.8,
+      "line": "Julia 1.10 - shard 4/4\tUNKNOWN STEP\t2026-11-05T18:24:39.8355476Z load_data: a numeric column survives a mixed-type CSV (#474) |    3      3  1.8s"
+    },
+    {
+      "seconds": 1.7,
+      "line": "Julia 1.10 - shard 4/4\tUNKNOWN STEP\t2026-11-05T18:16:57.9935073Z phylogenetic location\u2013scale: end-to-end fit + inference (NB2) |    8      8  1.7s"
+    },
+    {
+      "seconds": 1.7,
+      "line": "Julia 1.10 - shard 4/4\tUNKNOWN STEP\t2026-11-05T18:32:00.7367139Z simulate      |   12     12  1.7s"
+    },
+    {
+      "seconds": 1.6,
+      "line": "Julia 1.10 - shard 4/4\tUNKNOWN STEP\t2026-11-05T16:06:19.2520525Z comparison: lrtest / anova / aicc / weights / update |   12     12  1.6s"
+    },
+    {
+      "seconds": 1.6,
+      "line": "Julia 1.10 - shard 4/4\tUNKNOWN STEP\t2026-11-05T18:33:20.3500191Z neighbouring routes are untouched (D-273) |    5      5  1.6s"
+    },
+    {
+      "seconds": 1.5,
+      "line": "Julia 1.10 - shard 4/4\tUNKNOWN STEP\t2026-11-05T15:55:21.8478102Z Bernoulli independent random-slope SD regression |   13     13  1.5s"
+    },
+    {
+      "seconds": 1.5,
+      "line": "Julia 1.10 - shard 4/4\tUNKNOWN STEP\t2026-11-05T18:20:52.9078427Z meta_V neighbours are unchanged (D-273) |    6      6  1.5s"
+    },
+    {
+      "seconds": 1.5,
+      "line": "Julia 1.10 - shard 4/4\tUNKNOWN STEP\t2026-11-05T18:20:56.7038477Z Gaussian response-missing rows |   15     15  1.5s"
+    },
+    {
+      "seconds": 1.5,
+      "line": "Julia 1.10 - shard 4/4\tUNKNOWN STEP\t2026-11-05T18:22:17.3728682Z NB2 FE sigma ~ x does not DomainError under ForwardDiff (#385) |    4      4  1.5s"
+    },
+    {
+      "seconds": 1.4,
+      "line": "Julia 1.10 - shard 4/4\tUNKNOWN STEP\t2026-11-05T18:13:38.6587295Z J3a: _finite_hessian_from_gradient (helper) |    9      9  1.4s"
+    },
+    {
+      "seconds": 1.4,
+      "line": "Julia 1.10 - shard 4/4\tUNKNOWN STEP\t2026-11-05T18:17:51.9664647Z _ls_lc_inv2x2 / _ls_lc_logdet\u039b vs 256-bit BigFloat reference |   12     12  1.4s"
+    },
+    {
+      "seconds": 1.4,
+      "line": "Julia 1.10 - shard 4/4\tUNKNOWN STEP\t2026-11-05T18:20:34.4865320Z meta_V + random effect: bootstrap draws the marginal model |    5      5  1.4s"
+    },
+    {
+      "seconds": 1.2,
+      "line": "Julia 1.10 - shard 4/4\tUNKNOWN STEP\t2026-11-05T18:31:13.9142042Z reml_objective_at reproduces #575's probe numbers (biv q4 phylo REML) |    5      5  1.2s"
+    },
+    {
+      "seconds": 1.2,
+      "line": "Julia 1.10 - shard 4/4\tUNKNOWN STEP\t2026-11-05T18:40:18.5979731Z Tweedie rejects unused structured covariance keywords |    4      4  1.2s"
+    },
+    {
+      "seconds": 1.1,
+      "line": "Julia 1.10 - shard 4/4\tUNKNOWN STEP\t2026-11-05T18:11:53.4109487Z heritability \u2014 delta vs profile agreement (well identified) |    6      6  1.1s"
+    },
+    {
+      "seconds": 1.1,
+      "line": "Julia 1.10 - shard 4/4\tUNKNOWN STEP\t2026-11-05T18:30:59.2778568Z #609: varying-scale ranef `converged` is the gradient criterion |    6      6  1.1s"
+    },
+    {
+      "seconds": 1.1,
+      "line": "Julia 1.10 - shard 4/4\tUNKNOWN STEP\t2026-11-05T18:33:13.9654277Z drm_bridge: the R entry point returns the full model |    4      4  1.1s"
+    },
+    {
+      "seconds": 1.1,
+      "line": "Julia 1.10 - shard 4/4\tUNKNOWN STEP\t2026-11-05T18:41:25.6672093Z vcov guard (boundary-singular Hessian) |   11     11  1.1s"
+    },
+    {
+      "seconds": 1.0,
+      "line": "Julia 1.10 - shard 4/4\tUNKNOWN STEP\t2026-11-05T18:26:17.3306395Z independent profile acceptance oracles |   13     13  1.0s"
+    },
+    {
+      "seconds": 0.9,
+      "line": "Julia 1.10 - shard 4/4\tUNKNOWN STEP\t2026-11-05T15:47:33.2109316Z bias_correct \u2014 cross terms via off-diagonal covariance (g = \u03b8\u2081\u03b8\u2082) |    3      3  0.9s"
+    },
+    {
+      "seconds": 0.9,
+      "line": "Julia 1.10 - shard 4/4\tUNKNOWN STEP\t2026-11-05T18:09:51.8221697Z _finite_hessian: failure -> all-NaN vcov (no 1e12 ridge) |   23     23  0.9s"
+    },
+    {
+      "seconds": 0.9,
+      "line": "Julia 1.10 - shard 4/4\tUNKNOWN STEP\t2026-11-05T18:31:20.5855793Z Gaussian mean-only phylo: method = :REML |   31     31  0.9s"
+    },
+    {
+      "seconds": 0.9,
+      "line": "Julia 1.10 - shard 4/4\tUNKNOWN STEP\t2026-11-05T18:41:26.6138904Z sparse-Laplace route consults the shared guard (#488) |    9      9  0.9s"
+    },
+    {
+      "seconds": 0.8,
+      "line": "Julia 1.10 - shard 4/4\tUNKNOWN STEP\t2026-11-05T15:47:31.5396949Z bias_correct \u2014 curvature anchor (g = exp, closed form) |   21     21  0.8s"
+    },
+    {
+      "seconds": 0.8,
+      "line": "Julia 1.10 - shard 4/4\tUNKNOWN STEP\t2026-11-05T18:14:48.2326469Z joint public routing refuses ignored arguments |    3      3  0.8s"
+    },
+    {
+      "seconds": 0.8,
+      "line": "Julia 1.10 - shard 4/4\tUNKNOWN STEP\t2026-11-05T18:16:15.1801008Z lc_metric (#13 S1b): Fisher / observed-info on lc |    5      5  0.8s"
+    },
+    {
+      "seconds": 0.8,
+      "line": "Julia 1.10 - shard 4/4\tUNKNOWN STEP\t2026-11-05T18:32:27.8296530Z Poisson spatial coords \u2014 fixed-range marginal matches the K = C path |    1      1  0.8s"
+    },
+    {
+      "seconds": 0.8,
+      "line": "Julia 1.10 - shard 4/4\tUNKNOWN STEP\t2026-11-05T18:40:19.3963358Z #668 \u2014 StatsAPI loglikelihood(fit) matches loglik(fit) |    2      2  0.8s"
+    },
+    {
+      "seconds": 0.7,
+      "line": "Julia 1.10 - shard 4/4\tUNKNOWN STEP\t2026-11-05T15:43:31.7625942Z #1190: helper holds a clamped log SD fixed |   10     10  0.7s"
+    },
+    {
+      "seconds": 0.7,
+      "line": "Julia 1.10 - shard 4/4\tUNKNOWN STEP\t2026-11-05T15:43:32.4428567Z #1190: gradient-difference Hessian of a coordinate subset |    3      3  0.7s"
+    },
+    {
+      "seconds": 0.7,
+      "line": "Julia 1.10 - shard 4/4\tUNKNOWN STEP\t2026-11-05T15:47:32.2896170Z bias_correct \u2014 quadratic g is exact (g = \u03b8\u00b2, closed form) |    4      4  0.7s"
+    },
+    {
+      "seconds": 0.7,
+      "line": "Julia 1.10 - shard 4/4\tUNKNOWN STEP\t2026-11-05T18:10:47.6769045Z Gamma sigma SD regression refuses ignored covariance inputs |    1      1  0.7s"
+    },
+    {
+      "seconds": 0.6,
+      "line": "Julia 1.10 - shard 4/4\tUNKNOWN STEP\t2026-11-05T15:53:21.9692034Z Binomial probit and cloglog related-matrix random-slope SD regression |   12     12  0.6s"
+    },
+    {
+      "seconds": 0.6,
+      "line": "Julia 1.10 - shard 4/4\tUNKNOWN STEP\t2026-11-05T18:40:57.3628397Z residuals(type=:quantile) on a Binomial GLMM uses the marginal reference (#760) |    6      6  0.6s"
+    },
+    {
+      "seconds": 0.5,
+      "line": "Julia 1.10 - shard 4/4\tUNKNOWN STEP\t2026-11-05T15:42:03.4876380Z #1088: a fit still past an upper clamp warns and is not converged |   12     12  0.5s"
+    },
+    {
+      "seconds": 0.5,
+      "line": "Julia 1.10 - shard 4/4\tUNKNOWN STEP\t2026-11-05T18:09:49.6053130Z _dense_comp: Cholesky matches inv/logdet on well-conditioned C |    2      2  0.5s"
+    },
+    {
+      "seconds": 0.5,
+      "line": "Julia 1.10 - shard 4/4\tUNKNOWN STEP\t2026-11-05T18:17:53.0099055Z coupled NB2 location-scale fit through the rerouted _ls_lc_inv2x2 callers (\u03c1=0.95) |    4      4  0.5s"
+    },
+    {
+      "seconds": 0.5,
+      "line": "Julia 1.10 - shard 4/4\tUNKNOWN STEP\t2026-11-05T18:24:38.0672116Z parity harness: group-level covariance (ranef) comparison |    8      8  0.5s"
+    },
+    {
+      "seconds": 0.4,
+      "line": "Julia 1.10 - shard 4/4\tUNKNOWN STEP\t2026-11-05T18:09:50.5011541Z _dense_comp: 256-bit BigFloat reference agreement |    1      1  0.4s"
+    },
+    {
+      "seconds": 0.4,
+      "line": "Julia 1.10 - shard 4/4\tUNKNOWN STEP\t2026-11-05T18:11:37.1403213Z Gaussian \u03c3-phylo: FD gradient gate (separate, \u22641e-6) |    3      3  0.4s"
+    },
+    {
+      "seconds": 0.4,
+      "line": "Julia 1.10 - shard 4/4\tUNKNOWN STEP\t2026-11-05T18:13:37.2037993Z inference BLAS pinning is composable across callers |   17     17  0.4s"
+    },
+    {
+      "seconds": 0.4,
+      "line": "Julia 1.10 - shard 4/4\tUNKNOWN STEP\t2026-11-05T18:32:38.3805398Z phylo(1 | sp) + (1 | h): rows go to tips BY NAME (shuffled rows, absent tip) |    7      7  0.4s"
+    },
+    {
+      "seconds": 0.4,
+      "line": "Julia 1.10 - shard 4/4\tUNKNOWN STEP\t2026-11-05T18:34:41.9356453Z TruncatedPoisson() refusals mirror TruncatedNegBinomial2() |    5      5  0.4s"
+    },
+    {
+      "seconds": 0.3,
+      "line": "Julia 1.10 - shard 4/4\tUNKNOWN STEP\t2026-11-05T15:44:50.9438250Z #979: the EM and REML variants of the sparse route follow the same convention |    3      3  0.3s"
+    },
+    {
+      "seconds": 0.3,
+      "line": "Julia 1.10 - shard 4/4\tUNKNOWN STEP\t2026-11-05T15:49:17.8274421Z Binomial Laplace kernels match the stable logit likelihood |  276    276  0.3s"
+    },
+    {
+      "seconds": 0.3,
+      "line": "Julia 1.10 - shard 4/4\tUNKNOWN STEP\t2026-11-05T15:49:18.1081357Z Binomial cloglog Laplace derivatives use the requested link |  171    171  0.3s"
+    },
+    {
+      "seconds": 0.3,
+      "line": "Julia 1.10 - shard 4/4\tUNKNOWN STEP\t2026-11-05T15:54:44.9641178Z Bernoulli SD formula retains coefficient-specific targets |    5      5  0.3s"
+    },
+    {
+      "seconds": 0.3,
+      "line": "Julia 1.10 - shard 4/4\tUNKNOWN STEP\t2026-11-05T15:55:25.3396384Z binomial latent SD regression: unsupported cells refuse explicitly |    9      9  0.3s"
+    },
+    {
+      "seconds": 0.3,
+      "line": "Julia 1.10 - shard 4/4\tUNKNOWN STEP\t2026-11-05T16:05:54.8753966Z #546 unknown univariate formula part key errors loudly (#563 S6) |    4      4  0.3s"
+    },
+    {
+      "seconds": 0.3,
+      "line": "Julia 1.10 - shard 4/4\tUNKNOWN STEP\t2026-11-05T18:11:37.4784026Z Gaussian \u03c3-phylo: FD gradient gate (asymmetric, \u22641e-6) |    2      2  0.3s"
+    },
+    {
+      "seconds": 0.3,
+      "line": "Julia 1.10 - shard 4/4\tUNKNOWN STEP\t2026-11-05T18:17:52.5114510Z matrix-formed path (_ls_inv2x2 \u2218 _ls_lc_to_\u039b) loses the claimed digits at the same diagonals |    2      2  0.3s"
+    },
+    {
+      "seconds": 0.3,
+      "line": "Julia 1.10 - shard 4/4\tUNKNOWN STEP\t2026-11-05T18:22:57.1497761Z Zero-inflated NB2 sigma SD keeps the native q1 admission boundary |    3      3  0.3s"
+    },
+    {
+      "seconds": 0.3,
+      "line": "Julia 1.10 - shard 4/4\tUNKNOWN STEP\t2026-11-05T18:31:20.9320771Z Gaussian mean-only phylo REML: adjacent shapes still refuse |    3      3  0.3s"
+    },
+    {
+      "seconds": 0.2,
+      "line": "Julia 1.10 - shard 4/4\tUNKNOWN STEP\t2026-11-05T15:41:14.8298757Z DRModels.jl \u2014 engine loads + phylo foundation |   15     15  0.2s"
+    },
+    {
+      "seconds": 0.2,
+      "line": "Julia 1.10 - shard 4/4\tUNKNOWN STEP\t2026-11-05T16:03:52.3299341Z bootstrap summary indexes by stored block range (#325.3) |    9      9  0.2s"
+    },
+    {
+      "seconds": 0.2,
+      "line": "Julia 1.10 - shard 4/4\tUNKNOWN STEP\t2026-11-05T16:06:17.5867289Z lrt_boundary docs: Poisson vs NegBinomial2 is conservative (#1116) |    4      4  0.2s"
+    },
+    {
+      "seconds": 0.2,
+      "line": "Julia 1.10 - shard 4/4\tUNKNOWN STEP\t2026-11-05T16:06:42.6596225Z NB2 crossed dispersion start = MoM size (#318) |    7      7  0.2s"
+    },
+    {
+      "seconds": 0.2,
+      "line": "Julia 1.10 - shard 4/4\tUNKNOWN STEP\t2026-11-05T18:14:58.7208759Z two Gaussian stable large-scale arithmetic and predictor permutation |   10     10  0.2s"
+    },
+    {
+      "seconds": 0.2,
+      "line": "Julia 1.10 - shard 4/4\tUNKNOWN STEP\t2026-11-05T18:25:33.5879444Z Poisson phylo Laplace gradient gate (#165): FD-vs-exact \u2264 1e-6 |    4      4  0.2s"
+    },
+    {
+      "seconds": 0.2,
+      "line": "Julia 1.10 - shard 4/4\tUNKNOWN STEP\t2026-11-05T18:31:33.4197372Z sentinel fit-level guards |   18     18  0.2s"
+    },
+    {
+      "seconds": 0.2,
+      "line": "Julia 1.10 - shard 4/4\tUNKNOWN STEP\t2026-11-05T18:34:41.5442718Z TruncatedPoisson() without hu: zero-truncated Poisson likelihood |   14     14  0.2s"
+    },
+    {
+      "seconds": 0.2,
+      "line": "Julia 1.10 - shard 4/4\tUNKNOWN STEP\t2026-11-05T18:40:51.4909409Z ZeroOneBeta(): other formulas still refuse random effects (#723) |    1      1  0.2s"
+    },
+    {
+      "seconds": 0.1,
+      "line": "Julia 1.10 - shard 4/4\tUNKNOWN STEP\t2026-11-05T15:42:03.6171485Z #1088: SE gradient ladder records and warns at the 1e-8 fallback |   10     10  0.1s"
+    },
+    {
+      "seconds": 0.1,
+      "line": "Julia 1.10 - shard 4/4\tUNKNOWN STEP\t2026-11-05T15:47:52.1104913Z bridge tags preserve supported Binomial links |    4      4  0.1s"
+    },
+    {
+      "seconds": 0.1,
+      "line": "Julia 1.10 - shard 4/4\tUNKNOWN STEP\t2026-11-05T15:53:22.0782354Z Binomial non-logit likelihood skips zero-count tail terms |    8      8  0.1s"
+    },
+    {
+      "seconds": 0.1,
+      "line": "Julia 1.10 - shard 4/4\tUNKNOWN STEP\t2026-11-05T15:55:21.9188507Z Bernoulli response equals one-trial binomial |    4      4  0.1s"
+    },
+    {
+      "seconds": 0.1,
+      "line": "Julia 1.10 - shard 4/4\tUNKNOWN STEP\t2026-11-05T18:12:20.4376406Z heritability \u2014 error on heteroscedastic residual and no components |    2      2  0.1s"
+    },
+    {
+      "seconds": 0.1,
+      "line": "Julia 1.10 - shard 4/4\tUNKNOWN STEP\t2026-11-05T18:16:41.8011629Z drm() location\u2013scale: a lone coupled tag is an error |    1      1  0.1s"
+    },
+    {
+      "seconds": 0.1,
+      "line": "Julia 1.10 - shard 4/4\tUNKNOWN STEP\t2026-11-05T18:16:56.2933435Z location\u2013scale inner mode reaches a stationary point |    3      3  0.1s"
+    },
+    {
+      "seconds": 0.1,
+      "line": "Julia 1.10 - shard 4/4\tUNKNOWN STEP\t2026-11-05T18:22:15.8268167Z Negative binomial (NB2, overdispersed counts) \u2014 recovery |    5      5  0.1s"
+    },
+    {
+      "seconds": 0.1,
+      "line": "Julia 1.10 - shard 4/4\tUNKNOWN STEP\t2026-11-05T18:30:49.3463938Z Q-gate (#15): inner-loop pure-Julia arithmetic is zero-alloc + flat |    7      7  0.1s"
+    },
+    {
+      "seconds": 0.1,
+      "line": "Julia 1.10 - shard 4/4\tUNKNOWN STEP\t2026-11-05T18:31:59.0239082Z Gaussian random effect on sigma: sigma ~ 1 + (1|g) \u2014 recovery |    6      6  0.1s"
+    },
+    {
+      "seconds": 0.0,
+      "line": "Julia 1.10 - shard 4/4\tUNKNOWN STEP\t2026-11-05T15:44:50.9655928Z #979: a non-ultrametric tree keeps the raw scale and its warning |    4      4  0.0s"
+    },
+    {
+      "seconds": 0.0,
+      "line": "Julia 1.10 - shard 4/4\tUNKNOWN STEP\t2026-11-05T15:53:22.1146416Z Binomial SD scale uses the native default smooth log clamp |    2      2  0.0s"
+    },
+    {
+      "seconds": 0.0,
+      "line": "Julia 1.10 - shard 4/4\tUNKNOWN STEP\t2026-11-05T15:55:25.3587663Z Bernoulli structured SD target metadata |    3      3  0.0s"
+    },
+    {
+      "seconds": 0.0,
+      "line": "Julia 1.10 - shard 4/4\tUNKNOWN STEP\t2026-11-05T16:06:03.9594671Z profile-failure text names only accepted methods (#1011) |    4      4  0.0s"
+    },
+    {
+      "seconds": 0.0,
+      "line": "Julia 1.10 - shard 4/4\tUNKNOWN STEP\t2026-11-05T18:09:49.9978389Z _dense_comp: Cholesky path unchanged to 1e-10 at cond 1e8/1e10/1e12 |    6      6  0.0s"
+    },
+    {
+      "seconds": 0.0,
+      "line": "Julia 1.10 - shard 4/4\tUNKNOWN STEP\t2026-11-05T18:09:50.7506340Z _dense_comp: non-PD / semidefinite C raises a clear ArgumentError |    6      6  0.0s"
+    },
+    {
+      "seconds": 0.0,
+      "line": "Julia 1.10 - shard 4/4\tUNKNOWN STEP\t2026-11-05T18:09:50.7543281Z _dense_comp: indefinite C also raises (not a silent NaN/Inf) |    1      1  0.0s"
+    },
+    {
+      "seconds": 0.0,
+      "line": "Julia 1.10 - shard 4/4\tUNKNOWN STEP\t2026-11-05T18:09:50.7670763Z family(fit) post-fit accessor |    2      2  0.0s"
+    },
+    {
+      "seconds": 0.0,
+      "line": "Julia 1.10 - shard 4/4\tUNKNOWN STEP\t2026-11-05T18:09:51.8332224Z _vcov_from_hessian itself still throws on a NaN Hessian (NaN-predictor fits) |    1      1  0.0s"
+    },
+    {
+      "seconds": 0.0,
+      "line": "Julia 1.10 - shard 4/4\tUNKNOWN STEP\t2026-11-05T18:09:51.8649828Z _finite_hessian NaN: ordinary-Laplace caller does not throw |    3      3  0.0s"
+    },
+    {
+      "seconds": 0.0,
+      "line": "Julia 1.10 - shard 4/4\tUNKNOWN STEP\t2026-11-05T18:14:50.5232010Z thread budget |    1      1  0.0s"
+    },
+    {
+      "seconds": 0.0,
+      "line": "Julia 1.10 - shard 4/4\tUNKNOWN STEP\t2026-11-05T18:14:50.5485896Z prepared two-Gaussian missing-predictor API |    3      3  0.0s"
+    },
+    {
+      "seconds": 0.0,
+      "line": "Julia 1.10 - shard 4/4\tUNKNOWN STEP\t2026-11-05T18:16:41.9506200Z location\u2013scale \u039b log-Cholesky round-trip |    9      9  0.0s"
+    },
+    {
+      "seconds": 0.0,
+      "line": "Julia 1.10 - shard 4/4\tUNKNOWN STEP\t2026-11-05T18:17:52.1799834Z _ls_lc_inv2x2 agrees with the matrix-formed path in the well-conditioned regime |   60     60  0.0s"
+    },
+    {
+      "seconds": 0.0,
+      "line": "Julia 1.10 - shard 4/4\tUNKNOWN STEP\t2026-11-05T18:31:33.2293795Z rho12(fit) bivariate residual-correlation accessor |    3      3  0.0s"
+    },
+    {
+      "seconds": 0.0,
+      "line": "Julia 1.10 - shard 4/4\tUNKNOWN STEP\t2026-11-05T18:32:00.7744333Z simulate Poisson |    6      6  0.0s"
+    },
+    {
+      "seconds": 0.0,
+      "line": "Julia 1.10 - shard 4/4\tUNKNOWN STEP\t2026-11-05T18:33:54.1927742Z Lane C: H\u00b2 SIMD selinv identity (one banded cell) |    5      5  0.0s"
+    },
+    {
+      "seconds": 0.0,
+      "line": "Julia 1.10 - shard 4/4\tUNKNOWN STEP\t2026-11-05T18:34:41.9391245Z TruncatedPoisson bridge name |    1      1  0.0s"
+    }
+  ]
+}

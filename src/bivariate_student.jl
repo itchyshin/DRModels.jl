@@ -81,7 +81,8 @@ rather than mirroring the established one, on exactly the family (correlated
 structured scale) this project has already gotten a scale convention silently
 wrong once. drmTMB has the same limit, and that is the load-bearing half of this
 rejection, so it is written down reproducibly rather than asserted.
-**Re-verified live 2026-08-25** against the installed drmTMB 0.7.0:
+In native drmTMB, the fixed-effect fit below is accepted and adding the
+structured marker is refused:
 
 ```r
 library(drmTMB); library(ape)
@@ -93,7 +94,8 @@ d <- data.frame(y1 = rnorm(40), y2 = rnorm(40), x = rnorm(40),
 drmTMB(bf(mu1 = y1 ~ x, mu2 = y2 ~ x, sigma1 = ~1, sigma2 = ~1,
           nu = ~1, rho12 = ~1), family = biv_student(), data = d)
 # add a structured marker -> REFUSED
-drmTMB(bf(mu1 = y1 ~ x + phylo(1 | sp, tree = tr), mu2 = y2 ~ x, ...),
+drmTMB(bf(mu1 = y1 ~ x + phylo(1 | sp, tree = tr), mu2 = y2 ~ x,
+          sigma1 = ~1, sigma2 = ~1, nu = ~1, rho12 = ~1),
        family = biv_student(), data = d)
 #> `biv_student()` currently allows fixed-effect formulas only; random and
 #>  structured effects are deferred.
@@ -114,13 +116,16 @@ fit = drm(f, Student(); data = dat)
 ```
 """
 @drm_entry function drm(f::BivariateDrmFormula, fam::Student; data, g_tol::Real = 1e-8,
-             method::Symbol = :ML)
+             method::Symbol = :ML, missing = nothing)
+    _require_no_r_minus_one(f)   # #1349: R's `x - 1` is not 'no intercept' here
+    _require_simple_bar_groups(f)   # nested `g / h` and other compound groupings: a named refusal
     _require_formula_column_lengths(f, data)   # #1022: no ragged columns under @inbounds
     method === :ML ||
         throw(ArgumentError("drm: the bivariate Student-t route implements ML only " *
             "(got method = :$method). drmTMB's `biv_student()` first slice has no " *
             "random effects, so there is nothing for REML to integrate out."))
     data = _drop_missing_predictor_rows(f, data)   # #1089: R's na.omit, with a count
+    data = _apply_bivariate_response_policy(f, data, missing)   # drmTMB's miss_control(response =): default "drop"
     rhs = Dict(f.forms)
     _, structured_marker = _bivariate_q4_marker(rhs)
     structured_marker === nothing ||

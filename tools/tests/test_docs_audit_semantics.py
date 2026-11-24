@@ -94,6 +94,73 @@ class DocumentationSemantics(unittest.TestCase):
             self.assertIn(old, text)
             with self.assertRaises(AssertionError):
                 assert_recent_capability_corrections(text.replace(old, new))
+    def test_family_map_lists_all_public_constructors(self):
+        exports = self.text("src/DRModels.jl")
+        names = {"Gaussian", "Student", "LogNormal", "Gamma", "Tweedie", "Poisson", "NegBinomial2", "TruncatedNegBinomial2", "TruncatedPoisson", "Beta", "BetaBinomial", "Binomial", "ZeroOneBeta", "CumulativeLogit", "SkewNormal"}
+        table = self.text("docs/src/model-guides/model-map.md").split("## Structured and random effects")[0]
+        for name in names:
+            self.assertRegex(exports, r"\b" + name + r"\b")
+            self.assertIn("[`" + name + "`](@ref)", table)
+    def test_binomial_slope_distinction(self):
+        text = self.text("docs/src/model-guides/model-map.md")
+        self.assertNotIn("supports `(1 | g)` on the mean only", text)
+        self.assertIn("Binomial", text)
+        self.assertIn("independent `(0 + x | g)`", text)
+        self.assertIn("correlated `(1 + x | g)`", text)
+    def test_parameter_prediction_links(self):
+        text = self.text("src/gaussian_core.jl").split("Population-level prediction of **every**")[1].split('"""')[0]
+        self.assertNotIn("mean is left on the link scale", text)
+        self.assertNotIn("comes\nback as `ν − 2`", text)
+        self.assertIn("`2 + exp(η)`", text)
+        self.assertIn("SkewNormal", text)
+        self.assertIn("identity", text)
+        self.assertIn("ZeroOneBeta", text)
+        self.assertIn("logistic", text)
+    def test_prediction_target_and_laplace_exception(self):
+        text = self.text("docs/src/reference/model-fitting-and-postfit.md")
+        self.assertNotIn("returns the response (mean) prediction", text)
+        self.assertIn("median", text)
+        self.assertIn("untruncated", text)
+        text = self.text("docs/src/model-guides/marginal-la-vs-va.md")
+        self.assertIn("LogNormal", text)
+        self.assertIn("single mode-centred Gauss–Hermite node", text)
+    def test_simulate_docstring_matches_current_keyword_defaults(self):
+        source = self.text("src/gaussian_core.jl")
+        doc = source.split('    simulate(fit;', 1)[1].split('"""', 1)[0]
+        method_start = source.index('function simulate(fit::DrmFit;')
+        method_end = source.index('\n    nsim >=', method_start)
+        method = source[method_start:method_end]
+        for documented, implemented in (
+            ("nsim = 1", "nsim::Integer = 1"),
+            ("newdata = nothing", "newdata = nothing"),
+            ("re = :marginal", "re::Symbol = :marginal"),
+            ("data = nothing", "data = nothing"),
+            ("K = nothing", "K = nothing"),
+            ("A = nothing", "A = nothing"),
+            ("tree = nothing", "tree = nothing"),
+            ("coords = nothing", "coords = nothing"),
+        ):
+            self.assertIn(documented, doc)
+            self.assertIn(implemented, method)
+    def test_simulate_parity_scopes_newdata_and_temporal_refusal(self):
+        text = " ".join(self.text("docs/src/drmtmb-parity.md").split())
+        self.assertIn("For non-temporal fits, `simulate(fit; newdata)` stays population level", text)
+        self.assertIn("drmTMB does not accept `newdata` for simulation", text)
+        self.assertIn("Temporal fits in DRModels.jl reject `newdata`", text)
+        self.assertNotIn("differ in three ways", text)
+    def test_offset_table_separates_random_effect_and_zi_hu_routes(self):
+        text = " ".join(self.text("docs/src/reference/model-specification.md").split())
+        self.assertIn("Fixed-effects `NegBinomial2()` routes with `zi` or `hu` also support offsets", text)
+        self.assertIn("they cannot be combined with a random effect", text)
+        self.assertIn("`Gamma()` and `Beta()` with one `(1 | g)` under `marginal = :Laplace`", text)
+    def test_rosetta_simulate_data_note_names_temporal_exception(self):
+        text = self.text("docs/src/rosetta.md")
+        row = next(line for line in text.splitlines() if "`simulate(fit)`" in line)
+        self.assertIn("temporal fits can simulate their full marginal chain without it", row)
+    def test_temporal_experimental_scope(self):
+        text = self.text("docs/src/api-stability.md").split("## What is still experimental")[1].split("## Engine functions")[0]
+        for term in ("AR1", "OU", "Toeplitz", "intercept-only", "maximum likelihood"):
+            self.assertIn(term, text)
     def test_capabilities_markdown_table_arity_and_escaped_pipes(self):
         text = self.text("docs/src/capabilities.md")
         section = text.split('## R → Julia bridge (engine = "julia")', 1)[1].split("## ", 1)[0]
@@ -101,6 +168,11 @@ class DocumentationSemantics(unittest.TestCase):
         self.assertEqual(markdown_table_cells(r"| `phylo(1\|g)` | **Tested** |"), ["`phylo(1|g)`", "**Tested**"])
     def test_capabilities_tested_definition_scope(self):
         assert_tested_definition_scope(self.text("docs/src/capabilities.md"))
+    def test_profile_ci_formula_refusal_is_documented(self):
+        text = re.sub(r"\s+", " ", self.text("docs/src/capabilities.md"))
+        self.assertIn("`profile_ci = true` is refused unless the `sigma` formula contains", text)
+        self.assertIn("use `confint(fit, method = :profile)` after fitting", text)
+        self.assertIn("currently ignores `profile_ci = true`", text)
     def test_capabilities_r_bridge_row_keeps_two_cell_scope_qualification(self):
         text = self.text("docs/src/capabilities.md")
         section = text.split('## R → Julia bridge (engine = "julia")', 1)[1].split("## ", 1)[0]

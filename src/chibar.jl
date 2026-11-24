@@ -136,6 +136,12 @@ REML fits whose fixed structure differs, a sentinel log-likelihood, different
 marginal approximations, a penalized MAP fit, and fits on different
 observation rows (not only a different `nobs`).
 
+These guards are the same set `lrtest` runs (#1002; pinned in
+`test/test_lrt_boundary_guards_1002.jl`). They only warn (not refuse) on `converged = false` (a boundary fit is not
+called unconverged), and
+`lrt_boundary` does not check the family or that `fit_reduced` is truly nested in
+`fit_full`; a non-converged fit that is not a sentinel still gets a p-value.
+
 # Finite-sample behaviour: Poisson vs NegBinomial2
 The 50:50 mixture is the asymptotic null law, and it is accepted as is for the
 family nest `lrt_boundary(nb, pois; q = 1)` (`Poisson` ⊂ `NegBinomial2`, where the
@@ -164,6 +170,7 @@ function lrt_boundary(fit_full::DrmFit, fit_reduced::DrmFit; q::Integer = 1)
     _marginal_compare_guard(fit_reduced, fit_full, "lrt_boundary")
     _map_compare_guard(fit_reduced, fit_full, "lrt_boundary")
     _nobs_compare_guard(fit_reduced, fit_full, "lrt_boundary")
+    _unconverged_compare_warn(fit_reduced, fit_full, "lrt_boundary")
     statistic = 2 * (loglik(fit_full) - loglik(fit_reduced))
     pvalue = chibar_pvalue(statistic, q)
     pvalue_naive = ccdf(Chisq(q), max(statistic, 0.0))

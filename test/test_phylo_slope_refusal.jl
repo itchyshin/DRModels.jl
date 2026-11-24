@@ -29,6 +29,13 @@ using DRModels
 using Test, Random, LinearAlgebra
 import Distributions
 
+# Wave 9 (gap close): for the families whose explicit coefficient-SD route exists, a bare
+# structured `kind(1 + x | g)` is no longer refused. It is completed with the two
+# intercept-only `sd(g, kind, coef(·)) ~ 1` formulas (the native drmTMB model), so the
+# slope is still never silently dropped: the fit carries a slope SD target. Unsupported
+# combinations (REML, a labelled term outside Poisson, other families) still refuse.
+_slope_kept(fit) = Set(t.target.member for t in DRModels._sd_target_parts(fit.formula)) == Set([:intercept, :x])
+
 @testset "structured markers refuse non-intercept lhs (#620)" begin
     Random.seed!(20260902)
     p = 8
@@ -41,16 +48,9 @@ import Distributions
         y = Float64.([rand(Distributions.Poisson(exp(0.2 + 0.25xi))) for xi in x])
         data = (; y, x, species)
 
-        err1 = try
-            drm(bf(@formula(y ~ x + phylo(1 + x | species))), Poisson();
-                data = data, tree = phy, se = false)
-            nothing
-        catch e
-            e
-        end
-        @test err1 isa ArgumentError
-        @test occursin("phylo(1 + x | species)", err1.msg)
-        @test occursin("not implemented", err1.msg)
+        fit1 = drm(bf(@formula(y ~ x + phylo(1 + x | species))), Poisson();
+                   data = data, tree = phy, se = false)
+        @test _slope_kept(fit1)          # wave 9: completed, not refused, not silently dropped
 
         err2 = try
             drm(bf(@formula(y ~ x + phylo(0 + x | species))), Poisson();
@@ -110,15 +110,8 @@ import Distributions
         y = 0.2 .+ 0.4 .* x .+ 0.3 .* randn(n)
         data = (; y, x, id)
 
-        err1 = try
-            drm(bf(@formula(y ~ x + relmat(1 + x | id))), Gaussian(); data = data, K = K)
-            nothing
-        catch e
-            e
-        end
-        @test err1 isa ArgumentError
-        @test occursin("relmat(1 + x | id)", err1.msg)
-        @test occursin("not implemented", err1.msg)
+        fit1 = drm(bf(@formula(y ~ x + relmat(1 + x | id))), Gaussian(); data = data, K = K)
+        @test _slope_kept(fit1)          # wave 9: completed, not refused, not silently dropped
 
         err2 = try
             drm(bf(@formula(y ~ x + relmat(0 + x | id))), Gaussian(); data = data, K = K)
@@ -148,15 +141,8 @@ import Distributions
         y = 0.2 .+ 0.4 .* x .+ 0.3 .* randn(n)
         data = (; y, x, id)
 
-        err1 = try
-            drm(bf(@formula(y ~ x + animal(1 + x | id))), Gaussian(); data = data, A = A)
-            nothing
-        catch e
-            e
-        end
-        @test err1 isa ArgumentError
-        @test occursin("animal(1 + x | id)", err1.msg)
-        @test occursin("not implemented", err1.msg)
+        fit1 = drm(bf(@formula(y ~ x + animal(1 + x | id))), Gaussian(); data = data, A = A)
+        @test _slope_kept(fit1)          # wave 9: completed, not refused, not silently dropped
 
         err2 = try
             drm(bf(@formula(y ~ x + animal(0 + x | id))), Gaussian(); data = data, A = A)
@@ -185,15 +171,8 @@ import Distributions
         y = 0.2 .+ 0.4 .* x .+ 0.3 .* randn(n)
         data = (; y, x, site)
 
-        err1 = try
-            drm(bf(@formula(y ~ x + spatial(1 + x | site))), Gaussian(); data = data, coords = coords)
-            nothing
-        catch e
-            e
-        end
-        @test err1 isa ArgumentError
-        @test occursin("spatial(1 + x | site)", err1.msg)
-        @test occursin("not implemented", err1.msg)
+        fit1 = drm(bf(@formula(y ~ x + spatial(1 + x | site))), Gaussian(); data = data, coords = coords)
+        @test _slope_kept(fit1)          # wave 9: completed, not refused, not silently dropped
 
         # Bare `x` (no explicit `0 +`) — the coordinator's own example shape.
         err2 = try

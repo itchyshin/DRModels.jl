@@ -1,0 +1,61 @@
+{
+  "source_sha256": "a30e347285f925af2e128ed6350fafe4d6b9035668444606bfa2fcea13e26653",
+  "julia_version": "1.10.10",
+  "status": "PASS",
+  "shards": [
+    {
+      "shard": 1,
+      "files": 70,
+      "exit": 0,
+      "elapsed_seconds": 1095
+    },
+    {
+      "shard": 2,
+      "files": 70,
+      "exit": 0,
+      "elapsed_seconds": 1403
+    },
+    {
+      "shard": 3,
+      "files": 69,
+      "exit": 0,
+      "elapsed_seconds": 819
+    },
+    {
+      "shard": 4,
+      "files": 69,
+      "exit": 0,
+      "elapsed_seconds": 7891
+    },
+    {
+      "shard": 5,
+      "files": 69,
+      "exit": 0,
+      "elapsed_seconds": 1198
+    },
+    {
+      "shard": 6,
+      "files": 69,
+      "exit": 0,
+      "elapsed_seconds": 1107
+    },
+    {
+      "shard": 7,
+      "files": 69,
+      "exit": 0,
+      "elapsed_seconds": 1574
+    },
+    {
+      "shard": 8,
+      "files": 69,
+      "exit": 0,
+      "elapsed_seconds": 1375
+    }
+  ],
+  "selected_files": 554,
+  "wall_seconds": 7891,
+  "crossed_tweedie_file_seconds": 6820.024968272,
+  "jet": "executed on every shard",
+  "opt_in_parity": "off",
+  "no_new_exclusions_or_tolerance_changes": true
+}
