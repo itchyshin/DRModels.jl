@@ -1,0 +1,1 @@
+- **DRMControl `maxit` / `start` / `multi_start` on random-effect ML routes (#1219).** Preflight no longer refuses these fields on models with random or structured terms; fitters that call `_ctl_optimize` / `_ctl_optimize_nll` honour them and `control_info(fit)` records each start, like drmTMB's `drm_control(multi_start =)` on mixed models.

@@ -455,7 +455,7 @@ function _fit_student_ranef(fam::Student, y, Xμ, Xσ, Xν, gidx, G, nmμ, nmσ,
     θ0[pμ+1] = log(std(y - Xμ * βμ0) + eps())        # σ init
     θ0[pμ+pσ+1] = log(10.0)                           # ν init (mildly heavy-tailed)
     θ0[pμ+pσ+pν+1] = log(0.5)                         # σ_b init
-    res = Optim.optimize(nll, θ0, Optim.LBFGS(), Optim.Options(g_tol = g_tol); autodiff = :forward)
+    res = _ctl_optimize_nll(nll, θ0; g_tol = g_tol)
     θ̂ = Optim.minimizer(res)
     # #961: a non-finite Hessian on finite data is a degenerate fit, not a crash.
     V, hess_finite = _vcov_from_hessian_checked(ForwardDiff.hessian(nll, θ̂),

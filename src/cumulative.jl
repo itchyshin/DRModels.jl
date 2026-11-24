@@ -474,7 +474,7 @@ function _fit_cumulative_sd_regression(fam::CumulativeLogit, y::Vector{Int}, Xμ
     θ0 = zeros(pμ + nc + psd)
     θ0[(pμ+1):(pμ+nc)] = _cumulative_cut_init(y, K, n)
     θ0[(pμ+nc+1):end] .= Zg \ fill(log(0.5), G)
-    res = Optim.optimize(nll, θ0, Optim.LBFGS(), Optim.Options(g_tol = g_tol); autodiff = :forward)
+    res = _ctl_optimize_nll(nll, θ0; g_tol = g_tol)
     θ̂ = Optim.minimizer(res)
     V = se ? _vcov_from_hessian(ForwardDiff.hessian(nll, θ̂)) :
              fill(NaN, length(θ̂), length(θ̂))
@@ -580,7 +580,7 @@ function _fit_cumulative_ranef(fam::CumulativeLogit, y::Vector{Int}, Xμ, K, gid
     θ0 = zeros(pμ + nc + 1)
     θ0[(pμ+1):(pμ+nc)] = _cumulative_cut_init(y, K, n)
     θ0[pμ+nc+1] = log(0.5)             # σ_b
-    res = Optim.optimize(nll, θ0, Optim.LBFGS(), Optim.Options(g_tol = g_tol); autodiff = :forward)
+    res = _ctl_optimize_nll(nll, θ0; g_tol = g_tol)
     θ̂ = Optim.minimizer(res); V = _vcov_from_hessian(ForwardDiff.hessian(nll, θ̂))
     blocks = [:mu => 1:pμ, :cutpoints => (pμ+1):(pμ+nc), :resd => (pμ+nc+1):(pμ+nc+1)]
     names = [:mu => nmμ, :cutpoints => ["theta$k" for k in 1:nc], :resd => [String(grp)]]
@@ -617,7 +617,7 @@ function _fit_cumulative_slope_ranef(fam::CumulativeLogit, y::Vector{Int}, Xμ, 
     θ0 = zeros(pμ + nc + 1)
     θ0[(pμ+1):(pμ+nc)] = _cumulative_cut_init(y, K, n)
     θ0[pμ+nc+1] = log(0.5)             # σ_b
-    res = Optim.optimize(nll, θ0, Optim.LBFGS(), Optim.Options(g_tol = g_tol); autodiff = :forward)
+    res = _ctl_optimize_nll(nll, θ0; g_tol = g_tol)
     θ̂ = Optim.minimizer(res); V = _vcov_from_hessian(ForwardDiff.hessian(nll, θ̂))
     blocks = [:mu => 1:pμ, :cutpoints => (pμ+1):(pμ+nc), :resd => (pμ+nc+1):(pμ+nc+1)]
     names = [:mu => nmμ, :cutpoints => ["theta$k" for k in 1:nc], :resd => [String(grp)]]

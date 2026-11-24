@@ -758,7 +758,7 @@ function _fit_temporal_homtoep(fam::Gaussian, y, Xμ, Xσ, nmμ, nmσ, tt, lay, 
         θ0[1:pμ] .= βμ0
         θ0[iσ] = log(sqrt(v0))
         θ0[iκ] .= κ0
-        res = Optim.optimize(nll, θ0, Optim.LBFGS(), Optim.Options(g_tol = g_tol); autodiff = :forward)
+        res = _ctl_optimize_nll(nll, θ0; g_tol = g_tol)
         # #964: compare the objective re-evaluated at each minimizer; a bare
         # `Optim.minimum` can be stale after a failed line search.
         best = best === nothing ? res : _better_restart(nll, best, res)
