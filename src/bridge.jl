@@ -72,18 +72,24 @@ function drm_bridge(; formula, family::AbstractString, data, tree = nothing,
     A = _bridge_align_labelled(A, A_labels, dat, structured_group, "A")
     bundle, dat, labels = _bridge_formula(formula, family, dat; labels = true)
     fam = _bridge_family(family)
-    opts = _bridge_options(options)
-    if haskey(opts, :priors)
+    opts = _bridge_prior_safe_options(options)
+    version = _bridge_prior_contract(opts)
+    v2_records = version === :v2 ? _bridge_enable_priors_v2!(opts, bundle, fam, dat, labels) : nothing
+    v3_records = version === :v3 ? _bridge_enable_priors_v3!(opts, bundle, fam, dat, labels) : nothing
+    if version === :v1 && haskey(opts, :priors)
         haskey(opts, :prior_expected) || throw(ArgumentError("drm_bridge: priors require prior_expected"))
         opts[:priors] = _bridge_prepare_fixed_priors(bundle, fam, labels, opts[:priors], opts[:prior_expected])
-    elseif haskey(opts, :prior_expected)
+    elseif version === :v1 && haskey(opts, :prior_expected)
         throw(ArgumentError("drm_bridge: prior_expected requires priors"))
     end
     coef_labels = get(opts, :coef_labels, nothing)
     fit = _bridge_fit(bundle, fam, dat; tree = tree, K = K, A = A,
                       Ainv = Ainv, coords = coords, options = opts)
-    return _bridge_flatten(fit; family = String(family), newdata = newdata,
-                           labels = labels, coef_labels = coef_labels)
+    out = _bridge_flatten(fit; family = String(family), newdata = newdata,
+                          labels = labels, coef_labels = coef_labels)
+    v2_records === nothing || _bridge_attach_priors_v2!(out, fit, v2_records, labels)
+    v3_records === nothing || _bridge_attach_priors_v3!(out, fit, v3_records, labels)
+    return out
 end
 
 # Align a labelled structured matrix to the first-appearance order of the data's
@@ -386,7 +392,23 @@ function drm_bridge_inference(; formula, family::AbstractString, data,
     dat = _bridge_data(data)
     bundle, dat, labels = _bridge_formula(formula, family, dat; labels = true)
     fam = _bridge_family(family)
-    opts = _bridge_options(options)
+    opts = _bridge_prior_safe_options(options)
+    version = _bridge_prior_contract(opts)
+    if version === :v1 && haskey(opts, :priors)
+        input = opts[:priors]
+        typed = input isa AbstractVector && (eltype(input) <: AbstractDrmPrior ||
+            (!isempty(input) && all(p -> p isa AbstractDrmPrior, input)))
+        if !typed
+            haskey(opts, :prior_expected) || throw(ArgumentError("drm_bridge: priors require prior_expected"))
+            opts[:priors] = _bridge_prepare_fixed_priors(bundle, fam, labels, input, opts[:prior_expected])
+        elseif haskey(opts, :prior_expected)
+            throw(ArgumentError("drm_bridge_inference: prior_expected requires serialized prior rows"))
+        end
+    elseif version === :v1 && haskey(opts, :prior_expected)
+        throw(ArgumentError("drm_bridge: prior_expected requires priors"))
+    elseif version in (:v2, :v3)
+        throw(ArgumentError("drm_bridge_inference: SD-prior inference is not supported"))
+    end
     bridge_method = lowercase(strip(String(method)))
     is_biv = bundle isa BivariateDrmFormula
     target = parm === nothing ? nothing : _bridge_parse_inference_parm(parm)
@@ -775,6 +797,221 @@ function _bridge_options(options)
     throw(ArgumentError("drm_bridge: `options` must be a dictionary or named tuple"))
 end
 
+function _bridge_v2_checked_options(input)
+    (input isa NamedTuple || input isa AbstractDict) || throw(ArgumentError("drm_bridge: invalid v2 record"))
+    keys_normalized = String[String(k) for k in keys(input)]
+    length(unique(keys_normalized)) == length(keys_normalized) || throw(ArgumentError("drm_bridge: duplicate v2 field"))
+    return _bridge_options(input)
+end
+
+function _bridge_prior_safe_options(input)
+    opts = _bridge_options(input)
+    if any(k -> haskey(opts, k), (:prior_contract, :priors_v2, :prior_expected_v2, :priors_v3, :prior_expected_v3))
+        return _bridge_v2_checked_options(input)
+    end
+    return opts
+end
+
+# Separate the v1 and v2 wire protocols before any fit is attempted.
+function _bridge_prior_contract(opts)
+    v1 = any(k -> haskey(opts, k), (:priors, :prior_expected))
+    has2 = any(k -> haskey(opts,k), (:priors_v2, :prior_expected_v2))
+    has3 = any(k -> haskey(opts,k), (:priors_v3, :prior_expected_v3))
+    v1 && (has2 || has3 || haskey(opts,:prior_contract)) && throw(ArgumentError("drm_bridge: prior protocol keys cannot be combined"))
+    has2 && has3 && throw(ArgumentError("drm_bridge: prior protocol keys cannot be combined"))
+    v1 && return :v1
+    !(has2 || has3 || haskey(opts,:prior_contract)) && return :none
+    contract = get(opts,:prior_contract,nothing)
+    version = contract == "parameter_priors_v2" ? :v2 : contract == "parameter_priors_v3" ? :v3 : throw(ArgumentError("drm_bridge: unknown prior contract"))
+    ks = version === :v2 ? (:priors_v2,:prior_expected_v2) : (:priors_v3,:prior_expected_v3)
+    all(k -> haskey(opts,k),ks) && ((version === :v2 && !has3) || (version === :v3 && !has2)) || throw(ArgumentError("drm_bridge: incomplete or mixed prior request"))
+    for k in ks
+        value = opts[k]
+        value isa AbstractVector && !isempty(value) || throw(ArgumentError("drm_bridge: $k must be a nonempty vector"))
+    end
+    return version
+end
+
+function _bridge_enable_priors_v3!(opts, form, fam, data, labels)
+    uppercase(String(get(opts, :method, "ML"))) == "ML" || throw(ArgumentError("drm_bridge: v3 requires ML"))
+    _bridge_reject_duplicate_intercept_source(labels.formula_parts)
+    records = opts[:prior_expected_v3]
+    priors = _bridge_prepare_priors_v2(form, fam, data, labels, opts[:priors_v3], records; version=:v3)
+    for k in (:prior_contract, :priors_v3, :prior_expected_v3)
+        delete!(opts, k)
+    end
+    opts[:priors] = priors
+    records
+end
+
+function _bridge_attach_priors_v3!(out, fit, records, labels)
+    fit.penalty.kind === :sd_priors && fit.estim_method === :MAP || throw(ArgumentError("drm_bridge: v3 backend did not fit SD priors"))
+    names, values, _, _ = _bridge_coef_vector(fit; labels=labels)
+    blocks = Dict(fit.blocks); coefs = Dict(fit.coefnames)
+    haskey(blocks,:resd) && haskey(coefs,:resd) && length(blocks[:resd]) == 2 && length(coefs[:resd]) == 2 || throw(ArgumentError("drm_bridge: v3 expected two SD working coordinates"))
+    for (i, group) in zip(blocks[:resd],coefs[:resd])
+        names[i] = "eta_sd[mu|$(group)|(Intercept)]"
+    end
+    length(unique(names)) == length(names) || throw(ArgumentError("drm_bridge: duplicate v3 working coordinate"))
+    rows = fit.penalty.sd_rows
+    expected = [_bridge_v2_checked_options(r) for r in records if get(_bridge_v2_checked_options(r), :class, nothing) == "ranef_sd"]
+    length(rows) == length(expected) || throw(ArgumentError("drm_bridge: fitted SD targets differ from v3 records"))
+    for (row, rec) in zip(rows,expected)
+        name = "eta_sd[mu|$(row.group)|$(row.coef)]"
+        row.class === :random_effect_sd && row.dpar === :mu && row.block === :iid_intercept && row.scale === :sd &&
+            row.index in blocks[:resd] && names[row.index] == name &&
+            get(rec,:dpar,nothing) == String(row.dpar) && get(rec,:group,nothing) == row.group &&
+            get(rec,:coef,nothing) == row.coef && get(rec,:block_kind,nothing) == "iid_random_intercept" &&
+            get(rec,:measure,nothing) == "natural_sd" && get(rec,:shape,nothing) == row.shape && get(rec,:rate,nothing) == row.rate ||
+            throw(ArgumentError("drm_bridge: fitted SD target does not match v3 record or working coordinate"))
+    end
+    data_nll = fit.penalty.data_nll
+    fixed_nll = t -> _fixed_prior_value(fit.penalty.rows,t)
+    sd_nll = t -> sum((_sd_prior_value(row,t) for row in rows); init=zero(eltype(t)))
+    theta=fit.theta
+    out["prior_contract"] = "parameter_priors_v3"
+    out["resolved_priors_v3"] = records
+    out["working_coordinates"] = names; out["working_values"] = values
+    out["data_nll"] = data_nll(theta); out["data_logLik"] = -out["data_nll"]
+    out["fixed_prior_penalty"] = fixed_nll(theta); out["sd_prior_penalty"] = sd_nll(theta)
+    # JuliaCall maps Vector{Any} of dictionaries to an R list; a concretely
+    # typed Vector{Dict} remains an opaque JuliaObject in JuliaCall 1.10.
+    out["sd_prior_contributions"] = Any[Dict("dpar"=>String(row.dpar),"group"=>row.group,"coef"=>row.coef,"penalty"=>_sd_prior_value(row,theta)) for row in rows]
+    out["penalized_objective"] = fit.nll(theta)
+    out["data_gradient"] = ForwardDiff.gradient(data_nll,theta)
+    out["fixed_prior_gradient"] = ForwardDiff.gradient(fixed_nll,theta)
+    out["sd_prior_gradient"] = ForwardDiff.gradient(sd_nll,theta)
+    out["penalized_gradient"] = ForwardDiff.gradient(fit.nll,theta)
+    out["estim_method"] = "MAP"; out["infocrit_basis"] = "unavailable"
+    out
+end
+
+function _bridge_enable_priors_v2!(opts, form, fam, data, labels)
+    uppercase(String(get(opts, :method, "ML"))) == "ML" || throw(ArgumentError("drm_bridge: v2 requires ML"))
+    _bridge_reject_duplicate_intercept_source(labels.formula_parts)
+    records = opts[:prior_expected_v2]
+    priors = _bridge_prepare_priors_v2(form, fam, data, labels, opts[:priors_v2], records)
+    for k in (:prior_contract, :priors_v2, :prior_expected_v2)
+        delete!(opts, k)
+    end
+    opts[:priors] = priors
+    return records
+end
+
+function _bridge_attach_priors_v2!(out, fit, records, labels)
+    fit.penalty.kind === :sd_priors && fit.estim_method === :MAP || throw(ArgumentError("drm_bridge: v2 backend did not fit an SD prior"))
+    names, values, _, _ = _bridge_coef_vector(fit; labels=labels)
+    row = fit.penalty.sd_row
+    row.index == length(values) || throw(ArgumentError("drm_bridge: unexpected SD working coordinate"))
+    names[end] = "eta_sd[$(row.dpar)|$(row.group)|$(row.coef)]"
+    length(unique(names)) == length(names) || throw(ArgumentError("drm_bridge: duplicate v2 working coordinate"))
+    data_nll = fit.penalty.data_nll
+    fixed_nll = t -> _fixed_prior_value(fit.penalty.rows, t)
+    sd_nll = t -> _sd_prior_value(row, t)
+    theta = fit.theta
+    out["prior_contract"] = "parameter_priors_v2"
+    out["resolved_priors_v2"] = records
+    out["working_coordinates"] = names
+    out["working_values"] = values
+    out["data_nll"] = data_nll(theta)
+    out["data_logLik"] = -out["data_nll"]
+    out["fixed_prior_penalty"] = fixed_nll(theta)
+    out["sd_prior_penalty"] = sd_nll(theta)
+    out["penalized_objective"] = fit.nll(theta)
+    out["data_gradient"] = ForwardDiff.gradient(data_nll, theta)
+    out["fixed_prior_gradient"] = ForwardDiff.gradient(fixed_nll, theta)
+    out["sd_prior_gradient"] = ForwardDiff.gradient(sd_nll, theta)
+    out["penalized_gradient"] = ForwardDiff.gradient(fit.nll, theta)
+    out["estim_method"] = "MAP"
+    out["infocrit_basis"] = "unavailable"
+    return out
+end
+
+function _bridge_prepare_priors_v2(form, fam, data, labels, prior_input, expected_input; version=:v2)
+    fam isa Gaussian || throw(ArgumentError("drm_bridge: v2 requires Gaussian"))
+    prior_input isa AbstractVector && !isempty(prior_input) && expected_input isa AbstractVector && !isempty(expected_input) ||
+        throw(ArgumentError("drm_bridge: v2 records must be nonempty vectors"))
+    specs = [_bridge_v2_checked_options(p) for p in prior_input]
+    expected = [_bridge_v2_checked_options(p) for p in expected_input]
+    groups = [Dict{Symbol,Any}[] for _ in specs]
+    last_index = 0
+    for row in expected
+        for key in (:mean, :sd, :lambda, :shape, :rate)
+            if haskey(row, key)
+                value = row[key]
+                value isa Real && !(value isa Bool) || throw(ArgumentError("drm_bridge: invalid v2 record number $key"))
+                converted = try Float64(value) catch; throw(ArgumentError("drm_bridge: invalid v2 record number $key")); end
+                isfinite(converted) || throw(ArgumentError("drm_bridge: invalid v2 record number $key"))
+                row[key] = converted
+            end
+        end
+        for key in (:kind, :class, :dpar, :coef, :group, :block_kind, :measure)
+            if haskey(row, key)
+                row[key] isa AbstractString && !isempty(row[key]) || throw(ArgumentError("drm_bridge: invalid v2 record string $key"))
+            end
+        end
+        idx = get(row, :spec_index, nothing)
+        idx isa Integer && !(idx isa Bool) && 1 <= idx <= length(specs) && idx >= last_index ||
+            throw(ArgumentError("drm_bridge: invalid v2 spec index/order"))
+        push!(groups[idx], row); last_index = idx
+    end
+    all(!isempty, groups) || throw(ArgumentError("drm_bridge: missing v2 expanded records"))
+    priors = Any[]; n_sd = 0
+    for (i, p) in enumerate(specs)
+        kind = get(p, :kind, nothing)
+        for key in (:kind, :dpar, :coef, :group, :block_kind, :measure, :intercept)
+            if haskey(p, key)
+                p[key] isa AbstractString && !isempty(p[key]) || throw(ArgumentError("drm_bridge: invalid v2 string field $key"))
+            end
+        end
+        for key in (:mean, :sd, :lambda, :shape, :rate)
+            if haskey(p, key)
+                value = p[key]
+                value isa Real && !(value isa Bool) || throw(ArgumentError("drm_bridge: invalid v2 numeric field $key"))
+                converted = try Float64(value) catch; throw(ArgumentError("drm_bridge: invalid v2 numeric field $key")); end
+                isfinite(converted) || throw(ArgumentError("drm_bridge: invalid v2 numeric field $key"))
+                p[key] = converted
+            end
+        end
+        if kind in ("fixed_normal", "fixed_ridge")
+            c = get(p, :coef, nothing)
+            c isa AbstractString && !isempty(c) || throw(ArgumentError("drm_bridge: invalid fixed selector"))
+            keys_needed = kind == "fixed_normal" ? [:kind, :dpar, :coef, :mean, :sd] : [:kind, :dpar, :coef, :lambda]
+            c == "all" && push!(keys_needed, :intercept)
+            Set(keys(p)) == Set(keys_needed) || throw(ArgumentError("drm_bridge: invalid fixed specification fields"))
+            c == "all" && !(p[:intercept] in ("include", "exclude")) && throw(ArgumentError("drm_bridge: invalid intercept rule"))
+            v1 = copy(p); v1[:kind] = kind == "fixed_normal" ? "normal" : "ridge"
+            v1expected = Dict{Symbol,Any}[]
+            for row in groups[i]
+                extra = kind == "fixed_normal" ? [:mean, :sd] : [:lambda]
+                Set(keys(row)) == Set(vcat([:spec_index, :kind, :class, :dpar, :coef], extra)) || throw(ArgumentError("drm_bridge: invalid fixed record fields"))
+                get(row, :kind, nothing) == kind && get(row, :class, nothing) == "fixed" && get(row, :dpar, nothing) == p[:dpar] && all(k -> row[k] == p[k], extra) ||
+                    throw(ArgumentError("drm_bridge: fixed prior record mismatch"))
+                push!(v1expected, Dict(:dpar=>row[:dpar], :coef=>row[:coef]))
+            end
+            append!(priors, _bridge_prepare_fixed_priors(form, fam, labels, [v1], v1expected))
+        elseif kind == "ranef_sd_gamma"
+            n_sd += 1
+            keys_needed = [:kind, :dpar, :group, :coef, :block_kind, :shape, :rate, :measure]
+            Set(keys(p)) == Set(keys_needed) || throw(ArgumentError("drm_bridge: invalid SD specification fields"))
+            p[:dpar] == "mu" && p[:coef] == "(Intercept)" && p[:block_kind] == "iid_random_intercept" && p[:measure] == "natural_sd" && p[:group] isa AbstractString && !isempty(p[:group]) ||
+                throw(ArgumentError("drm_bridge: invalid SD target"))
+            length(groups[i]) == 1 || throw(ArgumentError("drm_bridge: SD prior must resolve once"))
+            canonical = merge(copy(p), Dict(:spec_index=>i, :class=>"ranef_sd"))
+            groups[i][1] == canonical || throw(ArgumentError("drm_bridge: SD prior record mismatch"))
+            push!(priors, drm_prior_sd_gamma(dpar=p[:dpar], group=p[:group], coef=p[:coef], shape=p[:shape], rate=p[:rate]))
+        else
+            throw(ArgumentError("drm_bridge: unknown v2 prior kind"))
+        end
+    end
+    (version === :v2 ? n_sd == 1 : 1 <= n_sd <= 2) || throw(ArgumentError("drm_bridge: invalid number of SD priors"))
+    combined = drm_priors(priors...)
+    resolve_priors(form, fam; data=data, priors=combined)
+    _, re, _, _ = _split_ranef(Dict(form.forms)[:mu])
+    length(re) == (version === :v2 ? 1 : 2) || throw(ArgumentError("drm_bridge: prior protocol does not match random-intercept count"))
+    return combined
+end
+
 function _bridge_prepare_fixed_priors(form, fam, labels, prior_input, expected_input)
     form isa DrmFormula && (fam isa Gaussian || (fam isa Binomial && fam.link === :logit)) ||
         throw(ArgumentError("drm_bridge: fixed priors require univariate Gaussian or binomial logit"))
@@ -948,6 +1185,9 @@ struct _BridgeFormulaLabels
     # while the R source deliberately differs only by redundant parentheses.
     # Keep those labels per fitted formula parameter, never in a global map.
     function_labels::Dict{Symbol,Dict{String,String}}
+    # Preserve raw bridge input: StatsModels drops identical repeated terms
+    # before the v2 target resolver can inspect the resulting FormulaTerm.
+    formula_parts::Vector{String}
 end
 
 function _bridge_formula(formula, family::AbstractString, data; labels::Bool = false)
@@ -1040,8 +1280,51 @@ function _bridge_formula(formula, family::AbstractString, data; labels::Bool = f
 
     augmented = isempty(ctx.extra) ? data : merge(_bridge_ctx_cols!(ctx), NamedTuple(ctx.extra))
     return labels ? (bundle, augmented,
-                     _BridgeFormulaLabels(augmented, copy(ctx.labels), by_param)) :
+                     _BridgeFormulaLabels(augmented, copy(ctx.labels), by_param, String.(parts))) :
                     (bundle, augmented)
+end
+
+# A v2 SD request must not silently simplify repeated or algebraically
+# transformed random terms into one block. Inspect raw syntax without
+# evaluating it. Ordinary v1/no-prior calls never invoke this.
+function _bridge_reject_duplicate_intercept_source(parts)
+    seen = Set{Symbol}()
+    is_intercept_bar(e) = e isa Expr && e.head === :call && length(e.args) == 3 &&
+        e.args[1] === :| && e.args[2] isa Real && !(e.args[2] isa Bool) &&
+        e.args[2] == 1 && e.args[3] isa Symbol
+    # Descend through formula algebra only. Function arguments are fixed
+    # expressions in the bridge parser, where `|` can mean logical or
+    # bitwise OR, including an expression spelled `1 | site`.
+    formula_algebra = (:+, :-, :*, :&, :/, :^)
+    has_bar(e) = e isa Expr && (is_intercept_bar(e) ||
+        (e.head === :call && !isempty(e.args) && e.args[1] in formula_algebra && any(has_bar, e.args[2:end])))
+    function visit(e)
+        e isa Expr || return
+        has_bar(e) || return
+        if is_intercept_bar(e)
+            group = e.args[3]
+            group in seen && throw(ArgumentError("drm_bridge: v2 SD prior does not admit duplicated random intercept terms for $group"))
+            push!(seen, group)
+            return
+        end
+        # Subtracting fixed terms (including `- 1`) does not alter a random
+        # block. Removing a random term is refused before simplification.
+        if e.head === :call && length(e.args) == 3 && e.args[1] === :- && !has_bar(e.args[3])
+            visit(e.args[2])
+            return
+        end
+        e.head === :call && !isempty(e.args) && e.args[1] === :+ ||
+            throw(ArgumentError("drm_bridge: v2 SD prior does not admit random-effect algebra or transformed random terms"))
+        foreach(visit, e.args[2:end])
+    end
+    for part in parts
+        expr = Meta.parse(_bridge_translate_r_ops(part))
+        expr isa Expr && expr.head === :(=) && (expr = expr.args[2])
+        expr isa Expr && expr.head === :call && length(expr.args) == 3 && expr.args[1] === :~ ||
+            throw(ArgumentError("drm_bridge: could not parse formula specification"))
+        visit(expr.args[3])
+    end
+    return nothing
 end
 
 # Render one keyed part as a parsable string. Location-scale-scale entries
@@ -1946,7 +2229,7 @@ function _bridge_flatten(fit; family::AbstractString, newdata = nothing,
         # these slots on its side (b34).
         "fitted" => _bridge_plain(fitted_vals),
         "residuals" => _bridge_plain(residual_vals),
-        "sigma" => _bridge_plain(sigma(fit)),
+        "sigma" => _bridge_plain(_sigma_all_rows(fit)),   # all input rows, as `fitted` above (`sigma(fit)` is used rows)
         "corpairs" => _bridge_plain(corpairs(fit)),
         "dpars" => _bridge_dpars(fit),
     )
@@ -1996,8 +2279,13 @@ function _bridge_flatten(fit; family::AbstractString, newdata = nothing,
         length(g) == length(cnames) || error(
             "drm_bridge: internal error — gradient length $(length(g)) does not match " *
             "the $(length(cnames)) named coefficients; refusing to mislabel gradient entries.")
-        out["gradient"] = g
-        out["gradient_names"] = cnames
+        # A non-finite callback result is not a gradient (#1402). Omit the
+        # vector (and its names) rather than ship NaN/Inf. The length check
+        # above still refuses a mis-sized callback, finite or not.
+        if all(isfinite, g)
+            out["gradient"] = g
+            out["gradient_names"] = cnames
+        end
     end
     # Route-aware convergence diagnostics (#569): the Julia twin of `check_drm`,
     # reshaped for the R bridge. Kept as a nested "diagnostics" dict (rather
@@ -2005,12 +2293,30 @@ function _bridge_flatten(fit; family::AbstractString, newdata = nothing,
     # (see `bridge_diagnostics`'s docstring) stay self-contained and cannot be
     # confused with the top-level `"converged"`/`"iterations"` keys above,
     # which predate this and stay unchanged for backward compatibility.
-    # `grad_source` is ALSO echoed at the top level: it is the one field
-    # `R/julia-diagnostics.R`'s `drm_julia_gradient_source()` already reads off
-    # `object$bridge[["grad_source"]]` (the raw, un-nested payload) to attribute
-    # the "gradient"/"gradient_names" pair above to a producer.
+    #
+    # Top-level `"grad_source"` is the provenance of the `"gradient"` vector
+    # above, which drmTMB's `drm_julia_gradient_source()` reads off
+    # `object$bridge[["grad_source"]]`. That vector has one producer,
+    # `fit.nllgrad`, so the label is `"stored"` exactly when the vector is
+    # shipped. The nested `diagnostics["grad_source"]` is a different claim:
+    # which producer supplied the scalar `max_abs_grad` (`_check_max_abs_grad`).
+    # That scalar is `:locscale` when `nll` is a `LocScaleObjective` (checked
+    # first; analytic gradient in permuted order), and `:finite` or
+    # `:unavailable` when the stored callback's magnitude is non-finite and the
+    # finite-difference fallback runs — even if a non-finite `nllgrad` vector
+    # was evaluated above and then withheld. Copying the scalar label onto the
+    # vector is the contradiction this key must not make (#1402).
+    #
+    # With no finite vector: echo `"none"` or `"unavailable"` when the scalar
+    # source already says no gradient was produced; omit the key otherwise.
+    # A missing key is what drmTMB reports as `"unknown"`. `"forward"` (or
+    # `"locscale"` / `"finite"`) with no vector is the abort.
     bdiag = bridge_diagnostics(fit)
-    out["grad_source"] = String(bdiag.grad_source)
+    if haskey(out, "gradient")
+        out["grad_source"] = "stored"
+    elseif bdiag.grad_source in (:none, :unavailable)
+        out["grad_source"] = String(bdiag.grad_source)
+    end
     out["diagnostics"] = Dict{String,Any}(
         "route" => bdiag.route,
         "integrator" => String(bdiag.integrator),
@@ -2918,8 +3224,7 @@ function _bridge_dpars(fit::DrmFit)
     # Those are not response-distribution parameters and must not cross the
     # R bridge as fictitious dpars.
     for (k, v) in pairs(fit.scales)
-        (k in (:trials, :q2_restarts, :sd, :sd_group, :sd_group_index, :aghq_nodes) ||
-         startswith(String(k), "sdtarget_") || startswith(String(k), "cond_")) && continue
+        _scales_bookkeeping_key(k) && continue
         out[String(k)] = collect(float.(v))
     end
     if fit.family isa ZeroOneBeta && haskey(out, "beta_mu")
@@ -2941,8 +3246,10 @@ end
 values unchanged for every fit except a zero-inflated count fit, whose mean is
 replaced by drmTMB's unconditional one (below).
 
-**Not drmTMB's values for every fit.** DRModels.jl's `fitted` is population
-level (`Xβ̂`, mapped to E[Y] since #1282) for every model. drmTMB's `fitted()`, and
+**Not drmTMB's values for every fit.** The payload is population level (`Xβ̂`,
+mapped to E[Y] since #1282) for every model, i.e. `fitted(fit; re = :zero)`.
+The native `fitted(fit)` is conditional by default (it adds the modes, as drmTMB's
+does); this function does not call it, so the payload is unchanged. drmTMB's `fitted()`, and
 so its response residuals, adds the fitted modes whenever the mean has a
 random or structured effect: ordinary random effects, phylogenetic and
 covariance-block effects, and AR1 / OU `temporal()` paths (drmTMB 07d1612ea,
@@ -2984,17 +3291,23 @@ Selection is `haskey(fit.scales, :zi)`, which is true for exactly the two
 zero-inflated count fits (`src/poisson.jl` `_fit_poisson_zi` stores
 `scales[:zi]`; `src/negbinomial.jl` `_fit_negbin2_zi` stores `scales[:sigma]`
 and `scales[:zi]`). Hurdle fits store `scales[:hu]` instead and are
-deliberately NOT repaired here: drmTMB's hurdle mean divides by `1 - P(0)` as
-well as scaling, and that route carries no bridge parity receipt yet.
+repaired the same way (drmTMB's hurdle mean divides by `1 - P(0)` as well as
+scaling), through `_fitted_mean`, which is the E[Y] formula `fitted(fit)` uses.
 """
 function _bridge_fitted_marginal(fit::DrmFit)
     # Built on the stored component mean, not `fitted(fit)`: `fitted` is E[Y] for
     # the LogNormal, zero-inflated, hurdle and truncated fits, and the repair
     # below (and the unrepaired fall-through) is the bridge's own contract.
-    haskey(fit.means, :mu) || return (fitted(fit), residuals(fit))
+    haskey(fit.means, :mu) || return (fitted(fit; re = :zero), residuals(fit; re = :zero))
     fit_vals = fit.means[:mu]
-    fit_vals isa AbstractVector || return (fit_vals, residuals(fit))
+    fit_vals isa AbstractVector || return (fit_vals, residuals(fit; re = :zero))
     plain_resid = fit.obs[:mu] .- fit_vals
+    if haskey(fit.scales, :hu) && haskey(fit.obs, :mu)
+        # Hurdle count fit: drmTMB's fitted() is E[Y] = (1 - hu) * mu / (1 - P(0)).
+        marginal = collect(float.(_fitted_mean(fit)))
+        length(marginal) == length(fit.obs[:mu]) &&
+            return (marginal, collect(float.(fit.obs[:mu])) .- marginal)
+    end
     (haskey(fit.scales, :zi) && haskey(fit.obs, :mu)) || return (fit_vals, plain_resid)
     pz = collect(float.(fit.scales[:zi]))
     mu = collect(float.(fit_vals))

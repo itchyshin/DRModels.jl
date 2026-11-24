@@ -174,6 +174,115 @@ jobs:
           echo "aggregate result of the test matrix: ${{ needs.test.result }}"
           test "${{ needs.test.result }}" = "success"
 
+  # Julia 1.12 focused check. INFORMATIONAL: it is deliberately NOT in the
+  # `needs` of `ci-ok`, and the job has `continue-on-error: true`, so a failure
+  # here neither blocks a merge nor turns the check-runs red for merge-strict's
+  # all-checks-green gate. A failure is NOT to be ignored: whoever sees a red
+  # step in this job must report it as a GitHub issue (owner decision P32).
+  #
+  # Why it exists: Julia 1.12.6 and 1.12.7 compile a loop in
+  # `_coerce_response_column` wrongly on some CPUs (AMD Zen 4 and Zen 5), so a
+  # `Union{Missing,Int}` response lost rows silently (PR #1326). The sharded
+  # matrix above runs Julia 1 (now 1.13) on pull requests and 1.10 nightly,
+  # never 1.12. This job runs a short list of files on 1.12 instead of the
+  # whole suite: the response-mask test, the missing-data tests, and a small
+  # smoke set with one file per main route family.
+  #
+  # Known gap, kept out on purpose: on Julia 1.12.7 `test_profile_sigma_a.jl`
+  # (lines 54 and 56) and `test_postfit_conditional_residuals.jl` (line 367)
+  # fail on Totoro's CPU from a separate code generation problem (the first
+  # passes with `-C generic`). They are NOT in the list below, and `-C generic`
+  # is NOT set here.
+  #
+  # Run time, measured on Totoro with Julia 1.12.7 (a loaded machine, one
+  # process): about 9.6 minutes of tests for the 53 files, 4221 checks, plus
+  # a few minutes for package precompilation on a cold cache. The job stops
+  # after 30 minutes.
+  #
+  # Same trigger rules as `test`: pull_request and workflow_dispatch only
+  # (no push trigger, and no nightly run: the schedule leg is skipped).
+  # Files are run in one process by the same plain `include` loop that the
+  # release-platform job uses; the repository has no other runner for a
+  # chosen file list (`DRM_TEST_SHARD` selects by position, and
+  # `test/shard_by_time.jl` always adds unlisted files).
+  # Note: this is `julia -e`, not `Pkg.test()`, so bounds checks are NOT forced
+  # on (Pkg.test passes `--check-bounds=yes`, which also hid the row-loss fault).
+  julia-1-12:
+    name: Julia 1.12 - focused list (informational)
+    needs: changes
+    if: needs.changes.outputs.code == 'true' && github.event_name != 'schedule'
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    timeout-minutes: 30
+    env:
+      JULIA_NUM_THREADS: '1'
+      OPENBLAS_NUM_THREADS: '1'
+      OMP_NUM_THREADS: '1'
+      DRM_CI_FILES: >-
+        test_response_mask_j112.jl
+        test_missing_response.jl
+        test_missing_response_nongaussian.jl
+        test_missing_listwise.jl
+        test_missing_response_bivariate.jl
+        test_bridge_response_mask_inference.jl
+        test_1089_missing_rows_dropped.jl
+        test_bivariate_missing_default.jl
+        test_nobs_rowset_guard.jl
+        test_1112_missing_group_label.jl
+        test_lss_missing_response.jl
+        test_gaussian_core.jl
+        test_gaussian_ranef.jl
+        test_gaussian_bivariate.jl
+        test_locscale_fit.jl
+        test_poisson.jl
+        test_nbinom2.jl
+        test_binomial.jl
+        test_gamma.jl
+        test_beta.jl
+        test_student.jl
+        test_lognormal.jl
+        test_cumulative.jl
+        test_zeroonebeta.jl
+        test_tweedie.jl
+        test_hurdle.jl
+        test_betabinomial.jl
+        test_skewnormal.jl
+        test_truncated_poisson.jl
+        test_zi.jl
+        test_poisson_re.jl
+        test_gaussian_structured.jl
+        test_temporal_ar1.jl
+        test_reml.jl
+        test_meta.jl
+        test_bridge.jl
+        test_predict.jl
+        test_simulate.jl
+        test_profile_ci.jl
+        test_bootstrap.jl
+        test_inference.jl
+        test_postfit.jl
+        test_summary.jl
+        test_docstring_formula_examples.jl
+        test_985_reference_docs_blocks.jl
+        test_beta_re.jl
+        test_gamma_re.jl
+        test_gaussian_spatial.jl
+        test_phylo_penalty.jl
+        test_cumlogit_ranef.jl
+        test_zeroonebeta_mean_ri.jl
+        test_variational.jl
+        test_nbinom2_re.jl
+    steps:
+      - uses: actions/checkout@v6
+      - uses: julia-actions/setup-julia@v3
+        with:
+          version: '1.12'
+      - uses: julia-actions/cache@v2
+      - name: Run the focused test list
+        shell: bash
+        run: |
+          julia --project=test -e 'using Pkg; Pkg.develop(path=pwd()); Pkg.instantiate(); using DRModels, Test, LinearAlgebra, SparseArrays, Random; BLAS.set_num_threads(1); println("Julia ", VERSION); cd("test"); files = split(ENV["DRM_CI_FILES"]); failed = String[]; @testset "Julia 1.12 focused list" begin for f in files; t0 = time(); println("RUN ", f); flush(stdout); try include(f) catch err; push!(failed, f); println("FILEFAIL ", f, ": ", sprint(showerror, err)); end; println("TIME ", f, " ", round(time() - t0; digits = 1), " s"); flush(stdout); end; end; isempty(failed) || (println("FAILED FILES: ", join(failed, " ")); exit(1))'
+
   # Codecov upload is a separate, NON-required job. Do not add `codecov` to
   # branch protection: an OIDC/auth miss must not block `ci-ok`. One upload
   # combines the four Julia-1 Linux shard lcov files so shards are merged

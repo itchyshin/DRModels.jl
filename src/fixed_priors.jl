@@ -1,5 +1,10 @@
+using SpecialFunctions: loggamma
+
+"Supertype of supported distributional-model prior specifications."
+abstract type AbstractDrmPrior end
+
 "A normal or ridge penalty on coefficients of one distributional predictor."
-struct FixedPrior
+struct FixedPrior <: AbstractDrmPrior
     kind::Symbol
     dpar::Symbol
     coef::String
@@ -8,6 +13,62 @@ struct FixedPrior
     precision::Float64
     constant::Float64
 end
+
+"A Gamma density with respect to a named random-intercept SD."
+struct SDGammaPrior <: AbstractDrmPrior
+    dpar::Symbol
+    group::String
+    coef::String
+    shape::Float64
+    rate::Float64
+end
+
+"""`drm_prior_sd_gamma(; dpar, group, coef="(Intercept)", shape, rate)` specifies a Gamma density on the natural random-intercept SD (shape > 1, rate > 0)."""
+function drm_prior_sd_gamma(; dpar, group, coef="(Intercept)", shape, rate)
+    d = Symbol(dpar); g = String(group); c = String(coef)
+    d === :mu || throw(ArgumentError("SD Gamma prior requires dpar=mu"))
+    isempty(g) && throw(ArgumentError("SD Gamma prior requires an exact group name"))
+    c == "(Intercept)" || throw(ArgumentError("SD Gamma prior supports only coefficient (Intercept)"))
+    shape isa Real && isfinite(shape) && shape > 1 || throw(ArgumentError("SD Gamma prior shape must be finite and greater than 1"))
+    rate isa Real && isfinite(rate) && rate > 0 || throw(ArgumentError("SD Gamma prior rate must be finite and positive"))
+    a = Float64(shape); b = Float64(rate)
+    isfinite(a) && isfinite(b) && a > 1 && b > 0 || throw(ArgumentError("SD Gamma prior parameters are outside the representable range"))
+    return SDGammaPrior(d, g, c, a, b)
+end
+
+function _resolve_sd_prior(priors, grp, index)
+    sds = filter(p -> p isa SDGammaPrior, priors)
+    isempty(sds) && return nothing
+    length(sds) == 1 || throw(ArgumentError("duplicate or ambiguous SD Gamma priors"))
+    p = only(sds)
+    p.dpar === :mu || throw(ArgumentError("SD Gamma prior requires dpar=mu"))
+    p.coef == "(Intercept)" || throw(ArgumentError("SD Gamma prior supports only coefficient (Intercept)"))
+    isempty(p.group) && throw(ArgumentError("SD Gamma prior requires an exact group name"))
+    isfinite(p.shape) && p.shape > 1 || throw(ArgumentError("SD Gamma prior shape must be finite and greater than 1"))
+    isfinite(p.rate) && p.rate > 0 || throw(ArgumentError("SD Gamma prior rate must be finite and positive"))
+    grp !== nothing && p.group == String(grp) || throw(ArgumentError("SD Gamma prior group $(p.group) does not match the unique Gaussian mean random intercept"))
+    return (class=:random_effect_sd, dpar=:mu, group=p.group, block=:iid_intercept,
+            coef=p.coef, scale=:sd, shape=p.shape, rate=p.rate, index=index)
+end
+
+# Resolve by group identity, not prior-list order. Reuse the single-target
+# validator so constructor bypasses receive the same checks as the q1 route.
+function _resolve_sd_priors(priors, groups, first_index)
+    length(unique(groups)) == length(groups) || throw(ArgumentError("ambiguous repeated random-intercept group"))
+    rows = NamedTuple[]
+    seen = Set{String}()
+    for p in priors
+        p isa SDGammaPrior || continue
+        p.group in seen && throw(ArgumentError("duplicate SD Gamma prior for $(p.group)"))
+        push!(seen, p.group)
+        i = findfirst(g -> String(g) == p.group, groups)
+        i === nothing && throw(ArgumentError("SD Gamma prior group $(p.group) does not match a Gaussian mean random intercept"))
+        push!(rows, _resolve_sd_prior([p], groups[i], first_index + i - 1))
+    end
+    rows
+end
+
+_sd_prior_value(row, theta) = row.rate * exp(theta[row.index]) - (row.shape - 1) * theta[row.index] - row.shape * log(row.rate) + loggamma(row.shape)
 
 function _fixed_prior(kind, dpar, coef, intercept, mean, precision, constant)
     d = Symbol(dpar); c = String(coef)
@@ -36,8 +97,9 @@ function drm_prior_ridge(; dpar, coef, lambda, intercept=nothing)
     _fixed_prior(:ridge, dpar, coef, intercept, 0, lambda, 0)
 end
 
-"""`drm_priors(p...)` collects fixed-effect priors for `drm(...; priors=...)`."""
+"""`drm_priors(p...)` collects fixed-effect and supported random-effect SD priors for `drm(...; priors=...)`."""
 drm_priors(p::FixedPrior...) = collect(p)
+drm_priors(p::AbstractDrmPrior...) = collect(p)
 
 function _resolve_fixed_priors(priors, names, intercepts)
     priors isa AbstractVector{<:FixedPrior} || throw(ArgumentError("priors must be created by drm_priors"))
@@ -77,36 +139,89 @@ function _fixed_intercept_index(f, dpar, rhs, names; cache=f.schema_cache)
     return i
 end
 
+function _reject_sd_missing_predictors(f, data, priors)
+    any(p -> p isa SDGammaPrior, priors) || return nothing
+    Tables.istable(data) || return nothing
+    cols = Tables.columntable(data)
+    for c in _predictor_columns(f)
+        haskey(cols, c) && any(ismissing, cols[c]) &&
+            throw(ArgumentError("SD priors require complete predictors (missing in $c)"))
+    end
+    return nothing
+end
+
+include("prior_table.jl")
+
 """
     resolve_priors(formula, family; data, priors)
 
 Preview the exact fitted columns and prior precision without optimizing. The
-route covers complete-response Gaussian models with fixed effects and at most one
-mean random intercept, and fixed-effect binomial logit models. Priors refer to
-predictor coefficients and depend on units and coding.
+route covers complete-response Gaussian models with fixed effects and up to two
+distinct mean random intercepts, and fixed-effect binomial logit models. Normal
+coefficient priors also support a Gaussian phylogenetic mean intercept with a
+matching phylogenetic SD regression. Preview checks group-level SD predictors
+but tree-label matching requires fitting with a tree. Priors refer to predictor
+coefficients and depend on units and coding. `priors` may also be a
+Tables.jl-compatible prior table with `prior`, `class`, and `coef` columns;
+see the prior guide for supported distributions, selectors, and scale conventions.
 """
 function resolve_priors(f, fam; data, priors)
+    table_rows = Tables.istable(priors) ? _parse_prior_table(priors) : nothing
+    sd_intent = table_rows !== nothing && any(r -> r.class == "ranef_sd", table_rows)
     f isa DrmFormula && (fam isa Gaussian || (fam isa Binomial && fam.link === :logit)) ||
         throw(ArgumentError("resolve_priors supports Gaussian and fixed-effect binomial logit models"))
     _has_joint_mi(f) && throw(ArgumentError("resolve_priors does not support missing-predictor models"))
-    isempty(_sd_parts(f)) && isempty(_sdphylo_parts(f)) || throw(ArgumentError("resolve_priors does not support SD formulas"))
+    normal_only = table_rows === nothing ?
+        (priors isa AbstractVector && all(p -> p isa FixedPrior && p.kind === :normal, priors)) :
+        all(r -> r.class == "fixef" && r.kind === :normal, table_rows)
+    forms = Dict(f.forms)
+    markers = haskey(forms, :mu) ? _collect_structured(forms[:mu]) : Tuple{Symbol,Symbol}[]
+    phylo_preview = fam isa Gaussian && normal_only && length(f.forms) == 3 &&
+        isempty(_sd_parts(f)) && length(_sdphylo_parts(f)) == 1 && length(markers) == 1 &&
+        only(markers)[1] === :phylo && first(only(_sdphylo_parts(f))) === only(markers)[2]
+    (isempty(_sd_parts(f)) && isempty(_sdphylo_parts(f))) || phylo_preview ||
+        throw(ArgumentError("resolve_priors does not support SD formulas"))
     for response in _formula_responses(f)
         response === nothing && continue
-        all(_observed_response_mask(_table_column(data, response))) || throw(ArgumentError("resolve_priors requires complete responses"))
+        (sd_intent || (table_rows === nothing && any(p -> p isa SDGammaPrior, priors))) && any(ismissing, _table_column(data, response)) && throw(ArgumentError("SD priors require complete responses"))
+        _complete_response(_table_column(data, response)) || throw(ArgumentError("resolve_priors requires complete responses"))
+    end
+    if sd_intent
+        cols = Tables.columntable(data)
+        for c in _predictor_columns(f)
+            haskey(cols, c) && any(ismissing, cols[c]) && throw(ArgumentError("SD priors require complete predictors (missing in $c)"))
+        end
+    elseif table_rows === nothing
+        _reject_sd_missing_predictors(f, data, priors)
     end
     dat = fam isa Gaussian ? _drop_missing_predictor_rows(f, data) : data
     length(_table_column(dat, f.response)) == length(_table_column(data, f.response)) ||
         throw(ArgumentError("resolve_priors requires complete predictors"))
+    if phylo_preview
+        grp, sd_rhs = only(_sdphylo_parts(f))
+        idx, n_groups = _group_index(_table_column(dat, grp); col=grp)
+        _sd_group_design(f.response, sd_rhs, dat, idx, n_groups, grp)
+    end
     forms = Dict(f.forms); dpars = fam isa Gaussian ? (:mu, :sigma) : (:mu,)
     names = Pair{Symbol,Vector{String}}[]; intercepts = Dict{Symbol,Union{Nothing,Int}}()
     cache = Ref(Dict{Symbol,Any}())
+    sd_groups = Symbol[]
+    sd_group_indices = Vector{Int}[]
     for d in dpars
         rhs, re, meta, structured, structured_slope, temporal_term, structured_sd_slope = _split_ranef(forms[d]; allow_temporal=true)
-        allowed_re = fam isa Gaussian && d === :mu && length(re) == 1 && _re_kind(first(re)[1])[1] === :intercept
-        (isempty(re) || allowed_re) && meta === nothing && structured === nothing && structured_slope === nothing && temporal_term === nothing && structured_sd_slope === nothing || throw(ArgumentError("resolve_priors supports only one Gaussian mean random intercept"))
+        allowed_re = fam isa Gaussian && d === :mu && 1 <= length(re) <= 2 && all(r -> _re_kind(r[1])[1] === :intercept, re)
+        allowed_phylo = phylo_preview && d === :mu && structured == only(markers) && isempty(re)
+        (isempty(re) || allowed_re) && meta === nothing &&
+            (structured === nothing || allowed_phylo) && structured_slope === nothing &&
+            temporal_term === nothing && structured_sd_slope === nothing ||
+            throw(ArgumentError("resolve_priors supports up to two distinct Gaussian mean random intercepts or one phylogenetic SD-regression route"))
         if allowed_re
-            grp = first(re)[2]
-            _group_index(_table_column(dat, grp); col=grp)
+            for (_, grp) in re
+                push!(sd_groups, grp)
+                idx, _ = _group_index(_table_column(dat, grp); col=grp)
+                push!(sd_group_indices, idx)
+            end
+            length(sd_group_indices) == 2 && sd_group_indices[1] == sd_group_indices[2] && throw(ArgumentError("two random-intercept groups have identical partitions and their SDs cannot be identified separately"))
         end
         rhs, _ = _extract_offset(rhs)
         _, X, nms = _design(f.response, rhs, dat; schema_cache=cache, schema_key=d)
@@ -114,5 +229,12 @@ function resolve_priors(f, fam; data, priors)
         push!(names, d => nms)
         intercepts[d] = _fixed_intercept_index(f, d, rhs, nms; cache=cache)
     end
-    _resolve_fixed_priors(priors, names, intercepts)
+    table_rows === nothing || (priors = _prior_table_specs(table_rows, String.(sd_groups)))
+    priors isa AbstractVector && all(p -> p isa Union{FixedPrior,SDGammaPrior}, priors) || throw(ArgumentError("priors must be created by drm_priors"))
+    fixed = FixedPrior[p for p in priors if p isa FixedPrior]
+    rows = _resolve_fixed_priors(fixed, names, intercepts)
+    table_rows !== nothing && any(r -> r.coef == "all", rows) &&
+        throw(ArgumentError("prior tables cannot select a coefficient literally named all"))
+    sds = _resolve_sd_priors(priors, sd_groups, sum(length(last(n)) for n in names) + 1)
+    vcat(rows, sds)
 end

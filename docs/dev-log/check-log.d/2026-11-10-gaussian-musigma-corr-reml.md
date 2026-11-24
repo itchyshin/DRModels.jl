@@ -1,0 +1,1 @@
+| 2026-11-10 | **Gaussian `(1 \| p \| g)` mu+sigma REML** | `test/test_gaussian_musigma_corr_reml.jl` plus neighbouring Gaussian REML and labelled-route tests, Julia 1.13.3 on a Linux server | green; REML logLik within 2e-9 of drmTMB 0.8.1 on 3 datasets, dense-oracle check to 1e-8 | Claude |

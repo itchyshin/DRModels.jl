@@ -31,8 +31,9 @@
 #   * exactly one ordinary `(1 | g)` on `mu` (Poisson may add one `offset(...)`,
 #     #941); no `(1 + x | g)`, `(0 + x | g)`,
 #     crossed/multiple terms, structured markers, `meta_V`, `zi`/`hu`;
-#   * NegBinomial2 / Gamma / Beta with `sigma ~ 1` (no random effect on sigma,
-#     no coupled location–scale `(1 | p | g)`);
+#   * NegBinomial2 / Gamma / Beta with `sigma ~ 1` or fixed-effect `sigma` covariates (no
+#     random effect on sigma, no coupled location–scale `(1 | p | g)`); covariates on
+#     `sigma` use the adaptive quadrature at one node, which is the Laplace approximation;
 #   * maximum likelihood only (`method = :REML` is refused).
 #
 # The family `drm` methods delegate here with one line placed before any of
@@ -41,12 +42,64 @@
 _scalar_laplace_requested(marginal) =
     marginal isa Symbol && Symbol(uppercase(String(marginal))) === :LAPLACE
 
+# Kind of a random-effect term's left-hand side without `_re_kind`'s errors on three or more coefficients:
+# `:intercept`, `:slope` (`0 + x`), `:corr` (`1 + x [+ z [+ w]]`) or `:other`.
+function _laplace_lhs_kind(lhs)
+    lhs isa ConstantTerm && return lhs.n == 1 ? :intercept : :other
+    (lhs isa FunctionTerm && lhs.f === (+)) || return :other
+    consts = filter(t -> t isa ConstantTerm, lhs.args)
+    vars = filter(t -> t isa Term, lhs.args)
+    length(consts) + length(vars) == length(lhs.args) && length(consts) == 1 && !isempty(vars) || return :other
+    consts[1].n == 1 && return :corr
+    return length(vars) == 1 ? :slope : :other
+end
+
+# `marginal = :Laplace` on one ordinary correlated block `(1 + x | g)` (Poisson, NegBinomial2, Binomial; q = 2
+# for the counts, q = 2 to 4 for Binomial), constant SDs. The counts reuse the identity-kernel Laplace of
+# `ordinary_q2_sd.jl`; Binomial reuses the SD-regression group integral with a single adaptive node, which
+# is the Laplace approximation. A Poisson mean `offset(...)` is applied (it agrees with drmTMB 0.8.1, pinned in
+# `test_laplace_parity.jl`); NegBinomial2 and Binomial refuse offsets here. `meta_V`, `zi`/`hu` and a `sigma` formula stay refused.
+function _ordinary_corr_laplace(f::DrmFormula, fam, fixed_mu, lhs, group::Symbol;
+                                data, tree, K, A, coords, g_tol, se)
+    (tree === nothing && K === nothing && A === nothing && coords === nothing) ||
+        _ordinary_laplace_reject(fam, "structured covariance inputs")
+    if fam isa Binomial
+        fixed_mu, off = _extract_offset(fixed_mu)
+        off === nothing || _refuse_offset_route(fam, "`marginal = :Laplace`")
+        vars = [t.sym for t in lhs.args if t isa Term]
+        any(t -> t isa ConstantTerm && t.n == 1, lhs.args) && 2 <= length(vars) + 1 <= 4 ||
+            _ordinary_laplace_reject(fam, "`$lhs` (up to four coefficients `(1 + x1 + x2 + x3 | g)` are covered)")
+        s, ntr = _binomial_response(f, data)
+        _, Xμ, nmμ = _design(f.response, fixed_mu, data)
+        gidx, G = _group_index(getproperty(data, group); col = group)
+        n = length(s)
+        Zre = ones(n, length(vars) + 1)
+        for (j, v) in enumerate(vars)
+            x = getproperty(data, v)
+            x isa AbstractVector{<:Real} && all(isfinite, x) || _ordinary_laplace_reject(fam,
+                "a non-numeric or non-finite random-slope predictor `$v`")
+            Zre[:, j + 1] = Float64.(x)
+            _binomial_check_slope_identifiable(Float64.(x), gidx, G, group)
+        end
+        members = [:intercept; vars]
+        Zgs = [ones(G, 1) for _ in members]
+        nmsds = [["$(group):log_sd_$m"] for m in members]
+        blocks = Symbol[Symbol("sdconst_", m) for m in members]
+        fit = _fit_binomial_sd_regression(fam, s, ntr, Xμ, Zgs, nmsds, gidx, G, nmμ, group, g_tol, blocks;
+                                          nq = 1, Zre = Zre, correlated = true)
+        return _withformula(_withmarginal(fit, :Laplace), f)
+    end
+    block = _ordinary_q2_block(Dict(f.forms)[:mu])
+    block === nothing && _ordinary_laplace_reject(fam, "`$lhs` (only the two-coefficient block `(1 + x | g)` is covered)")
+    return _withmarginal(_drm_count_ordinary_q2_sd(f, fam, block; data, tree, K, A, Ainv = nothing, coords, g_tol, se, plain = true), :Laplace)
+end
+
 function _ordinary_laplace_reject(fam, what)
     throw(ArgumentError(
         "marginal = :Laplace is not available for $(nameof(typeof(fam)))() with $what. " *
         "This route covers exactly one ordinary random intercept `(1 | g)` on the mean for " *
-        "Poisson, Binomial, NegBinomial2, Gamma and Beta (`sigma ~ 1` for the three scale " *
-        "families), fitted by maximum likelihood. Omit `marginal` (the default `:LA`) for " *
+        "Poisson, Binomial, NegBinomial2, Gamma and Beta (fixed-effect `sigma` formulas " *
+        "for the three scale families), fitted by maximum likelihood. Omit `marginal` (the default `:LA`) for " *
         "other models."))
 end
 
@@ -77,6 +130,11 @@ function _drm_ordinary_laplace(f::DrmFormula, fam; data, tree = nothing,
 
     _lss_only_gaussian_guard(f, fam)
     rhs = Dict(f.forms)
+    # Poisson / NB2 `zi` or `hu` with a random intercept: same Laplace objective, own front end.
+    if fam isa Union{Poisson,NegBinomial2} && (haskey(rhs, :zi) || haskey(rhs, :hu)) &&
+       !isempty(_split_ranef(rhs[:mu])[2])
+        return _drm_zi_re_laplace(f, fam; data = data, g_tol = g_tol)
+    end
     has_sigma = _ordinary_laplace_has_sigma(fam)
     for (pname, r) in f.forms
         pname === :mu && continue
@@ -95,16 +153,38 @@ function _drm_ordinary_laplace(f::DrmFormula, fam; data, tree = nothing,
     # for the scale families of `_fit_scale_ordinary_laplace` (NegBinomial2, Gamma,
     # Beta); Binomial refuses it here rather than letting `_design` build it.
     fixed_mu, offset_term = _extract_offset(fixed_mu)
-    offset_term === nothing || !(fam isa Binomial) ||
-        _refuse_offset_route(fam, "`marginal = :Laplace`")
     mv === nothing || _ordinary_laplace_reject(fam, "a `meta_V` marker")
     st === nothing || _ordinary_laplace_reject(fam, "a phylogenetic/structured random effect")
+    # Independent intercept-plus-slope terms already take the dense TMB-convention Laplace by default.
+    if length(re) > 1 && _has_indep_slopes(re) && !(fam isa Binomial && fam.link !== :logit)
+        return drm(f, fam; data = data, tree = tree, K = K, A = A, coords = coords,
+                   g_tol = g_tol, se = se, method = method)
+    end
+    # Three or more crossed intercepts `(1 | g) + (1 | h) + (1 | k)` for Binomial: the default route is the dense
+    # TMB-convention Laplace spine and tags its fit `:Laplace`, so `update()` (which repeats the stored tag) and an
+    # explicit `marginal = :Laplace` call must reach that same fit. Exactly two crossed intercepts keep the
+    # explicit refusal below (their default fit is tagged `:LA`).
+    if length(re) > 2 && fam isa Binomial && all(r -> _laplace_lhs_kind(r[1]) === :intercept, re)
+        return drm(f, fam; data = data, tree = tree, K = K, A = A, coords = coords,
+                   g_tol = g_tol, se = se, method = method)
+    end
     length(re) == 1 || _ordinary_laplace_reject(fam,
         isempty(re) ? "no random effect (fixed-effects-only)" : "crossed/multiple random effects")
     # Render the term as the user wrote it: a FunctionTerm such as `1 + x`
     # prints as `:(1 + x)`, so show its original expression instead.
     lhs = re[1][1]
     lhs_text = hasproperty(lhs, :exorig) ? string(lhs.exorig) : string(lhs)
+    # A single independent slope `(0 + x | g)` already takes the dense TMB-convention Laplace route
+    # (`indep_slopes_laplace.jl`) by default, so the explicit keyword is the same fit.
+    if _laplace_lhs_kind(lhs) === :slope && haskey(rhs, :mu) && !(fam isa Binomial && fam.link !== :logit)
+        return drm(f, fam; data = data, tree = tree, K = K, A = A, coords = coords,
+                   g_tol = g_tol, se = se, method = method)
+    end
+    # A correlated block `(1 + x | g)` with constant SDs: the same model as `sd(.) ~ 1` on every coefficient,
+    # fitted with the group integral of the SD-regression routes (see `_ordinary_corr_laplace`).
+    if _laplace_lhs_kind(lhs) === :corr && fam isa Union{Poisson,NegBinomial2,Binomial} && re[1][2] isa Symbol
+        return _ordinary_corr_laplace(f, fam, fixed_mu, lhs, re[1][2]; data, tree, K, A, coords, g_tol, se)
+    end
     lhs isa ConstantTerm && lhs.n == 1 ||
         _ordinary_laplace_reject(fam, "`($lhs_text | $(re[1][2]))` (only `(1 | g)` is covered)")
     grp = re[1][2]
@@ -113,7 +193,12 @@ function _drm_ordinary_laplace(f::DrmFormula, fam; data, tree = nothing,
     if fam isa Binomial
         s, ntr = _binomial_response(f, data)
         _, Xμ, nmμ = _design(f.response, fixed_mu, data)
-        fit = _fit_binomial_ordinary_laplace(fam, s, ntr, Xμ, gidx, G, nmμ, grp, g_tol; se = se)
+        off = _offset_for_fit(fam, offset_term, data, length(s))
+        # :probit / :cloglog: the sparse kernel is logit-only, so the group integral is the existing adaptive
+        # quadrature at one node, which is the Laplace approximation (the same device as the correlated block).
+        fit = fam.link === :logit ?
+            _fit_binomial_ordinary_laplace(fam, s, ntr, Xμ, gidx, G, nmμ, grp, g_tol; se = se, offset = off) :
+            _fit_binomial_ranef(fam, s, ntr, Xμ, gidx, G, nmμ, grp, g_tol; nq = 1, offset = off)
     else
         y, Xμ, nmμ = _design(f.response, fixed_mu, data)
         if fam isa Poisson
@@ -123,13 +208,21 @@ function _drm_ordinary_laplace(f::DrmFormula, fam; data, tree = nothing,
             length(off) == length(y) ||
                 error("Poisson(): `offset(...)` must have one value per observation")
             fit = _fit_poisson_ordinary_laplace(fam, y, Xμ, gidx, G, nmμ, grp, g_tol;
-                                                se = se, offset = off)
+                                                se = se, offset = off,
+                                                prior_w = _ctl_weights_or_nothing(length(y)))
         else
             _, Xσ, nmσ = _design(f.response, get(rhs, :sigma, ConstantTerm(1)), data)
-            (size(Xσ, 2) == 1 && all(==(1.0), @view Xσ[:, 1])) ||
-                _ordinary_laplace_reject(fam, "a non-constant `sigma` formula")
-            fit = _fit_scale_ordinary_laplace(fam, y, Xμ, gidx, G, nmμ, nmσ, grp, g_tol; se = se,
-                                              offset = _offset_for_fit(fam, offset_term, data, length(y)))
+            if size(Xσ, 2) == 1 && all(==(1.0), @view Xσ[:, 1])
+                fit = _fit_scale_ordinary_laplace(fam, y, Xμ, gidx, G, nmμ, nmσ, grp, g_tol; se = se,
+                                                  offset = _offset_for_fit(fam, offset_term, data, length(y)))
+            else
+                # Fixed-effect covariates on `sigma`: the sparse kernel holds one dispersion, so the group
+                # integral is the existing adaptive quadrature at one node, which is the Laplace approximation.
+                offset_term === nothing || _refuse_offset_route(fam, "`marginal = :Laplace` with a `sigma` formula")
+                fit = fam isa NegBinomial2 ? _fit_negbin2_ranef(fam, y, Xμ, Xσ, gidx, G, nmμ, nmσ, grp, g_tol; K = 1) :
+                      fam isa Gamma ? _fit_gamma_ranef(fam, y, Xμ, Xσ, gidx, G, nmμ, nmσ, grp, g_tol; K = 1) :
+                      _fit_beta_ranef(fam, y, Xμ, Xσ, gidx, G, nmμ, nmσ, grp, g_tol; K = 1)
+            end
         end
     end
     return _withformula(_withmarginal(fit, :Laplace), f)
@@ -275,9 +368,16 @@ _ordinary_laplace_Q(G::Int) = spdiagm(0 => ones(Float64, G))
 # costs about one extra inner step.
 const _ORDINARY_LAPLACE_NEWTON_TOL = 1e-13
 
+# Fitted-row modes for `fitted(fit)` (the conditional default) on the ordinary `(1 | g)` routes: one
+# inner-mode solve at the final θ̂ with the objective's own kernel `fg` (cold start, tolerance 1e-13),
+# loaded to the rows by the group index. It does not touch the fit's values, closures or optimiser state.
+_record_ordinary_laplace_modes!(scales, fg, θ̂, G, gidx) =
+    _record_laplace_modes!(scales, (θ, b0) -> fg(θ, b0, false), θ̂, zeros(G), gidx)
+
 function _fit_poisson_ordinary_laplace(fam::Poisson, y, Xμ, gidx, G, nmμ, grp, g_tol;
                                        se::Bool = true,
-                                       offset::AbstractVector{<:Real} = zeros(length(y)))
+                                       offset::AbstractVector{<:Real} = zeros(length(y)),
+                                       prior_w = nothing)
     n = length(y); pμ = size(Xμ, 2)
     Q = _ordinary_laplace_Q(G)
     lf = [_logfactorial(round(Int, yi)) for yi in y]
@@ -286,7 +386,8 @@ function _fit_poisson_ordinary_laplace(fam::Poisson, y, Xμ, gidx, G, nmμ, grp,
     fg = (θ, b0, grad) -> _poisson_phylo_laplace_fg(y, Xμ, gidx, Q, 0.0, lf, θ;
                                                     grad = grad, b0 = b0, raw_scales = true,
                                                     newton_tol = _ORDINARY_LAPLACE_NEWTON_TOL,
-                                                    offset = has_off ? off : nothing)
+                                                    offset = has_off ? off : nothing,
+                                                    weights = prior_w)
     β0 = _poisson_fixed_start(y, Xμ)
     has_off && (β0[1] -= sum(off) / n)
     θ0 = vcat(β0, log(0.4))
@@ -296,13 +397,14 @@ function _fit_poisson_ordinary_laplace(fam::Poisson, y, Xμ, gidx, G, nmμ, grp,
     names = [:mu => nmμ, :resd => [String(grp)]]
     means = Dict(:mu => exp.(Xμ * θ̂[1:pμ] .+ off))
     obs = Dict(:mu => Vector{Float64}(y))
-    fit = DrmFit(fam, blocks, names, θ̂, V, -nllhat, n, conv, means, obs,
-                 Dict{Symbol,Vector{Float64}}())
+    scales = Dict{Symbol,Vector{Float64}}()
+    _record_ordinary_laplace_modes!(scales, fg, θ̂, G, gidx)   # modes for `fitted(fit)`
+    fit = DrmFit(fam, blocks, names, θ̂, V, -nllhat, n, conv, means, obs, scales)
     return _withnll(fit, nll, grad!)
 end
 
 function _fit_binomial_ordinary_laplace(fam::Binomial, s, ntr, Xμ, gidx, G, nmμ, grp,
-                                        g_tol; se::Bool = true)
+                                        g_tol; se::Bool = true, offset = nothing)
     n = length(s); pμ = size(Xμ, 2)
     Q = _ordinary_laplace_Q(G)
     sint = round.(Int, s); nint = round.(Int, ntr)
@@ -312,17 +414,21 @@ function _fit_binomial_ordinary_laplace(fam::Binomial, s, ntr, Xμ, gidx, G, nm�
     kind = Val(:binomial)
     fg = (θ, b0, grad) -> _phylo_mean_laplace_fg(kind, aux, n, Xμ, gidx, Q, 0.0, θ;
                                                  grad = grad, b0 = b0, raw_scales = true,
-                                                 newton_tol = _ORDINARY_LAPLACE_NEWTON_TOL)
+                                                 newton_tol = _ORDINARY_LAPLACE_NEWTON_TOL,
+                                                 offset = offset)
     p̄ = clamp(sum(s) / max(sum(ntr), 1), 1e-4, 1 - 1e-4)
     θ0 = zeros(pμ + 1); θ0[1] = log(p̄ / (1 - p̄)); θ0[end] = log(0.4)
+    θ0[1:pμ] .= _offset_start(θ0[1:pμ], Xμ, offset)   # #1337
     θ̂, nllhat, conv, V, nll, grad! = _ordinary_laplace_optimize(
         fg, θ0, n, G, g_tol; se = se, context = "ordinary Laplace Binomial (1 | $grp)")
     blocks = [:mu => 1:pμ, :resd => (pμ+1):(pμ+1)]
     names = [:mu => nmμ, :resd => [String(grp)]]
-    means = Dict(:mu => [_laplace_mean(kind, dot(@view(Xμ[i, :]), θ̂[1:pμ])) for i in 1:n])
+    η̂ = _eta_with_offset(Xμ, θ̂[1:pμ], offset)
+    means = Dict(:mu => [_laplace_mean(kind, η̂[i]) for i in 1:n])
     obs = Dict(:mu => [_laplace_obs(kind, aux, i) for i in 1:n])
-    fit = DrmFit(fam, blocks, names, θ̂, V, -nllhat, n, conv, means, obs,
-                 Dict(:trials => Float64.(nint)))
+    scales = Dict(:trials => Float64.(nint))
+    _record_ordinary_laplace_modes!(scales, fg, θ̂, G, gidx)   # modes for `fitted(fit)`
+    fit = DrmFit(fam, blocks, names, θ̂, V, -nllhat, n, conv, means, obs, scales)
     return _withnll(fit, nll, grad!)
 end
 
@@ -465,6 +571,7 @@ function _fit_scale_ordinary_laplace(fam, y, Xμ, gidx, G, nmμ, nmσ, grp, g_to
     means = Dict(:mu => [_laplace_mean(kind, dot(@view(Xμ[i, :]), θ̂[1:pμ]) + offv[i]) for i in 1:n])
     obs = Dict(:mu => [_laplace_obs(kind, auxhat, i) for i in 1:n])
     scales = Dict(:sigma => fill(exp(θ̂[pμ+1]), n))
+    _record_ordinary_laplace_modes!(scales, fg, θ̂, G, gidx)   # modes for `fitted(fit)`
     fit = DrmFit(fam, blocks, names, θ̂, V, -nllhat, n, conv, means, obs, scales)
     return _withnll(fit, nll, grad!)
 end

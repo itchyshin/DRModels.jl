@@ -7,10 +7,11 @@
 # that are not identified. drmTMB reports `is_converged` FALSE and a
 # `fixed_effect_rank_deficiency` warning; this file does the same here.
 #
-# Scope: the check runs once per fit on the Gaussian location-scale route
-# (`_drm_gaussian_fit`). `_check_fixed_design_rank` takes any list of
-# (parameter, design, names), so another family's `drm` method can call the same
-# hook. The pseudo-inverse itself is unchanged: only the aliased coordinates'
+# Scope: the check runs once per fit. The Gaussian location-scale route calls it
+# itself (`_drm_gaussian_fit`). Every other univariate route gets it from the
+# `@drm_entry` wrapper (`_precheck_design_rank`, which builds the fixed-effect
+# designs of the formula once, and `_apply_design_rank` on the finished fit).
+# The pseudo-inverse itself is unchanged: only the aliased coordinates'
 # covariance rows/columns are set to NaN, and the fit is flagged.
 
 # Relative tolerance on a column's residual after projecting out the columns
@@ -57,6 +58,7 @@ end
 # Per-fit findings travel from the design hook to the `drm` entry wrapper through
 # task-local storage, so no fitter signature changes.
 const _DESIGN_RANK_KEY = :drm_design_rank_findings
+const _DESIGN_RANK_SKIP_KEY = :drm_design_rank_skip_precheck
 
 _design_rank_pending() = get(task_local_storage(), _DESIGN_RANK_KEY, nothing) !== nothing
 
@@ -90,6 +92,42 @@ function _check_fixed_design_rank(designs...)
         task_local_storage(_DESIGN_RANK_KEY, found)
         @warn _design_rank_message(found) aliased_blocks = found
     end
+    return nothing
+end
+
+# The check for every univariate route except the Gaussian one, which makes its own call. It
+# rebuilds each fixed-effect design from the formula (random, structured and offset terms
+# stripped) and hands them to `_check_fixed_design_rank`. It is advisory: a formula or data
+# the design builder cannot read is left for the route to refuse in its own words, and so is
+# a response with missing values (the route refits on the observed rows and checks them).
+# A full-rank design changes nothing: the pending record is only cleared.
+function _precheck_design_rank(f, fam, data)
+    # A route that calls `drm` again for the same data (LogNormal `marginal = :Laplace`) has
+    # already run the check in the outer call: the inner call leaves the pending record alone,
+    # so the warning is printed once and the inner fit consumes the record.
+    get(task_local_storage(), _DESIGN_RANK_SKIP_KEY, false) === true && return nothing
+    delete!(task_local_storage(), _DESIGN_RANK_KEY)
+    (f isa DrmFormula && !(fam isa Gaussian)) || return nothing
+    designs = Tuple{Symbol,Matrix{Float64},Vector{String}}[]
+    try
+        raw = _table_column(data, f.response)
+        any(v -> ismissing(v) || (v isa AbstractFloat && isnan(v)), raw) && return nothing
+        for (p, rhs) in f.forms
+            startswith(String(p), "sd") && continue          # sd(group) ~ ..., sd_phylo, sdtarget_*
+            fixed = first(_split_ranef(rhs; allow_phylo_slope = true, allow_temporal = true,
+                allow_animal_slope = true, allow_animal_intercept_slope = true,
+                allow_relmat_slope = true, allow_relmat_intercept_slope = true,
+                allow_spatial_slope = true, allow_spatial_intercept_slope = true,
+                allow_labelled_intercept_slope = true))
+            fixed, _ = _extract_offset(fixed)
+            _, X, nms = _design(f.response, fixed, data)
+            push!(designs, (p, Matrix{Float64}(X), String.(nms)))
+        end
+    catch err
+        err isa InterruptException && rethrow()
+        return nothing
+    end
+    isempty(designs) || _check_fixed_design_rank(designs...)
     return nothing
 end
 
