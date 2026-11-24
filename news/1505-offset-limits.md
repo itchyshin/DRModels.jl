@@ -1,0 +1,1 @@
+- **Gap map v2 offset limits (3 cells).** Two Poisson offsets, ZIP mean offset, Gaussian `meta_V` + offset; drmTMB 0.8.1 parity in `test/test_offset_routes_parity.jl`. refs #1505
