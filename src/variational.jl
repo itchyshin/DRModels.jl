@@ -127,8 +127,11 @@ end
 #
 # `allow_reml` opens the opt-in Cox–Reid restricted route (#443). A family only sets it
 # when at least one of its routes can honour `:REML`; the family's route dispatch is then
-# responsible for calling `_reject_reml_route` on the routes that cannot. Returns the
-# normalised selector (`nothing` / `:ML` / `:REML`) so the caller can branch on it.
+# responsible for calling `_reject_reml_route` on the routes that cannot. A family with
+# no REML route (Binomial, Beta, Gamma, NegBinomial2) refuses `:REML` by name (#1397 J2):
+# the symbol is known, it is just not available. An unrecognised symbol still says
+# "unknown `method`". Returns the normalised selector (`nothing` / `:ML` / `:REML`)
+# so the caller can branch on it.
 function _reject_method_as_marginal(fam, method; allow_reml::Bool = false)
     method === nothing && return nothing
     ms = Symbol(uppercase(String(method)))
@@ -147,8 +150,9 @@ function _reject_method_as_marginal(fam, method; allow_reml::Bool = false)
     if ms === :REML
         allow_reml && return :REML
         throw(ArgumentError(
-            "drm ($famname): unknown `method = :$method`. $famname is ML-only; " *
-            "for the integrator use `marginal = :LA` (the documented default integrator for this route), `:Laplace` " *
+            "drm ($famname): `method = :REML` is not available for $famname. " *
+            "$famname is ML-only; omit `method` or pass `method = :ML`. " *
+            "`method` is not the integrator: use `marginal = :LA` (the documented default integrator for this route), `:Laplace` " *
             "(TMB-convention Laplace, ordinary `(1 | g)`), `:VA` (#136), or `:AGHQ` (#448)."))
     end
     throw(ArgumentError(
