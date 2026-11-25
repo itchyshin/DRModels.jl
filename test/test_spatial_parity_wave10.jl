@@ -55,6 +55,22 @@ end
     @test loglikelihood(fit) > -554.2127 + 0.1
 end
 
+@testset "NB2 spatial q2 sd-z (labelled form), se = true: better mode has a boundary correlation" begin
+    # Shinichi 24 Nov 8:08 AM MT (via Brian): keep the 4c3478acc restarts and the convergence
+    # rules; this cell is a boundary cell. The fit sits at the better mode (-554.0242) where the
+    # `:recov` correlation coordinate runs to the boundary (theta ~ 8-9, atanh scale), so the
+    # Hessian is singular there. The converged flag and whether SEs are returned differ by platform
+    # (macOS: converged, recov SE ~126; Totoro Linux: SEs withheld), so neither is asserted.
+    d = _sp_data(_SP_DIR, "data_nb2_spatial.csv")
+    f = bf(@formula(y ~ x1 + x2 + x3 + spatial(1 + x1 | p | g)), @formula(sigma ~ 1),
+           @formula(sd(g, spatial, coef(intercept)) ~ z), @formula(sd(g, spatial, coef(x1)) ~ z))
+    fit = drm(f, NegBinomial2(); data = d, coords = _SP_COORDS)
+    @test loglikelihood(fit) ≈ -554.0242 atol = 1e-4
+    rr = fit.blocks[findfirst(p -> first(p) === :recov, fit.blocks)].second
+    @test all(>(7.0), fit.theta[rr])                    # correlation at the boundary
+    @test all(<(7.0), abs.(fit.theta[setdiff(1:length(fit.theta), rr)]))   # nothing else is
+end
+
 @testset "NB2 spatial q2 sd-z, independent form: stays at drmTMB's default fit" begin
     # Simulated cell (seed 91010 of the wave-10 spatial-parity study). drmTMB 0.8.1's default start
     # and the single Julia start both stop at -577.7702; a tilted start reaches -577.2513. The
