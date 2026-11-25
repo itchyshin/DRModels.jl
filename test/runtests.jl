@@ -50,6 +50,13 @@ const _TEST_EXCLUDE = [
     "test_analytic_grad.jl",       # #465: investigated, NOT wired -- superseded by test_qgate_fd_gradient.jl
     "test_q4_laplace.jl",          # #465: investigated, NOT wired -- superseded by an obsolete bench POC
     "test_corr_locscale_equiv.jl", # deferred cluster-① follow-up (Laplace-vs-GHQ optimum gap; not a σ-phylo blocker)
+    # Lane cursor-cloud-1125n7: wired at end of this file.
+    "test_cov_1125n7_control_weights.jl",
+    "test_cov_1125n7_control_scope.jl",
+    "test_cov_1125n7_temporal_homtoep.jl",
+    "test_cov_1125n7_tweedie_kernels.jl",
+    "test_cov_1125n7_variational_algebra.jl",
+    "test_cov_1125n7_student_r2_gamma.jl",
 ]
 
 _discovered = sort(filter(f -> occursin(r"^test_.*\.jl$", f) &&
@@ -178,6 +185,14 @@ end
 
 # #1303: hyphenated name, so the `test_*.jl` discovery loop above does not see it.
 _shard_include("test-fix-1303-skipped-category.jl")
+
+# Coverage lane cursor-cloud-1125n7 (explicit end registration; excluded from readdir loop).
+_shard_include("test_cov_1125n7_control_weights.jl")
+_shard_include("test_cov_1125n7_control_scope.jl")
+_shard_include("test_cov_1125n7_temporal_homtoep.jl")
+_shard_include("test_cov_1125n7_tweedie_kernels.jl")
+_shard_include("test_cov_1125n7_variational_algebra.jl")
+_shard_include("test_cov_1125n7_student_r2_gamma.jl")
 
 # Gated real-parity suite vs committed drmTMB fixtures (off by default).
 # Native `drm()` path (#17) plus `drm_bridge` marshalling path (#370).
