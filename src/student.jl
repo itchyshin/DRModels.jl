@@ -75,6 +75,14 @@ struct Student end
 # FX3b: `se = false` is recorded on the fit (`DrmFit.uncertainty`), so
 # `convergence_status` does not read the skipped (NaN) covariance as a failure.
 @drm_entry function drm(f::DrmFormula, fam::Student; se::Bool = true, kwargs...)
+    # #936: fit on y / sd(y) and map back for the simple fixed-effect / `(1 | g)` slice.
+    plan = _y_rescale_plan(f, fam, (; se, kwargs...), (:data, :g_tol, :se))
+    if plan !== nothing
+        kw_s = merge((; kwargs...), (; data = plan.data))
+        fit_s = _withuncertainty(_drm_student_fit(f, fam; se = se, kw_s...), se)
+        fit_r = _y_rescale_restore(fit_s, plan)
+        fit_r === nothing || return _warn_student_nu_boundary(fit_r)
+    end
     return _warn_student_nu_boundary(_withuncertainty(_drm_student_fit(f, fam; se = se, kwargs...), se))
 end
 
