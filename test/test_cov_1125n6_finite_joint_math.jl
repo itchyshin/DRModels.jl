@@ -25,12 +25,16 @@ end
 end
 
 @testset "cov 1125n6: _finite_joint_log1mexp" begin
-    for x in [-5.0, -0.1, -0.8]
-        ref = log1p(-exp(x))
-        @test DRModels._finite_joint_log1mexp(x) ≈ ref rtol = 1e-14
+    # log(1 - exp(x)) is only defined for x < 0. The sole caller passes -exp(raw_spacing).
+    cutoff = -log(2)
+    for x in (-5.0, -1.0, cutoff - 0.01)
+        @test DRModels._finite_joint_log1mexp(x) ≈ log1p(-exp(x)) rtol = 1e-14
     end
-    # Branch uses `log(-expm1(x))` for x ≥ -log(2); throws for small positive x.
-    @test_broken isfinite(DRModels._finite_joint_log1mexp(0.2)) # TODO: branch guard for x > 0
+    for x in (cutoff + 0.01, -0.1, -1e-6)
+        @test DRModels._finite_joint_log1mexp(x) ≈ log(-expm1(x)) rtol = 1e-14
+    end
+    @test_throws DomainError DRModels._finite_joint_log1mexp(0.2)
+    @test_throws DomainError DRModels._finite_joint_log1mexp(1.0)
 end
 
 @testset "cov 1125n6: _finite_joint_ordinal_logprobabilities" begin
