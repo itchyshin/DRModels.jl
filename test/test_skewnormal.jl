@@ -136,9 +136,9 @@ end
     @test check_drm(drm(bf(@formula(y ~ x), @formula(sigma ~ 1)), Gaussian(); data = sym)).skew_normal_nu_wald === nothing
 end
 
-# #1060: the docs must state the real rule, the package's own cutoff on |ν̂| with no
-# Wald test behind it, and must not attribute the caveat to a drmTMB note. Pins the
-# documented cutoff to the constant that `check_drm` actually uses.
+# #1060 / drmTMB#1540: the docs must state the real rule (every |ν̂| below the
+# cutoff OR a Wald test not rejecting ν = 0) and must not attribute the caveat to a
+# drmTMB note. Pins the documented cutoff to the constant `check_drm` actually uses.
 @testset "Skew-normal: nu-near-0 cutoff is pinned and documented (#1060)" begin
     cut = DRModels._SKEWNORMAL_NU_WALD_CUT
     @test cut == 0.5
@@ -157,6 +157,44 @@ end
     fit.scales[:nu] .= cut - 0.01
     @test check_drm(fit).skew_normal_nu_wald.cut == cut
     @test check_drm(fit).skew_normal_nu_wald.near_zero
+    # Above the cutoff the |ν̂| arm is off; the flag then follows the Wald arm alone
+    # (θ̂ and V̂ are untouched here, so the Wald test is this real fit's).
     fit.scales[:nu] .= cut + 0.01
-    @test !check_drm(fit).skew_normal_nu_wald.near_zero
+    r = check_drm(fit).skew_normal_nu_wald
+    @test !r.all_below
+    @test r.near_zero == !r.wald_rejects
+end
+
+# Shinichi's 25 Oct 2026 rule (drmTMB#1540, SHINICHI-2142-1120): warn when EVERY
+# fitted |ν̂| < 0.5 OR a 95% joint Wald χ² test of the `nu` block does not reject 0.
+# Before this, DRModels.jl warned when ANY |ν̂| < 0.5 and ran no Wald test.
+@testset "Skew-normal: nu-near-0 rule is all-below OR Wald-not-rejected (drmTMB#1540)" begin
+    rule = DRModels._skew_normal_nu_wald_rule
+    @test DRModels._SKEWNORMAL_NU_WALD_LEVEL == 0.95
+    # (a) every |ν̂| below the cutoff -> warn, even when the Wald test rejects
+    r = rule([0.1, -0.2, 0.05], [0.3], fill(0.001, 1, 1))     # z ≈ 9.5
+    @test r.all_below && r.wald_rejects && r.near_zero
+    # ONE row below the cutoff but not all, Wald rejects -> NO warning (the old
+    # any-row rule warned here)
+    r = rule([0.1, 0.8, 2.0], [0.2, 0.6], [0.01 0.0; 0.0 0.01])
+    @test r.min_abs_nu < 0.5
+    @test !r.all_below && r.wald_rejects && !r.near_zero
+    # (b) all rows above the cutoff, but the Wald test does not reject -> warn
+    r = rule([0.8, 0.8], [0.8], fill(0.5, 1, 1))              # χ²(1) = 1.28
+    @test !r.all_below && !r.wald_rejects && r.near_zero
+    @test r.wald_df == 1 && r.wald_stat ≈ 1.28 && r.wald_pvalue > 0.05
+    # all above the cutoff and Wald rejects -> no warning
+    r = rule([0.8, 0.8], [0.8], fill(0.01, 1, 1))             # χ²(1) = 64
+    @test !r.near_zero
+    # joint (multi-df) test: each z alone is small but the block is tested jointly
+    r = rule([1.0, 1.0], [0.5, 0.5], [0.04 0.0; 0.0 0.04])     # χ²(2) = 12.5
+    @test r.wald_df == 2 && r.wald_rejects && !r.near_zero
+    # a Wald statistic that cannot be formed cannot reject -> warn
+    @test rule([0.8], [0.8], fill(NaN, 1, 1)).near_zero
+    @test rule([0.8, 0.8], [0.8, 0.8], [1.0 1.0; 1.0 1.0]).near_zero   # singular
+    # the warning names the arm that fired
+    @test occursin("every fitted |ν̂| < 0.5",
+        DRModels._skew_normal_nu_wald_message(rule([0.1], [0.3], fill(0.001, 1, 1))))
+    @test occursin("Wald test does not reject ν = 0",
+        DRModels._skew_normal_nu_wald_message(rule([0.8], [0.8], fill(0.5, 1, 1))))
 end

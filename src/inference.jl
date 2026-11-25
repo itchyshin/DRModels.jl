@@ -4832,10 +4832,13 @@ Returns a `NamedTuple` and logs a short report:
   AR1 |φ̂| above 0.999. drmTMB reports such a fit as `convergence_status() == "boundary"`
   (so its `is_converged` is false since FX3b). Does not affect `ok`.
 - `skew_normal_nu_wald` — `nothing` unless the fit is [`SkewNormal`](@ref); then
-  `(near_zero, min_abs_nu, cut)`. `near_zero` is `true` when any fitted slant
-  |ν̂| < 0.5 (`cut`): the information matrix is singular at `ν = 0`, so the Wald SE
-  for `nu` is unreliable there (#1060), and a warning is emitted. The cutoff is an
-  uncalibrated heuristic of this package; no Wald test is run. Does not affect `ok`.
+  `(near_zero, all_below, wald_rejects, wald_stat, wald_df, wald_pvalue, level,
+  min_abs_nu, max_abs_nu, cut)`. `near_zero` is `true` when every fitted slant
+  |ν̂| < 0.5 (`cut`) OR a 95% (`level`) joint Wald χ² test that the `nu` block is 0
+  does not reject (a test that cannot be formed does not reject). The information
+  matrix is singular at `ν = 0`, so the Wald SE for `nu` is unreliable there (#1060),
+  and a warning is emitted. This is the shared drmTMB rule (drmTMB#1540); the 0.5
+  cutoff is an uncalibrated heuristic. Does not affect `ok`.
 - `fixed_effect_rank_deficiency` — `nothing` unless a fixed-effect design (`mu` or
   `sigma`) had an aliased column (`sigma ~ 1 + x + z` with `z = 2x + 1`, a duplicated
   column); then `(deficient = true, blocks)`, one `(param, rank, ncol, aliased)` per

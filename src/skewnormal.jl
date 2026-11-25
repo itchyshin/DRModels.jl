@@ -52,8 +52,9 @@ fit_slope_sd = drm(bf(@formula(y ~ x + (0 + x | site)), @formula(sigma ~ 1),
     fitter starts `ν` at a small nonzero value seeded by the sample-skewness sign
     to break this symmetry. The information matrix is singular at `ν = 0`, so the
     Wald SE for `nu` is unreliable there. [`check_drm`](@ref) reports
-    `skew_normal_nu_wald` and warns when any fitted |ν̂| < 0.5. This cutoff is an
-    uncalibrated heuristic of this package; no Wald test is run (#1060).
+    `skew_normal_nu_wald` and warns when every fitted |ν̂| < 0.5 OR a 95% joint
+    Wald χ² test that the `nu` block is 0 does not reject (the shared drmTMB rule,
+    drmTMB#1540). The 0.5 cutoff is an uncalibrated heuristic (#1060).
 
     The likelihood in the slant can have two or three local optima, mainly with
     small samples, weakly skewed data or a covariate on `nu`. A fixed-effect fit
@@ -434,22 +435,68 @@ end
 # #1060: the skew-normal information matrix is singular at ν = 0 (the family
 # collapses to the Gaussian, so the slant's score is identically zero there), so
 # the Wald SE for ν is not trustworthy in a neighbourhood of 0 — drmTMB#1336
-# measured type-I 0.236 for the nominal-0.05 Wald test. The rule is this package's
-# own: the note fires when any fitted |ν̂ᵢ| < `cut` (0.5). The cutoff is an
-# uncalibrated heuristic, not a drmTMB constant, and no Wald test is run.
-# Returns `nothing` for any other family.
+# measured type-I 0.236 for the nominal-0.05 Wald test.
+#
+# Rule (Shinichi, 25 Oct 2026, drmTMB#1540; reconfirmed SHINICHI-2142-1120): the
+# note fires when EITHER
+#   (a) every fitted |ν̂ᵢ| < `cut` (0.5), OR
+#   (b) a `level` (95%) joint Wald χ² test that the whole `nu` coefficient block
+#       is 0 does NOT reject, W = θ̂ᵥ' V̂ᵥ⁻¹ θ̂ᵥ ~ χ²(pᵥ).
+# A Wald statistic that cannot be formed (non-finite or singular `nu` covariance
+# block) cannot reject either, so (b) holds. The 0.5 cutoff is an uncalibrated
+# heuristic. Returns `nothing` for any other family.
 const _SKEWNORMAL_NU_WALD_CUT = 0.5
+const _SKEWNORMAL_NU_WALD_LEVEL = 0.95
 
-function _skew_normal_nu_wald(fit::DrmFit; cut::Real = _SKEWNORMAL_NU_WALD_CUT)
-    fit.family isa SkewNormal || return nothing
-    haskey(fit.scales, :nu) || return nothing
-    ν = fit.scales[:nu]
-    m = minimum(abs, ν)
-    return (near_zero = m < cut, min_abs_nu = m, cut = float(cut))
+function _skew_normal_nu_wald_rule(ν::AbstractVector, θν::AbstractVector, Vν::AbstractMatrix;
+                                   cut::Real = _SKEWNORMAL_NU_WALD_CUT,
+                                   level::Real = _SKEWNORMAL_NU_WALD_LEVEL)
+    νf = filter(isfinite, ν)
+    min_abs = isempty(νf) ? NaN : minimum(abs, νf)
+    max_abs = isempty(νf) ? NaN : maximum(abs, νf)
+    all_below = !isempty(νf) && max_abs < cut
+    df = length(θν)
+    stat = NaN
+    if df > 0 && size(Vν) == (df, df) && all(isfinite, θν) && all(isfinite, Vν)
+        stat = try
+            float(θν' * (Symmetric(Matrix{Float64}(Vν)) \ θν))
+        catch
+            NaN                     # singular nu-block covariance: no Wald statistic
+        end
+    end
+    pval = (isfinite(stat) && stat >= 0) ? Distributions.ccdf(Distributions.Chisq(df), stat) : NaN
+    wald_rejects = isfinite(pval) && pval < 1 - level
+    return (near_zero = all_below || !wald_rejects, all_below = all_below,
+            wald_rejects = wald_rejects, wald_stat = stat, wald_df = df,
+            wald_pvalue = pval, level = float(level),
+            min_abs_nu = min_abs, max_abs_nu = max_abs, cut = float(cut))
 end
 
-_skew_normal_nu_wald_message(r) =
-    "SkewNormal slant ν̂ is near 0 (smallest |ν̂| = $(round(r.min_abs_nu; digits = 3)) < " *
-    "$(r.cut)): the information matrix is singular at ν = 0 (the model collapses to the " *
-    "Gaussian), so the Wald SE / CI / test for `nu` is unreliable (anti-conservative; " *
-    "drmTMB#1336). Prefer a likelihood-ratio test of ν = 0 or a profile / bootstrap interval."
+function _skew_normal_nu_wald(fit::DrmFit; cut::Real = _SKEWNORMAL_NU_WALD_CUT,
+                              level::Real = _SKEWNORMAL_NU_WALD_LEVEL)
+    fit.family isa SkewNormal || return nothing
+    haskey(fit.scales, :nu) || return nothing
+    i = findfirst(b -> first(b) === :nu, fit.blocks)
+    r = i === nothing ? (1:0) : last(fit.blocks[i])
+    θν = fit.theta[r]
+    hi = isempty(r) ? 0 : last(r)
+    Vν = (size(fit.vcov, 1) >= hi && size(fit.vcov, 2) >= hi) ? fit.vcov[r, r] :
+         fill(NaN, length(r), length(r))
+    return _skew_normal_nu_wald_rule(fit.scales[:nu], θν, Vν; cut = cut, level = level)
+end
+
+function _skew_normal_nu_wald_message(r)
+    why = String[]
+    r.all_below && push!(why, "every fitted |ν̂| < $(r.cut) (largest |ν̂| = " *
+                              "$(round(r.max_abs_nu; digits = 3)))")
+    if !r.wald_rejects
+        push!(why, isfinite(r.wald_pvalue) ?
+            "a $(round(Int, 100 * r.level))% Wald test does not reject ν = 0 " *
+            "(χ²($(r.wald_df)) = $(round(r.wald_stat; digits = 3)), p = $(round(r.wald_pvalue; digits = 3)))" :
+            "a Wald test of ν = 0 could not be formed (non-finite or singular `nu` covariance)")
+    end
+    return "SkewNormal slant ν̂ is near 0 (" * join(why, "; and ") * "): the information " *
+        "matrix is singular at ν = 0 (the model collapses to the Gaussian), so the Wald SE / " *
+        "CI / test for `nu` is unreliable (anti-conservative; drmTMB#1336). Prefer a " *
+        "likelihood-ratio test of ν = 0 or a profile / bootstrap interval."
+end
