@@ -14,7 +14,19 @@
 # these cover ML too.
 
 using DRModels
-using Test, LinearAlgebra, Random, Statistics, SparseArrays
+using Test, LinearAlgebra, Random, Statistics, SparseArrays, Logging
+
+# Run `f`, capturing its warnings; return (result, coordinates the guard flagged as flat).
+# The flag is the `flat_coordinates` payload of the guard's warning.
+function _flat_logged(f)
+    lg = Test.TestLogger(min_level = Logging.Warn)
+    out = Logging.with_logger(f, lg)
+    flat = Int[]
+    for r in lg.logs, (k, v) in r.kwargs
+        k === :flat_coordinates && append!(flat, v)
+    end
+    return out, flat
+end
 
 # ---------------------------------------------------------------------------
 # fixtures
@@ -325,18 +337,20 @@ end
         Sigma_a = fit.ranef.Sigma_a
         @test det(Sigma_a) / (Sigma_a[1, 1] * Sigma_a[2, 2]) < 1e-4
         # The placeholder is gone even here: a flat direction must not reintroduce
-        # a whole-matrix NaN.
-        @test count(isnan, vcov(fit)) == 0
+        # a whole-matrix NaN. Only the flagged coordinate (row and column 10) is NaN.
+        @test bridge_diagnostics(fit).boundary == [10]
+        @test count(isnan, vcov(fit)) == 19
+        @test all(isnan, vcov(fit)[10, :]) && all(isnan, vcov(fit)[:, 10])
+        @test issymmetric(vcov(fit)[1:9, 1:9])
         # The nine identified coordinates are finite and the mu block is tight.
         @test all(isfinite, se[1:9])
         @test all(isfinite, vcov(fit)[1:9, 1:9])
         @test maximum(se[1:4]) < 0.5
-        # The tenth (Sigma_a:L22) is the flat one and is reported as flat: 26.9 on
-        # the ML arm, Inf on the REML arm, where `_finite_hessian` also finds H is
-        # not positive definite and warns. Asserted as `> 10` so the PD/non-PD
-        # split, which sits on the solver's noise floor, cannot make this brittle.
+        # The tenth (Sigma_a:L22) is the flat one and is flagged: its standard error is
+        # NaN on both arms (it was 26.9 on the ML arm and Inf on the REML arm before the
+        # guard flagged it).
         @test argmax(se) == 10
-        @test se[10] > 10.0
+        @test isnan(se[10])
     end
 end
 
@@ -347,11 +361,12 @@ end
     # in silence. Deterministic, unlike waiting for a fit to land there.
     Hsing = [2.0 0.0; 0.0 0.0]
     ctx = "bivariate Gaussian q=2 structured (relmat) finite-difference Hessian"
-    Vs = @test_logs (:warn,) match_mode = :any DRModels._vcov_from_hessian(Hsing; context = ctx)
-    @test all(isfinite, Vs)
+    Vs, flat = _flat_logged(() -> DRModels._vcov_from_hessian(Hsing; context = ctx))
+    @test flat == [2]
+    @test all(isfinite, Vs[1:1, 1:1])
     @test Vs[1, 1] == 0.5
-    @test Vs[2, 2] == 0.0        # pseudo-inverse: the flat direction gets zero, not junk
-    # ... and `stderror`'s boundary map turns a non-positive variance into Inf,
-    # which is what the user sees on that coordinate (src/inference.jl).
+    @test isnan(Vs[2, 2])        # the flagged coordinate gets no number, not a junk zero
+    # ... and `_boundary_se` (the per-coordinate map behind `stderror`) turns a
+    # non-finite variance into Inf (src/inference.jl).
     @test DRModels._boundary_se(Vs[2, 2]) == Inf
 end

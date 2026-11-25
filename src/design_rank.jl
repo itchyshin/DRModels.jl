@@ -165,16 +165,9 @@ function _apply_design_rank(fit)
     delete!(task_local_storage(), _DESIGN_RANK_KEY)
     (found === nothing || !(fit isa DrmFit)) && return fit
     V = copy(fit.vcov)
-    for ((p, rng), (_, nms)) in zip(fit.blocks, fit.coefnames)
-        i = findfirst(b -> b.param === p, found)
-        i === nothing && continue
-        for (k, nm) in enumerate(nms)
-            if nm in found[i].aliased && k <= length(rng) && last(rng) <= size(V, 1)
-                c = rng[k]
-                V[c, :] .= NaN
-                V[:, c] .= NaN
-            end
-        end
+    for c in _aliased_coords(fit, found)
+        V[c, :] .= NaN
+        V[:, c] .= NaN
     end
     out = _withcontrolinfo(fit, V, fit.control_info)
     lock(_DESIGN_RANK_LOCK) do
@@ -182,6 +175,28 @@ function _apply_design_rank(fit)
         _DESIGN_RANK_FITS[objectid(out.theta)] = (WeakRef(out.theta), found)
     end
     return out
+end
+
+# Indices into `fit.theta` of the aliased coefficients named by `found`.
+function _aliased_coords(fit, found)
+    idx = Int[]
+    V = fit.vcov
+    for ((p, rng), (_, nms)) in zip(fit.blocks, fit.coefnames)
+        i = findfirst(b -> b.param === p, found)
+        i === nothing && continue
+        for (k, nm) in enumerate(nms)
+            if nm in found[i].aliased && k <= length(rng) && last(rng) <= size(V, 1)
+                push!(idx, rng[k])
+            end
+        end
+    end
+    return idx
+end
+
+# The aliased coordinates of a finished fit (empty when its design had full rank).
+function _aliased_coords(fit)
+    found = _design_rank_findings(fit)
+    return found === nothing ? Int[] : _aliased_coords(fit, found)
 end
 
 # check_drm field: `nothing` unless the fit's design was rank-deficient.
