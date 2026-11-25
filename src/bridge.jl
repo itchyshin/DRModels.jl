@@ -2410,6 +2410,7 @@ function _bridge_coef_vector(fit; labels::Union{Nothing,_BridgeFormulaLabels} = 
         error("drm_bridge: raw coefficient labels are not unique")
     if coef_labels !== nothing
         coef_labels = _bridge_single_sd_coef_label_alias(fit, coef_labels)
+        coef_labels = _bridge_accept_pinned_binomial_animal_recov_label(fit, coef_labels)
         names = _bridge_echo_coef_labels(coef_labels, block_ranges, raw_names)
         length(unique(names)) == length(names) ||
             error("drm_bridge: echoed coef_labels public names are not unique")
@@ -2436,6 +2437,60 @@ function _bridge_coef_vector(fit; labels::Union{Nothing,_BridgeFormulaLabels} = 
         error("drm_bridge: public coefficient map does not cover every raw coordinate")
     return names, vals, raw_names, public_to_raw
 end
+
+# Unlabelled Binomial `animal(1 + x | group)` pins the intercept–slope
+# correlation at 0 (docs/dev-log/2026-11-09-integration-decisions.md). Its
+# blocks are `mu` plus two `sdtarget_*` SD regressions, not `:recov`.
+# drmTMB still sends `coef_labels["recov"] = "<group>:atanh_rho"` for that
+# shape, from `drm_julia_ordinary_binomial_recov_label`. That name is the
+# correlation coordinate this fit does not estimate. Drop that one key so
+# the echo can name the blocks that exist. Do not invent a correlation
+# coefficient, and do not rename the SD blocks. A labelled
+# `animal(1 + x | p | group)` fit has a real `:recov` block; leave its key
+# in place so the echo attaches `recov_<group>:atanh_rho` as it does for
+# every other `:recov` block. Any other unknown dpar, including a `recov`
+# value that is not exactly `<group>:atanh_rho`, still fails closed in
+# `_bridge_echo_coef_labels` (#1401).
+function _bridge_accept_pinned_binomial_animal_recov_label(fit, coef_labels)
+    group = _bridge_pinned_binomial_animal_q2_group(fit)
+    group === nothing && return coef_labels
+    coef_labels isa AbstractDict || return coef_labels
+    key_list = collect(keys(coef_labels))
+    idx = findfirst(key -> String(key) == "recov", key_list)
+    idx === nothing && return coef_labels
+    supplied = _bridge_coef_label_strings(coef_labels[key_list[idx]])
+    supplied == ["$(group):atanh_rho"] || return coef_labels
+    out = copy(coef_labels)
+    delete!(out, key_list[idx])
+    return out
+end
+
+# Group symbol of an unlabelled Binomial animal intercept-plus-slope SD fit
+# whose correlation is pinned at 0, or `nothing` when this is some other model.
+function _bridge_pinned_binomial_animal_q2_group(fit)
+    fit isa DrmFit{<:Binomial} || return nothing
+    fit.formula isa DrmFormula || return nothing
+    any(pair -> first(pair) === :recov, fit.blocks) && return nothing
+    forms = Dict(fit.formula.forms)
+    haskey(forms, :mu) || return nothing
+    block = _animal_intercept_slope(forms[:mu]; allow_label = true)
+    block === nothing && return nothing
+    block.label === nothing || return nothing
+    targets = filter(item -> item.target.level === :animal, _sd_target_parts(fit.formula))
+    length(targets) == 2 || return nothing
+    all(item -> item.target.group === block.group && item.target.dpar === :mu &&
+                item.target.block === nothing, targets) || return nothing
+    Set(item.target.member for item in targets) == Set((:intercept, block.slope)) ||
+        return nothing
+    return block.group
+end
+
+_bridge_coef_label_strings(value::AbstractString) = String[value]
+function _bridge_coef_label_strings(value::AbstractVector)
+    all(x -> x isa AbstractString, value) || return nothing
+    return String.(value)
+end
+_bridge_coef_label_strings(::Any) = nothing
 
 function _bridge_single_sd_coef_label_alias(fit, coef_labels)
     fit.formula isa DrmFormula || return coef_labels
@@ -2464,7 +2519,10 @@ end
 # names, prefixed `"<dpar>_"` to match the self-rendered convention. Fails
 # closed: any count mismatch, unknown dpar key, or a dpar with fixed-effect
 # columns but no supplied labels aborts naming the dpar and both counts —
-# never guesses, pads, or reorders (#563).
+# never guesses, pads, or reorders (#563). The one key removed before this
+# check is the pinned Binomial animal correlation label
+# (`_bridge_accept_pinned_binomial_animal_recov_label`, #1401): that fit has
+# no `:recov` coefficient. Every other unknown dpar still aborts here.
 #
 # EVERY block reported by `fit.blocks` needs an entry, not just `mu`/`sigma`/
 # the regression dpars — this includes `phylocov` and `sd`/`sd_phylo` random-

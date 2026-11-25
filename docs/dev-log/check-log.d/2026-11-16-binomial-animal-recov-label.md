@@ -1,0 +1,1 @@
+| 2026-11-16 | **Binomial animal q2 pinned recov label** (#1401) | Julia 1.10.13: `include("test/test_bridge_binomial_animal_q2_recov_labels.jl")` 26/26; `include("test/test_bridge_coef_labels_echo.jl")` 42/42 | ✅ the pinned `id:atanh_rho` label no longer aborts; a mismatched `recov` name and `notadpar` still do | cursor-agent |
