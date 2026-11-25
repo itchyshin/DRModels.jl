@@ -249,6 +249,7 @@ check_drm
 bridge_diagnostics
 family
 convergence_status
+convergence_info
 is_converged
 converged
 deviance

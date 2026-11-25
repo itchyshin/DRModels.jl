@@ -202,6 +202,8 @@ end
         @test !DRModels.drm_optim_converged(rr)
         @test rough(DRModels.Optim.minimizer(rr)) < rough(DRModels.Optim.minimizer(res_r)) - 0.5
         @test DRModels._skewnormal_interior_ok(rough, DRModels.Optim.minimizer(rr))
+        quad(th) = 0.5 * (th[1]^2 / 152.0^2 + th[2]^2 / 0.09^2)   # SEs (152, 0.09)
+        @test !DRModels._skewnormal_interior_ok(quad, [0.0, 0.0]) && DRModels._skewnormal_interior_ok(quad, [0.0, 0.0], [1000.0, 1.0])   # unit-free (drmTMB #1781)
         res, winner, gain, flipped = DRModels._skewnormal_slant_restarts(rough, res_r, θ0, 2, 1e-8)
         @test winner == 0 && gain == 0.0 && !flipped
         @test res === res_r
