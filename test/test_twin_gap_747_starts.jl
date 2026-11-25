@@ -184,7 +184,10 @@ end
             # note above and `_re_lbfgs_with_restart`'s docstring). Pin it so
             # a future change to the tie-break cannot silently drift the
             # answer while still avoiding the throw.
-            seed == 1 && @test fit.loglik ≈ -159.8734455689509 atol = 1e-6
+            # #936 / DECISIONS-0739-1124: with the response rescaled inside the fitter the
+            # seed-1 fit leaves the old boundary optimum (log sd_g = -118, logLik -159.87)
+            # for the improved interior optimum (gradient about 6e-11), logLik -45.18358515019651.
+            seed == 1 && @test fit.loglik ≈ -45.18358515019651 atol = 1e-6
             fit.converged && (nconv += 1)
         catch err
             nerr += 1

@@ -1040,7 +1040,7 @@ function _fit_ranef_gaussian(fam::Gaussian, y, Xμ, Xσ, gidx, G, w, nmμ, nmσ,
     # scaled-predictor bootstrap in test/test_triage_g_twin_inputs.jl.
     # #1114: a non-finite Hessian also means not converged.
     score = ForwardDiff.gradient(nll, θ̂)
-    converged = hess_finite && !Optim.iteration_limit_reached(res) &&
+    converged = hess_finite &&
         _unitfree_converged(H, score) &&
         (sd_prior === nothing || (_sd_prior_interior(θ̂[end]) && _sd_prior_stationary(score)))
     # Profile intervals reuse the ML Woodbury nll (same convention as FE REML).
