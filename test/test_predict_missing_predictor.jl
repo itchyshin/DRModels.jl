@@ -19,14 +19,14 @@
 # 4.6e-3, Laplace vs R), so its predictions are not pinned; its refusal is.
 using DRModels, Test, DelimitedFiles
 
-const _PM_DIR = joinpath(@__DIR__, "fixtures", "predict_miss")
+const _PMP_DIR = joinpath(@__DIR__, "fixtures", "predict_miss")
 
-function _pm_read(file)
-    m, h = readdlm(joinpath(_PM_DIR, file), ',', Any; header = true)
+function _pmp_read(file)
+    m, h = readdlm(joinpath(_PMP_DIR, file), ',', Any; header = true)
     return m, String.(vec(h))
 end
 
-const _PM_D = let (m, h) = _pm_read("data.csv")
+const _PMP_D = let (m, h) = _pmp_read("data.csv")
     col(n) = m[:, findfirst(==(n), h)]
     num(n) = (c = col(n); any(==("NA"), c) ? Union{Missing,Float64}[x == "NA" ? missing : Float64(x) for x in c] :
                                              Float64.(c))
@@ -35,7 +35,7 @@ const _PM_D = let (m, h) = _pm_read("data.csv")
        y_ordf = String.(col("y_ordf")))
 end
 
-const _PM_REF = let (m, h) = _pm_read("reference.csv")
+const _PMP_REF = let (m, h) = _pmp_read("reference.csv")
     c(n) = m[:, findfirst(==(n), h)]
     out = Dict{Tuple{String,String},Tuple{Vector{Int},Vector{Float64}}}()
     for (cell, call) in unique(zip(String.(c("cell")), String.(c("call"))))
@@ -45,7 +45,7 @@ const _PM_REF = let (m, h) = _pm_read("reference.csv")
     out
 end
 
-const _PM_FITS = let (m, h) = _pm_read("fits.csv")
+const _PMP_FITS = let (m, h) = _pmp_read("fits.csv")
     c(n) = m[:, findfirst(==(n), h)]
     out = Dict{String,NamedTuple}()
     for cell in unique(String.(c("cell")))
@@ -55,47 +55,47 @@ const _PM_FITS = let (m, h) = _pm_read("fits.csv")
     out
 end
 
-const _PM_REFUSAL = let (m, h) = _pm_read("refusals.csv")
+const _PMP_REFUSAL = let (m, h) = _pmp_read("refusals.csv")
     Dict(String(m[i, 1]) => String(m[i, 2]) for i in axes(m, 1))
 end
 
-_pm_rows(idx) = NamedTuple{keys(_PM_D)}(map(v -> v[idx], values(_PM_D)))
-const _PM_OK = findall(!ismissing, _PM_D.x1m)                       # rows with a complete predictor
-_pm_newdata(; cols = (:id, :g, :x1, :x1m)) =
-    NamedTuple{cols}(map(k -> collect(skipmissing(getproperty(_PM_D, k)[_PM_OK])), cols))
+_pmp_rows(idx) = NamedTuple{keys(_PMP_D)}(map(v -> v[idx], values(_PMP_D)))
+const _PMP_OK = findall(!ismissing, _PMP_D.x1m)                       # rows with a complete predictor
+_pmp_newdata(; cols = (:id, :g, :x1, :x1m)) =
+    NamedTuple{cols}(map(k -> collect(skipmissing(getproperty(_PMP_D, k)[_PMP_OK])), cols))
 
-function _pm_check_fit(fit, cell)
-    r = _PM_FITS[cell]
+function _pmp_check_fit(fit, cell)
+    r = _PMP_FITS[cell]
     @test abs(loglikelihood(fit) - r.ll) <= 1e-4
     β = coef(fit, :mu)
     @test length(β) == length(r.est)
     @test all(abs.(β .- r.est) .<= 1e-3 .* r.se)
 end
 
-function _pm_check_pred(p, cell, call)
-    ids, ref = _PM_REF[(cell, call)]
+function _pmp_check_pred(p, cell, call)
+    ids, ref = _PMP_REF[(cell, call)]
     @test length(p) == length(ref)
     @test all(isfinite, p)
     @test maximum(abs.(p .- ref)) <= 1e-8
 end
 
-const _PM_CELLS = [
-    ("K_gauss_mu", () -> drm(bf(@formula(y_g ~ x1m), @formula(sigma ~ 1)), DRModels.Gaussian(); data = _PM_D), :identity),
-    ("K_pois", () -> drm(bf(@formula(y_pois ~ x1m)), DRModels.Poisson(); data = _PM_D), :log),
-    ("K_nb2", () -> drm(bf(@formula(y_nb ~ x1m), @formula(sigma ~ 1)), DRModels.NegBinomial2(); data = _PM_D), :log),
+const _PMP_CELLS = [
+    ("K_gauss_mu", () -> drm(bf(@formula(y_g ~ x1m), @formula(sigma ~ 1)), DRModels.Gaussian(); data = _PMP_D), :identity),
+    ("K_pois", () -> drm(bf(@formula(y_pois ~ x1m)), DRModels.Poisson(); data = _PMP_D), :log),
+    ("K_nb2", () -> drm(bf(@formula(y_nb ~ x1m), @formula(sigma ~ 1)), DRModels.NegBinomial2(); data = _PMP_D), :log),
 ]
 
 @testset "predict with a missing predictor: like-for-like with drmTMB 0.8.1" begin
-    for (cell, mk, _) in _PM_CELLS
+    for (cell, mk, _) in _PMP_CELLS
         @testset "$cell" begin
             fit = mk()
-            _pm_check_fit(fit, cell)
-            nd = _pm_newdata()
-            _pm_check_pred(predict(fit, nd), cell, "newdata_response")
-            _pm_check_pred(predict(fit, nd; type = :link), cell, "newdata_link")
+            _pmp_check_fit(fit, cell)
+            nd = _pmp_newdata()
+            _pmp_check_pred(predict(fit, nd), cell, "newdata_response")
+            _pmp_check_pred(predict(fit, nd; type = :link), cell, "newdata_link")
             # A missing predictor in newdata is refused, as in R (R: no NA row is returned).
-            @test occursin("missing", _PM_REFUSAL[cell])
-            err = try predict(fit, _PM_D); nothing catch e; e end
+            @test occursin("missing", _PMP_REFUSAL[cell])
+            err = try predict(fit, _PMP_D); nothing catch e; e end
             @test err isa ArgumentError
             @test occursin("x1m", sprint(showerror, err))
             @test occursin("missing", sprint(showerror, err))
@@ -105,27 +105,27 @@ const _PM_CELLS = [
     # predictions pinned. (R's `predict(fit)` with no newdata adds the fitted random effects; Julia
     # has no no-newdata `predict`, so that call is not compared.)
     @testset "K_gauss_both_re" begin
-        fit = drm(bf(@formula(y_gm ~ x1m + (1 | g)), @formula(sigma ~ 1)), DRModels.Gaussian(); data = _PM_D)
-        _pm_check_fit(fit, "K_gauss_both_re")
-        nd = _pm_newdata()
-        _pm_check_pred(predict(fit, nd), "K_gauss_both_re", "newdata_response")
-        @test_throws ArgumentError predict(fit, _PM_D)
+        fit = drm(bf(@formula(y_gm ~ x1m + (1 | g)), @formula(sigma ~ 1)), DRModels.Gaussian(); data = _PMP_D)
+        _pmp_check_fit(fit, "K_gauss_both_re")
+        nd = _pmp_newdata()
+        _pmp_check_pred(predict(fit, nd), "K_gauss_both_re", "newdata_response")
+        @test_throws ArgumentError predict(fit, _PMP_D)
     end
     # Poisson random-intercept cell: R and Julia logLik differ by about 4.6e-3 (Laplace vs R), so
     # predictions are not pinned; only the shared refusal is.
     @testset "K_pois_both_re (refusal only)" begin
-        fit = drm(bf(@formula(y_pm ~ x1m + (1 | g))), DRModels.Poisson(); data = _PM_D)
-        @test_throws ArgumentError predict(fit, _PM_D)
-        @test occursin("missing", _PM_REFUSAL["K_pois_both_re"])
+        fit = drm(bf(@formula(y_pm ~ x1m + (1 | g))), DRModels.Poisson(); data = _PMP_D)
+        @test_throws ArgumentError predict(fit, _PMP_D)
+        @test occursin("missing", _PMP_REFUSAL["K_pois_both_re"])
     end
     # A predictor that only the sigma formula uses: R does not refuse and returns no NA for mu.
     @testset "K_gauss_sigma (NA only in the sigma formula)" begin
-        fit = drm(bf(@formula(y_g ~ x1), @formula(sigma ~ x1m)), DRModels.Gaussian(); data = _PM_D)
-        _pm_check_fit(fit, "K_gauss_sigma")
-        @test _PM_REFUSAL["K_gauss_sigma"] == "NO-ERROR"
-        p = predict(fit, _PM_D)
-        ids, ref = _PM_REF[("K_gauss_sigma", "newdata_full_with_NA")]
-        @test length(p) == length(ref) == length(_PM_D.id)
+        fit = drm(bf(@formula(y_g ~ x1), @formula(sigma ~ x1m)), DRModels.Gaussian(); data = _PMP_D)
+        _pmp_check_fit(fit, "K_gauss_sigma")
+        @test _PMP_REFUSAL["K_gauss_sigma"] == "NO-ERROR"
+        p = predict(fit, _PMP_D)
+        ids, ref = _PMP_REF[("K_gauss_sigma", "newdata_full_with_NA")]
+        @test length(p) == length(ref) == length(_PMP_D.id)
         @test !any(ismissing, p)
         @test maximum(abs.(p .- ref)) <= 1e-8
     end
@@ -133,18 +133,18 @@ end
 
 @testset "predict on an ordinal label response (gap-map cell I|cumul|response=label)" begin
     fit = drm(bf(@formula(y_ordf ~ x1)), DRModels.CumulativeLogit();
-              data = (; y_ordf = _PM_D.y_ordf, x1 = _PM_D.x1))
-    _pm_check_fit(fit, "I_ord_label")
-    d_all = (; y_ordf = _PM_D.y_ordf, x1 = _PM_D.x1)
+              data = (; y_ordf = _PMP_D.y_ordf, x1 = _PMP_D.x1))
+    _pmp_check_fit(fit, "I_ord_label")
+    d_all = (; y_ordf = _PMP_D.y_ordf, x1 = _PMP_D.x1)
     p = predict(fit, d_all)                                  # label column present in newdata
-    _pm_check_pred(p, "I_ord_label", "newdata_all_with_label")
-    _pm_check_pred(p, "I_ord_label", "fit_rows")             # R's predict(fit) is the same 160 values
+    _pmp_check_pred(p, "I_ord_label", "newdata_all_with_label")
+    _pmp_check_pred(p, "I_ord_label", "fit_rows")             # R's predict(fit) is the same 160 values
     idx = [5, 1, 9]
-    _pm_check_pred(predict(fit, (; y_ordf = _PM_D.y_ordf[idx], x1 = _PM_D.x1[idx])), "I_ord_label", "newdata_with_label")
+    _pmp_check_pred(predict(fit, (; y_ordf = _PMP_D.y_ordf[idx], x1 = _PMP_D.x1[idx])), "I_ord_label", "newdata_with_label")
     # predict_parameters ignores a label response the same way, and agrees with a numeric response column
     pp = predict_parameters(fit, d_all)
-    codes_all = [parse(Int, s[2:end]) for s in _PM_D.y_ordf]
-    pp_num = predict_parameters(fit, (; y_ordf = codes_all, x1 = _PM_D.x1))
+    codes_all = [parse(Int, s[2:end]) for s in _PMP_D.y_ordf]
+    pp_num = predict_parameters(fit, (; y_ordf = codes_all, x1 = _PMP_D.x1))
     @test keys(pp) == keys(pp_num)
     for k in keys(pp)
         @test all(isfinite, pp[k])
@@ -152,9 +152,9 @@ end
     end
     @test maximum(abs.(pp[:mu] .- p)) <= 1e-12
     # newdata without the response column keeps working (unchanged behaviour)
-    p0 = predict(fit, (; x1 = _PM_D.x1))
+    p0 = predict(fit, (; x1 = _PMP_D.x1))
     @test maximum(abs.(p0 .- p)) <= 1e-12
     # an integer-coded response in newdata gives the same numbers
-    codes = [parse(Int, s[2:end]) for s in _PM_D.y_ordf]
-    @test maximum(abs.(predict(fit, (; y_ordf = codes, x1 = _PM_D.x1)) .- p)) <= 1e-12
+    codes = [parse(Int, s[2:end]) for s in _PMP_D.y_ordf]
+    @test maximum(abs.(predict(fit, (; y_ordf = codes, x1 = _PMP_D.x1)) .- p)) <= 1e-12
 end
