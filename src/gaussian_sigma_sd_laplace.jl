@@ -132,7 +132,8 @@ end
 
 # Damped Newton for the inner mode (Float64). The joint density is not convex in
 # (A, eta), so a non-PD Hessian is regularised and every step is backtracked.
-function _gsl_mode(joint, v0::Vector{Float64}; tol::Float64 = 1e-10, maxit::Int = 80)
+function _gsl_mode(joint, v0::Vector{Float64}; tol::Float64 = 1e-10, maxit::Int = 80,
+                   prior_prec::Float64 = 0.0)
     v = copy(v0)
     F, g, H = joint(v, true)
     for _ in 1:maxit
@@ -175,10 +176,32 @@ function _gsl_mode(joint, v0::Vector{Float64}; tol::Float64 = 1e-10, maxit::Int 
             end
             t *= 0.5
         end
-        accepted || return v, maximum(abs, g) < 1e-8
+        accepted || return v, maximum(abs, g) < 1e-8 || _gsl_at_gradient_floor(g, H, v, prior_prec)
         F, g, H = joint(v, true)
     end
-    return v, maximum(abs, g) < 1e-9
+    return v, maximum(abs, g) < 1e-9 || _gsl_at_gradient_floor(g, H, v, prior_prec)
+end
+
+# Roundoff floor of the inner-mode gradient (#1366). With a correlated pair (`rho`) the prior
+# precision is sr = 1 / (1 - rho^2), which is ~1e8 once atanh(rho) is about 8 (|rho| within 1e-7 of 1,
+# a normal outcome with few groups), and the gradient `sr * (va - rho * vb)` then carries roundoff of
+# order sr * |v| * eps, above the absolute 1e-9 test: Newton sits at the exact mode yet the loop
+# reports failure and the outer objective takes the 1e18 sentinel. The scale-free question is the
+# Newton decrement g' H^-1 g (the objective gap to the mode): at 1e-14 the Laplace value is exact
+# to far below the outer tolerance. Only consulted where the absolute test already said "failed",
+# so a mode that passes today is unchanged and a stalled mode (large decrement) still fails.
+# The floor is off unless the caller passes `prior_prec` (the correlated-pair precision sr; 0 = off,
+# the default, so every other mode behaves exactly as before). When on, it also requires the absolute
+# gradient to lie within the roundoff bound 100 * eps * prior_prec * max(1, |v|_inf), which is ~1e-6
+# only at sr ~ 1e8 (|rho| near 1). The data part of diag(H) is deliberately NOT used: it explodes in
+# wild optimiser trials and would let a genuinely unconverged mode through.
+function _gsl_at_gradient_floor(g, H, v, prior_prec)
+    prior_prec > 0 || return false
+    all(isfinite, g) || return false
+    maximum(abs, g) <= 100 * eps(Float64) * prior_prec * max(1.0, maximum(abs, v)) || return false
+    C = cholesky(Symmetric(H); check = false)
+    issuccess(C) || return false
+    return dot(g, C \ g) < 1e-14
 end
 
 # `mean_re` is `nothing` or (gidx, G, Zg, nmsd, grp, block); `sigma_re` is
@@ -253,8 +276,8 @@ function _fit_gaussian_sigma_sd_laplace(fam::Union{Gaussian,NegBinomial2,Gamma},
     fg = function (θ, b0, grad)
         θf = Vector{Float64}(θ)
         joint = joint_at(θf)
-        v, ok = _gsl_mode(joint, Vector{Float64}(b0))
-        ok || ((v, ok) = _gsl_mode(joint, zeros(m)))
+        v, ok = _gsl_mode(joint, Vector{Float64}(b0); prior_prec = corr ? 1 / (1 - tanh(θf[ic])^2) : 0.0)
+        ok || ((v, ok) = _gsl_mode(joint, zeros(m); prior_prec = corr ? 1 / (1 - tanh(θf[ic])^2) : 0.0))
         ok || return grad ? (1e18, fill(NaN, ntheta), zeros(m), false) : (1e18, zeros(m), false)
         _, _, H = joint(v, true)
         issuccess(cholesky(Symmetric(H); check = false)) ||
@@ -293,7 +316,7 @@ function _fit_gaussian_sigma_sd_laplace(fam::Union{Gaussian,NegBinomial2,Gamma},
     # If the prior-mode start v = 0 reaches a different Laplace value at θ̂, the
     # likelihood is not well defined there: warn and do not claim convergence.
     let joint = joint_at(θ̂)
-        v0, ok0 = _gsl_mode(joint, zeros(m))
+        v0, ok0 = _gsl_mode(joint, zeros(m); prior_prec = corr ? 1 / (1 - tanh(θ̂[ic])^2) : 0.0)
         if ok0
             _, _, H0 = joint(v0, true)
             if issuccess(cholesky(Symmetric(H0); check = false))
@@ -318,7 +341,7 @@ function _fit_gaussian_sigma_sd_laplace(fam::Union{Gaussian,NegBinomial2,Gamma},
     end
 
     # Conditional modes and fitted scales at θ̂.
-    vhat, _ = _gsl_mode(joint_at(θ̂), zeros(m))
+    vhat, _ = _gsl_mode(joint_at(θ̂), zeros(m); prior_prec = corr ? 1 / (1 - tanh(θ̂[ic])^2) : 0.0)
     βμ = θ̂[1:pμ]; βσ = θ̂[(pμ+1):(pμ+pσ)]
     sd_a = has_a ? exp.(Za * θ̂[ia]) : Float64[]
     sd_b = exp.(Zb * θ̂[ib])
