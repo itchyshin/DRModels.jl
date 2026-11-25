@@ -12,10 +12,10 @@ using DelimitedFiles
 using LinearAlgebra
 
 const _FM_O = DRModels.Optim
-const _FM_DIR = joinpath(@__DIR__, "fixtures", "p17_fitted")
+const _FMSW_DIR = joinpath(@__DIR__, "fixtures", "p17_fitted")
 
 function _fm_data()
-    m, h = readdlm(joinpath(_FM_DIR, "data.csv"), ',', Any; header = true)
+    m, h = readdlm(joinpath(_FMSW_DIR, "data.csv"), ',', Any; header = true)
     facs = Set(["g", "g2", "h", "f", "f2", "gna", "gu", "y_cat", "y_ordf"])
     cols = Pair{Symbol,Any}[]
     for (j, n) in enumerate(String.(vec(h)))
@@ -96,7 +96,7 @@ end
 # on the used rows, so `fitted(fit)` and `residuals(fit)` must give the used rows only, as drmTMB does.
 # Reference: drmTMB 0.8.1, test/fixtures/p17_fitted/p17_fitted_sigma_missing_r.R, same data, 1e-6.
 function _fm_data_na()
-    m, h = readdlm(joinpath(_FM_DIR, "data.csv"), ',', Any; header = true)
+    m, h = readdlm(joinpath(_FMSW_DIR, "data.csv"), ',', Any; header = true)
     facs = Set(["g", "g2", "h", "f", "f2", "gna", "gu", "y_cat", "y_ordf"])
     cols = Pair{Symbol,Any}[]
     for (j, n) in enumerate(String.(vec(h)))
@@ -132,7 +132,7 @@ const _FM_NA_CELLS = [
 
 @testset "fitted(): missing response and dropped predictor rows on the sigma and weights routes" begin
     d = _fm_data_na()
-    m = readdlm(joinpath(_FM_DIR, "p17_fitted_sigma_missing_reference.csv"), ',', Any; skipstart = 1)
+    m = readdlm(joinpath(_FMSW_DIR, "p17_fitted_sigma_missing_reference.csv"), ',', Any; skipstart = 1)
     for (id, fit_it, nused) in _FM_NA_CELLS
         @testset "$id" begin
             ref = Float64.(m[String.(m[:, 1]) .== id, 3])
