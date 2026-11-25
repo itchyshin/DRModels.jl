@@ -3901,9 +3901,11 @@ function predict_parameters(fit::DrmFit, newdata; type::Symbol = :response,
         bivar || ((fixed_p, off) = _predict_offset(fit, fixed_p, nd, p))   # #1006
         Xp, ηp = _predict_design(fit, resp, fixed_p, ndr, p, f.schema_cache, off;
                                  drop_intercept = fit.family isa CumulativeLogit && p === :mu)   # #1000
-        val = type === :link ? ηp : _param_response(fit.family, p, ηp)
+        # drmTMB: LogNormal `predict(type = "response", dpar = "mu")` is log-scale μ (#1354).
+        resp_type = fit.family isa LogNormal && p === :mu && type === :response ? :link : type
+        val = resp_type === :link ? ηp : _param_response(fit.family, p, ηp)
         if se
-            se_p = _delta_se(Xp, view(V, r, r), ηp, type, fit.family, p)
+            se_p = _delta_se(Xp, view(V, r, r), ηp, resp_type, fit.family, p)
             out[p] = (; value = val, se = se_p)
         else
             out[p] = val
