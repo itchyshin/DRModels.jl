@@ -319,6 +319,11 @@ function _ctl_preflight(scope::_ControlScope, f, fam)
             "($(typeof(fam))), so the fit was refused before it started, not run with the " *
             "weights ignored."))
     end
+    if wants_optim && c.multi_start == 1 && (c.seed != 1 || c.jitter != 0.5)
+        throw(ArgumentError("drm: `seed` and `jitter` on " * kind *
+            " are supported only when `multi_start` > 1 (#994); the fit was refused before " *
+            "it started, not run with the fields ignored."))
+    end
   # #1219: maxit / start / multi_start / optimizer pass through to fitters via `_ctl_optimize`;
   # `_ctl_finish` refuses a route that did not honour them.
     return nothing

@@ -403,7 +403,7 @@ function _fit_bivariate_residual(f::BivariateDrmFormula, fam::Gaussian, data, rh
     # rho12 block (rng(5)) intentionally left at 0 (atanh scale ⇒ ρ = 0).
     θ0[rng(5)] .= 0.0
 
-    res = _ctl_optimize_nll(nll, θ0; g_tol = g_tol)
+    res = Optim.optimize(nll, θ0, Optim.LBFGS(), Optim.Options(g_tol = g_tol); autodiff = :forward)
     θ̂ = Optim.minimizer(res)
     V = _vcov_from_hessian(ForwardDiff.hessian(nll, θ̂); context = "bivariate Gaussian")
 

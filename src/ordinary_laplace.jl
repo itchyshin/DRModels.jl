@@ -273,7 +273,12 @@ function _ordinary_laplace_optimize(fg, θ0, n::Int, q::Int, g_tol; se::Bool,
         return res
     end
     method = Optim.LBFGS(linesearch = Optim.LineSearches.BackTracking())
-    res = _ctl_optimize(polish_from, θ0; g_tol = g_tol)
+    scope = _active_control_scope()
+    res = if scope !== nothing && _ctl_optim_requested(scope.control)
+        _ctl_optimize((x0, opts, meth) -> polish_from(x0, opts, meth), θ0; g_tol = g_tol)
+    else
+        polish_from(θ0, Optim.Options(g_tol = g_tol, iterations = 250), method)
+    end
     res_fast = res_fast_box[]
     θ̂ = Optim.minimizer(res)
     nllhat = nll(θ̂)
