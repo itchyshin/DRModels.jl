@@ -476,8 +476,12 @@ function _fit_cumulative_sd_regression(fam::CumulativeLogit, y::Vector{Int}, Xμ
     θ0[(pμ+nc+1):end] .= Zg \ fill(log(0.5), G)
     res = Optim.optimize(nll, θ0, Optim.LBFGS(), Optim.Options(g_tol = g_tol); autodiff = :forward)
     θ̂ = Optim.minimizer(res)
-    V = se ? _vcov_from_hessian(ForwardDiff.hessian(nll, θ̂)) :
+    H = ForwardDiff.hessian(nll, θ̂)
+    V = se ? _vcov_from_hessian(H) :
              fill(NaN, length(θ̂), length(θ̂))
+    # #1050: not the iteration cap, and the Newton step in SE units; not `Optim.g_converged` (absolute 1e-8).
+    opt_converged = !Optim.iteration_limit_reached(res) &&
+        _unitfree_converged(H, ForwardDiff.gradient(nll, θ̂))
     sd_range = (pμ + nc + 1):(pμ + nc + psd)
     blocks = [:mu => 1:pμ, :cutpoints => (pμ+1):(pμ+nc), :sd => sd_range]
     names = [:mu => nmμ, :cutpoints => ["theta$k" for k in 1:nc], :sd => nmsd]
@@ -491,7 +495,7 @@ function _fit_cumulative_sd_regression(fam::CumulativeLogit, y::Vector{Int}, Xμ
                   :sd_group_index => Float64.(gidx), :aghq_nodes => [Float64(nq)])
     return _withiterations(
         _withnll(DrmFit(fam, blocks, names, θ̂, V, -nll(θ̂), n,
-                        drm_optim_converged(res), means, obs, scales), nll),
+                        opt_converged, means, obs, scales), nll),
         Optim.iterations(res))
 end
 
@@ -524,7 +528,10 @@ function _fit_cumulative(fam::CumulativeLogit, y::Vector{Int}, Xμ, K, nmμ, g_t
     θ0[(pμ+1):(pμ+nc)] = _cumulative_cut_init(y, K, n)
     res = _ctl_optimize((x0, opts, method) -> Optim.optimize(nll, x0, method, opts; autodiff = :forward),
                        θ0; g_tol = g_tol)   # control: maxit / start / multi_start (#948 #994)
-    θ̂ = Optim.minimizer(res); V = _ctl_se(() -> _vcov_from_hessian(ForwardDiff.hessian(nll, θ̂)), θ̂)
+    θ̂ = Optim.minimizer(res); H = ForwardDiff.hessian(nll, θ̂); V = _ctl_se(() -> _vcov_from_hessian(H), θ̂)
+    # #1050: not the iteration cap, and the Newton step in SE units; not `Optim.g_converged` (absolute 1e-8).
+    opt_converged = !Optim.iteration_limit_reached(res) &&
+        _unitfree_converged(H, ForwardDiff.gradient(nll, θ̂))
     _cumulative_separation_warn(Xμ, y, K, nmμ)   # #1221: warn only
     blocks = [:mu => 1:pμ, :cutpoints => (pμ+1):(pμ+nc)]
     names = [:mu => nmμ, :cutpoints => ["theta$k" for k in 1:nc]]
@@ -539,7 +546,7 @@ function _fit_cumulative(fam::CumulativeLogit, y::Vector{Int}, Xμ, K, nmμ, g_t
     means = Dict(:mu => score); obs = Dict(:mu => Float64.(y))
     scales = Dict(:ordinal_eta => η̂, :ordinal_cuts => Float64.(cuts_hat))
     return _withiterations(
-        _withnll(DrmFit(fam, blocks, names, θ̂, V, -nll(θ̂), n, drm_optim_converged(res), means, obs, scales), nll),
+        _withnll(DrmFit(fam, blocks, names, θ̂, V, -nll(θ̂), n, opt_converged, means, obs, scales), nll),
         Optim.iterations(res))
 end
 
@@ -581,7 +588,10 @@ function _fit_cumulative_ranef(fam::CumulativeLogit, y::Vector{Int}, Xμ, K, gid
     θ0[(pμ+1):(pμ+nc)] = _cumulative_cut_init(y, K, n)
     θ0[pμ+nc+1] = log(0.5)             # σ_b
     res = Optim.optimize(nll, θ0, Optim.LBFGS(), Optim.Options(g_tol = g_tol); autodiff = :forward)
-    θ̂ = Optim.minimizer(res); V = _vcov_from_hessian(ForwardDiff.hessian(nll, θ̂))
+    θ̂ = Optim.minimizer(res); H = ForwardDiff.hessian(nll, θ̂); V = _vcov_from_hessian(H)
+    # #1050: not the iteration cap, and the Newton step in SE units; not `Optim.g_converged` (absolute 1e-8).
+    opt_converged = !Optim.iteration_limit_reached(res) &&
+        _unitfree_converged(H, ForwardDiff.gradient(nll, θ̂))
     blocks = [:mu => 1:pμ, :cutpoints => (pμ+1):(pμ+nc), :resd => (pμ+nc+1):(pμ+nc+1)]
     names = [:mu => nmμ, :cutpoints => ["theta$k" for k in 1:nc], :resd => [String(grp)]]
     β̂ = θ̂[1:pμ]; cuts_hat = _cumulative_cuts(θ̂[pμ+1:pμ+nc])
@@ -591,7 +601,7 @@ function _fit_cumulative_ranef(fam::CumulativeLogit, y::Vector{Int}, Xμ, K, gid
     scales = Dict(:ordinal_eta => η̂, :ordinal_cuts => Float64.(cuts_hat))
     _record_cond_fit_aghq!(scales, nll, θ̂, bcache, gidx, Zre)   # fitted-row modes for `fitted(fit)`
     return _withiterations(
-        _withnll(DrmFit(fam, blocks, names, θ̂, V, -nll(θ̂), n, drm_optim_converged(res), means, obs, scales), nll),
+        _withnll(DrmFit(fam, blocks, names, θ̂, V, -nll(θ̂), n, opt_converged, means, obs, scales), nll),
         Optim.iterations(res))
 end
 
@@ -618,7 +628,10 @@ function _fit_cumulative_slope_ranef(fam::CumulativeLogit, y::Vector{Int}, Xμ, 
     θ0[(pμ+1):(pμ+nc)] = _cumulative_cut_init(y, K, n)
     θ0[pμ+nc+1] = log(0.5)             # σ_b
     res = Optim.optimize(nll, θ0, Optim.LBFGS(), Optim.Options(g_tol = g_tol); autodiff = :forward)
-    θ̂ = Optim.minimizer(res); V = _vcov_from_hessian(ForwardDiff.hessian(nll, θ̂))
+    θ̂ = Optim.minimizer(res); H = ForwardDiff.hessian(nll, θ̂); V = _vcov_from_hessian(H)
+    # #1050: not the iteration cap, and the Newton step in SE units; not `Optim.g_converged` (absolute 1e-8).
+    opt_converged = !Optim.iteration_limit_reached(res) &&
+        _unitfree_converged(H, ForwardDiff.gradient(nll, θ̂))
     blocks = [:mu => 1:pμ, :cutpoints => (pμ+1):(pμ+nc), :resd => (pμ+nc+1):(pμ+nc+1)]
     names = [:mu => nmμ, :cutpoints => ["theta$k" for k in 1:nc], :resd => [String(grp)]]
     β̂ = θ̂[1:pμ]; cuts_hat = _cumulative_cuts(θ̂[pμ+1:pμ+nc])
@@ -628,7 +641,7 @@ function _fit_cumulative_slope_ranef(fam::CumulativeLogit, y::Vector{Int}, Xμ, 
     scales = Dict(:ordinal_eta => η̂, :ordinal_cuts => Float64.(cuts_hat))
     _record_cond_fit_aghq!(scales, nll, θ̂, bcache, gidx, Zre)   # fitted-row modes for `fitted(fit)`
     return _withiterations(
-        _withnll(DrmFit(fam, blocks, names, θ̂, V, -nll(θ̂), n, drm_optim_converged(res), means, obs, scales), nll),
+        _withnll(DrmFit(fam, blocks, names, θ̂, V, -nll(θ̂), n, opt_converged, means, obs, scales), nll),
         Optim.iterations(res))
 end
 

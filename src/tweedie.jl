@@ -938,8 +938,12 @@ function _fit_tweedie_sd_regression(fam::Tweedie, y, Xmu, Xsigma, Xnu, loading, 
     result = Optim.optimize(nll, theta0, optimizer,
         Optim.Options(g_tol = g_tol); autodiff = :forward)
     theta_hat = Optim.minimizer(result)
-    V = se ? _vcov_from_hessian(ForwardDiff.hessian(nll, theta_hat)) :
+    H = ForwardDiff.hessian(nll, theta_hat)
+    V = se ? _vcov_from_hessian(H) :
         fill(NaN, length(theta_hat), length(theta_hat))
+    # #1050: not the iteration cap, and the Newton step in SE units; not `Optim.g_converged` (absolute 1e-8).
+    opt_converged = !Optim.iteration_limit_reached(result) &&
+        _unitfree_converged(H, ForwardDiff.gradient(nll, theta_hat))
     blocks = [:mu => 1:pmu, :sigma => (pmu+1):i1, :nu => (i1+1):i2,
               :sd => (i2+1):(i2+psd)]
     names = [:mu => nmmu, :sigma => nmsigma, :nu => nmnu, :sd => nmsd]
@@ -953,7 +957,7 @@ function _fit_tweedie_sd_regression(fam::Tweedie, y, Xmu, Xsigma, Xnu, loading, 
     _warn_at_clamp("Tweedie", ["log sigma" => (Xsigma * theta_hat[(pmu+1):i1], -15.0, 15.0),
                                "power (logit scale)" => (Xnu * theta_hat[(i1+1):i2], -12.0, 12.0)])
     return _withiterations(_withnll(DrmFit(fam, blocks, names, theta_hat, V,
-        -nll(theta_hat), n, drm_optim_converged(result), means, observed, scales), nll),
+        -nll(theta_hat), n, opt_converged, means, observed, scales), nll),
         Optim.iterations(result))
 end
 
@@ -980,7 +984,10 @@ function _fit_tweedie(fam::Tweedie, y, Xμ, Xσ, Xν, nmμ, nmσ, nmν, g_tol; o
     θ0[1:pμ] .= _offset_start(θ0[1:pμ], Xμ, offset)   # #938
     res = _ctl_optimize((x0, opts, method) -> Optim.optimize(nll, x0, method, opts; autodiff = :forward),
                        θ0; g_tol = g_tol)   # control: maxit / start / multi_start (#948 #994)
-    θ̂ = Optim.minimizer(res); V = _ctl_se(() -> _vcov_from_hessian(ForwardDiff.hessian(nll, θ̂)), θ̂)
+    θ̂ = Optim.minimizer(res); H = ForwardDiff.hessian(nll, θ̂); V = _ctl_se(() -> _vcov_from_hessian(H), θ̂)
+    # #1050: not the iteration cap, and the Newton step in SE units; not `Optim.g_converged` (absolute 1e-8).
+    opt_converged = !Optim.iteration_limit_reached(res) &&
+        _unitfree_converged(H, ForwardDiff.gradient(nll, θ̂))
     blocks = [:mu => 1:pμ, :sigma => (pμ+1):i1, :nu => (i1+1):i2]
     names = [:mu => nmμ, :sigma => nmσ, :nu => nmν]
     means = Dict(:mu => exp.(_eta_with_offset(Xμ, θ̂[1:pμ], offset))); obs = Dict(:mu => Vector{Float64}(y))   # response-scale μ̂
@@ -989,7 +996,7 @@ function _fit_tweedie(fam::Tweedie, y, Xμ, Xσ, Xν, nmμ, nmσ, nmν, g_tol; o
     _warn_at_clamp("Tweedie", ["log sigma" => (Xσ * θ̂[(pμ+1):i1], -15.0, 15.0),   # #959
                                "power (logit scale)" => (Xν * θ̂[(i1+1):i2], -12.0, 12.0)])
     return _withiterations(
-        _withnll(DrmFit(fam, blocks, names, θ̂, V, -nll(θ̂), n, drm_optim_converged(res), means, obs, scales), nll),
+        _withnll(DrmFit(fam, blocks, names, θ̂, V, -nll(θ̂), n, opt_converged, means, obs, scales), nll),
         Optim.iterations(res))
 end
 
@@ -1040,7 +1047,10 @@ function _fit_tweedie_ranef(fam::Tweedie, y, Xμ, Xσ, Xν, gidx, G, nmμ, nmσ,
     θ0[i1+1] = 0.0                     # p = 1.5
     θ0[i2+1] = log(0.5)                # σ_b
     res = Optim.optimize(nll, θ0, Optim.LBFGS(), Optim.Options(g_tol = g_tol); autodiff = :forward)
-    θ̂ = Optim.minimizer(res); V = _vcov_from_hessian(ForwardDiff.hessian(nll, θ̂))
+    θ̂ = Optim.minimizer(res); H = ForwardDiff.hessian(nll, θ̂); V = _vcov_from_hessian(H)
+    # #1050: not the iteration cap, and the Newton step in SE units; not `Optim.g_converged` (absolute 1e-8).
+    opt_converged = !Optim.iteration_limit_reached(res) &&
+        _unitfree_converged(H, ForwardDiff.gradient(nll, θ̂))
     blocks = [:mu => 1:pμ, :sigma => (pμ+1):i1, :nu => (i1+1):i2, :resd => (i2+1):(i2+1)]
     names = [:mu => nmμ, :sigma => nmσ, :nu => nmν, :resd => [String(grp)]]
     means = Dict(:mu => exp.(Xμ * θ̂[1:pμ])); obs = Dict(:mu => Vector{Float64}(y))
@@ -1050,7 +1060,7 @@ function _fit_tweedie_ranef(fam::Tweedie, y, Xμ, Xσ, Xν, gidx, G, nmμ, nmσ,
                                "power (logit scale)" => (Xν * θ̂[(i1+1):i2], -12.0, 12.0)])
     _record_cond_fit_aghq!(scales, nll, θ̂, bcache, gidx, Zre)   # fitted-row modes for `fitted(fit)`
     return _withiterations(
-        _withnll(DrmFit(fam, blocks, names, θ̂, V, -nll(θ̂), n, drm_optim_converged(res), means, obs, scales), nll),
+        _withnll(DrmFit(fam, blocks, names, θ̂, V, -nll(θ̂), n, opt_converged, means, obs, scales), nll),
         Optim.iterations(res))
 end
 
@@ -1087,7 +1097,10 @@ function _fit_tweedie_slope_ranef(fam::Tweedie, y, Xμ, Xσ, Xν, xs, gidx, G, n
     θ0[i1+1] = 0.0                     # p = 1.5
     θ0[i2+1] = log(0.5)                # σ_b
     res = Optim.optimize(nll, θ0, Optim.LBFGS(), Optim.Options(g_tol = g_tol); autodiff = :forward)
-    θ̂ = Optim.minimizer(res); V = _vcov_from_hessian(ForwardDiff.hessian(nll, θ̂))
+    θ̂ = Optim.minimizer(res); H = ForwardDiff.hessian(nll, θ̂); V = _vcov_from_hessian(H)
+    # #1050: not the iteration cap, and the Newton step in SE units; not `Optim.g_converged` (absolute 1e-8).
+    opt_converged = !Optim.iteration_limit_reached(res) &&
+        _unitfree_converged(H, ForwardDiff.gradient(nll, θ̂))
     blocks = [:mu => 1:pμ, :sigma => (pμ+1):i1, :nu => (i1+1):i2, :resd => (i2+1):(i2+1)]
     names = [:mu => nmμ, :sigma => nmσ, :nu => nmν, :resd => [String(grp)]]
     means = Dict(:mu => exp.(Xμ * θ̂[1:pμ])); obs = Dict(:mu => Vector{Float64}(y))
@@ -1097,7 +1110,7 @@ function _fit_tweedie_slope_ranef(fam::Tweedie, y, Xμ, Xσ, Xν, xs, gidx, G, n
                                "power (logit scale)" => (Xν * θ̂[(i1+1):i2], -12.0, 12.0)])
     _record_cond_fit_aghq!(scales, nll, θ̂, bcache, gidx, Zre)   # fitted-row modes for `fitted(fit)`
     return _withiterations(
-        _withnll(DrmFit(fam, blocks, names, θ̂, V, -nll(θ̂), n, drm_optim_converged(res), means, obs, scales), nll),
+        _withnll(DrmFit(fam, blocks, names, θ̂, V, -nll(θ̂), n, opt_converged, means, obs, scales), nll),
         Optim.iterations(res))
 end
 
