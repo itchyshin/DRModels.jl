@@ -1,5 +1,6 @@
 # `residuals(fit; type = :pearson)`: (y - E[Y]) / sqrt(Var[Y]) from the fitted distribution of each
-# observation, for fixed-effect Gaussian, Poisson, NegBinomial2, Gamma and Beta fits. The values are
+# observation for fixed-effect Gaussian, Poisson, NegBinomial2, Gamma and Beta fits; for LogNormal()
+# drmTMB standardises on the log scale (log y - mu) / sigma. The values are
 # pinned from drmTMB 0.8.1 `residuals(fit, type = "pearson")` (generating script and data in
 # test/fixtures/pearson/). Other families and routes are refused by name.
 using DRModels, Test, Random, DelimitedFiles
@@ -20,6 +21,7 @@ _pmsg(f) = try; f(); ""; catch e; e isa ArgumentError ? e.msg : rethrow(); end
         ("nbinom2", () -> (bf(@formula(y ~ x), @formula(sigma ~ 1)), NegBinomial2())),
         ("gamma", () -> (bf(@formula(y ~ x), @formula(sigma ~ 1)), DRModels.Gamma())),
         ("beta", () -> (bf(@formula(y ~ x), @formula(sigma ~ 1)), DRModels.Beta())),
+        ("lognormal", () -> (bf(@formula(y ~ x), @formula(sigma ~ 1)), LogNormal())),
     ]
     for (name, spec) in cells
         data, rr = _pearson_fixture(name)
@@ -37,6 +39,26 @@ end
     fit = drm(bf(@formula(y ~ x)), DRModels.Poisson(); data)
     mu = fitted(fit)
     @test residuals(fit; type = :pearson) ≈ (data.y .- mu) ./ sqrt.(mu) rtol = 1e-12
+end
+
+@testset "Pearson residuals: LogNormal() uses drmTMB log-scale standardisation (#1365)" begin
+    xs = [0.843381, -0.885564, 0.116445, -0.252533, -0.093041, 0.252174, -0.66884, -0.341778,
+        0.079249, 0.943025, 0.642379, -0.641913, 0.990344, 0.63205, -0.116367, 0.853758,
+        -0.131609, 0.288373, -0.354713, 0.520755, 0.112061, 0.321753, -0.161323, -0.728472,
+        -0.339061, -0.009352, -0.999365, -0.676189, -0.159613, 0.970164, 0.446816, -0.428597,
+        -0.163913, -0.598804, 0.151841, 0.963041, 0.841137, -0.059447, 0.53641, 0.193308,
+        0.868528, -0.093836, -0.569138, 0.38943, 0.591943, -0.433619, 0.027803, -0.714939,
+        -0.77123, -0.3956, -0.768218, 0.623997, 0.107786, -0.190712, 0.7458, -0.050657,
+        -0.550017, -0.381317, -0.650162, -0.660381]
+    y = [6, 0, 2, 1, 1, 0, 2, 1, 4, 4, 2, 1, 3, 0, 1, 2, 0, 2, 1, 3, 2, 2, 1, 1, 1, 1, 2, 1, 1,
+        6, 3, 3, 4, 3, 2, 3, 3, 4, 3, 0, 2, 2, 2, 2, 2, 1, 3, 1, 0, 2, 0, 1, 1, 1, 3, 2, 2, 2, 3, 1]
+    z = Float64.(y .+ 1)
+    data = (; y = z, x = xs)
+    fit = drm(bf(@formula(y ~ x)), LogNormal(); data)
+    pp = predict_parameters(fit, data)
+    r = residuals(fit; type = :pearson)
+    @test r[1:3] ≈ [1.5628332, -1.4855934, 0.2140454] rtol = 1e-6
+    @test r ≈ (log.(data.y) .- log.(pp[:mu])) ./ pp[:sigma] rtol = 1e-12
 end
 
 @testset "Pearson residuals: other types are unchanged" begin
@@ -57,9 +79,8 @@ end
     s = Float64.(rand(r, 0:8, n))
     d = (; x, g, y = yc, yp = ypos, yn = ycount, s, f = 8.0 .- s)
     student = drm(bf(@formula(y ~ x)), Student(); data = d)
-    lognorm = drm(bf(@formula(yp ~ x)), LogNormal(); data = d)
     binom = drm(bf(@formula(cbind(s, f) ~ x)), Binomial(); data = d)
-    for (label, fit) in (("Student()", student), ("LogNormal()", lognorm), ("Binomial()", binom))
+    for (label, fit) in (("Student()", student), ("Binomial()", binom))
         msg = _pmsg(() -> residuals(fit; type = :pearson))
         @test occursin("not implemented for $label", msg)
         @test occursin("type = :quantile", msg)

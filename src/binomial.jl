@@ -298,7 +298,7 @@ function _drm_binomial_fit(f::DrmFormula, fam::Binomial; data, tree = nothing,
         isempty(_sd_parts(f)) && isempty(_sdphylo_parts(f)) || throw(ArgumentError("fixed-effect priors do not support SD formulas"))
         for response in _formula_responses(f)
             response === nothing && continue
-            all(_observed_response_mask(_table_column(data, response))) || throw(ArgumentError("fixed-effect priors require complete responses"))
+            _complete_response(_table_column(data, response)) || throw(ArgumentError("fixed-effect priors require complete responses"))
         end
         _, re0, mv0, st0 = _split_ranef(Dict(f.forms)[:mu])
         isempty(re0) && mv0 === nothing && st0 === nothing || throw(ArgumentError("fixed-effect priors do not support random or structured effects"))
@@ -334,8 +334,7 @@ function _drm_binomial_fit(f::DrmFormula, fam::Binomial; data, tree = nothing,
     rhs = Dict(f.forms)
     fixed_mu, re, mv, st = _split_ranef(rhs[:mu])
     fixed_mu, offset_term = _extract_offset(fixed_mu)   # #938: offset(z), coefficient fixed at 1
-    offset_term === nothing || (isempty(re) && mv === nothing && st === nothing) ||
-        _refuse_offset_route(fam, "a random, structured or `meta_V` term on the mean")
+    offset_term !== nothing && _refuse_offset_unless_ordinary_intercept!(fam, re, st, mv; isva = isva)
     isaghq && !(length(re) > 1 && st === nothing) &&
         _aghq_reject(fam, "this model (Binomial `marginal = :AGHQ` covers crossed random intercepts `(1 | g) + (1 | h)` only, #761)")
     mv === nothing ||
@@ -404,8 +403,9 @@ function _drm_binomial_fit(f::DrmFormula, fam::Binomial; data, tree = nothing,
         if rk === :intercept                              # (1 | g) → 1-D GHQ (Laplace) or VA (#136)
             isva && return _withformula(_withmarginal(
                 _fit_binomial_ranef_va(fam, s, ntr, Xμ, gidx, G, nmμ, grp, g_tol), :VA), f)
+            off = _offset_for_fit(fam, offset_term, data, length(s))
             return _withformula(_fit_binomial_ranef(
-                fam, s, ntr, Xμ, gidx, G, nmμ, grp, g_tol; nq = nq), f)
+                fam, s, ntr, Xμ, gidx, G, nmμ, grp, g_tol; nq = nq, offset = off), f)
         elseif rk === :corr                                # (1 + x | g) → 2-D GHQ tensor (#753)
             isva && _va_reject(fam, "a correlated random slope `(1 + x | g)`")
             _require_finite_data_column(data, var)
@@ -512,7 +512,8 @@ const _BINOMIAL_RANEF_AGHQ_K = 5
 # each group's mode), q = 1, `nq` nodes — replaces the old fixed 32-node
 # prior-scale grid, which under-covered grouped trials (n trials/row > 1) with
 # an informative group SD. θ = [β_μ; log σ_b].
-function _fit_binomial_ranef(fam::Binomial, s, ntr, Xμ, gidx, G, nmμ, grp, g_tol; nq::Int = _BINOMIAL_RANEF_AGHQ_K)
+function _fit_binomial_ranef(fam::Binomial, s, ntr, Xμ, gidx, G, nmμ, grp, g_tol;
+                             nq::Int = _BINOMIAL_RANEF_AGHQ_K, offset = nothing)
     n = length(s); pμ = size(Xμ, 2)
     sint = round.(Int, s); nint = round.(Int, ntr)
     members = [Int[] for _ in 1:G]
@@ -524,18 +525,20 @@ function _fit_binomial_ranef(fam::Binomial, s, ntr, Xμ, gidx, G, nmμ, grp, g_t
     function nll(θ)
         βμ = θ[1:pμ]; σb = exp(θ[pμ+1])
         L = reshape([σb], 1, 1)
-        η0 = Xμ * βμ
+        η0 = _eta_with_offset(Xμ, βμ, offset)
         ll = (i, η) -> _binomial_link_ll(fam, nint[i], sint[i], η, lc[i])
         return -_aghq_marginal_loglik(ll, members, η0, Zre, L, rule, bcache)
     end
     p̄ = clamp(sum(s) / max(sum(ntr), 1), 1e-3, 1 - 1e-3)
     θ0 = zeros(pμ + 1)
     θ0[1] = _binomial_start(fam, p̄); θ0[pμ+1] = log(0.5)
+    θ0[1:pμ] .= _offset_start(θ0[1:pμ], Xμ, offset)   # #1337
     res = _optimize_with_fallback(nll, θ0, g_tol)
     θ̂ = Optim.minimizer(res); V = _vcov_or_nan(ForwardDiff.hessian(nll, θ̂))
     blocks = [:mu => 1:pμ, :resd => (pμ+1):(pμ+1)]
     names = [:mu => nmμ, :resd => [String(grp)]]
-    means = Dict(:mu => _binomial_mean.(Ref(fam), Xμ * θ̂[1:pμ])); obs = Dict(:mu => s ./ ntr)
+    means = Dict(:mu => _binomial_mean.(Ref(fam), _eta_with_offset(Xμ, θ̂[1:pμ], offset)))
+    obs = Dict(:mu => s ./ ntr)
     scales = Dict(:trials => Float64.(nint))
     _record_cond_fit_aghq!(scales, nll, θ̂, bcache, gidx, Zre)   # fitted-row modes for `fitted(fit)`
     return _withiterations(
