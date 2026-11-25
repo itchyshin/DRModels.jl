@@ -42,3 +42,26 @@ using Test, Random
     fit_ok = drm(bf(@formula(y ~ z), @formula(sigma ~ z)), Gaussian(); data = (; y = yh, z))
     @test fit_ok.converged
 end
+
+@testset "#1059 run-off guard on the fixed-effect Student and LogNormal routes" begin
+    # Well-identified fit whose fitted scale spans e^10 (> 1e4): before the guard these
+    # routes read converged = true (Gaussian already read false, see above).
+    Random.seed!(3)
+    nb = 4000; xb = rand(nb)
+    yb = 0.5 .* xb .+ exp.(-5 .+ 10 .* xb) .* randn(nb)
+    spread(f) = (s = f.scales[:sigma]; maximum(log.(s)) - minimum(log.(s)))
+    f = bf(@formula(y ~ x), @formula(sigma ~ x))
+    fit_st = drm(f, Student(); data = (; y = yb, x = xb))
+    @test spread(fit_st) > log(1e4)
+    @test fit_st.converged == false
+    fit_ln = drm(f, LogNormal(); data = (; y = exp.(yb ./ 5), x = xb))
+    @test spread(fit_ln) > log(1e4)
+    @test fit_ln.converged == false
+
+    # Ordinary heteroscedastic data still converge on both routes.
+    Random.seed!(2)
+    m = 800; z = randn(m)
+    yh = 0.5 .+ 0.3 .* z .+ exp.(-0.2 .+ 0.4 .* z) .* randn(m)
+    @test drm(bf(@formula(y ~ z), @formula(sigma ~ z)), Student(); data = (; y = yh, z)).converged
+    @test drm(bf(@formula(y ~ z), @formula(sigma ~ z)), LogNormal(); data = (; y = exp.(yh), z)).converged
+end
