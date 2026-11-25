@@ -1187,6 +1187,11 @@ function _joint_finite_prediction_se(X::AbstractMatrix, V::AbstractMatrix,
     return result
 end
 
+# No-data call: named refusal rather than a MethodError (#1381).
+predict(fit::JointFiniteDrmFit; kwargs...) = throw(ArgumentError(
+    "predict: new data are required; call `predict(fit, data)` to predict at given rows, " *
+    "or `fitted(fit)` for the fitted values of the fitting data"))
+
 """
     predict(fit::JointFiniteDrmFit, newdata; dpar = :mu, type = :response, se = false)
 

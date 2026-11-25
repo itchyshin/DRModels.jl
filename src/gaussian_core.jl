@@ -3390,6 +3390,11 @@ function _predict_ignore_label_response(nd::NamedTuple, response::Symbol)
     return merge(nd, NamedTuple{(response,)}((zeros(length(col)),)))
 end
 
+# `predict` needs data (the fit keeps its formula, not its data): refuse by name, not MethodError (#1381).
+predict(fit::DrmFit; kwargs...) = throw(ArgumentError(
+    "predict: new data are required; call `predict(fit, data)` to predict at given rows, " *
+    "or `fitted(fit)` for the fitted values of the fitting data"))
+
 function predict(fit::DrmFit, newdata; type::Symbol = :response, se::Bool = false)
     se && _is_fixed_prior_fit(fit) && fit.estim_method === :MAP && throw(ArgumentError("predict: standard errors are not qualified for $(_prior_kind_label(fit)) fits"))
     f = fit.formula
