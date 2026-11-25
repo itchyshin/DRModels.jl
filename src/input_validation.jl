@@ -17,7 +17,7 @@
 #
 # Every message names the offending argument.
 
-using StatsModels: StatsModels, FormulaTerm
+using StatsModels: StatsModels, FormulaTerm, FunctionTerm, ConstantTerm
 
 # ── #1027: secondary parameters each family models ──────────────────────────
 #
@@ -284,6 +284,7 @@ column lengths (#1022) and unused structured keywords (#1010).
 """
 function _drm_entry_guard(f::DrmFormula, fam, data; tree = nothing, K = nothing,
                           A = nothing, Ainv = nothing, coords = nothing)
+    _require_no_r_minus_one(f)
     _require_simple_bar_groups(f)
     _require_family_dpars(f, fam)
     _require_supported_random_terms(f, data)
@@ -361,6 +362,56 @@ function _require_supported_random_terms(f::DrmFormula, data)
                     "or put the factor in the fixed effects and keep `(1 | g)`."))
             end
         end
+    end
+    return nothing
+end
+
+# ── #1349: R's `y ~ x - 1` parses as minus, not "drop intercept" ───────────
+function _is_r_minus_one_term(t)
+    return t isa FunctionTerm && t.f === (-) && length(t.args) == 2 &&
+           t.args[2] isa ConstantTerm && isequal(t.args[2].n, 1)
+end
+
+function _refuse_r_minus_one(rhs, param::Symbol)
+    for t in _rhs_terms(rhs)
+        if _is_r_minus_one_term(t)
+            throw(ArgumentError(
+                "drm: the `$param` formula uses `$(t)` (R's `x - 1` spelling); StatsModels " *
+                "does not treat that as 'no intercept'. Write `0 + x` instead."))
+        end
+        t isa FunctionTerm || continue
+        bar = if t.f === (|)
+            t
+        elseif t.f in (phylo, relmat, animal, spatial, temporal) && !isempty(t.args) &&
+               t.args[1] isa FunctionTerm && t.args[1].f === (|)
+            t.args[1]
+        else
+            nothing
+        end
+        bar === nothing || _refuse_r_minus_one_bar(bar, param)
+    end
+    return nothing
+end
+
+# Inside a random-effect bar the slope-only spelling is `0 + x` (`_re_kind`); `-1 + x`
+# is not read as dropping the intercept there, so the hint names `0 + x` only.
+function _refuse_r_minus_one_bar(bar::FunctionTerm, param::Symbol)
+    lhs = bar.args[1]
+    if _is_r_minus_one_term(lhs)
+        throw(ArgumentError(
+            "drm: the random-effect term `($lhs | $(_bar_text(bar.args[2])))` in the `$param` " *
+            "formula uses R's `x - 1` spelling on the left of the bar; StatsModels does not " *
+            "treat that as 'no intercept'. For a slope without a random intercept write " *
+            "`(0 + x | g)` instead."))
+    elseif lhs isa FunctionTerm && lhs.f === (|)
+        _refuse_r_minus_one_bar(lhs, param)
+    end
+    return nothing
+end
+
+function _require_no_r_minus_one(f::Union{DrmFormula,BivariateDrmFormula})
+    for (p, rhs) in f.forms
+        _refuse_r_minus_one(rhs, p)
     end
     return nothing
 end
@@ -727,4 +778,17 @@ function drm(f::FormulaTerm, fam; kwargs...)
     throw(ArgumentError(
         "drm: `formula` must be created with `drm_formula()` or `bf()`. " *
         "Wrap your formulas, e.g. `bf(@formula(y ~ x), @formula(sigma ~ 1))`."))
+end
+
+"""R-style `x1:x2` parses as a Julia range and then fails in `modelcols` with a raw `MethodError`."""
+function _rethrow_formula_build_hint(e)
+    if e isa MethodError
+        msg = sprint(showerror, e)
+        if occursin("StepRangeLen", msg) || occursin("StepRange{", msg)
+            throw(ArgumentError(
+                "drm: Julia parses `x1:x2` as a numeric range, not an interaction. " *
+                "Use `x1 & x2` or `x1 * x2` for an interaction (drmTMB's `x1:x2` spelling)."))
+        end
+    end
+    rethrow(e)
 end
