@@ -12,6 +12,7 @@
 #   5  inflated SE: SE >= 50 and SE >= 1000 x median(SEs < 50)              :degenerate
 #   6  design rank: an aliased fixed-effect column (#1110) is caught in step 2
 #      via `_nondegenerate_fit` (`_design_rank_deficient`), as :degenerate
+#   6b Julia-only (#969): Student fit with fitted 1/nu < 1e-3 (Gaussian limit)  :boundary
 #   7  any finite |rho12| > 0.98                                            :boundary
 #   8  any finite random-effect SD < 1e-4                                   :boundary
 #   9  otherwise                                                            :converged
@@ -136,6 +137,9 @@ function convergence_status(fit::DrmFit)
         return :degenerate
     end
     (fit.geometry === :ok && _nondegenerate_fit(fit)) || return :degenerate
+    # #969: Student nu at the Gaussian limit (1/nu < 1e-3) is a boundary optimum: the nu
+    # coordinates are flat, so no interior optimum and no valid Wald SE. Julia-only rule.
+    _student_nu_boundary(fit) === nothing || return :boundary
     floor_fixed = fit.uncertainty === :skipped ? Int[] : _twin_floor_fixed_coords(fit)
     if fit.uncertainty !== :skipped
         keep = setdiff(axes(fit.vcov, 1), floor_fixed)
