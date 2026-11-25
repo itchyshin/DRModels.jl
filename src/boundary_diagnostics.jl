@@ -184,6 +184,54 @@ function _warn_at_clamp(route::AbstractString, checks)
     return hits
 end
 
+# #1072: NB2 with no overdispersion. The likelihood increases in the size
+# r = 1/sigma^2 without bound, so the MLE is the Poisson limit and the reported
+# log sigma is an optimiser-stopping value, not an estimate. `converged` is left as
+# the optimiser reported it (a valid boundary MLE); this only says what the fit is.
+# `fit.scales[:sigma]` is exp(Xσ β̂σ) per row.
+_nb2_at_poisson_limit(fit::DrmFit) =
+    fit.family isa NegBinomial2 && haskey(fit.scales, :sigma) &&
+    _nb2_at_poisson_limit(log.(fit.scales[:sigma]))
+
+# Warn when an NB2 fit is at the Poisson limit (silent inside bootstrap / profile refits).
+# `clamp = nothing`: an unclamped route (fixed effects, GHQ `(1 | g)`), where the limit is
+# log sigma < -8. `clamp = c`: a route whose likelihood clamps log sigma at `c` (the
+# sparse-Laplace routes, c = -4, via `_warn_laplace_clamp`); there the limit is every
+# row's log sigma at that clamp and `logsigma` is the fitted per-row log sigma.
+function _warn_nb2_poisson_limit(fit; logsigma = nothing, clamp::Union{Nothing,Real} = nothing)
+    fit isa DrmFit || return fit
+    fit.family isa NegBinomial2 || return fit
+    if logsigma === nothing
+        haskey(fit.scales, :sigma) || return fit
+        logsigma = log.(fit.scales[:sigma])
+    end
+    limit = clamp === nothing ? _NB2_POISSON_LIMIT_LOGSIGMA : clamp + _CLAMP_ACTIVE_TOL
+    _nb2_at_poisson_limit(logsigma; limit = limit) || return fit
+    get(task_local_storage(), :drm_quiet_boundary, false) === true && return fit
+    fitted = round(maximum(logsigma); sigdigits = 4)
+    advice = "Prefer `Poisson()` for the location effects; test overdispersion with the " *
+             "0.5 chi2_0 + 0.5 chi2_1 mixture, not a Wald test on sigma"
+    if clamp === nothing
+        @warn "drm (NegBinomial2): the data show no overdispersion, so the fit is at the Poisson " *
+              "limit (sigma -> 0, size -> Inf; fitted log sigma $(fitted)). The location estimates " *
+              "and logLik are those of the Poisson fit, but the reported sigma is an optimiser-stopping " *
+              "value, not an estimate, and Wald standard errors from this fit can be NaN (including for " *
+              "the location effects) or meaningless. $(advice) (DRModels.jl #1072)." converged = fit.converged
+    else
+        @warn "drm (NegBinomial2): the data show no overdispersion that this route can resolve. It " *
+              "caps the size at exp($(round(-2 * clamp; sigdigits = 4))) through a clamp at log sigma = " *
+              "$(clamp) inside the likelihood, and the dispersion ran to that clamp on every row " *
+              "(fitted log sigma $(fitted)): this route's Poisson limit. Past the clamp the objective " *
+              "is flat but its dispersion gradient is not, so the reported sigma is wherever the " *
+              "optimiser stopped at or beyond the clamp, not an estimate; the other estimates and the " *
+              "logLik approximate those of NB2 at the capped size (not those of a `Poisson()` fit) and " *
+              "can stop short of them (`converged` may be false); and Wald standard errors can be NaN " *
+              "(for the location effects too, on some routes) or meaningless. $(advice) " *
+              "(DRModels.jl #1072, #959)." converged = fit.converged
+    end
+    return fit
+end
+
 # The sparse-Laplace (`marginal = :LA`) structured / crossed routes clamp every
 # random-effect log-SD (`:resd`) to [-8, 3] and the dispersion through
 # `clamp(-2 log σ, -8, 8)`, i.e. log σ in [-4, 4]. `logsigma` is the fitted
@@ -194,9 +242,16 @@ function _warn_laplace_clamp(fit::DrmFit; logsigma = nothing)
         push!(checks, "random-effect log SD" =>
               (fit.theta[_block_range(fit, :resd)], -8.0, 3.0))
     end
-    logsigma === nothing ||
+    # #1072: an NB2 dispersion at its lower clamp on every row is this route's Poisson
+    # limit. It gets its own warning, which says what that means and what to do, in place
+    # of the generic clamp line.
+    nb2_limit = logsigma !== nothing && fit.family isa NegBinomial2 &&
+                _nb2_at_poisson_limit(collect(Float64, logsigma); limit = _nb2_laplace_poisson_limit())
+    (logsigma === nothing || nb2_limit) ||
         push!(checks, "dispersion log sigma" => (collect(Float64, logsigma), -4.0, 4.0))
     _warn_at_clamp("sparse Laplace", checks)
+    nb2_limit && _warn_nb2_poisson_limit(fit; logsigma = collect(Float64, logsigma),
+                                         clamp = _NB2_LAPLACE_LOGSIGMA_CLAMP)
     return fit
 end
 
