@@ -139,7 +139,9 @@ observation rows (not only a different `nobs`).
 These guards are the same set `lrtest` runs (#1002; pinned in
 `test/test_lrt_boundary_guards_1002.jl`). They only warn (not refuse) on `converged = false` (a boundary fit is not
 called unconverged), and
-`lrt_boundary` does not check the family or that `fit_reduced` is truly nested in
+`lrt_boundary` also refuses a pair where `fit_full` does not have more parameters than
+`fit_reduced` (swapped arguments) and a `q` outside `1:(dof(fit_full) - dof(fit_reduced))`
+(#1002). It does not check the family or that `fit_reduced` is truly nested in
 `fit_full`; a non-converged fit that is not a sentinel still gets a p-value.
 
 # Finite-sample behaviour: Poisson vs NegBinomial2
@@ -171,6 +173,16 @@ function lrt_boundary(fit_full::DrmFit, fit_reduced::DrmFit; q::Integer = 1)
     _map_compare_guard(fit_reduced, fit_full, "lrt_boundary")
     _nobs_compare_guard(fit_reduced, fit_full, "lrt_boundary")
     _unconverged_compare_warn(fit_reduced, fit_full, "lrt_boundary")
+    # `q` removed variance components remove at least `q` parameters, so the fits must
+    # differ by `dof(full) - dof(reduced) >= q >= 1`. This also catches swapped arguments (#1002).
+    Δdof = dof(fit_full) - dof(fit_reduced)
+    Δdof > 0 || throw(ArgumentError(
+        "lrt_boundary: `fit_full` must have more parameters than `fit_reduced` " *
+        "(dof(fit_full) = $(dof(fit_full)), dof(fit_reduced) = $(dof(fit_reduced)); " *
+        "did you pass the arguments as (full, reduced)?)"))
+    1 <= q <= Δdof || throw(ArgumentError(
+        "lrt_boundary: `q` = $q variance components cannot be tested when the fits differ " *
+        "by $Δdof parameters; `q` must be between 1 and dof(fit_full) - dof(fit_reduced) = $Δdof."))
     statistic = 2 * (loglik(fit_full) - loglik(fit_reduced))
     pvalue = chibar_pvalue(statistic, q)
     pvalue_naive = ccdf(Chisq(q), max(statistic, 0.0))
