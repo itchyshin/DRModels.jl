@@ -98,6 +98,7 @@ include("gaussian_sparse_lss.jl")
 include("phylo_interaction.jl")  # bipartite two-tree interaction RE: V = σ²(C_A⊗C_B) + σ_e²I
 include("location_only.jl")      # #12: opt-in conjugate-EM for the Gaussian phylo-mean cell
 include("student.jl")
+include("rescale_response.jl")   # #936: fit simple Gaussian / Student on y / sd(y), map back (after both entries)
 include("skewnormal.jl")
 include("poisson.jl")
 include("sparse_laplace_glmm.jl")
