@@ -50,6 +50,14 @@ const _TEST_EXCLUDE = [
     "test_analytic_grad.jl",       # #465: investigated, NOT wired -- superseded by test_qgate_fd_gradient.jl
     "test_q4_laplace.jl",          # #465: investigated, NOT wired -- superseded by an obsolete bench POC
     "test_corr_locscale_equiv.jl", # deferred cluster-① follow-up (Laplace-vs-GHQ optimum gap; not a σ-phylo blocker)
+    # Lane cursor-cloud-1125n6: wired at end of this file.
+    "test_cov_1125n6_aghq_linalg.jl",
+    "test_cov_1125n6_aghq_1d_contract.jl",
+    "test_cov_1125n6_finite_joint_math.jl",
+    "test_cov_1125n6_cumulative_kernel.jl",
+    "test_cov_1125n6_binomial_corr.jl",
+    "test_cov_1125n6_reml_q2_phi.jl",
+    "test_cov_1125n6_misc_helpers.jl",
 ]
 
 _discovered = sort(filter(f -> occursin(r"^test_.*\.jl$", f) &&
@@ -178,6 +186,15 @@ end
 
 # #1303: hyphenated name, so the `test_*.jl` discovery loop above does not see it.
 _shard_include("test-fix-1303-skipped-category.jl")
+
+# Coverage lane cursor-cloud-1125n6 (explicit end registration; excluded from readdir loop).
+_shard_include("test_cov_1125n6_aghq_linalg.jl")
+_shard_include("test_cov_1125n6_aghq_1d_contract.jl")
+_shard_include("test_cov_1125n6_finite_joint_math.jl")
+_shard_include("test_cov_1125n6_cumulative_kernel.jl")
+_shard_include("test_cov_1125n6_binomial_corr.jl")
+_shard_include("test_cov_1125n6_reml_q2_phi.jl")
+_shard_include("test_cov_1125n6_misc_helpers.jl")
 
 # Gated real-parity suite vs committed drmTMB fixtures (off by default).
 # Native `drm()` path (#17) plus `drm_bridge` marshalling path (#370).
