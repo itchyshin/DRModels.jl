@@ -1,5 +1,6 @@
 # Issue #1219: DRMControl(maxit, start, multi_start) on random-effect routes (drmTMB parity).
-using DRModels, Test, Random, Statistics, Distributions
+using DRModels, Test, Random, Statistics
+import Distributions
 
 @testset "DRMControl multi_start on Gaussian (1 | g) location-scale" begin
     g = repeat(1:14, 6)

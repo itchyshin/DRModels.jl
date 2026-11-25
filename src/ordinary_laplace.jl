@@ -254,12 +254,14 @@ function _ordinary_laplace_optimize(fg, θ0, n::Int, q::Int, g_tol; se::Bool,
         Gout .= g
         return Gout
     end
+    res_fast_box = Ref{Any}()
     polish_from(x0, opts, method) = begin
         od = Optim.OnceDifferentiable(nll, grad!, x0)
         fast_iters = opts.iterations === typemax(typeof(opts.iterations)) ? 250 :
             min(opts.iterations, 250)
-        fast_opts = Optim.Options(g_tol = opts.g_tol, iterations = fast_iters)
+        fast_opts = Optim.Options(g_tol = opts.g_abstol, iterations = fast_iters)
         res_fast = Optim.optimize(od, x0, method, fast_opts)
+        res_fast_box[] = res_fast
         res = try
             θp = Optim.minimizer(res_fast)
             odp = Optim.OnceDifferentiable(nll, grad!, θp)
@@ -272,6 +274,7 @@ function _ordinary_laplace_optimize(fg, θ0, n::Int, q::Int, g_tol; se::Bool,
     end
     method = Optim.LBFGS(linesearch = Optim.LineSearches.BackTracking())
     res = _ctl_optimize(polish_from, θ0; g_tol = g_tol)
+    res_fast = res_fast_box[]
     θ̂ = Optim.minimizer(res)
     nllhat = nll(θ̂)
     if nllhat > nll(Optim.minimizer(res_fast))          # polish may only improve
