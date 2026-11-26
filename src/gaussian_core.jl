@@ -4084,17 +4084,26 @@ Tweedie, and CumulativeLogit.
 
 # Example
 ```julia
+# No random effects: `simulate(fit)` draws on the training rows (length `nobs`).
 fit = drm(bf(@formula(y ~ x), @formula(sigma ~ x)), Gaussian(); data)
-y1  = simulate(fit)               # Vector, length nobs (rows with a missing response are not drawn)
-Y   = simulate(fit; nsim = 100)   # 100 columns, one per draw
-ys  = simulate(fit; newdata = (x = [0.0, 1.0],))  # one row per newdata row
+y1  = simulate(fit)
+Y   = simulate(fit; nsim = 100)   # `nobs × nsim` matrix
+
+# `(1 | g)` (and any other random effect): pass the fitting table for the
+# default marginal training-row draw (`re = :marginal`). Without `data`, bare
+# `simulate(fit)` throws rather than fall back to `re = :zero`.
+fit_re = drm(bf(@formula(y ~ x + (1 | g))), Poisson(); data = dat)
+y2 = simulate(fit_re; data = dat)
+y0 = simulate(fit_re; re = :zero)  # population level, no `data` needed
+
+ys = simulate(fit; newdata = (x = [0.0, 1.0],))  # one row per `newdata` row
 ```
 
 `newdata` (optional) is a NamedTuple / column table. Draws are population-level
-(random / structured effects set to zero, whatever `re` says), one row per
-`newdata` row, using [`predict_parameters`](@ref) for the distributional
-parameters. Omit it to draw for the training design. Temporal fits refuse
-`newdata`.
+(random / structured effects set to zero per `re`), one row per `newdata` row,
+using [`predict_parameters`](@ref). Omit `newdata` to use the training design
+(or `re = :zero` without `data` when random effects should be set to zero).
+Temporal fits refuse `newdata`.
 """
 function simulate(fit::DrmFit; nsim::Integer = 1, rng = default_rng(), newdata = nothing,
                   kwargs...)
