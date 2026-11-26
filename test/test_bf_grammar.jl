@@ -14,6 +14,8 @@ using Test
     @test bf(@formula(y ~ x), @formula(zoi ~ 1), @formula(coi ~ 1)) isa DrmFormula
     # cbind two-column response still parses
     @test bf(@formula(cbind(s, f) ~ x), @formula(sigma ~ 1)) isa DrmFormula
+    frm = bf(@formula(cbind(y, trials - y) ~ x))
+    @test frm isa DrmFormula && frm.response === :y && !(frm.response2 isa Symbol)
     # sigma defaults to ~ 1 when omitted
     @test any(p -> first(p) === :sigma, bf(@formula(y ~ x)).forms)
 end

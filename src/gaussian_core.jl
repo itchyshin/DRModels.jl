@@ -7,7 +7,7 @@
 # brms / drmTMB. Each formula's left-hand side names its distributional
 # parameter — `y ~ …` sets the response + μ predictor, `sigma ~ …` sets log σ.
 
-using StatsModels: @formula, FormulaTerm, Term, ConstantTerm, FunctionTerm,
+using StatsModels: @formula, FormulaTerm, Term, ConstantTerm, FunctionTerm, AbstractTerm,
     schema, apply_schema, modelcols, coefnames
 using Statistics: std, mean
 using Random: default_rng
@@ -123,7 +123,7 @@ unknown parameter names, and a parameter given more than once.
 function bf(mu::FormulaTerm, dpars::FormulaTerm...)
     lhs = mu.lhs
     if lhs isa FunctionTerm && lhs.f === cbind        # cbind(successes, failures) ~ …
-        response = lhs.args[1].sym; response2 = lhs.args[2].sym
+        response, response2 = _cbind_response_columns(lhs)
     else
         response = lhs.sym; response2 = nothing
     end
@@ -738,6 +738,54 @@ function _table_column(data, name::Symbol)
         haskey(data, s) && return data[s]
     end
     return getproperty(data, name)
+end
+
+# The successes column in `cbind(successes, failures)` must be a plain variable;
+# the failures column may be a variable or an arithmetic expression of columns,
+# mirroring drmTMB (e.g. `cbind(y, trials - y)`).
+function _cbind_response_columns(lhs::FunctionTerm)
+    lhs.f === cbind || error("internal: expected cbind(...)")
+    length(lhs.args) == 2 || throw(ArgumentError(
+        "bf: `cbind(successes, failures)` needs exactly two response columns."))
+    col1, col2 = lhs.args
+    col1 isa Term || throw(ArgumentError(
+        "bf: `cbind(successes, failures)` needs a simple column for successes; " *
+        "precompute the column and pass its name (got `$(col1)`)."))
+    successes = col1.sym
+    failures = _cbind_failures_column(col2)
+    return successes, failures
+end
+
+function _cbind_failures_column(col)
+    col isa Term && return col.sym
+    col isa AbstractTerm || throw(ArgumentError(
+        "bf: `cbind(successes, failures)` needs a column name or an arithmetic expression " *
+        "of columns for failures (e.g. `trials - successes`); got `$(col)`."))
+    return col
+end
+
+_response_spec_label(spec::Symbol) = string(spec)
+function _response_spec_label(spec::AbstractTerm)
+    spec isa FunctionTerm && isdefined(spec, :exorig) && spec.exorig !== nothing &&
+        return string(spec.exorig)
+    return string(spec)
+end
+
+_response_column(data, name::Symbol) = _table_column(data, name)
+function _response_column(data, term::AbstractTerm)
+    sch = schema(term, data)
+    t = apply_schema(term, sch)
+    v = modelcols(t, data)
+    if v isa AbstractMatrix
+        size(v, 2) == 1 || throw(ArgumentError(
+            "drm: each `cbind()` response column must evaluate to one numeric vector " *
+            "(got $(size(v, 2)) columns for `$(term)`)."))
+        v = vec(v)
+    end
+    v isa AbstractVector || throw(ArgumentError(
+        "drm: each `cbind()` response column must evaluate to a numeric vector " *
+        "(got `$(typeof(v))` for `$(term)`)."))
+    return v
 end
 
 function _replace_table_column(data, name::Symbol, replacement)
@@ -2409,7 +2457,8 @@ end
 function _formula_response_observed_mask(f::DrmFormula, data)
     _, observed1 = _coerce_response_column(_table_column(data, f.response); name=String(f.response))
     f.response2 === nothing && return observed1
-    _, observed2 = _coerce_response_column(_table_column(data, f.response2); name=String(f.response2))
+    _, observed2 = _coerce_response_column(_response_column(data, f.response2);
+                                           name=_response_spec_label(f.response2))
     length(observed1) == length(observed2) ||
         throw(ArgumentError("drm: the two response columns have different lengths"))
     return observed1 .& observed2
@@ -2449,7 +2498,8 @@ end
 function _full_response_obs(f::DrmFormula, data)
     y, observed1 = _coerce_response_column(_table_column(data, f.response); name=String(f.response))
     f.response2 === nothing && return Dict(:mu => y)
-    y2, observed2 = _coerce_response_column(_table_column(data, f.response2); name=String(f.response2))
+    y2, observed2 = _coerce_response_column(_response_column(data, f.response2);
+                                          name=_response_spec_label(f.response2))
     ntr = y .+ y2
     prop = y ./ ntr
     prop[.!(observed1 .& observed2)] .= NaN
@@ -2459,7 +2509,8 @@ end
 function _full_trials(f::DrmFormula, data)
     y, observed1 = _coerce_response_column(_table_column(data, f.response); name=String(f.response))
     f.response2 === nothing && return ones(length(y))
-    y2, observed2 = _coerce_response_column(_table_column(data, f.response2); name=String(f.response2))
+    y2, observed2 = _coerce_response_column(_response_column(data, f.response2);
+                                          name=_response_spec_label(f.response2))
     ntr = y .+ y2
     ntr[.!(observed1 .& observed2)] .= NaN
     return ntr

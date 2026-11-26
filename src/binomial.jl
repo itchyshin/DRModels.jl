@@ -442,10 +442,11 @@ function _binomial_response(f::DrmFormula, data)
     else                                                  # cbind(successes, failures): n = s + f
         _require_finite_inputs(; response=(_table_column(data, f.response), string(f.response)),
                                response_allow_missing=false)
-        _require_finite_inputs(; response=(_table_column(data, f.response2), string(f.response2)),
+        _require_finite_inputs(; response=(_response_column(data, f.response2),
+                                           _response_spec_label(f.response2)),
                                response_allow_missing=false)
         s = Float64.(getproperty(data, f.response))       # successes
-        fl = Float64.(getproperty(data, f.response2))     # failures
+        fl = Float64.(_response_column(data, f.response2))     # failures
         (all(si -> si ≥ 0 && isinteger(si), s) && all(fi -> fi ≥ 0 && isinteger(fi), fl)) ||
             error("Binomial() requires non-negative integer successes and failures")
         ntr = s .+ fl                                     # trials

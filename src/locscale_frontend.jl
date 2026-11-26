@@ -129,10 +129,11 @@ function _ls_frontend_design(kind, f, lc, data)
                   "bf(cbind(successes, failures) ~ … (1|tag|g), sigma ~ … (1|tag|g))")
         _require_finite_inputs(; response=(_table_column(data, f.response), string(f.response)),
                                response_allow_missing=false)
-        _require_finite_inputs(; response=(_table_column(data, f.response2), string(f.response2)),
+        _require_finite_inputs(; response=(_response_column(data, f.response2),
+                                             _response_spec_label(f.response2)),
                                response_allow_missing=false)
         s = Float64.(getproperty(data, f.response))
-        fl = Float64.(getproperty(data, f.response2))
+        fl = Float64.(_response_column(data, f.response2))
         (all(si -> si ≥ 0 && isinteger(si), s) && all(fi -> fi ≥ 0 && isinteger(fi), fl)) ||
             error("BetaBinomial() requires non-negative integer successes and failures")
         ntr = s .+ fl

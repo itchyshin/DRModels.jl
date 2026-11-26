@@ -180,7 +180,8 @@ function _apply_bivariate_response_policy(f::BivariateDrmFormula, data, missing_
     policy === :include && return data
     Tables.istable(data) || return data
     _, obs1 = _coerce_response_column(_table_column(data, f.response1); name = String(f.response1))
-    _, obs2 = _coerce_response_column(_table_column(data, f.response2); name = String(f.response2))
+    _, obs2 = _coerce_response_column(_response_column(data, f.response2);
+                                      name = _response_spec_label(f.response2))
     length(obs1) == length(obs2) ||
         throw(ArgumentError("drm: the two response columns have different lengths"))
     observed = obs1 .& obs2
