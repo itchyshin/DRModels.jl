@@ -50,6 +50,12 @@ const _TEST_EXCLUDE = [
     "test_analytic_grad.jl",       # #465: investigated, NOT wired -- superseded by test_qgate_fd_gradient.jl
     "test_q4_laplace.jl",          # #465: investigated, NOT wired -- superseded by an obsolete bench POC
     "test_corr_locscale_equiv.jl", # deferred cluster-① follow-up (Laplace-vs-GHQ optimum gap; not a σ-phylo blocker)
+    # Lane cursor-cloud-1125n9: wired at end of this file.
+    "test_cov_1125n9_finite_inputs.jl",
+    "test_cov_1125n9_sparse_phy_guards.jl",
+    "test_cov_1125n9_ordinary_q2_parse.jl",
+    "test_cov_1125n9_summary_marginal.jl",
+    "test_cov_1125n9_mixed_reml_misc.jl",
 ]
 
 _discovered = sort(filter(f -> occursin(r"^test_.*\.jl$", f) &&
@@ -178,6 +184,13 @@ end
 
 # #1303: hyphenated name, so the `test_*.jl` discovery loop above does not see it.
 _shard_include("test-fix-1303-skipped-category.jl")
+
+# Coverage lane cursor-cloud-1125n9 (excluded from discovery above).
+_shard_include("test_cov_1125n9_finite_inputs.jl")
+_shard_include("test_cov_1125n9_sparse_phy_guards.jl")
+_shard_include("test_cov_1125n9_ordinary_q2_parse.jl")
+_shard_include("test_cov_1125n9_summary_marginal.jl")
+_shard_include("test_cov_1125n9_mixed_reml_misc.jl")
 
 # Gated real-parity suite vs committed drmTMB fixtures (off by default).
 # Native `drm()` path (#17) plus `drm_bridge` marshalling path (#370).
