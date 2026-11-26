@@ -183,3 +183,10 @@ converged(fit) = is_converged(fit)   # untyped: the joint missing-data wrappers 
 # the callers where a `:boundary` optimum is still a usable fit (bootstrap and
 # profile refits, frozen margins, heritability, the bridge's `converged` key).
 _converged_nondegenerate(fit::DrmFit) = fit.converged && _nondegenerate_fit(fit)
+
+# Parametric-bootstrap refit gate (DRModels.jl#1570). Drop any replicate whose
+# twin [`convergence_status`](@ref) is `:degenerate` (quasi-complete binomial
+# separation, collapsed Gaussian scale, failed vcov, and the other FX3b rules).
+# A `:boundary` draw is kept: it is not [`is_converged`](@ref), but it is a real
+# optimum on the parameter bound.
+_bootstrap_refit_ok(fit::DrmFit) = convergence_status(fit) !== :degenerate
