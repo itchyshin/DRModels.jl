@@ -124,6 +124,15 @@ function bf(mu::FormulaTerm, dpars::FormulaTerm...)
     lhs = mu.lhs
     if lhs isa FunctionTerm && lhs.f === cbind        # cbind(successes, failures) ~ …
         response = lhs.args[1].sym; response2 = lhs.args[2].sym
+    elseif lhs isa FunctionTerm && lhs.f === (/) && length(lhs.args) == 2
+        # drmTMB-style `y / trials ~ x` parses as a FunctionTerm; reading `.sym` leaked
+        # "type FunctionTerm has no field sym" (#1538, same failure class as #1336).
+        throw(ArgumentError("bf: the response `$(lhs.exorig) ~ …` uses a proportion spelling " *
+            "(`successes / trials`) that is not supported. For Binomial() trial counts use " *
+            "`cbind(successes, failures) ~ …` or `cbind(y, trials - y) ~ …` instead."))
+    elseif lhs isa FunctionTerm
+        throw(ArgumentError("bf: the response must be a plain column or `cbind(successes, failures)`; " *
+            "got `$(lhs.exorig)`."))
     else
         response = lhs.sym; response2 = nothing
     end
