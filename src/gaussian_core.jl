@@ -4510,18 +4510,24 @@ log-likelihood at the REML estimate) when an ML-comparable value is needed.
 A **failed** fit never returns its internal failed-objective sentinel (`-1e18`) or a
 runaway value: when the stored log-likelihood is non-finite, `≤ -1e15`, or `≥ 1e15` in
 magnitude on a fit with `converged = false`, `loglik` returns `NaN` and warns. The raw
-stored number stays available as `fit.loglik`. A converged fit is returned unchanged.
+stored number stays available as `fit.loglik`. A fit with a finite stored log-likelihood
+but `!is_converged(fit)` returns the stored value and warns once. [`aic`](@ref),
+[`bic`](@ref) and [`deviance`](@ref) follow the same split (sentinel → `NaN`, else warn
+and stay finite).
 """
 function loglik(fit::DrmFit)
     ll = fit.loglik
-    _loglik_is_failed(ll, fit.converged) || return ll
-    get(task_local_storage(), :drm_quiet_boundary, false) === true && return NaN
-    @warn "drm: loglik(fit) is NaN because the fit failed (the stored value is $(ll), " *
-          "the optimiser's failed-objective sentinel or a runaway value, and converged = " *
-          "$(fit.converged)). The estimates are not an optimum, so no log-likelihood, AIC or " *
-          "BIC is reported. Rescale the data, simplify the model, or check `convergence_status(fit)`. " *
-          "The raw stored value is `fit.loglik`."
-    return NaN
+    if _loglik_is_failed(ll, fit.converged)
+        get(task_local_storage(), :drm_quiet_boundary, false) === true && return NaN
+        @warn "drm: loglik(fit) is NaN because the fit failed (the stored value is $(ll), " *
+              "the optimiser's failed-objective sentinel or a runaway value, and converged = " *
+              "$(fit.converged)). The estimates are not an optimum, so no log-likelihood, AIC or " *
+              "BIC is reported. Rescale the data, simplify the model, or check `convergence_status(fit)`. " *
+              "The raw stored value is `fit.loglik`."
+        return NaN
+    end
+    _unconverged_status_infocrit_warn(fit, "loglik")
+    return ll
 end
 
 """
@@ -4641,6 +4647,7 @@ function aic(fit::DrmFit)
     _va_infocrit_guard(fit, "aic")
     _reml_infocrit_warn(fit, "aic")
     _sentinel_infocrit_nan(fit, "aic") && return NaN
+    _unconverged_status_infocrit_warn(fit, "aic")
     return -2 * fit.loglik + 2 * length(fit.theta)
 end
 
@@ -4657,6 +4664,7 @@ function bic(fit::DrmFit)
     _va_infocrit_guard(fit, "bic")
     _reml_infocrit_warn(fit, "bic")
     _sentinel_infocrit_nan(fit, "bic") && return NaN
+    _unconverged_status_infocrit_warn(fit, "bic")
     return -2 * fit.loglik + length(fit.theta) * log(fit.nobs)
 end
 

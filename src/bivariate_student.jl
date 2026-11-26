@@ -229,7 +229,13 @@ function _fit_bivariate_residual(f::BivariateDrmFormula, fam::Student, data, rhs
     res = Optim.optimize(nll, θ0, Optim.LBFGS(), Optim.Options(g_tol = g_tol);
                          autodiff = :forward)
     θ̂ = Optim.minimizer(res)
-    V = _vcov_from_hessian(ForwardDiff.hessian(nll, θ̂); context = "bivariate Student-t")
+    H = ForwardDiff.hessian(nll, θ̂)
+    Vraw, hess_finite = _vcov_from_hessian_checked(
+        H, _all_finite(y1, y2, X1, X2, Xs1, Xs2, Xν, Xr); context = "bivariate Student-t")
+    hess_pd = _twin_vcov_positive_definite(Vraw)
+    se_on = _ctl_merge_se(true)
+    V = _ctl_se(() -> Vraw, θ̂)
+    converged = drm_optim_converged(res) && hess_finite && hess_pd && all(isfinite, θ̂)
 
     blocks = [:mu1 => rng(1), :mu2 => rng(2), :sigma1 => rng(3), :sigma2 => rng(4),
               :nu => rng(5), :rho12 => rng(6)]
@@ -243,8 +249,9 @@ function _fit_bivariate_residual(f::BivariateDrmFormula, fam::Student, data, rhs
                   :rho12 => RHO_GUARD .* tanh.(Xr * θ̂[rng(6)]))
     return _withiterations(
         _withformula(
-            _withnll(DrmFit(fam, blocks, names, θ̂, V, -nll(θ̂), n_like,
-                            drm_optim_converged(res), means, obs, scales), nll), f),
+            _withuncertainty(
+                _withnll(DrmFit(fam, blocks, names, θ̂, V, -nll(θ̂), n_like,
+                                converged, means, obs, scales), nll), se_on), f),
         Optim.iterations(res))
 end
 
