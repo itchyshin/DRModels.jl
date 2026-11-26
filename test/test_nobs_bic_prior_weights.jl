@@ -21,3 +21,18 @@ using DRModels, Random
     @test bic(f_w) != bic(f_rep)
     @test bic(f_w) < bic(f_rep)  # fewer rows => smaller log(n) penalty term
 end
+
+@testset "prior weights: zero-weight rows excluded from nobs and bic (drmTMB #1878)" begin
+    Random.seed!(931931)
+    n = 24
+    k = 5
+    d = (; y = randn(n), x = randn(n))
+    w = fill(1.0, n)
+    w[1:k] .= 0.0
+    f = bf(@formula(y ~ x), @formula(sigma ~ 1))
+    ctrl = DRMControl(se = false)
+    fit = drm(f, Gaussian(); data = d, weights = w, control = ctrl)
+    @test nobs(fit) == n - k
+    @test bic(fit) ≈ -2 * loglik(fit) + dof(fit) * log(n - k) atol = 1e-12
+    @test aicc(fit) > aic(fit)
+end

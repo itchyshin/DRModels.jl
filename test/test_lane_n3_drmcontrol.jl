@@ -274,7 +274,7 @@ _n3_quiet(f) = redirect_stderr(devnull) do; f(); end
                 ok = abs.(coef(b)) .< 6
                 @test coef(a)[ok] ≈ coef(b)[ok] atol = 1e-4
             end
-            @test nobs(a) == _N3_N                       # rows, zero-weight rows included
+            @test nobs(a) == count(>(0), w)              # rows with prior weight > 0
         end
         # Unit weights reproduce the unweighted fit exactly.
         lab, fam, f, rows = _n3_cases()[1]

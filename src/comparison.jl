@@ -918,11 +918,12 @@ Prior (per-observation) weights the fit was made with, from
 The weights multiply each row's log-likelihood (drmTMB semantics). They are
 **prior** weights, **not** frequency weights: doubling every weight doubles the
 log-likelihood like re-weighting the objective, but it does **not** change
-[`nobs`](@ref), so [`bic`](@ref) and [`aicc`](@ref) (which use `log(nobs)`) need
-not agree with a row-replicated dataset even when `loglik` and [`aic`](@ref)
-match (drmTMB #1863). Rows with weight zero still occupy a row in `nobs` when
-they remain in the data; they contribute zero to the likelihood. `loglik`,
-profiles and likelihood-ratio tests use the same weighted likelihood.
+[`nobs`](@ref) when every weight is positive. [`nobs`](@ref) counts only rows
+with weight `> 0`; zero-weight rows contribute nothing to the likelihood and are
+excluded from `nobs`, so [`bic`](@ref) and [`aicc`](@ref) (which use `log(nobs)`)
+use that count and need not agree with a row-replicated dataset even when
+`loglik` and [`aic`](@ref) match (drmTMB #1863, #1878). `loglik`, profiles and
+likelihood-ratio tests use the same weighted likelihood.
 
 Prior weights are implemented on the fixed-effect ML routes of the univariate
 families, on Gaussian and Poisson with one `(1 | g)`, on Gaussian `meta_V(v)`,
