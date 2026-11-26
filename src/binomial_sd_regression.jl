@@ -2514,14 +2514,16 @@ function _fit_binomial_sd_regression(fam::Binomial, s, ntr, Xmu, Zgs, nmsds,
     if warm !== nothing && (length(warm) != offset || !all(isfinite, warm))
         warm = nothing
     end
-    res = if warm === nothing
-        run_from(theta0)
-    else
+    res = run_from(theta0)
+    # Keep the historical cold-start path whenever it converges so bootstrap
+    # refits stay on the recorded coefficient fixtures; warm-start only when cold
+    # fails (Julia 1.10 line-search fragility, #1334).
+    if warm !== nothing && !drm_optim_converged(res)
         rw = run_from(warm)
-        if drm_optim_converged(rw)
+        res = if drm_optim_converged(rw)
             rw
         else
-            _better_restart(nll, rw, run_from(theta0))
+            _better_restart(nll, res, rw)
         end
     end
     corr_retry = zeros(3) # attempted, accepted, objective difference in nats

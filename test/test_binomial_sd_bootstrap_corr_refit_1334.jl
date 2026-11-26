@@ -1,6 +1,7 @@
 # Julia 1.10: correlated Binomial SD bootstrap refits must converge with the
 # fixture seed draw used in test_binomial_sd_bootstrap_nq_1334.jl (#1334).
-using DRModels, Test, Random, StableRNGs, Distributions
+using DRModels, Test, Random, StableRNGs
+import Distributions
 
 @testset "Binomial SD correlated bootstrap refit stability (#1334)" begin
     rng = StableRNG(20261020)
@@ -26,7 +27,7 @@ using DRModels, Test, Random, StableRNGs, Distributions
         @formula(y ~ x + (1 + x | g)),
         @formula(sd(g, coef(x)) ~ z1),
     )
-    fit = DRModels._drm_binomial_sd_regression(slope_only, DRModels.Binomial(); data, nq = 9)
+    fit = DRModels._drm_binomial_sd_regression(slope_only, DRModels.Binomial(); data, nq=9)
     boot = bootstrap_result(
         fit; data, B = 1, rng = MersenneTwister(30), failures = :error,
     )
