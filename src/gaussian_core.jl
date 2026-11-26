@@ -1368,8 +1368,17 @@ function _drm_gaussian_fit(f::DrmFormula, fam::Gaussian; data, K = nothing, A = 
             tree=tree, coords=coords, profile_ci=profile_ci,
             phylo_coupled=phylo_coupled, penalty=penalty, sparse=sparse)
     end
-    (impute === nothing && missing === nothing) ||
-        throw(ArgumentError("drm: `impute` and `missing` controls currently require an additive mi(x) joint-model formula; they are not ignored on other routes"))
+    if impute !== nothing || missing !== nothing
+        if missing isa JointMissingControl
+            throw(ArgumentError(
+                "drm: `miss_control(...)` applies only to bivariate fits (drmTMB's `miss_control(response = ...)` " *
+                "policy); univariate models drop rows with a missing response automatically"))
+        else
+            throw(ArgumentError(
+                "drm: `impute` and `missing` controls currently require an additive mi(x) joint-model formula; " *
+                "they are not ignored on other routes"))
+        end
+    end
     priors === nothing || _reject_sd_missing_predictors(f, data, priors)
     original_rows = priors === nothing ? 0 : length(_table_column(data, f.response))
     data = _drop_missing_predictor_rows(f, data)   # #1089: R's na.omit, with a count
