@@ -173,3 +173,21 @@ function _mf_print_ci(io, label, ci)
     end
     return nothing
 end
+
+# --- `DrmFit` delegation (standard `drm` route) ---------------------------------
+# The `mf_*` names are exported next to `drm()`; on a `DrmFit` they forward to the
+# StatsAPI accessors so values match `aic` / `coef` / `bic` / `fitted` / `summary`.
+
+mf_aic(fit::DrmFit) = aic(fit)
+mf_coef(fit::DrmFit) = coef(fit)
+mf_bic(fit::DrmFit; nobs = nothing) = bic(fit)
+mf_fitted(fit::DrmFit) = fitted(fit)
+
+function mf_summary(fit::DrmFit; nobs = nothing, io::IO = stdout)
+    show(io, MIME"text/plain"(), summary(fit))
+    println(io)
+    println(io, "  logLik = ", _mf_fmt(fit.loglik),
+            "   AIC = ", _mf_fmt(aic(fit)),
+            "   BIC = ", _mf_fmt(bic(fit)))
+    return fit
+end
