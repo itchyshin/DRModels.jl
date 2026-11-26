@@ -423,7 +423,8 @@ function _fit_zeroonebeta_ranef(fam::ZeroOneBeta, y, Xμ, Xσ, Xz, Xc, gidx, G, 
     θ0[i2+1] = log(co0 / (1 - co0))           # logit coi
     θ0[i3+1] = log(0.5)                        # log σ_b
     res = Optim.optimize(nll, θ0, Optim.LBFGS(), Optim.Options(g_tol = g_tol); autodiff = :forward)
-    θ̂ = Optim.minimizer(res); V = _vcov_from_hessian(ForwardDiff.hessian(nll, θ̂))
+    θ̂ = Optim.minimizer(res)
+    V = _ctl_se(() -> _vcov_from_hessian(ForwardDiff.hessian(nll, θ̂)), θ̂)
     blocks = [:mu => 1:pμ, :sigma => (pμ+1):i1, :zoi => (i1+1):i2, :coi => (i2+1):i3,
               :resd => (i3+1):(i3+1)]
     names = [:mu => nmμ, :sigma => nmσ, :zoi => nmz, :coi => nmc, :resd => [String(grp)]]
