@@ -183,3 +183,14 @@ converged(fit) = is_converged(fit)   # untyped: the joint missing-data wrappers 
 # the callers where a `:boundary` optimum is still a usable fit (bootstrap and
 # profile refits, frozen margins, heritability, the bridge's `converged` key).
 _converged_nondegenerate(fit::DrmFit) = fit.converged && _nondegenerate_fit(fit)
+
+# Parametric-bootstrap refit gate (DRModels.jl#1570). Same as
+# [`_converged_nondegenerate`](@ref) on `main`, plus a drop when the fitter set
+# `geometry === :binomial_separation` (the fixed-effect screen can leave
+# `fit.converged = true`). Does not widen drops to other `:degenerate` FX3b cases.
+function _bootstrap_refit_ok(fit::DrmFit)
+    fit.geometry === :binomial_separation && return false
+    return _converged_nondegenerate(fit)
+end
+
+_bootstrap_binomial_separation_fit(fit::DrmFit) = fit.geometry === :binomial_separation

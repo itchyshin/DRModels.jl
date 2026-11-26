@@ -4380,6 +4380,12 @@ function _bootstrap_result(
     refit_error = zeros(UInt8, B)
     refit_estimator = fill((:unknown, :unknown), B)
     seeds = rand(rng, UInt, B)
+    if check_converged && _bootstrap_binomial_separation_fit(fit0)
+        @warn "bootstrap: seed fit has (quasi-)complete binomial separation " *
+              "(`geometry` is :binomial_separation; `is_converged` is false). " *
+              "Percentile intervals are not reliable; separated refits are dropped " *
+              "when `check_converged = true`."
+    end
 
     function run_one!(b)
         rr = Random.MersenneTwister(seeds[b])
@@ -4396,7 +4402,8 @@ function _bootstrap_result(
             # own flag happily calls converged (#461). Not `is_converged` either
             # (FX3b): a refit whose variance component lands on its boundary is a
             # real draw, and dropping it would bias the interval away from zero.
-            if check_converged && !_converged_nondegenerate(fitb)
+            # #1570: also drop quasi-complete binomial separation (`geometry`).
+            if check_converged && !_bootstrap_refit_ok(fitb)
                 messages[b] = _BOOTSTRAP_UNCONVERGED
             else
                 draws[b, :] = coef(fitb)

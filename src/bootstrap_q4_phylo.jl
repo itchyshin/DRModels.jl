@@ -140,8 +140,8 @@ function bootstrap_sigma_a(fit::DrmFit; data, B::Real = 300, level::Real = 0.95,
             fitb = drm(form, fam; data = datab, tree = phy,
                        q4_g_tol = q4_g_tol, q4_iterations = q4_iterations,
                        q4_vcov = false, method = fit.estim_method)
-            # FX3b: keep boundary draws
-            if check_converged && !_converged_nondegenerate(fitb)
+            # FX3b: keep boundary draws; #1570 binomial separation geometry
+            if check_converged && !_bootstrap_refit_ok(fitb)
                 messages[b] = _BOOTSTRAP_UNCONVERGED
                 return nothing
             end
