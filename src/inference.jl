@@ -2205,9 +2205,10 @@ function bootstrap_result(
         # Binomial SD fits expose their quadrature order only through the
         # internal fit route. Preserve it on bootstrap refits rather than
         # silently switching to the public route's default order.
+        warm = (haskey(fit.scales, :correlation) || haskey(fit.scales, :corpars)) ? fit.theta : nothing
         refit = datab -> _drm_binomial_sd_regression(
             formula, fit.family; data=datab, K, A, Ainv, tree, tree1, tree2, coords,
-            marginal=fit.marginal, nq=binomial_nq, g_tol, theta_warm=fit.theta,
+            marginal=fit.marginal, nq=binomial_nq, g_tol, theta_warm=warm,
         )
     else
         Ainv !== nothing && (extra[:Ainv] = Ainv)
