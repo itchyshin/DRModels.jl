@@ -93,12 +93,10 @@ const _PM_CELLS = [
             nd = _pm_newdata()
             _pm_check_pred(predict(fit, nd), cell, "newdata_response")
             _pm_check_pred(predict(fit, nd; type = :link), cell, "newdata_link")
-            # A missing predictor in newdata is refused, as in R (R: no NA row is returned).
-            @test occursin("missing", _PM_REFUSAL[cell])
+            # A missing predictor in newdata is refused with drmTMB 0.8.1 wording (R returns no NA row).
             err = try predict(fit, _PM_D); nothing catch e; e end
             @test err isa ArgumentError
-            @test occursin("x1m", sprint(showerror, err))
-            @test occursin("missing", sprint(showerror, err))
+            @test err.msg == _PM_REFUSAL[cell]
         end
     end
     # Gaussian random-intercept cell: same logLik and fixed effects as R; population-level newdata
@@ -109,14 +107,15 @@ const _PM_CELLS = [
         _pm_check_fit(fit, "K_gauss_both_re")
         nd = _pm_newdata()
         _pm_check_pred(predict(fit, nd), "K_gauss_both_re", "newdata_response")
-        @test_throws ArgumentError predict(fit, _PM_D)
+        err = try predict(fit, _PM_D); nothing catch e; e end
+        @test err isa ArgumentError && err.msg == _PM_REFUSAL["K_gauss_both_re"]
     end
     # Poisson random-intercept cell: R and Julia logLik differ by about 4.6e-3 (Laplace vs R), so
     # predictions are not pinned; only the shared refusal is.
     @testset "K_pois_both_re (refusal only)" begin
         fit = drm(bf(@formula(y_pm ~ x1m + (1 | g))), DRModels.Poisson(); data = _PM_D)
-        @test_throws ArgumentError predict(fit, _PM_D)
-        @test occursin("missing", _PM_REFUSAL["K_pois_both_re"])
+        err = try predict(fit, _PM_D); nothing catch e; e end
+        @test err isa ArgumentError && err.msg == _PM_REFUSAL["K_pois_both_re"]
     end
     # A predictor that only the sigma formula uses: R does not refuse and returns no NA for mu.
     @testset "K_gauss_sigma (NA only in the sigma formula)" begin

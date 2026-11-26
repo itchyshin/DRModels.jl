@@ -777,8 +777,9 @@ function _design(response::Symbol, rhs, data; schema_cache = nothing, schema_key
     # contrasts from those levels instead of from the rows of `newdata`.
     level_hints = (reused_training_schema || store_schema || schema_cache === nothing) ? nothing :
         _catalogue_contrasts(schema_cache, rhs)
+    input_ctx = store_schema ? "drm" : "predict"
     reused_training_schema || level_hints !== nothing ||
-        _require_finite_predictor_columns(rhs, data, response; observed=observed)
+        _require_finite_predictor_columns(rhs, data, response; context=input_ctx, observed=observed)
     # Only rows that stay in the fit. A missing/NaN response is dropped later
     # (`_fit_observed_response_rows`, `_fit_fixed_gaussian_missing_response`);
     # a NaN predictor on that same row is dropped with it.
@@ -845,7 +846,7 @@ function _design(response::Symbol, rhs, data; schema_cache = nothing, schema_key
     # non-finite. Plain `NaN`/`Inf` columns are already named above. The same
     # observed-row mask: a transform that is non-finite only on a dropped
     # response row is not an error.
-    _require_finite_inputs(; predictors=(Xm, names), observed=observed)
+    _require_finite_inputs(; predictors=(Xm, names), context=input_ctx, observed=observed)
     return y_response, Xm, names
 end
 
@@ -1050,6 +1051,12 @@ function _check_unseen_levels(hints, rhs, data, key)
     return nothing
 end
 
+# drmTMB 0.8.1 refusal when `predict(fit, newdata)` sees a missing mean-formula predictor
+# (gap-map v2 cells K|*; issue #1498).
+_predict_missing_required_predictor(col::Symbol) = throw(ArgumentError(
+    "New prediction data contains missing value for required predictor `$col`. " *
+    "ℹ Supply complete prediction rows before calling `predict()` or emmeans."))
+
 function _check_newdata_against_schema(rhs, sch, data, response::Symbol, key)
     cols = _rhs_columns(rhs)
     cols === nothing && return nothing
@@ -1060,9 +1067,7 @@ function _check_newdata_against_schema(rhs, sch, data, response::Symbol, key)
                                 "from `newdata`."))
         col = _table_column(data, c)
         col isa AbstractVector || continue
-        any(ismissing, col) &&
-            throw(ArgumentError("predict: column `$c` in `newdata` contains `missing` " *
-                                "(used by the `$key` formula); drop or impute those rows first."))
+        any(ismissing, col) && _predict_missing_required_predictor(c)
     end
     sch isa StatsModels.Schema || return nothing
     for (_, t) in pairs(sch.schema)
