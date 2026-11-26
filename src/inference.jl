@@ -4843,12 +4843,12 @@ Returns a `NamedTuple` and logs a short report:
   `fixed_effect_rank_deficiency`). Such a fit is not converged (`is_converged` is
   `false`), the aliased coordinates' SEs are `NaN`, and `ok` is `false`. Detected on the
   Gaussian location-scale route.
-- `ok` — `true` when the optimiser converged at a non-degenerate optimum (the
-  test `is_converged` made before FX3b), the gradient is small, the covariance is
-  PD, and no fixed-effect design is rank-deficient. It does not read
-  `convergence_status`, which is reported in its own field: a `:boundary` fit, or
-  one the twin rules call `:degenerate` for an inflated standard error, can still
-  be `ok`.
+- `ok` — `true` when the fit passes the family convergence gate, the gradient is
+  small (when scored), the covariance is PD, and no fixed-effect design is
+  rank-deficient. Non-Gaussian families use the pre-FX3b geometry gate
+  `_converged_nondegenerate`; Gaussian uses [`is_converged`](@ref)
+  (so a twin `:degenerate` inflated-SE fit is not `ok`, #1545) except at
+  `:boundary`, where the pre-FX3b gate still applies.
   On a phylogenetic-penalty fit the gradient criterion is **dropped** because
   its stored objective is the unpenalized likelihood. Fixed-prior fits retain
   the penalized objective and its gradient is checked. The criterion is also dropped
@@ -4892,7 +4892,9 @@ function check_drm(fit::DrmFit; grad_tol::Real=1e-3)
     frd = _fixed_effect_rank_deficiency(fit)   # #1110: `nothing` unless a design is aliased
     conv = status === :converged       # is_converged(fit)
     fixed_prior = _is_fixed_prior_fit(fit) && penalized
-    ok = _converged_nondegenerate(fit) && ((penalized && !fixed_prior) || isnan(mag) || mag <= grad_tol) && pd && frd === nothing
+    converged_gate = fit.family isa Gaussian ? (conv || status === :boundary) :
+        _converged_nondegenerate(fit)
+    ok = converged_gate && ((penalized && !fixed_prior) || isnan(mag) || mag <= grad_tol) && pd && frd === nothing
     report = (
         convergence_status=status,
         converged=conv,
