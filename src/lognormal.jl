@@ -16,9 +16,6 @@ the **mean of `log y`** (identity link on the log scale), and `σ` (log link) is
 the **SD of `log y`**. The response-scale median is `exp(μ)`. Mirrors `drmTMB`'s
 `lognormal` family.
 
-!!! note
-    `DRModels.LogNormal` shadows `Distributions.LogNormal`; qualify the latter if needed.
-
 A random intercept `(1 | g)` or a correlated random intercept+slope `(1 + x | g)`
 may be placed on the log-mean `μ`; the group effect is integrated out by
 Gauss–Hermite quadrature (`re_sd(fit)[:g]` / `vc(fit)[:g]`). Crossed/multiple
@@ -53,7 +50,7 @@ fit_phy = drm(bf(@formula(y ~ x + phylo(1 | species)), @formula(sigma ~ 1)),
               LogNormal(); data = dat, tree = tr)
 ```
 """
-struct LogNormal end
+LogNormal
 
 @drm_entry function drm(f::DrmFormula, fam::LogNormal; data, tree = nothing, K = nothing, g_tol::Real = 1e-8,
              marginal::Symbol = :LA)

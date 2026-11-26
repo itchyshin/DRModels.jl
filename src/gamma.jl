@@ -28,9 +28,6 @@ group-constant SD predictors.
 reports the population-level sigma predictor alongside the separate SD
 prediction.
 
-!!! note
-    `DRModels.Gamma` shadows `Distributions.Gamma`; qualify the latter if you need it.
-
 ```julia
 fit = drm(bf(@formula(y ~ x), @formula(sigma ~ 1)), Gamma(); data = dat)
 fit = drm(bf(@formula(y ~ x + (1 | g) + (1 | h)), @formula(sigma ~ 1)), Gamma(); data = dat)
@@ -60,7 +57,7 @@ fit_ind = drm(bf(@formula(y ~ x + (1 | g) + (0 + x | g)), @formula(sigma ~ 1)), 
 exp.(coef(fit_ind, :resd))         # SDs of the intercept and slope effects
 ```
 """
-struct Gamma end
+Gamma
 
 # FX3b: `se = false` is recorded on the fit (`DrmFit.uncertainty`), so
 # `convergence_status` does not read the skipped (NaN) covariance as a failure.

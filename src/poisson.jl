@@ -3,17 +3,13 @@
 # family for overdispersed counts). Fixed and random effects, maximum likelihood.
 # Mirrors drmTMB's
 # `poisson`. The log-pmf is written out explicitly (y·log λ − λ − log y!) so the
-# fit needs no `Distributions.Poisson` — that name is left to Distributions.
+# Family marker `Poisson()` is `Distributions.Poisson` (see `distribution_families.jl`, #1534).
 
 """
     Poisson()
 
 Poisson response family for counts: log link on the mean `μ` (so `μ` coefficients
 act on `log λ`). No residual scale parameter. Mirrors `drmTMB`'s `poisson` family.
-
-!!! note
-    `DRModels.Poisson` shadows `Distributions.Poisson`; if you need the distribution
-    too (e.g. to simulate), qualify it as `Distributions.Poisson`.
 
 ```julia
 fit = drm(bf(@formula(y ~ x)), Poisson(); data = dat)
@@ -119,7 +115,7 @@ returning an ML fit. REML
 log-likelihoods are not comparable across different fixed-effect structures, so
 do not use them for model selection over `μ`.
 """
-struct Poisson end
+Poisson
 
 using SpecialFunctions: loggamma
 
