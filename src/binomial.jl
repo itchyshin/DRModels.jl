@@ -38,13 +38,22 @@ _safe_objective(f) = θ -> _finite_or_sentinel(f(θ))
 function _optimize_with_fallback(nll, θ0, g_tol;
                                  opts = Optim.Options(g_tol = g_tol))
     f = _safe_objective(nll)
-    try
-        return Optim.optimize(f, θ0, Optim.LBFGS(), opts; autodiff = :forward)
+    bt = Optim.LBFGS(linesearch = Optim.LineSearches.BackTracking())
+    res = try
+        Optim.optimize(f, θ0, Optim.LBFGS(), opts; autodiff = :forward)
     catch e
         e isa AssertionError || rethrow()
-        return Optim.optimize(f, θ0, Optim.LBFGS(linesearch = Optim.LineSearches.BackTracking()),
-                              opts; autodiff = :forward)
+        return Optim.optimize(f, θ0, bt, opts; autodiff = :forward)
     end
+    # Hager–Zhang can stop without meeting g_tol (or after a rejected line search
+    # leaves a stale objective); BackTracking from the same or returned point is
+    # the established recovery path (`optim_minimum_guard.jl`).
+    drm_optim_converged(res) && return res
+    for x0 in (θ0, Optim.minimizer(res))
+        res = _better_restart(nll, res, Optim.optimize(f, x0, bt, opts; autodiff = :forward))
+        drm_optim_converged(res) && break
+    end
+    return res
 end
 
 # Covariance for the quadrature routes at a runaway optimum (e.g. separated data):
