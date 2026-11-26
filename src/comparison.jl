@@ -915,9 +915,15 @@ Prior (per-observation) weights the fit was made with, from
 `drm(...; weights = w)`, or `nothing` when no weights were given. Extends
 `StatsAPI.weights`.
 
-The weights multiply each row's log-likelihood (drmTMB semantics), so
-`loglik`, `aic`, `bic`, profiles and likelihood-ratio tests use the weighted
-likelihood. `nobs(fit)` still counts rows, zero-weight rows included.
+The weights multiply each row's log-likelihood (drmTMB semantics). They are
+**prior** weights, **not** frequency weights: doubling every weight doubles the
+log-likelihood like re-weighting the objective, but it does **not** change
+[`nobs`](@ref) when every weight is positive. [`nobs`](@ref) counts only rows
+with weight `> 0`; zero-weight rows contribute nothing to the likelihood and are
+excluded from `nobs`, so [`bic`](@ref) and [`aicc`](@ref) (which use `log(nobs)`)
+use that count and need not agree with a row-replicated dataset even when
+`loglik` and [`aic`](@ref) match (drmTMB #1863, #1878). `loglik`, profiles and
+likelihood-ratio tests use the same weighted likelihood.
 
 Prior weights are implemented on the fixed-effect ML routes of the univariate
 families, on Gaussian and Poisson with one `(1 | g)`, on Gaussian `meta_V(v)`,

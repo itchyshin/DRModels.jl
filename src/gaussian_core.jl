@@ -2743,9 +2743,27 @@ vcov(fit::DrmFit) = _wald_withheld(fit) ? _homtoep_refuse_wald("vcov") : fit.vco
 """
     nobs(fit::DrmFit)
 
-Number of observations. Extends `StatsAPI.nobs`.
+Number of observations. Extends `StatsAPI.nobs`. Returns the count of rows that
+entered the likelihood after missing-value drops and **excludes rows whose prior
+weight is zero** when `drm(...; weights = w)` was used.
+
+With prior weights, this is **not** `sum(weights(fit))` and not an effective
+sample size for frequency weights: `weights = 2` on every row doubles each
+log-likelihood contribution but leaves `nobs` at the number of rows with weight
+`> 0`, so [`bic`](@ref) can differ from a physically replicated dataset even when
+[`loglik`](@ref) and [`aic`](@ref) match (drmTMB
+[itchyshin/drmTMB#1863](https://github.com/itchyshin/drmTMB/issues/1863),
+[itchyshin/drmTMB#1878](https://github.com/itchyshin/drmTMB/issues/1878)).
+Prior weights multiply each row's log-likelihood; they are **not** frequency
+weights.
 """
-nobs(fit::DrmFit) = fit.nobs
+function nobs(fit::DrmFit)
+    w = fit.control_info === nothing ? nothing : fit.control_info.weights
+    if w === nothing
+        return fit.nobs
+    end
+    return count(>(0), w)
+end
 
 """
     fitted(fit; re = :conditional)
@@ -4647,17 +4665,21 @@ end
 """
     bic(fit) -> Float64
 
-Bayesian (Schwarz) information criterion, `-2·loglik + dof·log(nobs)`.
+Bayesian (Schwarz) information criterion, `-2·loglik + k·log(n)` with
+`k = dof(fit)` and `n = nobs(fit)` (rows with prior weight `> 0`, not the sum of
+prior weights).
 
-On a **REML** fit this carries the same variance-only-comparison caveat as
-[`aic`](@ref) and emits a one-time warning.
+Prior weights are **not** frequency weights: a weighted fit and a row-expanded
+dataset can share `loglik` and `aic` but not `bic` when their `nobs` counts differ
+(drmTMB #1863, #1878). On a **REML** fit this carries the same variance-only-comparison
+caveat as [`aic`](@ref) and emits a one-time warning.
 """
 function bic(fit::DrmFit)
     _is_fixed_prior_fit(fit) && fit.estim_method === :MAP && throw(ArgumentError("bic is unavailable for $(_prior_kind_label(fit)) MAP fits"))
     _va_infocrit_guard(fit, "bic")
     _reml_infocrit_warn(fit, "bic")
     _sentinel_infocrit_nan(fit, "bic") && return NaN
-    return -2 * fit.loglik + length(fit.theta) * log(fit.nobs)
+    return -2 * fit.loglik + length(fit.theta) * log(nobs(fit))
 end
 
 # A predictor-dependent random-effect SD block: `:sd` / `:sd_phylo` (Gaussian and the
