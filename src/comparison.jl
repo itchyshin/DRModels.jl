@@ -143,6 +143,7 @@ t.pvalue       # < 0.05 when x is truly predictive
 """
 function lrtest(reduced::DrmFit, full::DrmFit; mixture::Bool = false)
     _reml_compare_guard(reduced, full, "lrtest")
+    _prior_weights_compare_guard(reduced, full, "lrtest")
     _sentinel_compare_guard(reduced, full, "lrtest")
     _marginal_compare_guard(reduced, full, "lrtest")
     _map_compare_guard(reduced, full, "lrtest")
@@ -735,6 +736,29 @@ function _reml_compare_guard(a::DrmFit, b::DrmFit, verb::AbstractString)
             "both with method = :ML for a cross-structure test."))
     end
     return nothing
+end
+
+# Prior-weights guard (#1557, drmTMB #1888): row log-likelihood multipliers must
+# match across both fits. `nothing` and an all-ones vector are treated as the
+# same (unweighted) likelihood, mirroring drmTMB's `anova` refusal.
+function _canonical_compare_weights(w)
+    w === nothing && return nothing
+    all(==(1.0), w) && return nothing
+    return Vector{Float64}(w)
+end
+
+function _prior_weights_compare_guard(a::DrmFit, b::DrmFit, verb::AbstractString)
+    wa = _canonical_compare_weights(weights(a))
+    wb = _canonical_compare_weights(weights(b))
+    wa == wb && return nothing
+    detail = (wa === nothing || wb === nothing) ?
+        "one fit used prior `weights` and the other did not" :
+        "the prior `weights` vectors differ"
+    throw(ArgumentError(
+        "$verb: cannot compare fits estimated with different prior weights — " *
+        "$detail. The likelihood-ratio statistic is only defined when both models " *
+        "use the same weighted likelihood. Refit both with the same `weights` " *
+        "(or omit `weights` on both)."))
 end
 
 # Penalized-MAP guard (A4c): a penalized fit is a maximum-a-posteriori estimate,
