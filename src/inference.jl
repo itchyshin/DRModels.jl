@@ -2207,7 +2207,7 @@ function bootstrap_result(
         # silently switching to the public route's default order.
         refit = datab -> _drm_binomial_sd_regression(
             formula, fit.family; data=datab, K, A, Ainv, tree, tree1, tree2, coords,
-            marginal=fit.marginal, nq=binomial_nq, g_tol, theta_warm=fit.theta,
+            marginal=fit.marginal, nq=binomial_nq, g_tol,
         )
     else
         Ainv !== nothing && (extra[:Ainv] = Ainv)

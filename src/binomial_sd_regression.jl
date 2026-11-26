@@ -2102,8 +2102,7 @@ function _drm_binomial_sd_regression(f::DrmFormula, fam::Binomial; data,
                                      coords = nothing, mesh = nothing,
                                      g_tol::Real = 1e-8,
                                      se::Bool = true, marginal::Symbol = :LA,
-                                     method = nothing, nq::Int = _BINOMIAL_RANEF_AGHQ_K,
-                                     theta_warm = nothing)
+                                     method = nothing, nq::Int = _BINOMIAL_RANEF_AGHQ_K)
     _reject_method_as_marginal(fam, method)
     if _scalar_laplace_requested(marginal)
         # Independent terms: the dense TMB-convention Laplace. One ordinary correlated block
@@ -2424,7 +2423,7 @@ function _drm_binomial_sd_regression(f::DrmFormula, fam::Binomial; data,
     end
     return _withformula(_fit_binomial_sd_regression(
         fam, s, ntr, Xmu, Zgs, nmsds, gidx, G, nmmu, group, g_tol,
-        target_blocks; nq = nq, Zre = Zre, correlated = correlated, theta_warm = theta_warm,
+        target_blocks; nq = nq, Zre = Zre, correlated = correlated,
     ), f)
 end
 
@@ -2434,8 +2433,7 @@ const _BINOMIAL_INDEP_BIG_GAIN = 1.0
 function _fit_binomial_sd_regression(fam::Binomial, s, ntr, Xmu, Zgs, nmsds,
                                       gidx, G, nmmu, group, g_tol, target_blocks;
                                       nq::Int = _BINOMIAL_RANEF_AGHQ_K,
-                                      Zre = ones(length(s), 1), correlated::Bool = false,
-                                      theta_warm = nothing)
+                                      Zre = ones(length(s), 1), correlated::Bool = false)
     n = length(s)
     pmu = size(Xmu, 2)
     q = length(Zgs)
@@ -2510,20 +2508,7 @@ function _fit_binomial_sd_regression(fam::Binomial, s, ntr, Xmu, Zgs, nmsds,
     end
     correlated && (theta0[corr_range] .= 0.0)
     run_from(th0) = _optimize_with_fallback(nll, th0, g_tol)
-    warm = theta_warm === nothing ? nothing : collect(Float64, theta_warm)
-    if warm !== nothing && (length(warm) != offset || !all(isfinite, warm))
-        warm = nothing
-    end
-    res = if warm === nothing
-        run_from(theta0)
-    else
-        rw = run_from(warm)
-        if drm_optim_converged(rw)
-            rw
-        else
-            _better_restart(nll, rw, run_from(theta0))
-        end
-    end
+    res = run_from(theta0)
     corr_retry = zeros(3) # attempted, accepted, objective difference in nats
     if correlated && q == 2 && isfinite(Optim.minimum(res)) &&
        all(isfinite, Optim.minimizer(res)) && any(abs.(Optim.minimizer(res)[corr_range]) .>= 12)
