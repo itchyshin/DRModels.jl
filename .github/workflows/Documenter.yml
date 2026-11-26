@@ -11,6 +11,7 @@ on:
     branches: [main]
     tags: ['v*']
   pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
     branches: [main]
   workflow_dispatch:
 
@@ -33,7 +34,34 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
+  # PR-only path gate (mirrors CI `changes`): the required `docs` job always RUNS
+  # and reports; full build is gated below so the check is never missing.
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      docs: ${{ steps.filter.outputs.docs }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - id: filter
+        run: |
+          if [ "${{ github.event_name }}" != "pull_request" ]; then
+            echo "docs=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          base='${{ github.event.pull_request.base.sha }}'
+          if git diff --name-only "$base" HEAD \
+               | grep -qE '^(docs/|src/|README\.md$|Project\.toml$)'; then
+            echo "docs=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "docs=false" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Say which way it went
+        run: echo "docs=${{ steps.filter.outputs.docs }}"
+
   docs:
+    needs: changes
     runs-on: ubuntu-latest
     # The REQUIRED gate. It BUILDS on every event and never deploys, so it never
     # joins the repo-wide gh-pages group and gets a group unique to its own run.
@@ -60,12 +88,44 @@ jobs:
       pull-requests: read
       statuses: write
     steps:
+      - name: Draft PR — defer full docs build
+        if: github.event_name == 'pull_request' && github.event.pull_request.draft
+        run: |
+          {
+            echo "### Documenter (draft)"
+            echo
+            echo "Full docs build and preview run when this PR is marked ready for review."
+          } >> "$GITHUB_STEP_SUMMARY"
+      - name: Ready PR — no docs-relevant diff
+        if: >-
+          github.event_name == 'pull_request' &&
+          github.event.pull_request.draft == false &&
+          needs.changes.outputs.docs != 'true'
+        run: |
+          {
+            echo "### Documenter"
+            echo
+            echo "Docs build skipped: no diff under \`docs/\`, \`src/\`, \`README.md\`, or \`Project.toml\`."
+            echo "This required check still reports success."
+          } >> "$GITHUB_STEP_SUMMARY"
       - uses: actions/checkout@v6
+        if: >-
+          github.event_name != 'pull_request' ||
+          (github.event.pull_request.draft == false && needs.changes.outputs.docs == 'true')
       - uses: julia-actions/setup-julia@v3
+        if: >-
+          github.event_name != 'pull_request' ||
+          (github.event.pull_request.draft == false && needs.changes.outputs.docs == 'true')
         with:
           version: '1'
       - uses: julia-actions/cache@v2
+        if: >-
+          github.event_name != 'pull_request' ||
+          (github.event.pull_request.draft == false && needs.changes.outputs.docs == 'true')
       - name: Check reader-facing source routes
+        if: >-
+          github.event_name != 'pull_request' ||
+          (github.event.pull_request.draft == false && needs.changes.outputs.docs == 'true')
         # This is a source-text guard, not a claim-validity or accessibility
         # audit. It follows the literal public routes in docs/make.jl and runs
         # before the expensive Documenter build.
@@ -74,12 +134,18 @@ jobs:
           python3 tools/tests/test_docs_audit_semantics.py
           python3 tools/reader_surface_audit.py --public-only
       - name: Instantiate docs environment
+        if: >-
+          github.event_name != 'pull_request' ||
+          (github.event.pull_request.draft == false && needs.changes.outputs.docs == 'true')
         run: |
           julia --project=docs -e '
             using Pkg
             Pkg.develop(PackageSpec(path = pwd()))
             Pkg.instantiate()'
       - name: Build (never deploys; see docs-deploy / docs-preview)
+        if: >-
+          github.event_name != 'pull_request' ||
+          (github.event.pull_request.draft == false && needs.changes.outputs.docs == 'true')
         env:
           # The tokens stay: makedocs asks Documenter's deploy_folder for the
           # deploy decision at BUILD time, and that decision writes bases.txt
@@ -94,6 +160,9 @@ jobs:
         run: julia --project=docs docs/make.jl
 
       - name: Audit rendered public documentation
+        if: >-
+          github.event_name != 'pull_request' ||
+          (github.event.pull_request.draft == false && needs.changes.outputs.docs == 'true')
         run: |
           first_base="$(head -n 1 docs/build/bases.txt)"
           test -n "$first_base" || {
@@ -119,6 +188,9 @@ jobs:
       # output relies on. retention-days: 1 -- this artefact is a handoff between
       # two jobs of one run, not something to keep.
       - name: Upload built docs for the deploy / preview job
+        if: >-
+          github.event_name != 'pull_request' ||
+          (github.event.pull_request.draft == false && needs.changes.outputs.docs == 'true')
         uses: actions/upload-artifact@v6
         with:
           name: docs-build-${{ github.run_id }}
@@ -145,11 +217,13 @@ jobs:
   # THAT TRADE IS THE ENTIRE POINT: if anyone later adds docs-preview to the
   # required contexts, they recreate #750's bug one job over.
   docs-preview:
-    needs: docs
+    needs: [changes, docs]
     # Fork PRs have no secrets: DOCUMENTER_KEY is absent, so a deploy would fail
     # on the first outside contributor's PR. Skip cleanly instead of failing.
     if: >-
       github.event_name == 'pull_request' &&
+      github.event.pull_request.draft == false &&
+      needs.changes.outputs.docs == 'true' &&
       github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
     concurrency:
