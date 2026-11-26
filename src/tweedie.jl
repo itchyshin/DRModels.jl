@@ -63,14 +63,24 @@ end
 _tw_value(x::ForwardDiff.Dual) = _tw_value(ForwardDiff.value(x))
 _tw_value(x::Real) = Float64(x)
 
+# Log-sum-exp over the series window without collecting terms into a new `Vector`
+# (the old comprehension allocated on every density evaluation inside ForwardDiff).
 function _tweedie_logW(y, λ, α, γ)
     z = log(λ) - α * log(y) + α * log(γ)
     win = _tweedie_window(_tw_value(z), _tw_value(α))
     win === nothing && return z * NaN
     jl, jh = win
-    terms = [j * z - loggamma(j + 1.0) - loggamma(-j * α) for j in jl:jh]
-    m = maximum(terms)
-    return m + log(sum(exp(t - m) for t in terms))
+    @inline logWj(j) = j * z - loggamma(j + 1.0) - loggamma(-j * α)
+    m = -Inf
+    @inbounds for j in jl:jh
+        t = logWj(j)
+        m = t > m ? t : m
+    end
+    s = zero(m)
+    @inbounds for j in jl:jh
+        s += exp(logWj(j) - m)
+    end
+    return m + log(s)
 end
 
 # Tweedie log-density at one point (1 < p < 2, y ≥ 0, μ,φ > 0).
