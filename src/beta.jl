@@ -31,9 +31,6 @@ user-supplied PD-covariance intercepts (used as supplied, not rescaled; the prec
 `spatial` kernel keeps its rescaling) — `relmat(1 | id)` with `K = C`, the
 `animal(1 | id)` (`A = C`) and `spatial(1 | id)` (`K = C`) aliases.
 
-!!! note
-    `DRModels.Beta` shadows `Distributions.Beta`; qualify the latter if you need it.
-
 ```julia
 fit = drm(bf(@formula(y ~ x), @formula(sigma ~ 1)), Beta(); data = dat)
 fit = drm(bf(@formula(y ~ x + (1 | g) + (1 | h)), @formula(sigma ~ 1)), Beta(); data = dat)
@@ -56,7 +53,7 @@ fit_lap = drm(bf(@formula(y ~ x + (1 | g)), @formula(sigma ~ 1)), Beta();
               data = dat, marginal = :Laplace)
 ```
 """
-struct Beta end
+Beta
 
 _logistic(η) = 1 / (1 + exp(-η))
 

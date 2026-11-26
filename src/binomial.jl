@@ -146,9 +146,11 @@ native TMB parity and interval-coverage calibration have not been established.
     adaptive Gauss–Hermite quadrature and corrects this (#761). Its `loglik` is
     not comparable with a Laplace fit's, so `lrtest` refuses mixed `marginal`s.
 
-!!! note
-    `DRModels.Binomial` shadows `Distributions.Binomial`; if you need the
-    distribution too (e.g. to simulate), qualify it as `Distributions.Binomial`.
+!!! note "Using `Distributions` alongside `DRModels`"
+    After `using DRModels, Distributions`, unqualified `Binomial()` is
+    `Distributions.Binomial` (known trials / success probability). Pass that to
+    `drm` for the default logit GLM; use `link` on `drm` or
+    `DRModels.Binomial(link = …)` for probit / cloglog.
 
 ```julia
 fit = drm(bf(@formula(cbind(successes, failures) ~ x)), Binomial(); data = dat)   # logistic regression
@@ -224,6 +226,11 @@ end
 
 # FX3b: `se = false` is recorded on the fit (`DrmFit.uncertainty`), so
 # `convergence_status` does not read the skipped (NaN) covariance as a failure.
+@drm_entry function drm(f::DrmFormula, fam::Distributions.Binomial; link::Symbol = :logit,
+             se::Bool = true, kwargs...)
+    return drm(f, Binomial(link); se = se, kwargs...)
+end
+
 @drm_entry function drm(f::DrmFormula, fam::Binomial; se::Bool = true, kwargs...)
     fit = _withuncertainty(_drm_binomial_fit(f, fam; se = se, kwargs...), se)
     return _with_prior_table_input(fit, get(kwargs, :priors, nothing))
