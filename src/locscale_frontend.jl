@@ -21,14 +21,8 @@ using LinearAlgebra: I
 # the group-level covariance through `_locscale_relmat_setup` / the phylo path
 # instead of the i.i.d. `Q = I`.
 function _ls_group_slot(slot)
-    if slot isa FunctionTerm && slot.f === relmat
-        return (:relmat, slot.args[1].sym)
-    elseif slot isa FunctionTerm && slot.f === animal
-        return (:animal, slot.args[1].sym)
-    elseif slot isa FunctionTerm && slot.f === phylo
-        return (:phylo, slot.args[1].sym)
-    elseif slot isa FunctionTerm && slot.f === spatial
-        return (:spatial, slot.args[1].sym)
+    if slot isa FunctionTerm && _is_structured_marker(slot)
+        return (_structured_marker_kind_symbol(slot), slot.args[1].sym)
     elseif slot isa Term
         return (:iid, slot.sym)
     else

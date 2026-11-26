@@ -185,10 +185,8 @@ function _structured_marker_kinds!(kinds::Set{Symbol}, t)
             _structured_marker_kinds!(kinds, s)
         end
     elseif t isa FunctionTerm
-        t.f === phylo && push!(kinds, :phylo)
-        t.f === relmat && push!(kinds, :relmat)
-        t.f === animal && push!(kinds, :animal)
-        t.f === spatial && push!(kinds, :spatial)
+        sym = _structured_marker_kind_symbol(t)
+        sym === nothing || push!(kinds, sym)
         for a in t.args
             _structured_marker_kinds!(kinds, a)
         end
@@ -472,7 +470,7 @@ function _require_plain_bar_group(bar::FunctionTerm)
     grp = bar.args[2]
     grp isa Term && return nothing
     # `(1 | p | phylo(species))`: a structured marker is a valid group spelling.
-    grp isa FunctionTerm && grp.f in (phylo, relmat, animal, spatial, temporal) && return nothing
+    grp isa FunctionTerm && _is_structured_or_temporal_marker(grp) && return nothing
     _refuse_bar_group(_bar_text(bar.args[1]), _bar_text(grp), _bar_pair(grp))
 end
 
@@ -487,7 +485,7 @@ function _require_simple_bar_groups(f::Union{DrmFormula,BivariateDrmFormula})
                 inner = t.args[1]; g1 = inner.args[2]; h1 = t.args[2]
                 pair = (g1 isa Term && h1 isa Term) ? (:inter, g1.sym, h1.sym) : nothing
                 _refuse_bar_group(_bar_text(inner.args[1]), string(_bar_text(g1), ":", _bar_text(h1)), pair)
-            elseif t.f in (phylo, relmat, animal, spatial, temporal) && !isempty(t.args) &&
+            elseif _is_structured_or_temporal_marker(t) && !isempty(t.args) &&
                    t.args[1] isa FunctionTerm && t.args[1].f === (|)
                 _require_plain_bar_group(t.args[1])
             end
