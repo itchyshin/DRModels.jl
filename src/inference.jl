@@ -4574,11 +4574,15 @@ function _bootstrap_data(formula::DrmFormula, data, ysim)
     # absent, so coerce both columns through the same NaN convention and let
     # NaN arithmetic carry the mask into the failure column.
     y1, _ = _coerce_response_column(raw1)
-    y2, _ = _coerce_response_column(getproperty(data, formula.response2))
+    y2, _ = _coerce_response_column(_response_column(data, formula.response2))
     ntr = y1 .+ y2
     succ = _restore_response_mask!(collect(Float64, ysim), ntr)
     fail = ntr .- succ
-    return merge(data, NamedTuple{(formula.response, formula.response2)}((succ, fail)))
+    if formula.response2 isa Symbol
+        return merge(data, NamedTuple{(formula.response, formula.response2)}((succ, fail)))
+    end
+    # An arithmetic failures expression is re-evaluated from `data` on each fit.
+    return merge(data, NamedTuple{(formula.response,)}((succ,)))
 end
 
 function _bootstrap_ci_rows(rows)

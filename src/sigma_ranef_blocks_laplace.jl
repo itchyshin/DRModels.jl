@@ -332,7 +332,8 @@ function _drm_sigma_ranef_laplace_family(f::DrmFormula, fam; data, g_tol, se, fi
     if fam isa BetaBinomial
         f.response2 === nothing && throw(ArgumentError(
             "BetaBinomial() needs a two-column response: bf(cbind(successes, failures) ~ …)"))
-        s_ = Float64.(getproperty(data, f.response)); fl_ = Float64.(getproperty(data, f.response2))
+        s_ = Float64.(getproperty(data, f.response))
+        fl_ = Float64.(_response_column(data, f.response2))
         (all(isfinite, s_) && all(isfinite, fl_) && all(v -> v >= 0 && isinteger(v), s_) &&
          all(v -> v >= 0 && isinteger(v), fl_) && all(>(0), s_ .+ fl_)) || throw(ArgumentError(
             "BetaBinomial() requires non-negative integer successes and failures with positive trials"))

@@ -115,9 +115,14 @@ function _formula_data_symbols!(out::Vector{Symbol}, t)
     return out
 end
 
+function _push_response_spec!(out::Vector{Symbol}, spec)
+    spec isa Symbol && (push!(out, spec); return out)
+    return _formula_data_symbols!(out, spec)
+end
+
 function _formula_column_symbols(f::DrmFormula)
     cols = Symbol[f.response]
-    f.response2 === nothing || push!(cols, f.response2)
+    f.response2 === nothing || _push_response_spec!(cols, f.response2)
     for (_, rhs) in f.forms
         _formula_data_symbols!(cols, rhs)
     end

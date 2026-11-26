@@ -123,10 +123,11 @@ function _drm_betabinomial_fit(f::DrmFormula, fam::BetaBinomial; data, tree = no
     end
     _require_finite_inputs(; response=(_table_column(data, f.response), string(f.response)),
                            response_allow_missing=false)
-    _require_finite_inputs(; response=(_table_column(data, f.response2), string(f.response2)),
+    _require_finite_inputs(; response=(_response_column(data, f.response2),
+                                       _response_spec_label(f.response2)),
                            response_allow_missing=false)
     s = Float64.(getproperty(data, f.response))          # successes
-    fl = Float64.(getproperty(data, f.response2))        # failures
+    fl = Float64.(_response_column(data, f.response2))        # failures
     (all(si -> si ≥ 0 && isinteger(si), s) && all(fi -> fi ≥ 0 && isinteger(fi), fl)) ||
         error("BetaBinomial() requires non-negative integer successes and failures")
     ntr = s .+ fl                                        # trials
@@ -218,7 +219,7 @@ function _drm_betabinomial_sigma_sd_regression(f::DrmFormula, fam::BetaBinomial;
     all(_formula_response_observed_mask(f, data)) || throw(ArgumentError(
         "BetaBinomial sigma SD regression requires observed responses; remove incomplete rows before fitting."))
     successes = Float64.(getproperty(data, f.response))
-    failures = Float64.(getproperty(data, f.response2))
+    failures = Float64.(_response_column(data, f.response2))
     (all(isfinite, successes) && all(isfinite, failures) &&
      all(x -> x >= 0 && isinteger(x), successes) &&
      all(x -> x >= 0 && isinteger(x), failures)) || throw(ArgumentError(
@@ -375,7 +376,7 @@ function _drm_betabinomial_sd_regression(f::DrmFormula, fam::BetaBinomial; data,
         "BetaBinomial random-effect SD regression requires observed responses; remove incomplete rows before fitting."))
 
     successes = Float64.(getproperty(data, f.response))
-    failures = Float64.(getproperty(data, f.response2))
+    failures = Float64.(_response_column(data, f.response2))
     (all(isfinite, successes) && all(isfinite, failures) &&
      all(x -> x >= 0 && isinteger(x), successes) &&
      all(x -> x >= 0 && isinteger(x), failures)) || throw(ArgumentError(
