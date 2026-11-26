@@ -575,14 +575,19 @@ function _ctl_finish(fit, scope::_ControlScope, fam)
                               scope.weights === nothing ? nothing : copy(scope.weights),
                               c.optimizer, actual, Tuple(scope.optimizer_runs),
                               scope.selected_optimizer_stage, _ctl_native_controls(c))
-    return _withcontrolinfo(fit, V, report)
+    # Twin `convergence_status` skips covariance rules when SEs were turned off (FX3b).
+    # `control = DRMControl(se = false)` is that contract even when the route computed a
+    # Hessian and we discarded it (`report.se === :discarded`, #948).
+    unc = c.se ? fit.uncertainty : :skipped
+    return _withcontrolinfo(fit, V, report, unc)
 end
 
-_withcontrolinfo(fit, V, report) = DrmFit(fit.family, fit.blocks, fit.coefnames, fit.theta,
+_withcontrolinfo(fit, V, report, uncertainty::Symbol = fit.uncertainty) =
+    DrmFit(fit.family, fit.blocks, fit.coefnames, fit.theta,
     V, fit.loglik, fit.nobs, fit.converged, fit.means, fit.obs, fit.scales, fit.formula, fit.nll,
     fit.nllgrad, fit.ranef, fit.estim_method, fit.reml_loglik, fit.ml_loglik, fit.marginal,
     fit.phylo_penalty, fit.penalty, fit.iterations, fit.phylo_scale, report,
-    fit.uncertainty, fit.geometry)
+    uncertainty, fit.geometry)
 
 # ---------------------------------------------------------------------------
 # Helpers the fitters call
