@@ -2509,7 +2509,7 @@ function _full_means_and_scales(fit::DrmFit, data)
     end
 
     if fit.family isa ZeroOneBeta
-        params = predict_parameters(fit, data; type = :link)
+        params = predict_parameters(fit, data; type = :link, mask_dropped_response = false)
         βmu = _logistic.(clamp.(params[:mu], -30.0, 30.0))
         zoi = _logistic.(clamp.(params[:zoi], -30.0, 30.0))
         coi = _logistic.(clamp.(params[:coi], -30.0, 30.0))
@@ -2522,7 +2522,7 @@ function _full_means_and_scales(fit::DrmFit, data)
         return Dict(:mu => (1 .- zoi) .* βmu .+ zoi .* coi), scales
     end
 
-    params = predict_parameters(fit, data)
+    params = predict_parameters(fit, data; mask_dropped_response = false)
     means = Dict(:mu => params[:mu])
 
     scales = Dict{Symbol,Vector{Float64}}()
@@ -3365,6 +3365,11 @@ The SE uses the μ-block of `vcov(fit)`: link scale `se_i = sqrt(xᵢ' Vμ xᵢ)
 response scale multiplies by the inverse-link derivative `|dμ/dη|` at `η̂`
 (identity → 1, exp → `exp(η)`, logistic → `μ(1−μ)`). It carries the uncertainty
 in `β̂` only; the random-effect variance is not added.
+
+When `newdata` includes the response column, rows with a `missing` or non-finite
+response (the rows dropped during fitting) are returned as `missing` at the same
+index in every vector output — one length per `newdata` row, safe for in-sample joins
+(`#1530` / `#1540`). When the response column is omitted, every row is predicted.
 """
 # Keep a response column that is already in `newdata`, so a missing response
 # still marks that row as unobserved and a NaN predictor there is dropped with
@@ -3390,6 +3395,58 @@ function _predict_ignore_label_response(nd::NamedTuple, response::Symbol)
     return merge(nd, NamedTuple{(response,)}((zeros(length(col)),)))
 end
 
+# When `newdata` carries the response column, a `missing` / non-finite value marks
+# that row as unobserved (#1530 / #1540, option A): `predict` keeps one entry per
+# `newdata` row and fills `missing` at those positions (drmTMB's "include" NA slots).
+# When the response is omitted, `_predict_data` supplies a dummy and every row is predicted.
+function _predict_response_row_mask(f, nd::NamedTuple)
+    if f isa DrmFormula
+        haskey(nd, f.response) || return nothing
+        return BitVector(_formula_response_observed_mask(f, nd))
+    elseif hasproperty(f, :response1) && hasproperty(f, :response2)
+        haskey(nd, f.response1) && haskey(nd, f.response2) || return nothing
+        _, obs1 = _coerce_response_column(_table_column(nd, f.response1); name = String(f.response1))
+        _, obs2 = _coerce_response_column(_table_column(nd, f.response2); name = String(f.response2))
+        length(obs1) == length(obs2) ||
+            throw(ArgumentError("predict: the two response columns in `newdata` have different lengths"))
+        return BitVector(obs1 .& obs2)
+    end
+    return nothing
+end
+
+function _predict_apply_unobserved_mask(observed, out)
+    observed === nothing && return out
+    return _predict_apply_unobserved_mask_observed(observed, out)
+end
+function _predict_apply_unobserved_mask_observed(observed::AbstractVector{Bool}, v::AbstractVector)
+    all(observed) && return v
+    length(v) == length(observed) || return v
+    T = eltype(v)
+    out = Vector{Union{Missing,T}}(undef, length(v))
+    @inbounds for i in eachindex(v)
+        out[i] = observed[i] ? v[i] : missing
+    end
+    return out
+end
+function _predict_apply_unobserved_mask_observed(observed, nt::NamedTuple)
+    (hasproperty(nt, :prediction) && hasproperty(nt, :se)) || return nt
+    return (; prediction = _predict_apply_unobserved_mask_observed(observed, nt.prediction),
+            se = _predict_apply_unobserved_mask_observed(observed, nt.se))
+end
+function _predict_apply_unobserved_mask_observed(observed, d::AbstractDict)
+    return Dict(k => _predict_apply_unobserved_mask_observed(observed, v) for (k, v) in d)
+end
+function _predict_apply_unobserved_mask_observed(observed, out::Dict)
+    return Dict(k => begin
+        v = out[k]
+        v isa NamedTuple && hasproperty(v, :value) && hasproperty(v, :se) ?
+            (; value = _predict_apply_unobserved_mask_observed(observed, v.value),
+               se = _predict_apply_unobserved_mask_observed(observed, v.se)) :
+            _predict_apply_unobserved_mask_observed(observed, v)
+    end for k in keys(out))
+end
+_predict_apply_unobserved_mask_observed(observed, x) = x
+
 function predict(fit::DrmFit, newdata; type::Symbol = :response, se::Bool = false)
     se && _is_fixed_prior_fit(fit) && fit.estim_method === :MAP && throw(ArgumentError("predict: standard errors are not qualified for $(_prior_kind_label(fit)) fits"))
     f = fit.formula
@@ -3398,7 +3455,9 @@ function predict(fit::DrmFit, newdata; type::Symbol = :response, se::Bool = fals
         error("predict: `type` must be :response, :link, :mean or :median")
     if type === :mean
         se && throw(ArgumentError("predict: standard errors are not available for `type = :mean`"))
-        return _predict_mean(fit, newdata)
+        ndm = NamedTuple(pairs(newdata))
+        return _predict_apply_unobserved_mask(_predict_response_row_mask(f, ndm),
+                                              _predict_mean(fit, newdata))
     elseif type === :median
         fit.family isa LogNormal || throw(ArgumentError(
             "predict: `type = :median` is defined for LogNormal fits only"))
@@ -3415,6 +3474,7 @@ function predict(fit::DrmFit, newdata; type::Symbol = :response, se::Bool = fals
     # (the "response scale" of the location parameter), i.e. the link scale.
     fit.family isa LogNormal && type === :response && (type = :link)
     nd = NamedTuple(pairs(newdata))
+    resp_mask = _predict_response_row_mask(f, nd)
     nrows = length(first(values(nd)))
     V = se ? vcov(fit) : nothing
     if f isa DrmFormula
@@ -3461,10 +3521,10 @@ function predict(fit::DrmFit, newdata; type::Symbol = :response, se::Bool = fals
         Xnew, η = _predict_design(fit, f.response, fixed_mu, ndr, :mu, f.schema_cache, off;
                                   drop_intercept = fit.family isa CumulativeLogit)
         pred = type === :link ? η : _mean_response(fit.family, η)
-        se || return pred
+        se || return _predict_apply_unobserved_mask(resp_mask, pred)
         r = _block_range(fit, :mu)
         se_vec = _delta_se(Xnew, view(V, r, r), η, type, fit.family, :mu)
-        return (; prediction = pred, se = se_vec)
+        return _predict_apply_unobserved_mask(resp_mask, (; prediction = pred, se = se_vec))
     else  # BivariateDrmFormula
         fm = Dict(f.forms)
         fixed1, _, _, _ = _split_ranef(fm[:mu1])
@@ -3479,12 +3539,12 @@ function predict(fit::DrmFit, newdata; type::Symbol = :response, se::Bool = fals
             Dict(:mu1 => η1, :mu2 => η2) :
             Dict(:mu1 => _mean_response(fit.family, η1),
                  :mu2 => _mean_response(fit.family, η2))
-        se || return pred
+        se || return _predict_apply_unobserved_mask(resp_mask, pred)
         r1 = _block_range(fit, :mu1); r2 = _block_range(fit, :mu2)
         se_dict = Dict(
             :mu1 => _delta_se(X1, view(V, r1, r1), η1, type, fit.family, :mu1),
             :mu2 => _delta_se(X2, view(V, r2, r2), η2, type, fit.family, :mu2))
-        return (; prediction = pred, se = se_dict)
+        return _predict_apply_unobserved_mask(resp_mask, (; prediction = pred, se = se_dict))
     end
 end
 
@@ -3743,7 +3803,7 @@ predict_parameters(fit, data; type = :link)[:mu]   # == Xβ̂ (predict link scal
 ```
 """
 function predict_parameters(fit::DrmFit, newdata; type::Symbol = :response,
-                            se::Bool = false)
+                            se::Bool = false, mask_dropped_response::Bool = true)
     se && _is_fixed_prior_fit(fit) && fit.estim_method === :MAP && throw(ArgumentError("predict_parameters: standard errors are not qualified for $(_prior_kind_label(fit)) fits"))
     f = fit.formula
     f === nothing && error("predict_parameters: this fit did not retain its formula")
@@ -3757,6 +3817,7 @@ function predict_parameters(fit::DrmFit, newdata; type::Symbol = :response,
         end
     end
     nd = NamedTuple(pairs(newdata))
+    resp_mask = _predict_response_row_mask(f, nd)
     # Same label-response handling as `predict` (CumulativeLogit univariate fits only).
     fit.family isa CumulativeLogit && f isa DrmFormula &&
         (nd = _predict_ignore_label_response(nd, f.response))
@@ -3909,7 +3970,8 @@ function predict_parameters(fit::DrmFit, newdata; type::Symbol = :response,
             out[p] = val
         end
     end
-    return out
+    mask_dropped_response || return out
+    return _predict_apply_unobserved_mask(resp_mask, out)
 end
 
 """

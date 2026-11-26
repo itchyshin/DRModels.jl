@@ -255,6 +255,8 @@ end
     @test all(≈(coef(fit, :nu)[1]), fit.scales[:nu])
     pred_missing = predict(fit, dmiss)
     pred_complete = predict(fit, complete)
+    keep = setdiff(1:n, [1, 7])
     @test length(pred_missing) == n
-    @test pred_missing ≈ pred_complete atol = 1e-10
+    @test ismissing(pred_missing[1]) && ismissing(pred_missing[7])
+    @test pred_missing[keep] ≈ pred_complete[keep] atol = 1e-10
 end
