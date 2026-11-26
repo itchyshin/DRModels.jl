@@ -30,8 +30,10 @@
 
 # Binary search for row `i` in column `j` of a CSC sparse matrix; returns the
 # nzval index if found, -1 otherwise. CSC row indices are sorted increasing.
-@inline function _csc_rowidx(colptr::Vector{Int}, rowval::Vector{Int},
-                              j::Int, i::Int)
+@inline function _csc_rowidx(colptr::AbstractVector{Ti}, rowval::AbstractVector{Ti},
+                              j::Integer, i::Integer) where {Ti<:Integer}
+    j = Ti(j)
+    i = Ti(i)
     lo = colptr[j]; hi = colptr[j + 1] - 1
     @inbounds while lo <= hi
         m = (lo + hi) >>> 1
