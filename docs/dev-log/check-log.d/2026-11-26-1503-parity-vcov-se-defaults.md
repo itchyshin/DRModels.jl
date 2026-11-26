@@ -1,0 +1,1 @@
+| 2026-11-26 | **Parity: vcov/SE at compare.jl defaults (#1503)** | `julia --project -e 'using Test; include("test/test_parity_vcov_se_defaults.jl")'` (Julia 1.13.4) | ✅ 29 pass, 2 `@test_broken` (meta-analysis-V, robust-student vcov at default `atol_vcov=1e-8`); all other in-cohort `[vcov]` cells + `[se]` pass at default rtol/atol; xfam skipped | Shannon (Hopper+Rose) |
