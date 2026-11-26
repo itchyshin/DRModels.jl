@@ -611,6 +611,20 @@ function _sentinel_infocrit_nan(fit::DrmFit, which::AbstractString)
     return true
 end
 
+# #1542 / #1543 (Shinichi, 26 Nov 2026): a non-sentinel fit with a finite log-likelihood
+# but `!is_converged(fit)` still carries a meaningful stored loglik; information criteria
+# keep that number (unlike the sentinel path above) but must warn before model comparison.
+function _unconverged_status_infocrit_warn(fit::DrmFit, which::AbstractString)
+    _sentinel_loglik(fit) && return nothing
+    is_converged(fit) && return nothing
+    get(task_local_storage(), :drm_quiet_boundary, false) === true && return nothing
+    status = convergence_status(fit)
+    @warn "$which: fit is not converged (convergence_status = $status); returning a " *
+          "finite value for inspection, not for model comparison or inference. " *
+          "Check `is_converged(fit)` before ranking models."
+    return nothing
+end
+
 # Block symbols that carry a VARIANCE COMPONENT (random-effect SDs, Cholesky
 # covariance entries, group-level covariances). Dropping one of these between
 # `reduced` and `full` puts the tested null value (variance = 0) on the BOUNDARY of

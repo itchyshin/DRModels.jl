@@ -547,7 +547,22 @@ function _wald_ci(fit::DrmFit, level::Real, parm)
             )
         end
     end
+    _warn_wald_infinite_confint(fit, rows)
     return rows
+end
+
+# #1543: an infinite Wald endpoint is not a confidence limit; warn instead of staying silent.
+function _warn_wald_infinite_confint(fit::DrmFit, rows)
+    bad = [(r.param, r.coef) for r in rows
+           if !isfinite(r.lower) || !isfinite(r.upper)]
+    isempty(bad) && return nothing
+    get(task_local_storage(), :drm_quiet_boundary, false) === true && return nothing
+    nms = join([string(p) * ":" * c for (p, c) in bad], ", ")
+    status = convergence_status(fit)
+    @warn "confint (method = :wald): unbounded interval endpoint(s) for ($nms) " *
+          "(convergence_status = $status). An infinite limit is not a confidence bound; " *
+          "use `method = :profile`, `bootstrap_ci`, or refit before reporting the interval."
+    return nothing
 end
 
 function _profile_jobs(fit::DrmFit, parm)

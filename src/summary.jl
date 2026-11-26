@@ -195,7 +195,9 @@ Extends `StatsAPI.deviance`.
 function deviance(fit::DrmFit)
     # A fit stranded on the failed-objective sentinel has no deviance (#1093).
     _sentinel_infocrit_nan(fit, "deviance") && return NaN
-    return -2 * loglik(fit)
+    _unconverged_status_infocrit_warn(fit, "deviance")
+    _loglik_is_failed(fit.loglik, fit.converged) && return NaN
+    return -2 * fit.loglik
 end
 
 """

@@ -91,6 +91,18 @@ function _twin_rho12_values(fit::DrmFit)
     return r isa AbstractVector ? collect(Float64, r) : Float64[]
 end
 
+# drmTMB `check_temporal_boundary` / `temporal_boundary` (FX3b boundary rule):
+# interpretability limits on OU decay, AR1 |φ|, residual σ ratio, or temporal SD.
+function _twin_temporal_boundary(fit::DrmFit)
+    _is_temporal_fit(fit) || return false
+    found = try
+        _temporal_boundary(fit)
+    catch
+        return false
+    end
+    return found !== nothing && !isempty(found)
+end
+
 """
     convergence_status(fit) -> Symbol
 
@@ -110,9 +122,11 @@ numeric rules as drmTMB's `convergence_status()` (FX3b; drmTMB
 5. `:degenerate` when a standard error is at least 50 **and** at least 1000
    times the median of the standard errors below 50 (the smallest standard
    error when none is below 50): a near-flat, weakly identified direction.
-6. `:boundary` when a fitted residual correlation has `|rho12| > 0.98`, or a
-   fitted random-effect SD ([`re_sd`](@ref)) is below `1e-4`. A random-effect log SD
-   within `1e-3` of the sparse-Laplace floor of `-8` also counts (the floor
+6. `:boundary` when a fitted residual correlation has `|rho12| > 0.98`, a
+   fitted random-effect SD ([`re_sd`](@ref)) is below `1e-4`, or a `temporal()`
+   term sits at an interpretability limit (OU decay, AR1 `|φ|`, residual σ ratio,
+   or temporal SD; drmTMB `temporal_boundary`). A random-effect log SD within
+   `1e-3` of the sparse-Laplace floor of `-8` also counts (the floor
    `e^-8 = 3.4e-4` never falls under `1e-4`). Its standard error is `NaN` (the Hessian
    of the other coordinates is inverted, #1190), and rules 3 to 5 then read the
    covariance of the remaining coordinates.
@@ -148,7 +162,8 @@ function convergence_status(fit::DrmFit)
     end
     at_boundary = !isempty(floor_fixed) ||
         any(s -> isfinite(s) && s < _TWIN_RE_SD_BOUNDARY, _twin_re_sd_values(fit)) ||
-        any(r -> isfinite(r) && abs(r) > _TWIN_RHO12_BOUNDARY, _twin_rho12_values(fit))
+        any(r -> isfinite(r) && abs(r) > _TWIN_RHO12_BOUNDARY, _twin_rho12_values(fit)) ||
+        _twin_temporal_boundary(fit)
     return at_boundary ? :boundary : :converged
 end
 
