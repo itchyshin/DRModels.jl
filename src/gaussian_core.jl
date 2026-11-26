@@ -2743,7 +2743,17 @@ vcov(fit::DrmFit) = _wald_withheld(fit) ? _homtoep_refuse_wald("vcov") : fit.vco
 """
     nobs(fit::DrmFit)
 
-Number of observations. Extends `StatsAPI.nobs`.
+Number of observations. Extends `StatsAPI.nobs`. Returns the count of rows that
+entered the likelihood after missing-value drops (`fit.nobs`).
+
+With prior weights from `drm(...; weights = w)`, this is the **row count** of the
+fitted data, **not** `sum(weights(fit))` and not an effective sample size for
+frequency weights: `weights = 2` on every row doubles each log-likelihood
+contribution but leaves `nobs` at the number of rows, so [`bic`](@ref) can differ
+from a physically replicated dataset even when [`loglik`](@ref) and [`aic`](@ref)
+match (drmTMB [itchyshin/drmTMB#1863](https://github.com/itchyshin/drmTMB/issues/1863)).
+Rows with prior weight zero still count when they stay in the table; they add zero
+to the weighted log-likelihood.
 """
 nobs(fit::DrmFit) = fit.nobs
 
@@ -4647,10 +4657,13 @@ end
 """
     bic(fit) -> Float64
 
-Bayesian (Schwarz) information criterion, `-2·loglik + dof·log(nobs)`.
+Bayesian (Schwarz) information criterion, `-2·loglik + k·log(n)` with
+`k = dof(fit)` and `n = nobs(fit)` (the row count, not the sum of prior weights).
 
-On a **REML** fit this carries the same variance-only-comparison caveat as
-[`aic`](@ref) and emits a one-time warning.
+Prior weights are **not** frequency weights: a weighted fit and a row-expanded
+dataset can share `loglik` and `aic` but not `bic` when their row counts differ
+(drmTMB #1863). On a **REML** fit this carries the same variance-only-comparison
+caveat as [`aic`](@ref) and emits a one-time warning.
 """
 function bic(fit::DrmFit)
     _is_fixed_prior_fit(fit) && fit.estim_method === :MAP && throw(ArgumentError("bic is unavailable for $(_prior_kind_label(fit)) MAP fits"))

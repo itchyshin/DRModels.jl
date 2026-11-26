@@ -1,0 +1,1 @@
+- **Document prior-weight `nobs` / `bic` semantics (refs #931, drmTMB #1863).** `nobs(fit)` is the row count used in the fit, not `sum(weights(fit))`. Prior weights multiply log-likelihood contributions but are not frequency weights: `bic` can disagree with a row-replicated dataset while `loglik` and `aic` match.
