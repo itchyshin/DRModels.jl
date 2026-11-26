@@ -186,6 +186,8 @@ Confidence intervals for every coefficient, as a vector of
 `log σ_b`).
 
 - `method = :wald` (default) — estimate ± z·se from the stored covariance.
+  Matching drmTMB's `"wald"` string, the method name is **case-insensitive**
+  (`:Wald`, `:profile`, …).
 - `method = :profile` — profile-likelihood interval: the endpoints where
   `2(ℓ̂ − ℓ_profile) = χ²₁(level)`, re-optimising the nuisance parameters at each
   fixed value (asymmetric, and exact under the LR statistic where Wald is only
@@ -236,11 +238,15 @@ depend on this field.
 
 Mirrors drmTMB's `confint(fit, method = "wald" | "profile")`.
 """
+# drmTMB names intervals "wald" and "profile"; accept any Symbol casing (#1537).
+_normalize_confint_method(method::Symbol) = Symbol(lowercase(String(method)))
+
 function confint(
     fit::DrmFit; level::Real=0.95, method::Symbol=:wald, threads::Bool=false, parm=nothing
 )
     _is_fixed_prior_fit(fit) && fit.estim_method === :MAP && throw(ArgumentError("confint: intervals are not qualified for $(_prior_kind_label(fit)) MAP fits; covariance is local penalized curvature"))
     level = _validate_ci_level(level; what="confint")
+    method = _normalize_confint_method(method)
     method === :wald && _wald_withheld(fit) && throw(ArgumentError("confint: Homogeneous Toeplitz " *
         "mean-coefficient Wald intervals are not yet qualified; mean-coefficient likelihood " *
         "profiles are qualified in drmTMB's retained primary panel cells, Wald covariance and " *
