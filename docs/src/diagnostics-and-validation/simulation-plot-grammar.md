@@ -12,7 +12,9 @@ the **plot-data providers** (turn a fit into plottable grids).
 model — the same machinery the parametric bootstrap (`bootstrap_ci`) uses:
 
 ```julia
-y_rep = simulate(fit)            # one replicate on the response scale
+# Random-effect fits need the fitting table (default `re = :marginal`).
+y_rep = simulate(fit; data = data)
+# Fits without random effects: `y_rep = simulate(fit)`
 ```
 
 Re-fitting many replicates and summarising the spread of the estimates is the
