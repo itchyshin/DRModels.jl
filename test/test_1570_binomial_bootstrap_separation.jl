@@ -30,5 +30,6 @@ using Test
     @test err isa ErrorException
     @test occursin("all 20 bootstrap replicates failed", sprint(showerror, err))
     @test occursin("degenerate optimum", sprint(showerror, err))
-    @test any(l -> occursin("seed fit is degenerate", string(l.message)), logs)
+    @test any(l -> occursin("binomial separation", string(l.message)), logs)
+    @test fit.geometry === :binomial_separation
 end

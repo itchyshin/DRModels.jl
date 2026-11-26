@@ -4380,11 +4380,11 @@ function _bootstrap_result(
     refit_error = zeros(UInt8, B)
     refit_estimator = fill((:unknown, :unknown), B)
     seeds = rand(rng, UInt, B)
-    if check_converged && convergence_status(fit0) === :degenerate
-        @warn "bootstrap: seed fit is degenerate (`convergence_status` is :degenerate; " *
-              "`is_converged` is false). Percentile intervals are not reliable; " *
-              "replicates that are likewise degenerate are dropped when " *
-              "`check_converged = true`."
+    if check_converged && _bootstrap_binomial_separation_fit(fit0)
+        @warn "bootstrap: seed fit has (quasi-)complete binomial separation " *
+              "(`geometry` is :binomial_separation; `is_converged` is false). " *
+              "Percentile intervals are not reliable; separated refits are dropped " *
+              "when `check_converged = true`."
     end
 
     function run_one!(b)
@@ -4397,10 +4397,12 @@ function _bootstrap_result(
             ysim = simulate_fn === nothing ? _simulate_all_rows(fit0; rng=rr, re=:zero) : simulate_fn(rr)
             datab = _bootstrap_data(formula, data, ysim)
             fitb = _without_boundary_warnings(() -> refit(datab))
-            # Twin contract (#1570, #461, FX3b): reject `:degenerate` refits via
-            # [`convergence_status`](@ref), not the raw optimiser flag (complete
-            # binomial separation can have `fit.converged = true`). Keep `:boundary`
-            # draws — they are not [`is_converged`](@ref), but they are real fits.
+            # Not the raw `.converged` field: this gate also rejects a degenerate
+            # optimum (sigma collapsed, likelihood runaway), which the optimiser's
+            # own flag happily calls converged (#461). Not `is_converged` either
+            # (FX3b): a refit whose variance component lands on its boundary is a
+            # real draw, and dropping it would bias the interval away from zero.
+            # #1570: also drop quasi-complete binomial separation (`geometry`).
             if check_converged && !_bootstrap_refit_ok(fitb)
                 messages[b] = _BOOTSTRAP_UNCONVERGED
             else
