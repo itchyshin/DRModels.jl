@@ -1,7 +1,7 @@
 # refs #1512 — `_csc_rowidx` must accept Int32 CSC index arrays (CHOLMOD on
 # ILP32 / macOS arm64), not only `Vector{Int}`.
 using DRModels
-using SparseArrays, LinearAlgebra, SuiteSparse
+using SparseArrays, LinearAlgebra
 using Test
 
 @testset "takahashi CSC index type (#1512)" begin
