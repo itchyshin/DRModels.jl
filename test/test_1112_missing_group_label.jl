@@ -1,12 +1,19 @@
 # A `missing` / NaN in a random-effect grouping column must not be silently
-# pooled into one extra level (#1112). drmTMB drops those rows; DRModels.jl
-# refuses with an ArgumentError naming the grouping column (the guided
-# complete-case route is `drm_listwise`).
+# pooled into one extra level (#1112, gap-map #1497). drmTMB drops those rows;
+# DRModels.jl refuses with an ArgumentError naming the grouping column (the
+# guided complete-case route is `drm_listwise`).
 
 using DRModels
 using Test
 using Random
+using DelimitedFiles
 using StatsModels: @formula
+
+const _GNA_MSG_SUBSTR = (
+    "grouping column `gna`",
+    "missing",
+    "drm_listwise",
+)
 
 function _data_1112(; n = 120, G = 12, seed = 1112)
     rng = MersenneTwister(seed)
@@ -48,4 +55,39 @@ end
     fit = drm(f, Gaussian(); data = clean)
     @test nobs(fit) == 110
     @test length(ranef(fit)[:g]) == 12
+end
+
+@testset "gap-map v2: gna with missing grouping labels (#1497)" begin
+    dir = joinpath(@__DIR__, "fixtures", "gap_v2_crashes")
+    factors = Set(["g", "g2", "h", "f", "f2", "gna", "gu", "y_cat", "y_ordf"])
+    m, h = readdlm(joinpath(dir, "data_v2.csv"), ',', Any; header = true)
+    h = String.(vec(h))
+    cols = Pair{Symbol,Any}[]
+    for (j, n) in enumerate(h)
+        c = m[:, j]
+        v = if n in factors
+            any(==("NA"), c) ? Union{Missing,String}[x == "NA" ? missing : String(x) for x in c] :
+                String.(c)
+        elseif any(==("NA"), c)
+            Union{Missing,Float64}[x == "NA" ? missing : Float64(x) for x in c]
+        else
+            Float64.(c)
+        end
+        push!(cols, Symbol(n) => v)
+    end
+    d = (; cols...)
+    for (label, f, fam) in (
+            ("J|gaussian|group has NA labels",
+             bf(@formula(y_g ~ x1 + (1 | gna)), @formula(sigma ~ 1)), Gaussian()),
+            ("J|poisson|group has NA labels",
+             bf(@formula(y_pois ~ x1 + (1 | gna))), Poisson()))
+        @testset "$label" begin
+            err = try drm(f, fam; data = d); nothing catch e; e end
+            @test err isa ArgumentError
+            msg = sprint(showerror, err)
+            @test all(s -> occursin(s, msg), _GNA_MSG_SUBSTR)
+            fit = drm(f, fam; data = drm_listwise(f, d; verbose = false))
+            @test nobs(fit) == 150
+        end
+    end
 end

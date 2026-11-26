@@ -99,6 +99,10 @@ function _require_finite_predictors(values, names; context::AbstractString, obse
             _skip_unobserved_row(observed, i) && continue
             bad = _input_offender(values[i, j]; allow_missing=false)
             bad === nothing && continue
+            context == "predict" && bad == "missing" &&
+                throw(ArgumentError(
+                    "New prediction data contains missing value for required predictor `$label`. " *
+                    "ℹ Supply complete prediction rows before calling `predict()` or emmeans."))
             throw(ArgumentError(
                 "$context: predictor `$label` contains a non-finite value ($bad) at row $i."))
         end
@@ -126,6 +130,11 @@ function _require_finite_array(values, argument; context::AbstractString="drm",
             _skip_unobserved_row(observed, i) && continue
             bad = _input_offender(x; allow_missing=false)
             bad === nothing && continue
+            if context == "predict" && bad == "missing" && kind == "predictor"
+                throw(ArgumentError(
+                    "New prediction data contains missing value for required predictor `$argument`. " *
+                    "ℹ Supply complete prediction rows before calling `predict()` or emmeans."))
+            end
             throw(ArgumentError(
                 "$context: $prefix contains a non-finite value ($bad) at row $i."))
         end
