@@ -16,6 +16,13 @@ end
 
 @testset "Tweedie contract" begin
 
+    @testset "density: series window does not allocate (Float64)" begin
+        bytes = @allocated for _ in 1:1000
+            DRModels._logpdf_tweedie(1.2, 2.0, 1.5, 1.5)
+        end
+        @test bytes ÷ 1000 < 8192
+    end
+
     @testset "density: point mass at 0 and normalisation" begin
         μ, φ = 2.0, 1.5
         for p in (1.2, 1.5, 1.9)
