@@ -2745,7 +2745,11 @@ vcov(fit::DrmFit) = _wald_withheld(fit) ? _homtoep_refuse_wald("vcov") : fit.vco
 
 Number of observations. Extends `StatsAPI.nobs`.
 """
-nobs(fit::DrmFit) = fit.nobs
+function nobs(fit::DrmFit)
+    w = weights(fit)
+    w === nothing && return fit.nobs
+    return count(>(0), w)
+end
 
 """
     fitted(fit; re = :conditional)
@@ -4657,7 +4661,7 @@ function bic(fit::DrmFit)
     _va_infocrit_guard(fit, "bic")
     _reml_infocrit_warn(fit, "bic")
     _sentinel_infocrit_nan(fit, "bic") && return NaN
-    return -2 * fit.loglik + length(fit.theta) * log(fit.nobs)
+    return -2 * fit.loglik + length(fit.theta) * log(nobs(fit))
 end
 
 # A predictor-dependent random-effect SD block: `:sd` / `:sd_phylo` (Gaussian and the
