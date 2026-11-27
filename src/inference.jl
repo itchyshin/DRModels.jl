@@ -241,6 +241,7 @@ function confint(
 )
     _is_fixed_prior_fit(fit) && fit.estim_method === :MAP && throw(ArgumentError("confint: intervals are not qualified for $(_prior_kind_label(fit)) MAP fits; covariance is local penalized curvature"))
     level = _validate_ci_level(level; what="confint")
+    method = _normalize_confint_method(method)
     method === :wald && _wald_withheld(fit) && throw(ArgumentError("confint: Homogeneous Toeplitz " *
         "mean-coefficient Wald intervals are not yet qualified; mean-coefficient likelihood " *
         "profiles are qualified in drmTMB's retained primary panel cells, Wald covariance and " *
@@ -260,6 +261,11 @@ function confint(
     end
     throw(ArgumentError("confint: method must be :wald or :profile (got :$method)"))
 end
+
+# Case-insensitive `method` spelling for drmTMB parity (:Wald, :Profile, …).
+_normalize_confint_method(method::Symbol) =
+    lowercase(String(method)) == "wald" ? :wald :
+    lowercase(String(method)) == "profile" ? :profile : method
 
 # DRModels.jl#631: a failed endpoint arm must NEVER leave the user-facing interval
 # routine as a bound. `profile_result` is the AUDITABLE surface -- it keeps the
