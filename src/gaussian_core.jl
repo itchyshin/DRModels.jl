@@ -668,6 +668,14 @@ function _is_response_missing(x)
     return false
 end
 
+function _require_numeric_response_cell(x, i::Integer, name::AbstractString)
+    _is_response_missing(x) && return
+    x isa Real && return
+    throw(ArgumentError(
+        "drm: response `$name` must be numeric at row $i (element type $(typeof(x))). " *
+        "Coerce string codes to `Int` or `Float64`, or use an integer or floating column."))
+end
+
 function _coerce_response_column(raw; name::AbstractString="response")
     # `Inf` is not the missing-value code. Every response read (formula routes,
     # the bridge label schema, joint-missing designs) passes through here.
@@ -685,6 +693,7 @@ function _coerce_response_column(raw; name::AbstractString="response")
     # `_check_response_coercion` below still verifies the result.
     for i in eachindex(raw)
         xi = raw[i]
+        _require_numeric_response_cell(xi, i, name)
         miss = _is_response_missing(xi)
         observed[i] = !miss
         y[i] = miss ? NaN : Float64(xi)
