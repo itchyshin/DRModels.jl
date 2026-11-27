@@ -261,6 +261,15 @@ function confint(
     throw(ArgumentError("confint: method must be :wald or :profile (got :$method)"))
 end
 
+# #1593: R users sometimes port `confint(fit, parm = "…")` as a second positional block
+# name; Julia has no such keyword, so redirect to `parm=`.
+function confint(fit::DrmFit, parm::Symbol; kwargs...)
+    throw(ArgumentError(
+        "confint: coefficient blocks are selected with the keyword argument `parm`, " *
+        "not as a second positional argument (use `confint(fit; parm = $(repr(parm)))` instead).",
+    ))
+end
+
 # DRModels.jl#631: a failed endpoint arm must NEVER leave the user-facing interval
 # routine as a bound. `profile_result` is the AUDITABLE surface -- it keeps the
 # ±Inf convention alongside `lower_endpoint_failed` / `upper_endpoint_failed` so
