@@ -524,7 +524,10 @@ end
 
 function _with_fixed_priors(fit::DrmFit, rows, data_nll; preserve_grad=false)
     active = !all(r -> r.kind === :ridge && r.precision == 0, rows)
-    specs = [FixedPrior(r.kind, r.dpar, r.coef, nothing, r.mean, r.precision, r.constant) for r in rows]
+    specs = AbstractDrmPrior[
+        r.kind === :residual_sd_gamma ? ResidualSDGammaPrior(r.mean, r.shape, r.rate) :
+        FixedPrior(r.kind, r.dpar, r.coef, nothing, r.mean, r.precision, r.constant, r.df)
+        for r in rows]
     meta = (kind=:fixed_priors, rows=rows, data_nll=data_nll, specs=specs)
     grad! = preserve_grad ? fit.nllgrad : (g, theta) -> (g .= ForwardDiff.gradient(fit.nll, theta))
     DrmFit(fit.family, fit.blocks, fit.coefnames, fit.theta, fit.vcov, fit.loglik,
@@ -1357,8 +1360,10 @@ function _drm_gaussian_fit(f::DrmFormula, fam::Gaussian; data, K = nothing, A = 
             throw(ArgumentError("drm: `control.optimizer` requires the ordinary Gaussian ML route (`algorithm = :auto`, no alternate integration, imputation or profiling)"))
     end
     has_sd_prior = priors isa AbstractVector && any(p -> p isa SDGammaPrior, priors)
+    has_residual_sd_prior = priors isa AbstractVector && any(p -> p isa ResidualSDGammaPrior, priors)
     if priors !== nothing && (_has_joint_mi(f) || method !== :ML || penalty !== nothing || algorithm !== :auto || marginal !== :LA || profile_ci || phylo_coupled || sparse !== nothing || impute !== nothing || missing !== nothing)
         has_sd_prior && throw(ArgumentError("SD priors currently require ordinary Gaussian ML"))
+        has_residual_sd_prior && throw(ArgumentError("residual_sd priors currently require ordinary Gaussian ML"))
         throw(ArgumentError("fixed-effect priors currently require ordinary fixed-effect Gaussian ML"))
     end
     if _has_joint_mi(f)
@@ -1472,9 +1477,13 @@ function _drm_gaussian_fit(f::DrmFormula, fam::Gaussian; data, K = nothing, A = 
         rank(Xμ) == size(Xμ, 2) && rank(Xσ) == size(Xσ, 2) || throw(ArgumentError(has_sd_prior ? "SD priors require full-rank design matrices" : "fixed-effect priors require full-rank design matrices"))
         names = [:mu => nmμ, :sigma => nmσ]
         intercepts = Dict(:mu => _fixed_intercept_index(f, :mu, fixed_mu, nmμ), :sigma => _fixed_intercept_index(f, :sigma, fixed_sigma, nmσ))
-        priors isa AbstractVector && all(p -> p isa Union{FixedPrior,SDGammaPrior}, priors) || throw(ArgumentError("priors must be created by drm_priors"))
+        priors isa AbstractVector && all(p -> p isa Union{FixedPrior,SDGammaPrior,ResidualSDGammaPrior}, priors) || throw(ArgumentError("priors must be created by drm_priors"))
         fixed = FixedPrior[p for p in priors if p isa FixedPrior]
         rows = _resolve_fixed_priors(fixed, names, intercepts)
+        residual_row = _resolve_residual_sd_prior(priors, names)
+        residual_row === nothing || !any(r -> r.index == residual_row.index, rows) ||
+            throw(ArgumentError("residual_sd prior overlaps a fixed-effect prior on sigma:(Intercept)"))
+        residual_row === nothing || push!(rows, residual_row)
         if prior_phylo_lss
             fit = _drm_gaussian_lss_phylo(f, fam, _sdphylo_parts(f), re, structured,
                 structured_sigma, sigma_re, metav, has_missing_response, y, Xμ, Xσ,

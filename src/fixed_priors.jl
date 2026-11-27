@@ -3,7 +3,7 @@ using SpecialFunctions: loggamma
 "Supertype of supported distributional-model prior specifications."
 abstract type AbstractDrmPrior end
 
-"A normal or ridge penalty on coefficients of one distributional predictor."
+"A normal, Student-t, or ridge penalty on coefficients of one distributional predictor."
 struct FixedPrior <: AbstractDrmPrior
     kind::Symbol
     dpar::Symbol
@@ -12,7 +12,14 @@ struct FixedPrior <: AbstractDrmPrior
     mean::Float64
     precision::Float64
     constant::Float64
+    df::Union{Nothing,Float64}
 end
+
+# Preserve the internal constructor used by existing normal/ridge and SD-prior
+# paths; `df` is meaningful only for `kind === :student_t`.
+FixedPrior(kind::Symbol, dpar::Symbol, coef::String, intercept::Union{Nothing,Symbol},
+           mean::Float64, precision::Float64, constant::Float64) =
+    FixedPrior(kind, dpar, coef, intercept, mean, precision, constant, nothing)
 
 "A Gamma density with respect to a named random-intercept SD."
 struct SDGammaPrior <: AbstractDrmPrior
@@ -21,6 +28,25 @@ struct SDGammaPrior <: AbstractDrmPrior
     coef::String
     shape::Float64
     rate::Float64
+end
+
+"A Gamma density with respect to the natural residual SD of a Gaussian model."
+struct ResidualSDGammaPrior <: AbstractDrmPrior
+    mean::Float64
+    shape::Float64
+    rate::Float64
+end
+
+function _residual_sd_gamma_prior(mean, shape)
+    mean isa Real && isfinite(mean) && mean > 0 ||
+        throw(ArgumentError("residual SD Gamma mean must be finite and positive"))
+    shape isa Real && isfinite(shape) && shape > 1 ||
+        throw(ArgumentError("residual SD Gamma shape must be finite and greater than 1"))
+    μ, a = Float64(mean), Float64(shape)
+    rate = a / μ
+    isfinite(rate) && rate > 0 ||
+        throw(ArgumentError("residual SD Gamma rate must be finite and positive"))
+    ResidualSDGammaPrior(μ, a, rate)
 end
 
 """`drm_prior_sd_gamma(; dpar, group, coef="(Intercept)", shape, rate)` specifies a Gamma density on the natural random-intercept SD (shape > 1, rate > 0)."""
@@ -70,7 +96,7 @@ end
 
 _sd_prior_value(row, theta) = row.rate * exp(theta[row.index]) - (row.shape - 1) * theta[row.index] - row.shape * log(row.rate) + loggamma(row.shape)
 
-function _fixed_prior(kind, dpar, coef, intercept, mean, precision, constant)
+function _fixed_prior(kind, dpar, coef, intercept, mean, precision, constant; df=nothing)
     d = Symbol(dpar); c = String(coef)
     isempty(c) && throw(ArgumentError("prior coefficient must not be empty"))
     inc = intercept === nothing ? nothing : Symbol(intercept)
@@ -81,7 +107,14 @@ function _fixed_prior(kind, dpar, coef, intercept, mean, precision, constant)
     end
     isfinite(mean) && isfinite(precision) && precision >= 0 ||
         throw(ArgumentError("prior mean and precision must be finite; precision must be nonnegative"))
-    return FixedPrior(kind, d, c, inc, Float64(mean), Float64(precision), Float64(constant))
+    if kind === :student_t
+        df isa Real && isfinite(df) && df > 0 && precision > 0 && isfinite(constant) ||
+            throw(ArgumentError("Student-t prior requires finite positive scale and degrees of freedom"))
+    else
+        df === nothing || throw(ArgumentError("degrees of freedom are only valid for a Student-t prior"))
+    end
+    return FixedPrior(kind, d, c, inc, Float64(mean), Float64(precision), Float64(constant),
+                      df === nothing ? nothing : Float64(df))
 end
 
 """`drm_prior_normal(; dpar, coef, mean=0, sd, intercept=nothing)` specifies a normal coefficient density."""
@@ -95,6 +128,22 @@ end
 """`drm_prior_ridge(; dpar, coef, lambda, intercept=nothing)` specifies `lambda * beta^2 / 2`."""
 function drm_prior_ridge(; dpar, coef, lambda, intercept=nothing)
     _fixed_prior(:ridge, dpar, coef, intercept, 0, lambda, 0)
+end
+
+"""`drm_prior_student_t(; dpar, coef, location=0, scale, df, intercept=nothing)` specifies a normalized Student-t coefficient density."""
+function drm_prior_student_t(; dpar, coef, location=0, scale, df, intercept=nothing)
+    scale isa Real && isfinite(scale) && scale > 0 ||
+        throw(ArgumentError("Student-t prior scale must be finite and positive"))
+    df isa Real && isfinite(df) && df > 0 ||
+        throw(ArgumentError("Student-t prior degrees of freedom must be finite and positive"))
+    s = Float64(scale); ν = Float64(df)
+    precision = inv(s^2)
+    isfinite(precision) && precision > 0 ||
+        throw(ArgumentError("Student-t prior scale is outside the representable precision range"))
+    isfinite(location) || throw(ArgumentError("Student-t prior location must be finite"))
+    normalizer = log(s) + 0.5 * log(ν * π) + loggamma(ν / 2) - loggamma((ν + 1) / 2)
+    isfinite(normalizer) || throw(ArgumentError("Student-t prior normalizer is not finite"))
+    _fixed_prior(:student_t, dpar, coef, intercept, location, precision, normalizer; df=ν)
 end
 
 """`drm_priors(p...)` collects fixed-effect and supported random-effect SD priors for `drm(...; priors=...)`."""
@@ -117,16 +166,43 @@ function _resolve_fixed_priors(priors, names, intercepts)
             key = (prior.dpar, i)
             key in seen && throw(ArgumentError("overlapping prior selection for $(prior.dpar):$(nms[i])"))
             push!(seen, key)
-            push!(rows, (dpar=prior.dpar, coef=nms[i], index=offsets[prior.dpar]+i,
+            push!(rows, (class=:fixef, scale=:link, dpar=prior.dpar, coef=nms[i], index=offsets[prior.dpar]+i,
                          matrix_column=i, mean=prior.mean, sd=prior.precision == 0 ? Inf : inv(sqrt(prior.precision)), precision=prior.precision, constant=prior.constant,
-                         kind=prior.kind, reason=prior.coef == "all" ? :all : :exact))
+                         kind=prior.kind, location=prior.mean,
+                         scale_parameter=prior.kind === :student_t ? inv(sqrt(prior.precision)) : nothing,
+                         df=prior.df, reason=prior.coef == "all" ? :all : :exact))
         end
     end
     rows
 end
 
 function _fixed_prior_value(rows, theta)
-    sum((0.5 * r.precision * (theta[r.index] - r.mean)^2 + r.constant for r in rows); init=zero(eltype(theta)))
+    sum((r.kind === :residual_sd_gamma ?
+         r.rate * exp(theta[r.index]) - (r.shape - 1) * theta[r.index] -
+             r.shape * log(r.rate) + loggamma(r.shape) :
+         r.kind === :student_t ?
+         r.constant + 0.5 * (r.df + 1) * log1p(r.precision * (theta[r.index] - r.mean)^2 / r.df) :
+         0.5 * r.precision * (theta[r.index] - r.mean)^2 + r.constant for r in rows);
+        init=zero(eltype(theta)))
+end
+
+function _resolve_residual_sd_prior(priors, names)
+    targets = filter(p -> p isa ResidualSDGammaPrior, priors)
+    isempty(targets) && return nothing
+    length(targets) == 1 || throw(ArgumentError("duplicate or ambiguous residual SD Gamma priors"))
+    blocks = Dict(names)
+    haskey(blocks, :sigma) && blocks[:sigma] == ["(Intercept)"] ||
+        throw(ArgumentError("residual SD Gamma priors require an intercept-only Gaussian sigma model"))
+    offsets = Dict{Symbol,Int}(); offset = 0
+    for (d, nms) in names
+        offsets[d] = offset
+        offset += length(nms)
+    end
+    p = only(targets)
+    row = (class=:residual_sd, kind=:residual_sd_gamma, dpar=:sigma,
+           coef="(Intercept)", scale=:natural_sd, mean=p.mean,
+           shape=p.shape, rate=p.rate, index=offsets[:sigma] + 1)
+    return row
 end
 
 # Inspect the applied StatsModels terms, rather than guessing intercepts from
@@ -168,8 +244,11 @@ see the prior guide for supported distributions, selectors, and scale convention
 function resolve_priors(f, fam; data, priors)
     table_rows = Tables.istable(priors) ? _parse_prior_table(priors) : nothing
     sd_intent = table_rows !== nothing && any(r -> r.class == "ranef_sd", table_rows)
+    residual_sd_intent = table_rows !== nothing && any(r -> r.class == "residual_sd", table_rows)
     f isa DrmFormula && (fam isa Gaussian || (fam isa Binomial && fam.link === :logit)) ||
         throw(ArgumentError("resolve_priors supports Gaussian and fixed-effect binomial logit models"))
+    residual_sd_intent && !(fam isa Gaussian) &&
+        throw(ArgumentError("residual_sd priors require a Gaussian model"))
     _has_joint_mi(f) && throw(ArgumentError("resolve_priors does not support missing-predictor models"))
     normal_only = table_rows === nothing ?
         (priors isa AbstractVector && all(p -> p isa FixedPrior && p.kind === :normal, priors)) :
@@ -230,11 +309,14 @@ function resolve_priors(f, fam; data, priors)
         intercepts[d] = _fixed_intercept_index(f, d, rhs, nms; cache=cache)
     end
     table_rows === nothing || (priors = _prior_table_specs(table_rows, String.(sd_groups)))
-    priors isa AbstractVector && all(p -> p isa Union{FixedPrior,SDGammaPrior}, priors) || throw(ArgumentError("priors must be created by drm_priors"))
+    priors isa AbstractVector && all(p -> p isa Union{FixedPrior,SDGammaPrior,ResidualSDGammaPrior}, priors) || throw(ArgumentError("priors must be created by drm_priors"))
     fixed = FixedPrior[p for p in priors if p isa FixedPrior]
     rows = _resolve_fixed_priors(fixed, names, intercepts)
     table_rows !== nothing && any(r -> r.coef == "all", rows) &&
         throw(ArgumentError("prior tables cannot select a coefficient literally named all"))
     sds = _resolve_sd_priors(priors, sd_groups, sum(length(last(n)) for n in names) + 1)
-    vcat(rows, sds)
+    residual = _resolve_residual_sd_prior(priors, names)
+    residual === nothing || !any(r -> r.index == residual.index, rows) ||
+        throw(ArgumentError("residual_sd prior overlaps a fixed-effect prior on sigma:(Intercept)"))
+    vcat(rows, sds, residual === nothing ? NamedTuple[] : [residual])
 end

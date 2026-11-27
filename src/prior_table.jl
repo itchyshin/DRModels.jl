@@ -2,7 +2,7 @@
 # eligibility are deliberately separate: parsing must not discard SD intent.
 const _PRIOR_NUMBER = raw"[+-]?(?:(?:[0-9]+(?:\.[0-9]*)?)|(?:\.[0-9]+))(?:[eE][+-]?[0-9]+)?"
 const _PRIOR_WS = raw"[ \t\r\n\f\v]*"
-const _PRIOR_CALL = Regex("^" * _PRIOR_WS * "(normal|ridge|gamma)" * _PRIOR_WS * raw"\(" * _PRIOR_WS * "(" * _PRIOR_NUMBER * ")" * _PRIOR_WS * "(?:," * _PRIOR_WS * "(" * _PRIOR_NUMBER * ")" * _PRIOR_WS * ")?" * raw"\)" * _PRIOR_WS * raw"$")
+const _PRIOR_CALL = Regex("^" * _PRIOR_WS * "(normal|ridge|gamma|student_t)" * _PRIOR_WS * raw"\(" * _PRIOR_WS * "(" * _PRIOR_NUMBER * ")" * _PRIOR_WS * "(?:," * _PRIOR_WS * "(" * _PRIOR_NUMBER * ")" * _PRIOR_WS * ")?" * _PRIOR_WS * "(?:," * _PRIOR_WS * "(" * _PRIOR_NUMBER * ")" * _PRIOR_WS * ")?" * raw"\)" * _PRIOR_WS * raw"$")
 
 function _parse_prior_table(table)
     Tables.istable(table) || throw(ArgumentError("priors table must implement Tables.jl"))
@@ -11,7 +11,7 @@ function _parse_prior_table(table)
     length(unique(names)) == length(names) || throw(ArgumentError("duplicate prior table columns"))
     required = (:prior, :class, :coef)
     all(in(names), required) || throw(ArgumentError("prior table requires prior, class and coef columns"))
-    all(in((required..., :dpar, :group)), names) || throw(ArgumentError("unknown prior table column"))
+    all(in((required..., :dpar, :group, :scale)), names) || throw(ArgumentError("unknown prior table column"))
     cols = Dict(n => Tables.getcolumn(columns, n) for n in names)
     n = length(cols[:prior])
     n > 0 || throw(ArgumentError("prior table must not be empty"))
@@ -22,13 +22,22 @@ function _parse_prior_table(table)
         prior, class, coef = (String(cols[k][i]) for k in required)
         dpar = haskey(cols, :dpar) ? String(cols[:dpar][i]) : ""
         group = haskey(cols, :group) ? String(cols[:group][i]) : ""
-        isempty(dpar) && (dpar = "mu")
-        class in ("fixef", "ranef_sd") || throw(ArgumentError("unsupported prior class $class"))
+        scale = haskey(cols, :scale) ? String(cols[:scale][i]) :
+            class == "fixef" ? "link" : class == "ranef_sd" ? "natural_sd" : ""
+        class in ("fixef", "ranef_sd", "residual_sd") || throw(ArgumentError("unsupported prior class $class"))
+        isempty(dpar) && class != "residual_sd" && (dpar = "mu")
+        class == "fixef" && scale != "link" && throw(ArgumentError("fixef priors require scale=link"))
+        class == "ranef_sd" && scale != "natural_sd" && throw(ArgumentError("ranef_sd priors require scale=natural_sd"))
+        class == "residual_sd" &&
+            (dpar != "sigma" || coef != "(Intercept)" || !isempty(group) || scale != "natural_sd") &&
+            throw(ArgumentError("residual_sd priors require dpar=sigma, coef=(Intercept), empty group and scale=natural_sd"))
         m = match(_PRIOR_CALL, prior)
         m === nothing && throw(ArgumentError("invalid prior distribution syntax"))
         kind = Symbol(m.captures[1])
-        (kind === :ridge ? m.captures[3] === nothing : m.captures[3] !== nothing) || throw(ArgumentError("wrong prior distribution arity"))
-        nums = map(x -> tryparse(Float64, x), filter(!isnothing, m.captures[2:3]))
+        nargs = count(!isnothing, m.captures[2:4])
+        expected = kind === :ridge ? 1 : kind === :student_t ? 3 : 2
+        nargs == expected || throw(ArgumentError("wrong prior distribution arity"))
+        nums = map(x -> tryparse(Float64, x), filter(!isnothing, m.captures[2:4]))
         all(x -> x !== nothing && isfinite(x), nums) || throw(ArgumentError("prior parameters must be finite numbers"))
         a = nums[1]
         if kind === :normal
@@ -37,13 +46,19 @@ function _parse_prior_table(table)
             sd > 0 && isfinite(inv(sd * sd)) && inv(sd * sd) > 0 || throw(ArgumentError("normal sd is outside the representable precision range"))
         elseif kind === :ridge
             class == "fixef" && a >= 0 || throw(ArgumentError("ridge requires fixef and nonnegative lambda"))
+        elseif kind === :student_t
+            class == "fixef" || throw(ArgumentError("student_t requires fixef"))
+            scale_parameter, df = nums[2], nums[3]
+            scale_parameter > 0 && isfinite(inv(scale_parameter * scale_parameter)) && inv(scale_parameter * scale_parameter) > 0 && df > 0 ||
+                throw(ArgumentError("Student-t scale and degrees of freedom must be positive and representable"))
         else
-            class == "ranef_sd" || throw(ArgumentError("gamma requires ranef_sd"))
+            class in ("ranef_sd", "residual_sd") || throw(ArgumentError("gamma requires ranef_sd or residual_sd"))
             shape = nums[2]; rate = shape / a
             a > 0 && shape > 1 && isfinite(rate) && rate > 0 || throw(ArgumentError("invalid Gamma mean, shape or rate"))
         end
         class == "fixef" && (!isempty(group) || coef == "all") && throw(ArgumentError("invalid fixed-effect selector"))
-        push!(result, (kind=kind, class=class, coef=coef, dpar=dpar, group=group, arguments=Tuple(nums)))
+        push!(result, (kind=kind, class=class, coef=coef, dpar=dpar, group=group,
+                       scale=scale, arguments=Tuple(nums)))
     end
     return result
 end
@@ -55,7 +70,7 @@ function _expand_prior_table(rows, groups)
     output = NamedTuple[]
     seen = Set{String}()
     for row in rows
-        if row.class == "fixef"
+        if row.class in ("fixef", "residual_sd")
             push!(output, row)
             continue
         end
@@ -87,10 +102,16 @@ function _prior_table_specs(rows, groups)
     map(expanded) do row
         if row.class == "ranef_sd"
             drm_prior_sd_gamma(dpar=row.dpar, group=row.group, shape=row.arguments[2], rate=row.arguments[2] / row.arguments[1])
+        elseif row.class == "residual_sd"
+            _residual_sd_gamma_prior(row.arguments[1], row.arguments[2])
         elseif row.kind === :normal
             drm_prior_normal(dpar=row.dpar, coef=isempty(row.coef) ? "all" : row.coef,
                              intercept=isempty(row.coef) ? "exclude" : nothing,
                              mean=row.arguments[1], sd=row.arguments[2])
+        elseif row.kind === :student_t
+            drm_prior_student_t(dpar=row.dpar, coef=isempty(row.coef) ? "all" : row.coef,
+                                intercept=isempty(row.coef) ? "exclude" : nothing,
+                                location=row.arguments[1], scale=row.arguments[2], df=row.arguments[3])
         else
             drm_prior_ridge(dpar=row.dpar, coef=isempty(row.coef) ? "all" : row.coef,
                             intercept=isempty(row.coef) ? "exclude" : nothing,
@@ -113,12 +134,12 @@ function _table_priors_for_model(f, fam, data, table)
             selected = filter(fixed_rows) do row
                 row.dpar == spec.dpar && row.kind == spec.kind &&
                     row.mean == spec.mean && row.precision == spec.precision &&
-                    row.constant == spec.constant &&
+                    row.constant == spec.constant && isequal(row.df, spec.df) &&
                     (spec.coef == "all" ? row.reason == :all : row.coef == spec.coef)
             end
             isempty(selected) && throw(ArgumentError("prior table fixed target could not be replayed"))
             append!(replay, [FixedPrior(row.kind, row.dpar, row.coef, nothing,
-                                        row.mean, row.precision, row.constant) for row in selected])
+                                        row.mean, row.precision, row.constant, row.df) for row in selected])
         else
             push!(replay, spec)
         end
