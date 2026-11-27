@@ -1341,9 +1341,10 @@ function _drm_gaussian_fit(f::DrmFormula, fam::Gaussian; data, K = nothing, A = 
     mkind = _gaussian_marginal(marginal)
     laplace = mkind === :Laplace
     aghq = mkind === :AGHQ
-    (laplace || aghq) && _gaussian_laplace_validate(f, fam, data, algorithm, method, penalty,
-                                          phylo_coupled, sparse, impute, missing;
-                                          requested = laplace ? "Laplace" : "AGHQ")
+    (laplace || aghq) && !_gaussian_musigma_intercept_cell(f) &&
+        _gaussian_laplace_validate(f, fam, data, algorithm, method, penalty,
+                                   phylo_coupled, sparse, impute, missing;
+                                   requested = laplace ? "Laplace" : "AGHQ")
     algorithm in (:auto, :gls, :lbfgs, :em, :sparse, :sparse_lbfgs) ||
         throw(ArgumentError("drm: `algorithm` must be one of :auto, :gls, :lbfgs, :em, :sparse, :sparse_lbfgs (got :$algorithm)"))
     method in (:ML, :REML) ||

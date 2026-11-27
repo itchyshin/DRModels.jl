@@ -1056,7 +1056,12 @@ function _update_stored_options(fit::DrmFit)
     elseif fit.penalty !== nothing
         push!(kw, :penalty => fit.penalty)
     end
-    fit.marginal === :LA || push!(kw, :marginal => fit.marginal)
+    if fit.marginal !== :LA
+        # #1582: #745 fits are tagged `:Laplace` but are admitted on default `:LA`.
+        omit = fit.marginal === :Laplace && fit.formula isa DrmFormula &&
+               _gaussian_musigma_intercept_cell(fit.formula)
+        omit || push!(kw, :marginal => fit.marginal)
+    end
     nagq = _stored_nagq(fit)
     nagq === nothing || push!(kw, :nAGQ => nagq)
     return NamedTuple(kw)
