@@ -177,6 +177,13 @@ function _refuse_selected_optimizer_refit(fit::DrmFit, entrypoint::AbstractStrin
     return nothing
 end
 
+function _reject_bootstrap_parallel(entrypoint::AbstractString, parallel)
+    parallel === nothing && return nothing
+    throw(ArgumentError(
+        "$entrypoint: keyword argument `parallel` is not supported; use " *
+        "`threads = true` or `threads = false` instead"))
+end
+
 """
     confint(fit; level = 0.95, method = :wald, threads = false, parm = nothing)
 
@@ -1666,7 +1673,9 @@ function bootstrap_ci(
     check_converged::Bool=true,
     algorithm::Symbol=:auto,
     g_tol::Real=1e-8,
+    parallel=nothing,
 )
+    _reject_bootstrap_parallel("bootstrap_ci", parallel)
     rows = bootstrap_summary(
         formula,
         family;
@@ -1709,7 +1718,9 @@ function bootstrap_ci(
     threads::Bool=false,
     failures::Symbol=:skip,
     check_converged::Bool=true,
+    parallel=nothing,
 )
+    _reject_bootstrap_parallel("bootstrap_ci", parallel)
     rows = bootstrap_summary(
         formula, family; data, B, level, rng, K, A, tree, tree1, tree2, coords, threads, failures,
         check_converged
@@ -1733,8 +1744,10 @@ function bootstrap_ci(
     threads::Bool=false,
     failures::Symbol=:skip,
     check_converged::Bool=true,
+    parallel=nothing,
 )
     _refuse_selected_optimizer_refit(fit, "bootstrap_ci")
+    _reject_bootstrap_parallel("bootstrap_ci", parallel)
     rows = bootstrap_summary(
         fit; data, B, level, rng, K, A, tree, tree1, tree2, coords, threads, failures, check_converged
     )
@@ -1757,8 +1770,10 @@ function bootstrap_ci(
     check_converged::Bool=true,
     algorithm::Symbol=:auto,
     g_tol::Real=1e-8,
+    parallel=nothing,
 )
     _refuse_selected_optimizer_refit(fit, "bootstrap_ci")
+    _reject_bootstrap_parallel("bootstrap_ci", parallel)
     rows = bootstrap_summary(
         fit;
         data,
@@ -2017,7 +2032,9 @@ function bootstrap_result(
     method::Symbol=:ML,
     marginal::Symbol=:LA,
     penalty=nothing,
+    parallel=nothing,
 )
+    _reject_bootstrap_parallel("bootstrap_result", parallel)
     _check_bootstrap_failure_mode(failures)
     opts = _bootstrap_formula_options(method, marginal, penalty)
     fit0 = drm(formula, family; data, K, A, tree, coords, algorithm, g_tol, opts...)
@@ -2044,8 +2061,10 @@ function bootstrap_result(
     check_converged::Bool=true,
     algorithm::Symbol=:auto,
     g_tol::Real=1e-8,
+    parallel=nothing,
 )
     _refuse_selected_optimizer_refit(fit, "bootstrap_result")
+    _reject_bootstrap_parallel("bootstrap_result", parallel)
     # Bivariate q=4 phylogenetic fit (also a DrmFit{<:Gaussian}): no scalar SD
     # block to refit-and-recoef — the quantities of interest are the among-axis
     # SDs sqrt.(diag(Σ_a)). Route to the dedicated parametric bootstrap, which
@@ -2111,7 +2130,9 @@ function bootstrap_result(
     method::Symbol=:ML,
     marginal::Symbol=:LA,
     penalty=nothing,
+    parallel=nothing,
 )
+    _reject_bootstrap_parallel("bootstrap_result", parallel)
     _check_bootstrap_failure_mode(failures)
     # #480: mirror #479's fit-based fix. Forward a structured-matrix keyword to
     # `drm(...)` only when the caller actually supplied it -- most non-Gaussian
@@ -2166,8 +2187,10 @@ function bootstrap_result(
     failures::Symbol=:skip,
     check_converged::Bool=true,
     g_tol::Real=1e-8,
+    parallel=nothing,
 )
     _refuse_selected_optimizer_refit(fit, "bootstrap_result")
+    _reject_bootstrap_parallel("bootstrap_result", parallel)
     # Bivariate q=4 phylogenetic fit: there is no scalar SD block to refit-and-
     # recoef; the quantities of interest are the among-axis SDs sqrt.(diag(Σ_a)).
     # Route to the dedicated parametric bootstrap (boundary-honest percentile CIs).
