@@ -3366,12 +3366,38 @@ response scale multiplies by the inverse-link derivative `|dμ/dη|` at `η̂`
 (identity → 1, exp → `exp(η)`, logistic → `μ(1−μ)`). It carries the uncertainty
 in `β̂` only; the random-effect variance is not added.
 """
+# Row count from the first vector column (#1559 / #1560 / #1592).
+function _predict_table_nrows(nd::NamedTuple)
+    isempty(nd) && return 0
+    for v in values(nd)
+        v isa AbstractVector && return length(v)
+    end
+    return 0
+end
+
+function _require_predict_newdata_row_lengths(nd::NamedTuple; context::AbstractString = "predict")
+    nrows = _predict_table_nrows(nd)
+    nrows > 0 || throw(ArgumentError(
+        "$context: `newdata` has no rows; every vector column is empty or only scalar fields were supplied."))
+    mismatches = String[]
+    for (k, v) in pairs(nd)
+        v isa AbstractVector || continue
+        nv = length(v)
+        nv == nrows || push!(mismatches, "`$k` has $nv")
+    end
+    isempty(mismatches) || throw(ArgumentError(
+        "$context: `newdata` has $nrows row(s) but column(s) " *
+        join(mismatches, ", ") *
+        "; every vector column must have one value per row."))
+    return nothing
+end
+
 # Keep a response column that is already in `newdata`, so a missing response
 # still marks that row as unobserved and a NaN predictor there is dropped with
 # it. A prediction table that omits the response gets a finite dummy, and every
 # row is checked — `predict(newdata)` with a NaN predictor is an error.
 function _predict_data(nd::NamedTuple, responses::Symbol...)
-    nrows = isempty(nd) ? 0 : length(first(values(nd)))
+    nrows = _predict_table_nrows(nd)
     extras = Pair{Symbol,Vector{Float64}}[]
     for r in responses
         haskey(nd, r) || push!(extras, r => zeros(nrows))
@@ -3415,7 +3441,8 @@ function predict(fit::DrmFit, newdata; type::Symbol = :response, se::Bool = fals
     # (the "response scale" of the location parameter), i.e. the link scale.
     fit.family isa LogNormal && type === :response && (type = :link)
     nd = NamedTuple(pairs(newdata))
-    nrows = length(first(values(nd)))
+    _require_predict_newdata_row_lengths(nd)
+    nrows = _predict_table_nrows(nd)
     V = se ? vcov(fit) : nothing
     if f isa DrmFormula
         # allow_phylo_slope: a fitted Gaussian `phylo(1 + x | g)` formula (#620)
@@ -3757,10 +3784,11 @@ function predict_parameters(fit::DrmFit, newdata; type::Symbol = :response,
         end
     end
     nd = NamedTuple(pairs(newdata))
+    _require_predict_newdata_row_lengths(nd; context = "predict_parameters")
     # Same label-response handling as `predict` (CumulativeLogit univariate fits only).
     fit.family isa CumulativeLogit && f isa DrmFormula &&
         (nd = _predict_ignore_label_response(nd, f.response))
-    nrows = length(first(values(nd)))
+    nrows = _predict_table_nrows(nd)
     V = se ? vcov(fit) : nothing
     # A real LHS to dummy into `_design` for each parameter's RHS. The univariate
     # form has one response; the bivariate form has two (use response1 for the
