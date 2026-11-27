@@ -3366,6 +3366,19 @@ response scale multiplies by the inverse-link derivative `|dμ/dη|` at `η̂`
 (identity → 1, exp → `exp(η)`, logistic → `μ(1−μ)`). It carries the uncertainty
 in `β̂` only; the random-effect variance is not added.
 """
+# One prediction row: scalar covariate values (e.g. `(; x = 0.0)`) become
+# length-1 columns, matching drmTMB / bridge behaviour for length-1 table fields.
+function _predict_expand_scalar_column(v)
+    v isa AbstractVector && return v
+    v isa AbstractArray && return vec(collect(v))
+    return [v]
+end
+
+function _predict_expand_newdata(nd::NamedTuple)
+  cols = map(_predict_expand_scalar_column, Tuple(values(nd)))
+  return NamedTuple{keys(nd)}(cols)
+end
+
 # Keep a response column that is already in `newdata`, so a missing response
 # still marks that row as unobserved and a NaN predictor there is dropped with
 # it. A prediction table that omits the response gets a finite dummy, and every
@@ -3414,7 +3427,7 @@ function predict(fit::DrmFit, newdata; type::Symbol = :response, se::Bool = fals
     # drmTMB's `predict(type = "response")` for lognormal is the log-scale `mu`
     # (the "response scale" of the location parameter), i.e. the link scale.
     fit.family isa LogNormal && type === :response && (type = :link)
-    nd = NamedTuple(pairs(newdata))
+    nd = _predict_expand_newdata(NamedTuple(pairs(newdata)))
     nrows = length(first(values(nd)))
     V = se ? vcov(fit) : nothing
     if f isa DrmFormula
@@ -3756,7 +3769,7 @@ function predict_parameters(fit::DrmFit, newdata; type::Symbol = :response,
             p in (:zoi, :coi) && !haskey(forms, p) && (forms[p] = ConstantTerm(1))
         end
     end
-    nd = NamedTuple(pairs(newdata))
+    nd = _predict_expand_newdata(NamedTuple(pairs(newdata)))
     # Same label-response handling as `predict` (CumulativeLogit univariate fits only).
     fit.family isa CumulativeLogit && f isa DrmFormula &&
         (nd = _predict_ignore_label_response(nd, f.response))
