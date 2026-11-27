@@ -2017,6 +2017,28 @@ function _fit_musigma_ranef_gaussian(fam::Gaussian, y, Xμ, Xσ, gidx, G, nmμ, 
     return _withmarginal(fit, :Laplace)
 end
 
+# The #745 cell (`y ~ … + (1 | g), sigma ~ … + (1 | g)`): one mean intercept and
+# one `sigma` intercept on the same ordinary grouping. The fit is tagged
+# `marginal = :Laplace` for integrator provenance, but it is admitted on the
+# default `:LA` drm() entry; explicit `marginal = :Laplace` must not hit the
+# σ-only Laplace validator (#1582).
+function _gaussian_musigma_intercept_cell(f::DrmFormula)
+    rhs = Dict(f.forms)
+    haskey(rhs, :mu) && haskey(rhs, :sigma) || return false
+    _, re, metav, structured, _ = _split_ranef(rhs[:mu]; allow_phylo_slope = true)
+    _, sigma_re, sigma_metav, structured_sigma = _split_ranef(rhs[:sigma])
+    (isempty(re) || isempty(sigma_re)) && return false
+    (metav !== nothing || structured !== nothing || sigma_metav !== nothing ||
+        structured_sigma !== nothing) && return false
+    (!isempty(_collect_structured(rhs[:mu])) ||
+        !isempty(_collect_structured(rhs[:sigma]))) && return false
+    (length(re) != 1 || length(sigma_re) != 1) && return false
+    (_re_kind(re[1][1])[1] !== :intercept ||
+        _re_kind(sigma_re[1][1])[1] !== :intercept) && return false
+    any(t -> _gsl_re_label(t[1]) !== nothing, vcat(re, sigma_re)) && return false
+    return true
+end
+
 # `marginal` on the univariate Gaussian `drm`. `:LA` (the default, any case)
 # keeps every route exactly as it was: each route's own integrator, which is
 # exact wherever the Gaussian marginal is closed-form and GHQ-32 on `sigma ~ (1
