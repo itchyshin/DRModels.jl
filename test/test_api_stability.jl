@@ -76,6 +76,7 @@ const API_EXPERIMENTAL = [
     "integration_diagnostics",
     # penalized MAP (A4c)
     "AbstractDrmPrior", "drm_priors", "drm_prior_normal", "drm_prior_ridge",
+    "drm_prior_student_t",
     "drm_prior_sd_gamma", "resolve_priors",
     "drm_phylo_penalty", "drm_phylo_penalty_sweep",
     "PhyloPenalty", "PhyloCorPenaltyNeedsTwoSD",
