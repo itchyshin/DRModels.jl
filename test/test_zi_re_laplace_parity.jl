@@ -217,6 +217,28 @@ end
     _zr_check("skew_nx", drm(bf(@formula(y ~ x + (1 | g)), @formula(sigma ~ 1), @formula(nu ~ x)), SkewNormal(); data = d))
 end
 
+@testset "hurdle NB2 (1 | g): conditional fitted and response residuals (#1598)" begin
+    cases = (("hnb_g", bf(@formula(y ~ x + (1 | g)), @formula(sigma ~ 1), @formula(hu ~ 1)), NegBinomial2()),
+             ("hnb_sx_hx", bf(@formula(y ~ x + (1 | g)), @formula(sigma ~ x), @formula(hu ~ x)),
+              TruncatedNegBinomial2()))
+    for (route, f, fam) in cases
+        d = _zr_data(route)
+        fit = drm(f, fam; data = d)
+        fc = fitted(fit)
+        @test length(fc) == length(d.y)
+        @test all(isfinite, fc)
+        @test fitted(fit; re = :conditional) == fc
+        r = residuals(fit)
+        @test r == d.y .- fc
+        fr = joinpath(_ZR_DIR, route, "fitted_r.csv")
+        if isfile(fr)
+            fref = readlines(fr)[2:end]
+            fcond = [parse(Float64, split(l, ',')[2]) for l in fref]
+            @test maximum(abs.(fc .- fcond)) <= _ZR_FITTED_TOL
+        end
+    end
+end
+
 @testset "fresh-draw simulate for zinb, tnb, hnb, skew; nAGQ and size guards" begin
     using Random, Statistics
     cases = (("zinb_g", bf(@formula(y ~ x + (1 | g)), @formula(sigma ~ 1), @formula(zi ~ 1)), NegBinomial2()),

@@ -128,7 +128,7 @@ _indep_post(kind::Val, yv, means, scales, ημ̂, θ̂, pμ, pσ) = (means, scal
 # Kinds whose fit keeps the conditional modes for `fitted()`: the zero-inflated and zero-truncated
 # count routes and the ordinal route (the other kinds keep their own, older behaviour).
 _indep_records_modes(::Val) = false
-_indep_records_modes(::Union{Val{:zip},Val{:zinb},Val{:tnb},Val{:cumlogit}}) = true
+_indep_records_modes(::Union{Val{:zip},Val{:zinb},Val{:tnb},Val{:hnb},Val{:cumlogit}}) = true
 _indep_obsval(::Val{:binomial}, yv) = [s / n for (s, n) in yv]
 _indep_famname(::Val{:gamma}) = "Gamma"
 _indep_famname(::Val{:student}) = "Student"
