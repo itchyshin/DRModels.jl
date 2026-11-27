@@ -2,7 +2,7 @@
 # Exercises documented contracts on finite-input guards, bootstrap status plumbing,
 # design-rank messaging, and comparison variance-component labels — without touching src/.
 using DRModels
-using Test, Random, Logging, Tables
+using Test, Random, Logging
 
 @testset "coverage a–f: finite_inputs / ci_args / design_rank / comparison" begin
     @testset "finite_inputs: failed log-likelihood rules and observed-row mask" begin
