@@ -4865,7 +4865,7 @@ fixef(fit::DrmFit) =
 
 function Base.show(io::IO, fit::DrmFit)
     print(io, "DrmFit (", _family_name(fit.family), ", ", fit.nobs, " obs, ",
-        fit.converged ? "converged" : "NOT converged",
+        is_converged(fit) ? "converged" : "NOT converged",
         _is_fixed_prior_fit(fit) && fit.estim_method === :MAP ? "; MAP; data logLik = " : "; logLik = ", round(_display_loglik(fit), digits = 2), ")")
     for (p, _) in fit.blocks
         print(io, "\n  ", p, ": ", join(string.(round.(coef(fit, p), digits = 3)), ", "))
