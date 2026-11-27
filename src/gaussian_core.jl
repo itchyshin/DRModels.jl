@@ -2743,7 +2743,14 @@ vcov(fit::DrmFit) = _wald_withheld(fit) ? _homtoep_refuse_wald("vcov") : fit.vco
 """
     nobs(fit::DrmFit)
 
-Number of observations. Extends `StatsAPI.nobs`.
+Number of **rows** used in the fit (`fit.nobs`), not `sum(weights(fit))`. Extends
+`StatsAPI.nobs`. Prior `weights` from [`weights`](@ref) multiply each row's
+contribution to the log-likelihood (drmTMB semantics); non-integer weights scale
+the objective without changing `nobs`. Integer weights match replicating rows for
+estimation, but `nobs` still counts input rows, including zero-weight rows kept in
+the fit. [`bic`](@ref), [`aicc`](@ref), and [`dof_residual`](@ref) use this row
+count in their sample-size term; [`aic`](@ref) does not. See also the
+[`weights`](@ref) docstring.
 """
 nobs(fit::DrmFit) = fit.nobs
 
