@@ -138,6 +138,49 @@ function _drop_missing_predictor_rows(f::Union{DrmFormula,BivariateDrmFormula}, 
     return _subset_rows_narrowed(cols, keep)
 end
 
+# Univariate response-missingness policy, drmTMB's `miss_control(response = ...)` (P53c). The
+# design is that of the bivariate `include` (train 4, #1409): no new marker and no new output
+# shape. A row with a missing response contributes no likelihood term (a Gaussian response with
+# conditionally independent rows integrates out), and the marker is `NaN` in `fit.obs[:mu]`, which
+# `_used_row_mask` reads, so `fitted`, `residuals`, `sigma` and the quantile residuals return the
+# rows used (`nobs(fit)`), as for the default. `"include"` differs from the default `"drop"` only
+# in being silent (nothing is dropped by accident); `"fail"` refuses a missing response. The
+# estimates are those of the observed rows.
+const _INCLUDE_RESPONSE_KEY = :DRModels_include_response
+
+function _with_included_response(f, include::Bool)
+    include || return f()
+    return task_local_storage(f, _INCLUDE_RESPONSE_KEY, true)
+end
+
+# The "dropped ... rows" notice of every observed-rows route; silent under `response = "include"`.
+function _warn_dropped_response(msg::AbstractString)
+    get(task_local_storage(), _INCLUDE_RESPONSE_KEY, false) === true && return nothing
+    @warn msg
+    return nothing
+end
+
+# Returns `(kwargs_without_missing, include::Bool)`. A `miss_control` on a formula without `mi(x)`
+# used to be refused outright; its response policy is now honoured and its predictor policy must
+# stay "fail" (modelling a predictor needs an `mi(x)` formula).
+function _univariate_response_policy(f::DrmFormula, kwargs)
+    mc = get(kwargs, :missing, nothing)
+    (mc isa JointMissingControl && !_has_joint_mi(f) && get(kwargs, :impute, nothing) === nothing) ||
+        return kwargs, false
+    mc.predictor === :fail || throw(ArgumentError(
+        "drm: `miss_control(predictor = \"model\")` needs an additive `mi(x)` joint-model formula; " *
+        "on this route missing predictor values are dropped row-wise, as in R's `na.omit`."))
+    rest = (; (k => v for (k, v) in pairs(kwargs) if k !== :missing)...)
+    if mc.response === :fail && haskey(kwargs, :data) && Tables.istable(kwargs[:data])
+        observed = _formula_response_observed_mask(f, kwargs[:data])
+        all(observed) || throw(ArgumentError(
+            "drm: $(count(!, observed)) of $(length(observed)) rows have a missing response and " *
+            "`miss_control(response = \"fail\")` was requested. Use `miss_control(response = \"drop\")` " *
+            "(the default, complete cases) or `miss_control(response = \"include\")`."))
+    end
+    return rest, mc.response === :include
+end
+
 # Drop the rows with a missing/NaN response (warning with the count), for the
 # Gaussian routes that have no observed-rows path of their own.
 function _drop_missing_response_rows(f::DrmFormula, data)
@@ -148,9 +191,9 @@ function _drop_missing_response_rows(f::DrmFormula, data)
     ndrop < n || throw(ArgumentError("drm: at least one response row must be observed"))
     cols = Tables.columntable(data)
     _check_drop_keeps_levels(f, cols, observed)
-    @warn "drm: $ndrop of $n rows have a missing/NaN response and were dropped (the fit " *
+    _warn_dropped_response("drm: $ndrop of $n rows have a missing/NaN response and were dropped (the fit " *
           "uses the complete cases, like R's `na.omit`). Use `drm_listwise` to drop them " *
-          "explicitly and silence this."
+          "explicitly and silence this.")
     _drop_scope_weight_rows!(observed)
     return _subset_rows_narrowed(cols, observed)
 end

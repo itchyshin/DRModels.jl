@@ -190,9 +190,9 @@ function _drm_gaussian_lss(f::DrmFormula, fam::Gaussian, sdp, re, re_kinds, stru
         n_obs > total_dof ||
             @warn "drm (Gaussian sd): $(n_obs) observed responses equals the $(total_dof) model " *
                   "parameters (residual dof 0); the fit is saturated and inference is unreliable."
-        @warn "drm: $(length(observed) - n_obs) of $(length(observed)) rows have a missing/NaN " *
+        _warn_dropped_response("drm: $(length(observed) - n_obs) of $(length(observed)) rows have a missing/NaN " *
               "response and were dropped (observed-rows fit, like glmmTMB's default na.action). " *
-              "Use `drm_listwise` to preprocess explicitly, or supply complete responses, to silence this."
+              "Use `drm_listwise` to preprocess explicitly, or supply complete responses, to silence this.")
         y = Vector{Float64}(y[observed])
         Xμ = Matrix{Float64}(Xμ[observed, :])
         Xσ = Matrix{Float64}(Xσ[observed, :])
@@ -453,9 +453,9 @@ function _drm_gaussian_lss_phylo(f::DrmFormula, fam::Gaussian, sdpp, re, structu
         n_obs > total_dof ||
             @warn "drm (Gaussian sd_phylo): $(n_obs) observed responses equals the $(total_dof) model " *
                   "parameters (residual dof 0); the fit is saturated and inference is unreliable."
-        @warn "drm: $(length(observed) - n_obs) of $(length(observed)) rows have a missing/NaN " *
+        _warn_dropped_response("drm: $(length(observed) - n_obs) of $(length(observed)) rows have a missing/NaN " *
               "response and were dropped (observed-rows fit, like glmmTMB's default na.action). " *
-              "Use `drm_listwise` to preprocess explicitly, or supply complete responses, to silence this."
+              "Use `drm_listwise` to preprocess explicitly, or supply complete responses, to silence this.")
         y = Vector{Float64}(y[observed])
         Xμ = Matrix{Float64}(Xμ[observed, :])
         Xσ = Matrix{Float64}(Xσ[observed, :])
@@ -1347,9 +1347,9 @@ function _drm_gaussian_lss_multi(f::DrmFormula, fam::Gaussian, sdp, sdpp, re, re
         n_obs > total_dof ||
             @warn "drm (Gaussian sd multi): $(n_obs) observed responses equals the $(total_dof) model " *
                   "parameters (residual dof 0); the fit is saturated and inference is unreliable."
-        @warn "drm: $(length(observed) - n_obs) of $(length(observed)) rows have a missing/NaN " *
+        _warn_dropped_response("drm: $(length(observed) - n_obs) of $(length(observed)) rows have a missing/NaN " *
               "response and were dropped (observed-rows fit, like glmmTMB's default na.action). " *
-              "Use `drm_listwise` to preprocess explicitly, or supply complete responses, to silence this."
+              "Use `drm_listwise` to preprocess explicitly, or supply complete responses, to silence this.")
         y = Vector{Float64}(y[observed])
         Xμ = Matrix{Float64}(Xμ[observed, :])
         Xσ = Matrix{Float64}(Xσ[observed, :])

@@ -1181,6 +1181,10 @@ refits of a `:Laplace` fit use `:Laplace` too.
 
 Incomplete responses (`missing` or `NaN` in `y`) are supported under the
 observed-rows pattern (matching `response = "include"` in the R bridge).
+`missing = miss_control(response = "include")` is accepted on these routes: the fit is the
+observed-rows fit, reported without the "dropped" notice; `response = "drop"` is the default and
+`response = "fail"` refuses a missing response. `fitted`, `residuals` and `sigma` return the rows
+used, not one value per input row.
 `Inf` and `-Inf` are not missing values: they raise `ArgumentError` naming
 the response column and the row. A non-finite predictor on an *observed* row,
 or a non-finite offset or coordinate, raises the same way, naming that
@@ -1248,7 +1252,10 @@ them.
     kw_inner = strip_se ? (; (p for p in pairs(kw_fit) if p.first !== :se)...) : kw_fit
     # The residual-variance / structured-variance BOUNDARY advisory (#724, #697) is
     # attached here, once, rather than in each of the fitter's return paths.
-    fit = _apply_design_rank(_warn_variance_boundary(_drm_gaussian_fit(f_fit, fam; kw_inner...)))
+    kw_inner, include_response = _univariate_response_policy(f_fit, kw_inner)   # P53c: `missing = miss_control(response = ...)`
+    fit = _with_included_response(include_response) do
+        _apply_design_rank(_warn_variance_boundary(_drm_gaussian_fit(f_fit, fam; kw_inner...)))
+    end
     if off !== nothing
         fit = _gaussian_offset_restore(fit, f, off)
     end
@@ -1728,9 +1735,9 @@ function _drm_gaussian_fit(f::DrmFormula, fam::Gaussian; data, K = nothing, A = 
             n_obs > total_dof ||
                 @warn "drm (Gaussian σ-phylo): $(n_obs) observed responses equals the $(total_dof) model " *
                       "parameters (residual dof 0); the fit is saturated and inference is unreliable."
-            @warn "drm: $(length(response_observed) - n_obs) of $(length(response_observed)) rows have a " *
+            _warn_dropped_response("drm: $(length(response_observed) - n_obs) of $(length(response_observed)) rows have a " *
                   "missing/NaN response and were dropped (σ-phylo observed-rows fit; the tree is kept in " *
-                  "full). Use `drm_listwise` to preprocess explicitly to silence this."
+                  "full). Use `drm_listwise` to preprocess explicitly to silence this.")
             y          = y[response_observed]
             Xμ         = Xμ[response_observed, :]
             Xσ         = Xσ[response_observed, :]
@@ -2392,9 +2399,9 @@ function _fit_fixed_gaussian_missing_response(fam::Gaussian, y, Xμ, Xσ, nmμ, 
     # Drop missing/NaN-response rows (observed-rows fit), matching glmmTMB's default
     # na.action — but WARN so it is never silent (the #258 contract; mirrors the
     # non-Gaussian _fit_observed_response_rows wrapper).
-    @warn "drm: $(length(observed) - n_observed) of $(length(observed)) rows have a missing/NaN " *
+    _warn_dropped_response("drm: $(length(observed) - n_observed) of $(length(observed)) rows have a missing/NaN " *
           "response and were dropped (observed-rows fit, like glmmTMB's default na.action). " *
-          "Use `drm_listwise` to preprocess explicitly, or supply complete responses, to silence this."
+          "Use `drm_listwise` to preprocess explicitly, or supply complete responses, to silence this.")
 
     _drop_scope_weight_rows!(observed)   # weights follow their rows, as in R's `na.omit`
     y_obs = Vector{Float64}(y[observed])
@@ -2438,9 +2445,9 @@ function _fit_observed_response_rows(fitfun::Function, f::DrmFormula, data)
     # default `na.action`. Warn so it is never SILENT (reconciles #241 auto-handling
     # with #258's "not silently fit" contract). Missing predictors were dropped above.
     ndrop = count(!, observed)
-    @warn "drm: $(ndrop) of $(length(observed)) rows have a missing/NaN response and were " *
+    _warn_dropped_response("drm: $(ndrop) of $(length(observed)) rows have a missing/NaN response and were " *
           "dropped (observed-rows fit, like glmmTMB's default na.action). Use `drm_listwise` " *
-          "to preprocess explicitly, or supply complete responses, to silence this."
+          "to preprocess explicitly, or supply complete responses, to silence this.")
     _drop_scope_weight_rows!(observed)   # weights follow their rows, as in R's `na.omit`
     fit_observed = fitfun(_subset_table_rows(data, observed))
     return _with_full_response_rows(fit_observed, f, data)
