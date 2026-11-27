@@ -668,6 +668,24 @@ function _is_response_missing(x)
     return false
 end
 
+# Coerce one response cell to `Float64`, or refuse with guidance. Categorical
+# columns (e.g. `CategoricalArrays.CategoricalValue`) are not numeric responses
+# on count/continuous routes and used to die as `MethodError: Float64(::CategoricalValue)` (#1611).
+function _float_response_element(xi, name::AbstractString, i::Integer)
+    _is_response_missing(xi) && return NaN
+    if nameof(typeof(xi)) === :CategoricalValue
+        throw(ArgumentError(
+            "drm: response `$name` must be a numeric vector, not a categorical column; " *
+            "got CategoricalValue at row $i. For count models such as Poisson(), pass " *
+            "non-negative integer counts — for example `Int.(y)` when the category levels " *
+            "are counts, or `Vector{Int}(levelcode.(y))` only if those codes are the values " *
+            "you intend. For an ordered categorical outcome use CumulativeLogit()."))
+    end
+    xi isa Real && return Float64(xi)
+    throw(ArgumentError(
+        "drm: response `$name` must be numeric (or missing/NaN); got `$(typeof(xi))` at row $i."))
+end
+
 function _coerce_response_column(raw; name::AbstractString="response")
     # `Inf` is not the missing-value code. Every response read (formula routes,
     # the bridge label schema, joint-missing designs) passes through here.
@@ -687,7 +705,7 @@ function _coerce_response_column(raw; name::AbstractString="response")
         xi = raw[i]
         miss = _is_response_missing(xi)
         observed[i] = !miss
-        y[i] = miss ? NaN : Float64(xi)
+        y[i] = miss ? NaN : _float_response_element(xi, name, i)
     end
     _check_response_coercion(raw, y, observed, name)
     return y, observed
@@ -706,7 +724,7 @@ function _check_response_coercion(raw, y, observed, name)
         ok = if _is_response_missing(xi)
             !observed[i] && isnan(y[i])
         else
-            observed[i] && isequal(y[i], Float64(xi))
+            observed[i] && isequal(y[i], _float_response_element(xi, name, i))
         end
         ok || throw(ErrorException(
             "drm: stopped while reading response `$(name)`: the check at row $(i) found that " *
