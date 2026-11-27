@@ -1720,7 +1720,7 @@ end
 
 function bootstrap_ci(
     fit::DrmFit;
-    data,
+    data=nothing,
     B::Real=300,
     level::Real=0.95,
     rng=default_rng(),
@@ -1734,6 +1734,7 @@ function bootstrap_ci(
     failures::Symbol=:skip,
     check_converged::Bool=true,
 )
+    data = _require_postfit_bootstrap_data(data, "bootstrap_ci")
     _refuse_selected_optimizer_refit(fit, "bootstrap_ci")
     rows = bootstrap_summary(
         fit; data, B, level, rng, K, A, tree, tree1, tree2, coords, threads, failures, check_converged
@@ -1744,7 +1745,7 @@ end
 
 function bootstrap_ci(
     fit::DrmFit{<:Gaussian};
-    data,
+    data=nothing,
     B::Real=300,
     level::Real=0.95,
     rng=default_rng(),
@@ -1758,6 +1759,7 @@ function bootstrap_ci(
     algorithm::Symbol=:auto,
     g_tol::Real=1e-8,
 )
+    data = _require_postfit_bootstrap_data(data, "bootstrap_ci")
     _refuse_selected_optimizer_refit(fit, "bootstrap_ci")
     rows = bootstrap_summary(
         fit;
@@ -1866,7 +1868,7 @@ end
 
 function bootstrap_summary(
     fit::DrmFit;
-    data,
+    data=nothing,
     B::Real=300,
     level::Real=0.95,
     rng=default_rng(),
@@ -1880,6 +1882,7 @@ function bootstrap_summary(
     failures::Symbol=:skip,
     check_converged::Bool=true,
 )
+    data = _require_postfit_bootstrap_data(data, "bootstrap_summary")
     _refuse_selected_optimizer_refit(fit, "bootstrap_summary")
     result = bootstrap_result(
         fit; data, B, level, rng, K, A, tree, tree1, tree2, coords, threads, failures, check_converged
@@ -1889,7 +1892,7 @@ end
 
 function bootstrap_summary(
     fit::DrmFit{<:Gaussian};
-    data,
+    data=nothing,
     B::Real=300,
     level::Real=0.95,
     rng=default_rng(),
@@ -1903,6 +1906,7 @@ function bootstrap_summary(
     algorithm::Symbol=:auto,
     g_tol::Real=1e-8,
 )
+    data = _require_postfit_bootstrap_data(data, "bootstrap_summary")
     _refuse_selected_optimizer_refit(fit, "bootstrap_summary")
     result = bootstrap_result(
         fit;
@@ -2031,7 +2035,7 @@ end
 
 function bootstrap_result(
     fit::DrmFit{<:Gaussian};
-    data,
+    data=nothing,
     B::Real=300,
     level::Real=0.95,
     rng=default_rng(),
@@ -2045,6 +2049,7 @@ function bootstrap_result(
     algorithm::Symbol=:auto,
     g_tol::Real=1e-8,
 )
+    data = _require_postfit_bootstrap_data(data, "bootstrap_result")
     _refuse_selected_optimizer_refit(fit, "bootstrap_result")
     # Bivariate q=4 phylogenetic fit (also a DrmFit{<:Gaussian}): no scalar SD
     # block to refit-and-recoef — the quantities of interest are the among-axis
@@ -2151,7 +2156,7 @@ end
 
 function bootstrap_result(
     fit::DrmFit;
-    data,
+    data=nothing,
     B::Real=300,
     level::Real=0.95,
     rng=default_rng(),
@@ -2167,6 +2172,7 @@ function bootstrap_result(
     check_converged::Bool=true,
     g_tol::Real=1e-8,
 )
+    data = _require_postfit_bootstrap_data(data, "bootstrap_result")
     _refuse_selected_optimizer_refit(fit, "bootstrap_result")
     # Bivariate q=4 phylogenetic fit: there is no scalar SD block to refit-and-
     # recoef; the quantities of interest are the among-axis SDs sqrt.(diag(Σ_a)).
@@ -4479,6 +4485,14 @@ function _bootstrap_result(
         status=status,
         boundary_params=boundary_params,
     )
+end
+
+function _require_postfit_bootstrap_data(data, entrypoint::AbstractString)
+    data === nothing && throw(ArgumentError(
+        "$(entrypoint): pass `data =` with the table used to fit the model " *
+        "(and `tree` / `K` / `A` / `coords` for structured random effects when needed). " *
+        "The fit object does not retain grouping columns."))
+    return data
 end
 
 function _check_bootstrap_failure_mode(failures::Symbol)
