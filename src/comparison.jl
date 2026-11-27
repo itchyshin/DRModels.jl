@@ -917,7 +917,9 @@ Prior (per-observation) weights the fit was made with, from
 
 The weights multiply each row's log-likelihood (drmTMB semantics), so
 `loglik`, `aic`, `bic`, profiles and likelihood-ratio tests use the weighted
-likelihood. `nobs(fit)` still counts rows, zero-weight rows included.
+likelihood. `nobs(fit)` counts rows with prior weight greater than zero when
+`weights` were supplied (not frequency weights; rows with weight zero are
+excluded from the likelihood and from `nobs` / `bic` sample-size conventions).
 
 Prior weights are implemented on the fixed-effect ML routes of the univariate
 families, on Gaussian and Poisson with one `(1 | g)`, on Gaussian `meta_V(v)`,
