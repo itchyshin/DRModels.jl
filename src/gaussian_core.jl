@@ -3317,9 +3317,10 @@ convention was adopted).
 `predict(type = "mean")`, and what [`fitted`](@ref) returns in-sample):
 `exp(μ + σ²/2)` for `LogNormal`, `(1 - π) μ` for zero-inflated counts,
 `μ / (1 - P(0))` for zero-truncated counts, `(1 - π) μ / (1 - P(0))` for hurdle
-counts, the zero/one-inflated mixture mean for ZeroOneBeta, and `μ` for every
-family whose mean is `μ`. It takes no `se`, is univariate only, and is not
-defined for CumulativeLogit. `type = :median` is `exp(Xβ̂)` for `LogNormal`
+counts, the zero/one-inflated mixture mean for ZeroOneBeta, the expected category
+score for `CumulativeLogit` (the same quantity as [`fitted`](@ref) in-sample),
+and `μ` for every other family whose mean is `μ`. It takes no `se` and is
+univariate only. `type = :median` is `exp(Xβ̂)` for `LogNormal`
 (the response-scale median that `type = :response` returned before), one vector
 per response for a bivariate fit. A bivariate `LogNormal` fit follows the same
 rule: `type = :response` is the log-scale `μ`, as in drmTMB.
