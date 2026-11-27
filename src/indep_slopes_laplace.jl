@@ -125,10 +125,10 @@ function _indep_aux_eta(kind::Val, yv, Xσ, Xν, θ, pμ, pσ, k0, ::Type{T}) wh
 end
 # Post-fit overrides of the stored means / scales (identity by default).
 _indep_post(kind::Val, yv, means, scales, ημ̂, θ̂, pμ, pσ) = (means, scales)
-# Kinds whose fit keeps the conditional modes for `fitted()`: the zero-inflated and zero-truncated
-# count routes and the ordinal route (the other kinds keep their own, older behaviour).
+# Kinds whose fit keeps the conditional modes for `fitted()`: the zero-inflated, hurdle and
+# zero-truncated count routes and the ordinal route (the other kinds keep their own, older behaviour).
 _indep_records_modes(::Val) = false
-_indep_records_modes(::Union{Val{:zip},Val{:zinb},Val{:tnb},Val{:cumlogit}}) = true
+_indep_records_modes(::Union{Val{:zip},Val{:zinb},Val{:tnb},Val{:hnb},Val{:cumlogit}}) = true
 _indep_obsval(::Val{:binomial}, yv) = [s / n for (s, n) in yv]
 _indep_famname(::Val{:gamma}) = "Gamma"
 _indep_famname(::Val{:student}) = "Student"
