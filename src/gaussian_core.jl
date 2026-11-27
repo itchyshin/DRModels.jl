@@ -8,10 +8,10 @@
 # parameter — `y ~ …` sets the response + μ predictor, `sigma ~ …` sets log σ.
 
 using StatsModels: @formula, FormulaTerm, Term, ConstantTerm, FunctionTerm,
-    schema, apply_schema, modelcols, coefnames
+    schema, apply_schema, modelcols
 using Statistics: std, mean
 using Random: default_rng
-import StatsAPI: coef, vcov, nobs, fitted, residuals, predict, aic, bic, dof, deviance, dof_residual, StatisticalModel, loglikelihood
+import StatsAPI: coef, coefnames, vcov, nobs, fitted, residuals, predict, aic, bic, dof, deviance, dof_residual, StatisticalModel, loglikelihood
 import Tables
 
 """
@@ -840,7 +840,7 @@ function _design(response::Symbol, rhs, data; schema_cache = nothing, schema_key
     catch e
         _rethrow_formula_build_hint(e)
     end
-    names = String.(vec(coefnames(ft.rhs)))
+    names = String.(vec(StatsModels.coefnames(ft.rhs)))
     # Catches a finite column that a transform (`log`, `I(1 / x)`, …) turned
     # non-finite. Plain `NaN`/`Inf` columns are already named above. The same
     # observed-row mask: a transform that is non-finite only on a dropped
@@ -2719,6 +2719,21 @@ Estimated coefficients, all parameter blocks concatenated (`coef(fit, :mu)` retu
 one block). Extends `StatsAPI.coef`.
 """
 coef(fit::DrmFit) = fit.theta
+"""
+    coefnames(fit::DrmFit)
+
+Coefficient names in the same order as [`coef`](@ref)(`fit`), one string per
+element of `fit.theta`. Extends `StatsAPI.coefnames`.
+"""
+function coefnames(fit::DrmFit)
+    out = String[]
+    sizehint!(out, length(fit.theta))
+    for ((_, _), (_, nms)) in zip(fit.blocks, fit.coefnames)
+        append!(out, nms)
+    end
+    length(out) == length(fit.theta) || error("coefnames: internal name/theta length mismatch")
+    return out
+end
 function coef(fit::DrmFit, param::Symbol)
     for (p, r) in fit.blocks
         p === param && return fit.theta[r]
