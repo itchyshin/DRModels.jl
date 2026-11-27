@@ -1,5 +1,6 @@
 [deps]
 Aqua = "4c88cf16-eb10-579e-8560-4a9242c79595"
+CategoricalArrays = "324d7699-5971-5ba3-83dc-2556f68ee04b"
 DRModels = "6c755ef2-eed4-4cdd-aafe-b639090bd215"
 DelimitedFiles = "8bb1440f-4735-579b-a4ab-409b98df4dab"
 Distributions = "31c24e10-a181-5473-b8eb-7969acd0382f"
