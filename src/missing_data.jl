@@ -78,6 +78,37 @@ _subset_kept_rows(col, keep) = _narrow_nomissing(col[keep])
 _subset_rows_narrowed(cols::NamedTuple, keep) =
     NamedTuple{keys(cols)}(map(col -> _subset_kept_rows(col, keep), values(cols)))
 
+# Reserved `schema_cache` key (#1562): digest of each predictor column at fit time
+# so `lrtest` / `anova` can refuse two fits that share the same response row set
+# but were estimated on different covariate values.
+const _PREDICTOR_FINGERPRINT_KEY = :__predictor_fingerprint__
+
+function _fingerprint_column(col::AbstractVector)
+    h = UInt(0xcbf29ce484222325)
+    for x in col
+        h = hash(ismissing(x) ? :missing : x, h)
+    end
+    return h
+end
+
+function _record_predictor_fingerprint!(f::Union{DrmFormula,BivariateDrmFormula}, data)
+    hasproperty(f, :schema_cache) || return nothing
+    fp = Dict{Symbol,UInt64}()
+    for c in _predictor_columns(f)
+        haskey(Tables.columntable(data), c) || continue
+        fp[c] = _fingerprint_column(Tables.columntable(data)[c])
+    end
+    isempty(fp) || (f.schema_cache[][_PREDICTOR_FINGERPRINT_KEY] = fp)
+    return nothing
+end
+
+function _predictor_fingerprint(fit::DrmFit)
+    f = fit.formula
+    (f isa DrmFormula || f isa BivariateDrmFormula) && hasproperty(f, :schema_cache) ||
+        return nothing
+    get(f.schema_cache[], _PREDICTOR_FINGERPRINT_KEY, nothing)
+end
+
 # `relmat`, `animal` and `spatial` line their matrix (or coordinates) up with
 # the grouping levels in order of first appearance. Dropping rows is safe only
 # when that level sequence survives; otherwise the matrix would silently pair
