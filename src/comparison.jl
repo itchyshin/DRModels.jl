@@ -983,7 +983,11 @@ reduced = update(full, bf(@formula(y ~ 1), @formula(sigma ~ 1)); data = data)
 length(coef(reduced)) < length(coef(full))   # fewer parameters
 ```
 """
-function update(fit::DrmFit, formula, args...; data, kwargs...)
+function update(fit::DrmFit, formula, args...; data = nothing, kwargs...)
+    data === nothing && throw(ArgumentError(
+        "update: pass `data =` with the table used to fit the model " *
+        "(and `tree` / `K` / `A` / `coords` for structured random effects when needed). " *
+        "The fit object does not retain observations."))
     isempty(args) || throw(ArgumentError(
         "update requires named arguments. Pass values as `data = ...`, " *
         "`method = ...`, or another named argument; an unnamed extra is dropped " *
