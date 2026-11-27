@@ -235,10 +235,41 @@ warning (the drop still happens). If no rows are dropped the columns are returne
 as they came, except that a `Union{Missing,T}` column that holds no `missing` is
 narrowed to `T` (as it is on the dropping branch), so it fits as numbers.
 """
-function drm_listwise(formula::Union{DrmFormula,BivariateDrmFormula}, data; verbose::Bool = true)
-    Tables.istable(data) ||
+_drm_listwise_looks_like_family(data) =
+    any(_ -> true, methods(drm, (Union{DrmFormula, BivariateDrmFormula}, typeof(data))))
+
+function _drm_listwise_refuse_bad_keywords(data, kwargs)
+    isempty(kwargs) && return
+    has_data_kw = :data in keys(kwargs)
+    if has_data_kw && _drm_listwise_looks_like_family(data)
+        throw(ArgumentError(
+            "drm_listwise: pass the column table as the second positional argument, not as `data = …`. " *
+            "This call gave $(_family_label(data)) in the second slot " *
+            "(that belongs in `drm(formula, family(); data = …)`, not in `drm_listwise`). " *
+            "Use `drm_listwise(formula, data; verbose = …)`."))
+    end
+    has_data_kw &&
+        throw(ArgumentError(
+            "drm_listwise does not accept a `data` keyword; pass the table positionally: " *
+            "`drm_listwise(formula, data; verbose = …)`."))
+    extra = [k for k in keys(kwargs) if k !== :verbose]
+    isempty(extra) ||
+        throw(ArgumentError(
+            "drm_listwise does not accept the keyword" * (length(extra) > 1 ? "s " : " ") *
+            join(("`$k`" for k in extra), ", ") * "; only `verbose` is allowed."))
+end
+
+function drm_listwise(formula::Union{DrmFormula,BivariateDrmFormula}, data; verbose::Bool = true, kwargs...)
+    _drm_listwise_refuse_bad_keywords(data, kwargs)
+    if !Tables.istable(data)
+        _drm_listwise_looks_like_family(data) &&
+            throw(ArgumentError(
+                "drm_listwise: the second argument must be `data` (a column table), not a response " *
+                "family ($(_family_label(data))). Use `drm_listwise(formula, data)`, then fit with " *
+                "`drm(formula, family(); data = …)`."))
         throw(ArgumentError("drm_listwise: `data` must be a Tables.jl-compatible column table " *
                             "(e.g. a NamedTuple of vectors or a DataFrame)."))
+    end
     cols = Tables.columntable(data)
     used = _model_columns(formula)
     for c in used
