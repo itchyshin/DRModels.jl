@@ -198,8 +198,30 @@ function _fit_locscale_frontend(kind, fam, f, rhs, lc, data; g_tol, se,
     )
     fit = _build_locscale_drmfit(kind, fam, fitres, y, Xμ, Xψ, nmμ, nmσ, String(lc.group);
                                  obs_prop = obs_prop, trials = trials)
+    # Per-row conditional mean modes for `fitted(fit)` / `residuals(fit)` (#1581).
+    _record_locscale_cond_fit!(fit.scales, kind, y, Xμ, Xψ, gidx, G, Q, fitres.θ)
     # Carry the structured design so `confint(:profile)` can route to the robust
     # location–scale profiler. The objective uses the engine packing; the DrmFit
     # `theta` is in `:recov` order, so the profile router permutes between them.
     return _withnll(fit, LocScaleObjective(kind, y, Xμ, Xψ, gidx, G, Q; whitened=true))
+end
+
+# Record `scales[:cond_fit_eta_re]` at the converged location–scale θ using the
+# same whitened inner-mode solve as `_fit_locscale(...; whitened = true)`.
+function _record_locscale_cond_fit!(scales, kind, y, Xμ, Xψ, gidx, G, Q, θ)
+    n = length(y)
+    Zη = _ls_canonical_Zeta(n)
+    Zψ = _ls_canonical_Zpsi(n)
+    θ64 = collect(Float64, θ)
+    result = _ls_whitened_eval(kind, y, Xμ, Xψ, gidx, G, Q, θ64, Zη, Zψ; gradient = false)
+    if !result.status.ok || result.seed === nothing
+        scales[:cond_fit_failed] = [1.0]
+        return scales
+    end
+    z = result.seed.z
+    L = _ls_whitened_L(θ64, size(Xμ, 2), size(Xψ, 2))
+    L === nothing && (scales[:cond_fit_failed] = [1.0]; return scales)
+    Wη = Matrix{Float64}(Zη * L)
+    eta = [dot(view(Wη, i, :), view(z, 2gidx[i]-1:2gidx[i])) for i in 1:n]
+    return _record_cond_fit!(scales, eta)
 end
