@@ -1552,8 +1552,15 @@ end
 
 function _fit_poisson(fam::Poisson, y, Xμ, nmμ, g_tol; offset::AbstractVector{<:Real} = zeros(length(y)))
     n = length(y); pμ = size(Xμ, 2)
-    lf = [_logfactorial(round(Int, yi)) for yi in y]    # constant log y! term
     off = Float64.(offset)
+    if pμ == 0 && all(==(0.0), off)
+        throw(ArgumentError(
+            "Poisson(): the mean formula has no estimable fixed-effect terms " *
+            "(for example `y ~ 0` with no covariates or offset). Add at least one predictor or " *
+            "an intercept (`y ~ 1`), a random effect such as `(1 | g)`, or an `offset(...)` term " *
+            "for known exposure."))
+    end
+    lf = [_logfactorial(round(Int, yi)) for yi in y]    # constant log y! term
     w = _ctl_weights(n)                  # prior weights: row log-lik multipliers (#931)
     function nll(θ)
         ημ = Xμ * θ .+ off                              # log λ; offset() coefficient fixed at 1
@@ -1563,7 +1570,8 @@ function _fit_poisson(fam::Poisson, y, Xμ, nmμ, g_tol; offset::AbstractVector{
         end
         return s
     end
-    θ0 = zeros(pμ); θ0[1] = log(sum(y) / n + eps()) - (isempty(off) ? 0.0 : sum(off) / n)
+    θ0 = zeros(pμ)
+    pμ > 0 && (θ0[1] = log(sum(y) / n + eps()) - sum(off) / n)
     res = _ctl_optimize((x0, opts, method) -> Optim.optimize(nll, x0, method, opts; autodiff = :forward),
                        θ0; g_tol = g_tol)   # control: maxit / start / multi_start (#948 #994)
     θ̂ = Optim.minimizer(res); V = _ctl_se(() -> _vcov_from_hessian(ForwardDiff.hessian(nll, θ̂)), θ̂)
