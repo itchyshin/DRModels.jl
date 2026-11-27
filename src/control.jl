@@ -764,14 +764,27 @@ macro drm_entry(fdef)
     end
     # `data` is a named keyword on some routes and travels inside `kwargs...` on others.
     record = if :data in names
-        :(_record_factor_levels!($fname, data))
+        quote
+            _record_factor_levels!($fname, data)
+            _record_predictor_fingerprint!($fname, data)
+        end
     elseif splat !== nothing
         # `insert!` above moved the splat, so find it again.
         kwsplat = params.args[findfirst(a -> a isa Expr && a.head === :..., params.args)].args[1]
-        :(haskey($kwsplat, :data) && _record_factor_levels!($fname, $kwsplat[:data]))
+        :(begin
+            haskey($kwsplat, :data) && begin
+                _record_factor_levels!($fname, $kwsplat[:data])
+                _record_predictor_fingerprint!($fname, $kwsplat[:data])
+            end
+        end)
     else
         # the extra-keyword splat added above is named `_drm_extra_kw`
-        :(haskey(_drm_extra_kw, :data) && _record_factor_levels!($fname, _drm_extra_kw[:data]))
+        :(begin
+            haskey(_drm_extra_kw, :data) && begin
+                _record_factor_levels!($fname, _drm_extra_kw[:data])
+                _record_predictor_fingerprint!($fname, _drm_extra_kw[:data])
+            end
+        end)
     end
     # The fixed-effect design rank check (#1110) for every route but the Gaussian one, which
     # makes its own call; `_apply_design_rank` flags the finished fit when the check found an alias.

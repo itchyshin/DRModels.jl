@@ -147,6 +147,7 @@ function lrtest(reduced::DrmFit, full::DrmFit; mixture::Bool = false)
     _marginal_compare_guard(reduced, full, "lrtest")
     _map_compare_guard(reduced, full, "lrtest")
     _nobs_compare_guard(reduced, full, "lrtest")
+    _predictor_compare_guard(reduced, full, "lrtest")
     _unconverged_compare_warn(reduced, full, "lrtest")
     Δdof = dof(full) - dof(reduced)
     Δdof > 0 || throw(ArgumentError(
@@ -803,6 +804,22 @@ function _nobs_compare_guard(a::DrmFit, b::DrmFit, verb::AbstractString)
         "`update` does not guarantee. Refit both on the same rows."))
 end
 
+# Covariate fingerprint (#1562): same response rows but different predictor
+# values (for example two nested fits on the same `y` with perturbed `x`) make
+# an LR statistic meaningless even when `nobs` matches and the masked responses agree.
+function _predictor_compare_guard(a::DrmFit, b::DrmFit, verb::AbstractString)
+    pa = _predictor_fingerprint(a)
+    pb = _predictor_fingerprint(b)
+    (pa isa Dict && pb isa Dict) || return nothing
+    shared = [c for c in keys(pa) if haskey(pb, c) && pa[c] != pb[c]]
+    isempty(shared) && return nothing
+    throw(ArgumentError(
+        "$verb: the two fits were estimated with different predictor values for " *
+        join(string.(shared), ", ") *
+        " on rows that share the same responses. A likelihood-ratio test requires " *
+        "the same design matrix on every shared covariate; refit both on identical data."))
+end
+
 # Convergence caveat (#1002): a finite log-likelihood from a fit whose optimiser
 # reported `converged = false` is still compared (the sentinel guard refuses the
 # plateau), but its LR statistic can be off in either direction. Warn, naming the
@@ -917,7 +934,9 @@ Prior (per-observation) weights the fit was made with, from
 
 The weights multiply each row's log-likelihood (drmTMB semantics), so
 `loglik`, `aic`, `bic`, profiles and likelihood-ratio tests use the weighted
-likelihood. `nobs(fit)` still counts rows, zero-weight rows included.
+likelihood. `nobs(fit)` counts rows with prior weight greater than zero when
+`weights` were supplied (not frequency weights; rows with weight zero are
+excluded from the likelihood and from `nobs` / `bic` sample-size conventions).
 
 Prior weights are implemented on the fixed-effect ML routes of the univariate
 families, on Gaussian and Poisson with one `(1 | g)`, on Gaussian `meta_V(v)`,
