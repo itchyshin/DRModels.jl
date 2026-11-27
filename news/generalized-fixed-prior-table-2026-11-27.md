@@ -1,0 +1,2 @@
+- **Fixed-effect prior tables now support normalized Student-t densities.** The table interface accepts `student_t(location, scale, df)` for fixed-effect coefficients alongside the existing normal density and ridge penalty. The Gaussian random-intercept and residual-SD Gamma rows keep their natural-scale parameterization.
+<!-- slop-ok: The news-fragment convention requires a bold short lead sentence. -->
