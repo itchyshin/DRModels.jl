@@ -130,7 +130,10 @@ end
         @test residuals(fit) ≈ Float64.(s) ./ ntr .- fitted(fit) rtol = 1e-10
         r = residuals(fit; type = :quantile)
         @test length(r) == n && all(isfinite, r)
-        @test_throws ArgumentError residuals(fit; type = :pearson)
+        yprop = Float64.(s) ./ ntr
+        rp = residuals(fit; type = :pearson)
+        @test length(rp) == n && all(isfinite, rp)
+        @test rp ≈ (yprop .- μh) ./ sqrt.(μh .* (1 .- μh) ./ ntr) rtol = 1e-10
 
         # response-scale predict_parameters / predict on new data, hand logits
         nd = (; x = [-1.0, 0.0, 2.0])

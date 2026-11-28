@@ -641,9 +641,9 @@ function _pearson_residuals(fit::DrmFit)
     haskey(fit.means, :mu) && !haskey(fit.scales, :sigma1) ||
         throw(ArgumentError("residuals(type = :pearson) is univariate only; $fname with a " *
             "bivariate response is not supported"))
-    any(fam isa F for F in _PEARSON_FAMILIES) ||
+    (any(fam isa F for F in _PEARSON_FAMILIES) || fam isa Binomial) ||
         throw(ArgumentError("residuals(type = :pearson) is not implemented for $fname " *
-            "(supported: Gaussian, Poisson, NegBinomial2, Gamma, Beta, LogNormal, fixed-effect fits). " *
+            "(supported: Gaussian, Poisson, NegBinomial2, Gamma, Beta, LogNormal, Binomial, fixed-effect fits). " *
             "drmTMB defines its Pearson residual differently for some other families, " *
             "so no number is returned. Use type = :quantile or type = :response."))
     (any(cn -> first(cn) === :resd, fit.coefnames) || any(p -> first(p) in
@@ -664,6 +664,12 @@ function _pearson_residuals(fit::DrmFit)
             # log-median (η_μ); not (y − E[Y]) / √Var[Y]) on the response scale.
             m = max(μ[i], eps())
             return (log(y[i]) - log(m)) / fit.scales[:sigma][i]
+        elseif fam isa Binomial
+            # drmTMB standardises on the proportion scale (successes / trials), not counts.
+            ntri = fit.scales[:trials][i]
+            p = clamp(μ[i], eps(), 1 - eps())
+            yprop = y[i]
+            return (yprop - p) / sqrt(p * (1 - p) / ntri)
         end
         d = _conditional_dist(fam, i; μ = μ, scales = fit.scales, obs = fit.obs,
                               gamma_sigma_is_shape = gsis)
