@@ -36,9 +36,11 @@ using Test, DRModels, ForwardDiff, LinearAlgebra
     @test_throws ArgumentError drm(form, Gaussian(); data=dat, priors=priors, marginal=:VA)
     @test_throws ArgumentError drm(form, Gaussian(); data=dat, priors=priors, algorithm=:lbfgs)
     @test_throws ArgumentError drm(form, Gaussian(); data=dat, priors=priors, K=Matrix{Float64}(I, 4, 4))
-    for c in (DRMControl(maxit=1), DRMControl(start=[0., 0., 0., 0.]), DRMControl(multi_start=2))
-        @test_throws ArgumentError drm(form, Gaussian(); data=dat, priors=priors, control=c)
-    end
+    @test_throws ArgumentError drm(form, Gaussian(); data=dat, priors=priors,
+                                 control=DRMControl(start=[0., 0., 0.]))
+    multi = drm(form, Gaussian(); data=dat, priors=priors,
+                control=DRMControl(multi_start=2, maxit=500))
+    @test control_info(multi).kept_start >= 1
     controlled = drm(form, Gaussian(); data=dat, priors=priors,
                      control=DRMControl(optimizer=:bfgs, se=false))
     info = control_info(controlled)

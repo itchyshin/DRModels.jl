@@ -165,10 +165,11 @@ const _OS_RE = bf(@formula(y ~ 1 + x + (1 | g)), @formula(sigma ~ 1 + x))
     @test scope.selected_optimizer_stage === :restart
     @test Optim.minimizer(boundary)[2] == -2.0
 
-    @test_throws ArgumentError drm(_OS_RE, Gaussian(); data = _OS_DATA,
-                                   control = DRMControl(optimizer = :bfgs, maxit = 100))
-    @test_throws ArgumentError drm(_OS_RE, Gaussian(); data = _OS_DATA,
-                                   control = DRMControl(optimizer = :bfgs, seed = 9))
+  re_ms = drm(_OS_RE, Gaussian(); data = _OS_DATA,
+              control = DRMControl(optimizer = :bfgs, maxit = 100, se = false))
+  @test control_info(re_ms).native_controls.maxit == 100
+  @test_throws ArgumentError drm(_OS_RE, Gaussian(); data = _OS_DATA,
+                                 control = DRMControl(optimizer = :bfgs, seed = 9))
     @test_throws ArgumentError drm(_OS_RE, Gaussian(); data = _OS_DATA, method = :REML,
                                    control = DRMControl(optimizer = :bfgs))
     @test_throws ArgumentError drm(_OS_FIXED, Gaussian(); data = _OS_DATA,

@@ -47,17 +47,12 @@ drmTMB's `drm_control()`.
   [`control_info`](@ref)`(fit).se` tells you which case applied (`:skipped` or
   `:discarded`).
 * `maxit`, `start` and `multi_start` are honoured on the **fixed-effect** routes
-  of every univariate family. This includes the main Gaussian location-scale
-  route. A model with random, structured (`phylo`, `relmat`, `spatial`, …) or
-  `meta_V` terms, or a bivariate model, refuses these fields with an
-  `ArgumentError` before fitting. A route that does not honour a field it was
-  given never ignores it silently: it throws an `ArgumentError` that names the
-  field.
+  of every univariate family and on random-effect / structured ML routes that
+  optimize their outer parameters through `_ctl_optimize`. A route that does not
+  honour a field it was given never ignores it silently: it throws an
+  `ArgumentError` that names the field (#1219).
 * `optimizer = :lbfgs` and `optimizer = :bfgs` work on the fixed-effect ML
-  routes above and Gaussian ML with one mean random intercept `(1 | g)`.
-  That random-intercept route uses its own conditional two-start restart;
-  `maxit`, `start`, `multi_start`, `seed` and `jitter` remain unavailable there. Other latent,
-  structured, bivariate and REML routes refuse an explicit optimizer. Gaussian
+  routes above and on the same random-effect / structured ML routes. Gaussian
   selection also requires `algorithm = :auto` and no alternate integration,
   imputation or profiling options.
   This control selects the primary fit only. Fit-based `profile_result`,
@@ -314,23 +309,9 @@ function _ctl_preflight(scope::_ControlScope, f, fam)
     (wants_optim || wants_w) || return nothing
     _ctl_has_latent_terms(f) || return nothing
     wants_w && !wants_optim && _ctl_weights_latent_ok(f, fam) && return nothing
-    if c.optimizer !== :default && !wants_w && c.maxit === nothing &&
-       c.start === nothing && c.multi_start == 1 && c.seed == 1 && c.jitter == 0.5 &&
-       _ctl_simple_gaussian_re(f, fam)
-        return nothing
-    end
-    what = String[]
-    c.maxit !== nothing && push!(what, "maxit")
-    c.start !== nothing && push!(what, "start")
-    c.multi_start > 1 && push!(what, "multi_start")
-    c.seed != 1 && push!(what, "seed")
-    c.jitter != 0.5 && push!(what, "jitter")
-    c.optimizer !== :default && push!(what, "optimizer")
-    wants_optim && (what = ["`control = DRMControl(" * join(what, ", ") * " = …)`"])
-    wants_w && push!(what, "`weights`")
     kind = f isa DrmFormula ? "a model with random, structured, `meta_V` or `sd()` terms" :
                               "a bivariate or multi-response model"
-    if wants_w && !wants_optim
+    if wants_w && !_ctl_weights_latent_ok(f, fam)
         throw(ArgumentError("drm: `weights` is supported on fixed-effect routes of univariate " *
             "families, on a Gaussian or Poisson mean with one random intercept `(1 | g)`, and " *
             "on a Gaussian mean with `meta_V`, and on a residual-only bivariate Gaussian model " *
@@ -338,12 +319,14 @@ function _ctl_preflight(scope::_ControlScope, f, fam)
             "($(typeof(fam))), so the fit was refused before it started, not run with the " *
             "weights ignored."))
     end
-    throw(ArgumentError("drm: " * join(what, " and ") * " is supported only on the " *
-        "fixed-effect routes of univariate families for now (#948, #994, #931). This is " *
-        kind * " ($(typeof(fam))), so the fit was refused before it started, not run " *
-        "with the field ignored. drmTMB's `drm_control(multi_start =)` does accept these " *
-        "fields on mixed models; the gap here is tracked in #1219. " *
-        "`control = DRMControl(se = false)` works on every route."))
+    if wants_optim && c.multi_start == 1 && (c.seed != 1 || c.jitter != 0.5)
+        throw(ArgumentError("drm: `seed` and `jitter` on " * kind *
+            " are supported only when `multi_start` > 1 (#994); the fit was refused before " *
+            "it started, not run with the fields ignored."))
+    end
+  # #1219: maxit / start / multi_start / optimizer pass through to fitters via `_ctl_optimize`;
+  # `_ctl_finish` refuses a route that did not honour them.
+    return nothing
 end
 
 # ---------------------------------------------------------------------------
@@ -651,6 +634,17 @@ function _ctl_optimize(run::Function, θ0::AbstractVector; g_tol::Real)
     s.start_nll = nll; s.kept = kept
     s.selected_optimizer_stage = :start
     return best
+end
+
+"""
+    _ctl_optimize_nll(nll, θ0; g_tol) -> Optim result
+
+Outer optimizer for a route that scores a plain `nll(θ)` with ForwardDiff.
+Honours the active `DRMControl` when present.
+"""
+function _ctl_optimize_nll(nll, θ0::AbstractVector; g_tol::Real)
+    _ctl_optimize((x0, opts, method) -> Optim.optimize(nll, x0, method, opts; autodiff = :forward),
+                  θ0; g_tol = g_tol)
 end
 
 _ctl_run_record(method, stage, k, start, res, g_tol, maxit) =

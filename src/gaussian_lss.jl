@@ -288,7 +288,7 @@ function _fit_ranef_gaussian_lss(fam::Gaussian, y, Xμ, Xσ, Zg, gidx, G, nmμ, 
     # column coding; with Zg = ones(G,1) this is exactly the scalar init).
     θ0[pμ+pσ+1:end] .= Zg \ fill(log(std(res0) / 2 + eps()), G)
 
-    res = Optim.optimize(nll, θ0, Optim.LBFGS(), Optim.Options(g_tol = g_tol); autodiff = :forward)
+    res = _ctl_optimize_nll(nll, θ0; g_tol = g_tol)
     θ̂ = Optim.minimizer(res)
     H = ForwardDiff.hessian(nll, θ̂)
     V = _vcov_from_hessian(H)
@@ -1129,7 +1129,7 @@ function _fit_gaussian_lss_multi(fam::Gaussian, y, Xμ, Xσ, comps::Vector{_LssC
     for (ci, c) in enumerate(comps)
         θ0[offs[ci]+1:offs[ci+1]] .= c.Zg \ fill(log(std(res0) / sqrt(m + 1) + eps()), c.G)
     end
-    res = Optim.optimize(nll, θ0, Optim.LBFGS(), Optim.Options(g_tol = g_tol); autodiff = :forward)
+    res = _ctl_optimize_nll(nll, θ0; g_tol = g_tol)
     θ̂ = Optim.minimizer(res)
     H = ForwardDiff.hessian(nll, θ̂)
     Vcov = _vcov_from_hessian(H)

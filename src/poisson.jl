@@ -1358,7 +1358,7 @@ function _fit_poisson_ranef(fam::Poisson, y, Xμ, gidx, G, nmμ, grp, g_tol; rem
     θ0 = zeros(pμ + 1)
     θ0[1] = log(sum(y) / n + eps()) - sum(off) / n
     θ0[pμ+1] = log(0.5)
-    res = Optim.optimize(nll, θ0, Optim.LBFGS(), Optim.Options(g_tol = g_tol); autodiff = :forward)
+    res = _ctl_optimize_nll(nll, θ0; g_tol = g_tol)
     θ̂ = Optim.minimizer(res); conv = drm_optim_converged(res)
     blocks = [:mu => 1:pμ, :resd => (pμ+1):(pμ+1)]
     names = [:mu => nmμ, :resd => [String(grp)]]
@@ -1412,7 +1412,7 @@ function _fit_poisson_ranef_aghq(fam::Poisson, y, Xμ, gidx, G, nmμ, grp, g_tol
     θ0 = zeros(pμ + 1)
     θ0[1] = log(sum(y) / n + eps()) - sum(off) / n
     θ0[pμ+1] = log(0.5)
-    res = Optim.optimize(nll, θ0, Optim.LBFGS(), Optim.Options(g_tol = g_tol); autodiff = :forward)
+    res = _ctl_optimize_nll(nll, θ0; g_tol = g_tol)
     θ̂ = Optim.minimizer(res); conv = drm_optim_converged(res)
     # A penalised objective at the optimum means some group posterior could not be
     # evaluated there (#1063): fail cleanly rather than report a meaningless fit.
@@ -1454,7 +1454,7 @@ function _fit_poisson_corr_ranef(fam::Poisson, y, Xμ, xs, gidx, G, nmμ, grp, g
     θ0 = zeros(pμ + 3)
     θ0[1] = log(sum(y) / n + eps())
     θ0[pμ+1] = log(0.4); θ0[pμ+2] = log(0.4); θ0[pμ+3] = 0.0
-    res = Optim.optimize(nll, θ0, Optim.LBFGS(), Optim.Options(g_tol = g_tol); autodiff = :forward)
+    res = _ctl_optimize_nll(nll, θ0; g_tol = g_tol)
     θ̂ = Optim.minimizer(res); V = _vcov_from_hessian(ForwardDiff.hessian(nll, θ̂))
     blocks = [:mu => 1:pμ, :recov => (pμ+1):(pμ+3)]
     names = [:mu => nmμ, :recov => ["$(grp):L11", "$(grp):L22", "$(grp):L21"]]

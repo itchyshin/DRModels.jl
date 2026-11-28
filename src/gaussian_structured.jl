@@ -336,7 +336,7 @@ function _fit_two_structured_gaussian(fam::Gaussian, y, Xμ, gidx1, G1, C1, gidx
     θ0[pμ+1] = log(s0 / sqrt(3) + eps())     # balanced split: resid + 2 structured
     θ0[pμ+2] = log(s0 / sqrt(3) + eps())
     θ0[pμ+3] = log(s0 / sqrt(3) + eps())
-    res = Optim.optimize(nll, θ0, Optim.LBFGS(), Optim.Options(g_tol = g_tol); autodiff = :forward)
+    res = _ctl_optimize_nll(nll, θ0; g_tol = g_tol)
     θ̂ = Optim.minimizer(res)
     V = _vcov_from_hessian(ForwardDiff.hessian(nll, θ̂))
 
@@ -525,7 +525,7 @@ function _fit_structured_ranef_gaussian(fam::Gaussian, y, Xμ, Xσ, comps, nmμ,
     for (k, c) in enumerate(comps)
         θ0[pμ+pσ+k] = log(s0 / sqrt(m + 1) / (sqrt(mean(abs2, c[1])) + eps()) + eps())
     end
-    res = Optim.optimize(nll, θ0, Optim.LBFGS(), Optim.Options(g_tol = g_tol); autodiff = :forward)
+    res = _ctl_optimize_nll(nll, θ0; g_tol = g_tol)
     θ̂ = Optim.minimizer(res)
     Vθ = _vcov_from_hessian(ForwardDiff.hessian(nll, θ̂))
 
@@ -691,7 +691,7 @@ function _fit_spatial_gaussian(fam::Gaussian, y, Xμ, Xσ, gidx, G, coords, nmμ
     θ0[pμ+1] = log(std(res0) + eps())
     θ0[pμ+pσ+1] = log(std(res0) / 2 + eps())
     θ0[pμ+pσ+2] = log(max(meandist, eps()))   # meandist>0 by the G/coincidence guards
-    res = Optim.optimize(nll, θ0, Optim.LBFGS(), Optim.Options(g_tol = g_tol); autodiff = :forward)
+    res = _ctl_optimize_nll(nll, θ0; g_tol = g_tol)
     θ̂ = Optim.minimizer(res)
     V = _vcov_from_hessian(ForwardDiff.hessian(nll, θ̂))
 

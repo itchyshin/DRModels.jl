@@ -177,16 +177,19 @@ _n3_quiet(f) = redirect_stderr(devnull) do; f(); end
         @test !control_info(dis).starts_agree
     end
 
-    @testset "named refusals before fitting" begin
+    @testset "DRMControl on random-effect routes (#1219)" begin
         g = repeat(1:15, 10)
         d = (y = _N3.yg, x = _N3.x, g = g)
         fre = bf(@formula(y ~ 1 + x + (1 | g)), @formula(sigma ~ 1))
-        for kw in ((control = DRMControl(maxit = 10),), (control = DRMControl(start = [1.0]),),
-                   (control = DRMControl(multi_start = 2),))
-            err = try drm(fre, Gaussian(); data = d, kw...); nothing catch e; e end
-            @test err isa ArgumentError
-            @test occursin("fixed-effect routes", sprint(showerror, err))
-        end
+        base = _n3_quiet(() -> drm(fre, Gaussian(); data = d))
+        ms = _n3_quiet(() -> drm(fre, Gaussian(); data = d, control = DRMControl(multi_start = 3, maxit = 1000)))
+        @test control_info(ms).kept_start >= 1
+        @test loglik(ms) >= loglik(base) - 1e-6
+    end
+
+    @testset "named refusals before fitting" begin
+        g = repeat(1:15, 10)
+        d = (y = _N3.yg, x = _N3.x, g = g)
         # `weights` are read by the single `(1 | g)` Gaussian route since the weights-latent-routes change
         # (test_weights_re_parity.jl); a shape without a weighted fitter keeps the refusal.
         fslope = bf(@formula(y ~ 1 + x + (1 + x | g)), @formula(sigma ~ 1))
@@ -204,7 +207,8 @@ _n3_quiet(f) = redirect_stderr(devnull) do; f(); end
         @test err isa ArgumentError
         @test occursin("residual-only bivariate Gaussian", sprint(showerror, err))
         err = try drm(fb, Gaussian(); data = db, control = DRMControl(maxit = 10)); nothing catch e; e end
-        @test err isa ArgumentError && occursin("bivariate", sprint(showerror, err))
+        errmsg = sprint(showerror, err)
+        @test err isa ArgumentError && (occursin("bivariate", errmsg) || occursin("does not honour", errmsg))
         # Not a DRMControl
         @test_throws ArgumentError drm(_n3_cases()[1][3], Gaussian(); data = _n3_cases()[1][4](allrows),
                                        control = (maxit = 3,))

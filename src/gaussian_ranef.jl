@@ -696,19 +696,18 @@ end
 # guard's job to flag as a boundary fit either way -- see its docstring -- not
 # a reason to crash on one representative of the tie and not the other). On a
 # near-tie, prefer whichever result sits closer to the interior.
-function _re_lbfgs_with_restart(nll, θ0::AbstractVector, θ0_restart::AbstractVector,
-                                g_tol::Real, lσb_idx::Int, scale_ref::Real)
+function _re_lbfgs_one_start(nll, θ0::AbstractVector, θ0_restart::AbstractVector,
+                             g_tol::Real, lσb_idx::Int, scale_ref::Real,
+                             opts, method; record_runs::Bool = true)
     scope = _active_control_scope()
     requested = scope === nothing ? :default : scope.control.optimizer
-    method_name = requested === :bfgs ? :bfgs : :lbfgs
-    method = requested === :bfgs ? Optim.BFGS() : Optim.LBFGS()
-    scope !== nothing && requested !== :default && (scope.used_optim = true)
+    method_name = method isa Optim.BFGS ? :bfgs : :lbfgs
     finish(res, stage) = begin
-        scope !== nothing && (scope.selected_optimizer_stage = stage)
+        scope !== nothing && record_runs && (scope.selected_optimizer_stage = stage)
         res
     end
     function record(stage, start, res)
-        scope === nothing && return
+        (scope === nothing || !record_runs) && return
         x = Optim.minimizer(res)
         objective = _objective_at_minimizer(nll, res)
         finite = isfinite(objective) && all(isfinite, x)
@@ -730,7 +729,6 @@ function _re_lbfgs_with_restart(nll, θ0::AbstractVector, θ0_restart::AbstractV
         push!(scope.optimizer_runs, run)
         return run
     end
-    opts = Optim.Options(g_tol = g_tol)
     res = Optim.optimize(nll, θ0, method, opts; autodiff = :forward)
     record(:primary, θ0, res)
     θ̂ = Optim.minimizer(res)
@@ -781,6 +779,31 @@ function _re_lbfgs_with_restart(nll, θ0::AbstractVector, θ0_restart::AbstractV
         end
     end
     return finish(res, :primary)
+end
+
+function _re_lbfgs_with_restart(nll, θ0::AbstractVector, θ0_restart::AbstractVector,
+                                g_tol::Real, lσb_idx::Int, scale_ref::Real)
+    scope = _active_control_scope()
+    if scope !== nothing
+        c = scope.control
+        wants_ms = c.maxit !== nothing || c.start !== nothing || c.multi_start > 1
+        if wants_ms
+            return _ctl_optimize((x0, opts, method) ->
+                _re_lbfgs_one_start(nll, x0, θ0_restart, g_tol, lσb_idx, scale_ref, opts, method;
+                                     record_runs = false),
+                θ0; g_tol = g_tol)
+        elseif c.optimizer !== :default
+            method = c.optimizer === :bfgs ? Optim.BFGS() : Optim.LBFGS()
+            scope.used_optim = true
+            opts = Optim.Options(g_tol = g_tol)
+            return _re_lbfgs_one_start(nll, θ0, θ0_restart, g_tol, lσb_idx, scale_ref, opts, method)
+        end
+    end
+    requested = scope === nothing ? :default : scope.control.optimizer
+    method = requested === :bfgs ? Optim.BFGS() : Optim.LBFGS()
+    scope !== nothing && requested !== :default && (scope.used_optim = true)
+    opts = Optim.Options(g_tol = g_tol)
+    return _re_lbfgs_one_start(nll, θ0, θ0_restart, g_tol, lσb_idx, scale_ref, opts, method)
 end
 
 _sd_prior_stationary(score) = all(isfinite, score) && maximum(abs, score) <= 1e-6
@@ -1543,7 +1566,11 @@ function _fit_multi_ranef_gaussian(fam::Gaussian, y, Xμ, Xσ, comps, nmμ, nmσ
         nll_opt = nll
         od = Optim.OnceDifferentiable(nll, grad!, θ0)
     end
-    res = Optim.optimize(od, θ0, Optim.LBFGS(), Optim.Options(g_tol = g_tol))
+    res = _ctl_optimize((x0, opts, method) -> begin
+        od0 = reml ? Optim.OnceDifferentiable(nll_reml, x0; autodiff = :forward) :
+              Optim.OnceDifferentiable(nll, grad!, x0)
+        Optim.optimize(od0, x0, method, opts)
+    end, θ0; g_tol = g_tol)
     θ̂ = Optim.minimizer(res)
     if penalized && any(row -> abs(θ̂[row.index]) >= 30.0, sd_priors)
         throw(ArgumentError("targeted random-effect SD reached the likelihood clamp; no interior prior fit is available"))
@@ -1985,7 +2012,7 @@ function _fit_musigma_ranef_gaussian(fam::Gaussian, y, Xμ, Xσ, gidx, G, nmμ, 
     θ0[pμ+1] = log(std(res0) + eps())
     θ0[pμ+pσ+1] = log(0.5 * std(res0) + eps())
     θ0[pμ+pσ+2] = log(0.3)
-    res = Optim.optimize(nll, θ0, Optim.LBFGS(), Optim.Options(g_tol = g_tol); autodiff = :forward)
+    res = _ctl_optimize_nll(nll, θ0; g_tol = g_tol)
     θ̂ = Optim.minimizer(res)
     V = _vcov_from_hessian(ForwardDiff.hessian(nll, θ̂))
 
