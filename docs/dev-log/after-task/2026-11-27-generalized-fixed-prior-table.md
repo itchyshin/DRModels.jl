@@ -12,7 +12,7 @@ I replayed the exact same 359-file shard 2 assignment on `f1665b8603ecfd49c51784
 
 The implementation source tree is `105ca0b6d06977bac0820d8442fb73b1fd1f9105`. The run receipts are under `/home/snakagaw/hsq_work/generalized-prior-table-arc/drmodels-prior-table-main-60f832297-20261127/`. The original attempt is `full-suite-attempt-04`; the corrected shard 2 replay is `full-suite-attempt-06-api-tier-replay`.
 
-The required engine regression benchmark also passed on the same tested code source (`f1665b8603ecfd49c51784b3aafdd71e1c8ba346`). It exited 0 in 21 seconds on one thread. The fit converged at logLik −256.5066, 0.0034 from the −256.51 baseline. The before/after source snapshots matched for HEAD, tree, Project.toml, Manifest.toml and clean Git status. Its log is `/home/snakagaw/hsq_work/generalized-prior-table-arc/drmodels-prior-table-main-60f832297-20261127/engine-benchmark-f1665-20261127/run.log` (SHA-256 `576230b478010a88e986e427c7dfe83d961f135661afc5c1d6c3981aa6e1d290`).
+The required engine regression benchmark also passed on the same tested code source (`f1665b8603ecfd49c51784b3aafdd71e1c8ba346`). It exited 0 in 21 seconds on one thread. The fit converged at logLik −256.5066, 0.0134 from the −256.52 baseline. The before/after source snapshots matched for HEAD, tree, Project.toml, Manifest.toml and clean Git status. Its log is `/home/snakagaw/hsq_work/generalized-prior-table-arc/drmodels-prior-table-main-60f832297-20261127/engine-benchmark-f1665-20261127/run.log` (SHA-256 `576230b478010a88e986e427c7dfe83d961f135661afc5c1d6c3981aa6e1d290`).
 
 ## Integration status
 
