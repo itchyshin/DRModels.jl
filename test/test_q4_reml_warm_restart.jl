@@ -1,5 +1,6 @@
-# test_q4_reml_warm_restart.jl — pin #484: drm(..., method = :REML) converges on the
-# q4 phylo REML cell through public kwargs alone.
+# test_q4_reml_warm_restart.jl — pin #484: drm(..., method = :REML) reaches the
+# q4 phylo REML optimum through public kwargs alone. With q4_vcov=false, the
+# restricted Hessian is unavailable, so the fit is not classified as converged.
 #
 # Background: the REML LBFGS used to take ZERO accepted line-search steps from the
 # ML warm start on this cell (a starting-value problem, not slow convergence — none
@@ -44,16 +45,20 @@ const FORM = bf(mu1    = @formula(y1 ~ x + phylo(1 | species)),
                  sigma2 = @formula(sigma2 ~ 1 + phylo(1 | species)),
                  rho12  = @formula(rho12 ~ 1))
 
-@testset "q4 phylo REML: public drm() converges through public kwargs alone (#484)" begin
+@testset "q4 phylo REML: optimizer succeeds but skipped Hessian is degenerate (#484)" begin
     # Defaults only — q4_g_tol/q4_iterations/q4_n_newton untouched, exactly the
     # public-API call the issue's acceptance criterion describes.
     fit = drm(FORM, Gaussian(); data = DAT, tree = TREE, method = :REML, q4_vcov = false)
     @test estimation_method(fit) === :REML
-    @test is_converged(fit) == true
+    @test fit.converged == true
+    @test fit.geometry === :reml_curvature_unavailable
+    @test fit.uncertainty === :skipped
+    @test convergence_status(fit) === :degenerate
+    @test is_converged(fit) == false
     @test isfinite(loglik(fit))
 end
 
-@testset "q4 phylo REML: engine-level g_residual < g_tol, not just the flag (#484)" begin
+@testset "q4 phylo REML: engine score passes; missing restricted Hessian remains degenerate (#484)" begin
     # Reproduce, at the engine level, exactly the inputs `_fit_bivariate_q4_phylo`
     # builds for this call (same internal helpers, no `src/` edit) so the
     # returned NamedTuple's `g_residual` — not surfaced on `DrmFit` — can be
@@ -98,6 +103,11 @@ end
 
     @test rr.converged == true
     @test rr.g_residual < g_tol   # the residual criterion itself, not just the flag
+    @test DRModels._q2_lambda_admissible(Matrix(rr.Lambda))
+    _, _, _, _, _, gz = DRModels.reml_nll_and_exact_grad(
+        prob, Q_cond, rr.phi; u0 = rr.u_hat, beta0 = rr.beta, n_newton = 40)
+    @test isfinite(gz)
+    @test gz < 1e-6  # final joint inner-mode score used by rr.converged
 
     # #484: does the restart find the RIGHT optimum, or merely a converged one?
     # The check is the same as before and is now strictly sharper.

@@ -54,7 +54,7 @@ using DRModels, Test, Random
                 e
             end
             @test err isa ArgumentError
-            @test occursin("SD-prior inference is not supported", sprint(showerror,err))
+            @test occursin("prior-fit inference is not supported", sprint(showerror,err))
         end
         missing_expected = Dict("priors"=>options[1]["priors"])
         wrong_expected = merge(options[1],Dict("prior_expected"=>[Dict("dpar"=>"mu","coef"=>"(Intercept)")]))
@@ -79,6 +79,6 @@ using DRModels, Test, Random
             e
         end
         @test active_error isa ArgumentError
-        @test active_error isa ArgumentError && occursin(r"not (yet )?qualified", sprint(showerror,active_error))
+        @test active_error isa ArgumentError && occursin("prior-fit inference is not supported", sprint(showerror,active_error))
     end
 end

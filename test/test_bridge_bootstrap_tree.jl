@@ -22,14 +22,14 @@ import Distributions
                  @formula(sigma ~ 1 + (1 | tree_boot | phylo(species))))
     fit = drm(formula, Gamma(); data, tree)
     @test fit.nll isa DRModels.LocScaleObjective
-    # FX3b: the seed fit is at a variance boundary (SDs near 1e-7, log-SD standard
-    # errors near 1e8), so the twin status is :degenerate and `is_converged` is
-    # false. This checks what `is_converged` checked before FX3b.
-    @test DRModels._converged_nondegenerate(fit)
+    # The seed fit is at a variance boundary (SDs near 1e-7). It retains finite
+    # fixed-effect SEs and bootstrap behavior, but is not an interior converged fit.
+    @test DRModels.convergence_status(fit) === :boundary
     # The seed fit sits at a variance boundary; its fixed-effect Wald SEs and
     # the check_drm verdict must survive the inner/refinement stall stops (#967).
     @test all(isfinite, stderror(fit)[1:3])
-    @test check_drm(fit).ok
+    @test check_drm(fit).convergence_status === :boundary
+    @test !check_drm(fit).ok
     direct = bootstrap_result(fit; data, tree, B=2, rng=MersenneTwister(4001),
                               failures=:skip, check_converged=true)
     println("DIRECT_TREE_BOOTSTRAP ", (direct.attempted, direct.used, direct.failed),

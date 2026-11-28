@@ -115,7 +115,11 @@ end
     form = bf(@formula(cbind(s, fl) ~ x1 + (1 + x1 | g)))
     fam = DRModels.Binomial(:cloglog)
     fit = drm(form, fam; data = d, marginal = :Laplace)
-    @test fit.marginal === :Laplace && is_converged(fit)
+    # The exact-gradient optimum reaches the random-effect correlation boundary;
+    # it is a valid post-fit object, but the all-fit contract must not call it
+    # an interior converged fit.
+    @test fit.marginal === :Laplace && convergence_status(fit) === :boundary
+    @test DRModels._relative_objective_gradient(fit) <= 1e-4
     @test isfinite(loglik(fit)) && length(residuals(fit; type = :quantile)) == n
     # a correlated block has no fresh random-effect draw: the bootstrap is refused by name (bootstrap
     # refits keeping the option are pinned on the `(1 | g)` cells above)

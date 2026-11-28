@@ -61,6 +61,12 @@ _sigma_b(fit) = exp(D.coef(fit)[end])
         @test isfinite(fit.ml_loglik)
         @test fit.loglik == fit.reml_loglik
         @test fit.reml_loglik != fit.ml_loglik
+        # Convergence is judged on the objective actually optimized. The stored
+        # diagnostic must therefore be the restricted objective at the REML fit,
+        # not the ML seed objective.
+        @test fit.nll !== nothing
+        @test fit.nll(fit.theta) ≈ -fit.reml_loglik atol = 1e-8
+        @test D._relative_objective_gradient(fit) <= 1e-4
     end
 
     @testset "ML stays the default and is unchanged" begin

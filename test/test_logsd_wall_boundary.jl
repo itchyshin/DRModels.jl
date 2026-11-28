@@ -1,7 +1,7 @@
 # Independent-term Laplace route: the objective returns its failure value when a random-effect
 # log SD leaves [-30, 30]. The guard stays at 30. A fit that ends at the lower end has a zero SD
-# for every practical purpose; it must be reported as a boundary fit (with a warning that points to
-# the mixture LRT and the profile interval), not as `:degenerate`.
+# for every practical purpose; the fit must retain its wall diagnostic. Because the optimizer also
+# stops unsuccessfully there, the convergence status is `:not_converged` under the ordered checks.
 # Cell: Binomial `(1 | g) + (0 + x1 | g)` with `sd(g, coef(intercept)) ~ z` (the committed
 # fixtures/binomial_indep_restarts data): the intercept-SD likelihood is a monotone ridge, drmTMB 0.8.1
 # follows it to a log SD near -111 (logLik -253.5513); Julia stops at the wall of 30.
@@ -21,7 +21,7 @@ end
     f = bf(@formula(y ~ x1 + x2 + x3 + (1 | g) + (0 + x1 | g)), @formula(sd(g, coef(intercept)) ~ z))
     fit = @test_logs (:warn, r"lower search bound") match_mode = :any drm(f, Binomial(:logit); data = d)
     @test !fit.converged                                  # the optimiser did stop at a wall
-    @test convergence_status(fit) === :boundary           # not :degenerate
+    @test convergence_status(fit) === :not_converged      # optimizer failure takes precedence
     @test !is_converged(fit)
     # The guard value is unchanged: the fit ends where it did before, and the wall still rejects.
     @test abs(loglikelihood(fit) - (-253.9951592)) <= 1e-4

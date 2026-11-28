@@ -38,8 +38,8 @@ end
     catch err
         err
     end
-    @test labelled_error isa ErrorException
-    @test occursin("unsupported random-effect term", sprint(showerror, labelled_error))
+    @test labelled_error isa ArgumentError
+    @test occursin("supports up to two distinct Gaussian mean random intercepts", sprint(showerror, labelled_error))
     for column in (:y, :x, :g)
         original = getproperty(d, column)
         values = Union{Missing,eltype(original)}[missing; original[2:end]]

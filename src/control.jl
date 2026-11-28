@@ -175,6 +175,7 @@ struct DRMControlReport
     optimizer_runs::Tuple
     selected_optimizer_stage::Symbol
     native_controls::NamedTuple
+    discarded_curvature::Union{Nothing,NamedTuple}
 end
 
 _ctl_control_snapshot(c::DRMControl) =
@@ -185,6 +186,15 @@ _ctl_control_snapshot(c::DRMControl) =
 _ctl_native_controls(c::DRMControl) =
     (maxit = c.maxit, start = c.start === nothing ? nothing : Tuple(c.start),
      multi_start = c.multi_start, seed = c.seed, jitter = c.jitter, se = c.se)
+
+# Preserve the solver-trace constructor used before discarded curvature was recorded.
+function DRMControlReport(c::DRMControl, lls::Vector{Float64}, kept::Int,
+                          agree::Bool, se::Symbol, weights::Union{Nothing,Vector{Float64}},
+                          requested::Symbol, actual::Symbol, runs::Tuple,
+                          stage::Symbol, native::NamedTuple)
+    return DRMControlReport(c, lls, kept, agree, se, weights, requested, actual,
+                            runs, stage, native, nothing)
+end
 
 # Retain the report constructor exported by the original six-field control API.
 # It has no solver trace, so the actual method must remain unrecorded.
@@ -548,11 +558,16 @@ function _ctl_finish(fit, scope::_ControlScope, fam)
         "on this $route, which returns a $(typeof(fit))"))
     se = :computed
     V = fit.vcov
+    discarded_curvature = nothing
     if !c.se
         if scope.used_se || all(isnan, V)
             se = :skipped
         else
             se = :discarded
+            prior_se = _twin_standard_errors(V)
+            discarded_curvature = (positive_definite=_twin_vcov_positive_definite(V),
+                finite_se=!isempty(prior_se) && all(isfinite, prior_se),
+                inflated_se=_twin_inflated_se(prior_se))
             V = fill(NaN, size(V))
         end
     end
@@ -574,7 +589,7 @@ function _ctl_finish(fit, scope::_ControlScope, fam)
     report = DRMControlReport(_ctl_control_snapshot(c), copy(lls), scope.kept, agree, se,
                               scope.weights === nothing ? nothing : copy(scope.weights),
                               c.optimizer, actual, Tuple(scope.optimizer_runs),
-                              scope.selected_optimizer_stage, _ctl_native_controls(c))
+                              scope.selected_optimizer_stage, _ctl_native_controls(c), discarded_curvature)
     return _withcontrolinfo(fit, V, report)
 end
 

@@ -10,7 +10,14 @@ using Test, DRModels
     expected = drm_priors(drm_prior_normal(dpar="mu",coef="x",sd=2),
                           drm_prior_sd_gamma(dpar="mu",group="site",shape=2,rate=3),
                           drm_prior_sd_gamma(dpar="mu",group="observer",shape=2,rate=3))
-    @test resolve_priors(f,Gaussian();data=d,priors=tab) == resolve_priors(f,Gaussian();data=d,priors=expected)
+    table_rows = resolve_priors(f,Gaussian();data=d,priors=tab)
+    constructor_rows = resolve_priors(f,Gaussian();data=d,priors=expected)
+    @test table_rows == constructor_rows
+    table_sd = filter(r -> hasproperty(r,:class) && r.class === :ranef_sd, table_rows)
+    constructor_sd = filter(r -> hasproperty(r,:class) && r.class === :ranef_sd, constructor_rows)
+    @test Set(r.group for r in table_sd) == Set(r.group for r in constructor_sd) == Set(["site", "observer"])
+    @test all(r -> r.scale === :natural_sd && r.coef == "(Intercept)", table_sd)
+    @test all(r -> r.scale === :natural_sd, constructor_sd)
     @test_throws ArgumentError resolve_priors(f,Gaussian();data=d,priors=(prior=["gamma(1,2)","gamma(1,2)"],class=["ranef_sd","ranef_sd"],coef=["","site"]))
     @test_throws ArgumentError resolve_priors(f,Gaussian();data=d,priors=(prior=["normal(0,2)"],class=["fixef"],coef=["missing"]))
 end

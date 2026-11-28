@@ -77,11 +77,19 @@ _sigma(fit) = exp(D.coef(fit)[end])
         fit = D.drm(form_phy, D.Poisson(); data = draw.data, tree = draw.tree,
                     se = false, method = :REML)
         @test D.estimation_method(fit) === :REML
-        @test D.is_converged(fit)
+        # This fixed seed reaches the random-effect SD boundary. The adopted
+        # status contract reports that boundary explicitly; it is not an
+        # interior converged fit or a claim that the data identify positive SD.
+        @test D.convergence_status(fit) === :boundary
+        @test !D.is_converged(fit)
+        @test minimum(values(D.re_sd(fit))) < exp(-8)
         @test isfinite(fit.reml_loglik)
         @test isfinite(fit.ml_loglik)
         @test fit.loglik == fit.reml_loglik
         @test fit.reml_loglik != fit.ml_loglik
+        @test fit.nll !== nothing
+        @test fit.nll(fit.theta) ≈ -fit.reml_loglik atol = 1e-8
+        @test D._relative_objective_gradient(fit) <= 1e-4
     end
 
     @testset "ML stays the default on phylo Laplace" begin
@@ -137,6 +145,9 @@ _sigma(fit) = exp(D.coef(fit)[end])
                         se = false, method = :REML)
         @test D.estimation_method(fit_rel) === :REML
         @test fit_rel.reml_loglik != fit_rel.ml_loglik
+        @test fit_rel.nll !== nothing
+        @test fit_rel.nll(fit_rel.theta) ≈ -fit_rel.reml_loglik atol = 1e-8
+        @test D._relative_objective_gradient(fit_rel) <= 1e-4
         fit_an = D.drm(D.bf(D.@formula(y ~ x + animal(1 | id))), D.Poisson();
                        data = draw.data, A = draw.K, se = false, method = :REML)
         @test D.estimation_method(fit_an) === :REML

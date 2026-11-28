@@ -1030,8 +1030,19 @@ function _fit_ranef_gaussian(fam::Gaussian, y, Xμ, Xσ, gidx, G, w, nmμ, nmσ,
     converged = hess_finite &&
         _unitfree_converged(H, score) &&
         (sd_prior === nothing || (_sd_prior_interior(θ̂[end]) && _sd_prior_stationary(score)))
-    # Profile intervals reuse the ML Woodbury nll (same convention as FE REML).
-    fit = _withranef(_withnll(DrmFit(fam, blocks, names, θ̂, V, -(prior_rows === nothing ? nll(θ̂) : nll_ml(θ̂)), n, converged, means, obs, scales), prior_rows === nothing ? nll_ml : nll), re)
+    # Profile intervals use the full ML objective, while stationarity for an
+    # unpenalized REML fit is assessed against the restricted objective that was
+    # optimized. Keep both roles in a callable objective so inference still sees
+    # ML and the convergence gate sees REML.
+    reml_full_grad!(g, θ) = ForwardDiff.gradient!(g, nll_reml, θ)
+    fit_nll = if reml && prior_rows === nothing && sd_prior === nothing
+        _FitObjectiveGradient(nll_reml, reml_full_grad!, nll_ml)
+    else
+        prior_rows === nothing ? nll_ml : nll
+    end
+    fit = DrmFit(fam, blocks, names, θ̂, V,
+        -(prior_rows === nothing ? nll(θ̂) : nll_ml(θ̂)), n, converged, means, obs, scales)
+    fit = _withranef(_withnll(fit, fit_nll), re)
     sd_prior !== nothing ? (fit = _with_sd_priors(fit, prior_rows, sd_prior, nll_ml, sd_specs)) : (prior_rows === nothing || (fit = _with_fixed_priors(fit, prior_rows, nll_ml)))
     if reml
         return _withreml(fit, -nll_reml(θ̂), -nll_ml(θ̂))
@@ -1140,7 +1151,8 @@ function _corr_re_xtvinvx_stable(X::AbstractMatrix, invD::AbstractVector, xs::Ab
 end
 
 function _fit_correlated_ranef_gaussian(fam::Gaussian, y, Xμ, Xσ, gidx, G, xs, nmμ, nmσ, grp, g_tol;
-                                      reml::Bool = false)
+                                      reml::Bool = false, prior_rows=NamedTuple[],
+                                      correlation_row=nothing)
     n = length(y)
     pμ, pσ = size(Xμ, 2), size(Xσ, 2)
     # `xv` is the random-slope covariate: `xs` itself (the reported parametrisation)
@@ -1174,7 +1186,6 @@ function _fit_correlated_ranef_gaussian(fam::Gaussian, y, Xμ, Xσ, gidx, G, xs,
         return val
     end
     nll_ml(θ) = nll_x(θ, xs, Xμ)
-    nll(θ) = reml ? nll_x(θ, xs, Xμ; reml = true) : nll_ml(θ)
 
     # OPTIMISE IN CENTRED COORDINATES (#762). b0 + b1·x = (b0 + b1·x̄) + b1·(x − x̄),
     # so the model is invariant to shifting the slope covariate; only the Cholesky
@@ -1203,7 +1214,27 @@ function _fit_correlated_ranef_gaussian(fam::Gaussian, y, Xμ, Xσ, gidx, G, xs,
         end
     end
     ldR = sum(log ∘ abs, diag(Rμ))
-    nllc(φ) = reml ? nll_x(φ, xc, Qμ; reml = true, ldshift = ldR) : nll_x(φ, xc, Qμ)
+    function reported_theta(φ)
+        ac, bc, lcc = φ[pμ+pσ+1], φ[pμ+pσ+2], φ[pμ+pσ+3]
+        lc11 = exp(ac); lc22 = exp(bc)
+        m11 = lc11 - x̄ * lcc; m12 = -x̄ * lc22
+        Σ11 = m11^2 + m12^2
+        Σ21 = m11 * lcc + m12 * lc22
+        L11 = sqrt(Σ11)
+        θ = copy(φ)
+        θ[1:pμ] .= Rμ \ φ[1:pμ]
+        θ[pμ+pσ+1] = log(L11)
+        θ[pμ+pσ+2] = ac + bc - log(L11)
+        θ[pμ+pσ+3] = Σ21 / L11
+        θ
+    end
+    prior_value(θ) = (isempty(prior_rows) ? zero(eltype(θ)) : _fixed_prior_value(prior_rows, θ)) +
+        (correlation_row === nothing ? zero(eltype(θ)) : _random_effect_correlation_prior_value(correlation_row, θ))
+    nllc(φ) = begin
+        value = reml ? nll_x(φ, xc, Qμ; reml = true, ldshift = ldR) : nll_x(φ, xc, Qμ)
+        isempty(prior_rows) && correlation_row === nothing ? value : value + prior_value(reported_theta(φ))
+    end
+    nll(θ) = (reml ? nll_x(θ, xs, Xμ; reml = true) : nll_ml(θ)) + prior_value(θ)
     βμ0 = Xμ \ y; res0 = y - Xμ * βμ0
     φ0 = zeros(pμ + pσ + 3)
     φ0[1:pμ] .= Rμ * βμ0
@@ -1235,20 +1266,7 @@ function _fit_correlated_ranef_gaussian(fam::Gaussian, y, Xμ, Xσ, gidx, G, xs,
         end
     end
     φ̂ = Optim.minimizer(res)
-    θ̂ = let
-        ac, bc, lcc = φ̂[pμ+pσ+1], φ̂[pμ+pσ+2], φ̂[pμ+pσ+3]
-        lc11 = exp(ac); lc22 = exp(bc)
-        m11 = lc11 - x̄ * lcc; m12 = -x̄ * lc22        # first row of S·L_c
-        Σ11 = m11^2 + m12^2
-        Σ21 = m11 * lcc + m12 * lc22
-        L11 = sqrt(Σ11)
-        θ = copy(φ̂)
-        θ[1:pμ] .= Rμ \ φ̂[1:pμ]
-        θ[pμ+pσ+1] = log(L11)
-        θ[pμ+pσ+2] = ac + bc - log(L11)
-        θ[pμ+pσ+3] = Σ21 / L11
-        θ
-    end
+    θ̂ = reported_theta(φ̂)
     V = _vcov_from_hessian(ForwardDiff.hessian(nll, θ̂))
     blocks = [:mu => 1:pμ, :sigma => (pμ+1):(pμ+pσ), :recov => (pμ+pσ+1):(pμ+pσ+3)]
     names = [:mu => nmμ, :sigma => nmσ, :recov => ["$(grp):L11", "$(grp):L22", "$(grp):L21"]]
@@ -1265,7 +1283,7 @@ function _fit_correlated_ranef_gaussian(fam::Gaussian, y, Xμ, Xσ, gidx, G, xs,
     end
     re = Dict(Symbol(grp) => blup)
     _record_cond_fit!(scales, blup[gidx, 1] .+ xs .* blup[gidx, 2])   # fitted-row modes for `fitted(fit)`
-    fit = _withranef(_withnll(DrmFit(fam, blocks, names, θ̂, V, -nll(θ̂), n, drm_optim_converged(res), means, obs, scales), nll_ml), re)
+    fit = _withranef(_withnll(DrmFit(fam, blocks, names, θ̂, V, -nll_ml(θ̂), n, drm_optim_converged(res), means, obs, scales), nll), re)
     reml && return _withreml(fit, -nll(θ̂), -nll_ml(θ̂))
     return fit
 end
@@ -1505,7 +1523,7 @@ function _fit_multi_ranef_gaussian(fam::Gaussian, y, Xμ, Xσ, comps, nmμ, nmσ
         data_grad!(Gout, θ)
         if penalized
             for row in prior_rows
-                Gout[row.index] += row.precision * (θ[row.index] - row.mean)
+                Gout[row.index] += _prior_gradient(row, θ)
             end
             for row in sd_priors
                 Gout[row.index] += row.rate * exp(θ[row.index]) - (row.shape - 1)

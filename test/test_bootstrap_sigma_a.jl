@@ -31,8 +31,12 @@ import Statistics
               sigma1 = @formula(sigma1 ~ 1 + phylo(1 | species)),
               sigma2 = @formula(sigma2 ~ 1 + phylo(1 | species)),
               rho12 = @formula(rho12 ~ 1))
-    fit = drm(form, Gaussian(); data = dat, tree = phy)
-    @test is_converged(fit)
+    # Tighten q4's optimizer tolerance so this boundary fixture still meets the
+    # all-fit relative-gradient gate. Its among-axis correlation reaches the
+    # boundary, so it must not be described as an interior converged fit.
+    fit = drm(form, Gaussian(); data = dat, tree = phy, q4_g_tol = 1e-5)
+    @test convergence_status(fit) === :boundary
+    @test DRModels._relative_objective_gradient(fit) <= 1e-4
 
     # #1004: with the default `failures = :warn`, dropped refits are not silent. A tight
     # iteration cap makes some replicates fail to converge; the result carries them in

@@ -21,6 +21,8 @@ FixedPrior(kind::Symbol, dpar::Symbol, coef::String, intercept::Union{Nothing,Sy
            mean::Float64, precision::Float64, constant::Float64) =
     FixedPrior(kind, dpar, coef, intercept, mean, precision, constant, nothing)
 
+_is_coefficient_prior(p) = p isa FixedPrior
+
 "A Gamma density with respect to a named random-intercept SD."
 struct SDGammaPrior <: AbstractDrmPrior
     dpar::Symbol
@@ -47,6 +49,19 @@ function _residual_sd_gamma_prior(mean, shape)
     isfinite(rate) && rate > 0 ||
         throw(ArgumentError("residual SD Gamma rate must be finite and positive"))
     ResidualSDGammaPrior(μ, a, rate)
+end
+
+""""`drm_prior_residual_sd_gamma(; dpar=:sigma, coef="(Intercept)", shape, rate)` specifies a Gamma density on the natural residual SD."""
+function drm_prior_residual_sd_gamma(; dpar=:sigma, coef="(Intercept)", shape, rate)
+    Symbol(dpar) === :sigma || throw(ArgumentError("residual SD Gamma prior requires dpar=sigma"))
+    String(coef) == "(Intercept)" || throw(ArgumentError("residual SD Gamma prior supports only coef=(Intercept)"))
+    rate isa Real && isfinite(rate) && rate > 0 || throw(ArgumentError("residual SD Gamma rate must be finite and positive"))
+    shape isa Real && isfinite(shape) && shape > 1 || throw(ArgumentError("residual SD Gamma shape must exceed 1"))
+    a, b = Float64(shape), Float64(rate)
+    mean = a / b
+    isfinite(a) && a > 1 && isfinite(b) && b > 0 && isfinite(mean) && mean > 0 ||
+        throw(ArgumentError("residual SD Gamma parameters are outside the representable range"))
+    return ResidualSDGammaPrior(mean, a, b)
 end
 
 """`drm_prior_sd_gamma(; dpar, group, coef="(Intercept)", shape, rate)` specifies a Gamma density on the natural random-intercept SD (shape > 1, rate > 0)."""
@@ -92,6 +107,28 @@ function _resolve_sd_priors(priors, groups, first_index)
         push!(rows, _resolve_sd_prior([p], groups[i], first_index + i - 1))
     end
     rows
+end
+
+function _resolve_residual_correlation_prior(priors, index::Int)
+    priors isa AbstractVector && all(p -> p isa CorrelationLKJPrior, priors) ||
+        throw(ArgumentError("the bivariate residual route currently accepts only an LKJ prior on rho12"))
+    length(priors) == 1 || throw(ArgumentError("the bivariate residual route requires exactly one rho12 LKJ prior"))
+    p = only(priors)
+    p.dpar === :rho12 && p.scale === :natural_correlation &&
+        p.coef == "(Intercept)" && isempty(p.group) && isempty(p.from_coef) && isempty(p.to_coef) ||
+        throw(ArgumentError("the bivariate residual route requires a constant rho12 natural-correlation LKJ target"))
+    isfinite(p.eta) && p.eta > 1 || throw(ArgumentError("LKJ eta must be finite and greater than 1"))
+    guard = DRM_RHO12_PRIOR_GUARD
+    log_normalizer = _lkj_log_normalizer(p.eta, guard)
+    return (class=:residual_correlation, dpar=:rho12, block=:bivariate_residual,
+            coef="(Intercept)", scale=:natural_correlation, eta=p.eta,
+            guard=guard, support_guard=guard, log_normalizer=log_normalizer,
+            index=index)
+end
+
+function _residual_correlation_prior_value(row, theta)
+    rho = row.guard * tanh(theta[row.index])
+    return _lkj_negative_log_prior(row.eta, rho, row.guard)
 end
 
 _sd_prior_value(row, theta) = row.rate * exp(theta[row.index]) - (row.shape - 1) * theta[row.index] - row.shape * log(row.rate) + loggamma(row.shape)
@@ -147,11 +184,10 @@ function drm_prior_student_t(; dpar, coef, location=0, scale, df, intercept=noth
 end
 
 """`drm_priors(p...)` collects fixed-effect and supported random-effect SD priors for `drm(...; priors=...)`."""
-drm_priors(p::FixedPrior...) = collect(p)
 drm_priors(p::AbstractDrmPrior...) = collect(p)
 
 function _resolve_fixed_priors(priors, names, intercepts)
-    priors isa AbstractVector{<:FixedPrior} || throw(ArgumentError("priors must be created by drm_priors"))
+    priors isa AbstractVector && all(_is_coefficient_prior, priors) || throw(ArgumentError("priors must be created by drm_priors"))
     blocks = Dict(names); offsets = Dict{Symbol,Int}(); offset = 0
     for (d, n) in names
         offsets[d] = offset; offset += length(n)
@@ -200,10 +236,24 @@ function _resolve_residual_sd_prior(priors, names)
     end
     p = only(targets)
     row = (class=:residual_sd, kind=:residual_sd_gamma, dpar=:sigma,
-           coef="(Intercept)", scale=:natural_sd, mean=p.mean,
+           group="", block=:gaussian_residual, coef="(Intercept)", scale=:natural_sd, mean=p.mean,
            shape=p.shape, rate=p.rate, index=offsets[:sigma] + 1)
     return row
 end
+
+function _resolve_residual_sd_priors(priors, names, intercepts)
+    row = _resolve_residual_sd_prior(priors, names)
+    row === nothing && return NamedTuple[]
+    get(intercepts, :sigma, nothing) == 1 || throw(ArgumentError("residual SD Gamma prior requires a sigma intercept"))
+    return [row]
+end
+
+_prior_gradient(row, theta) = row.kind === :student_t ?
+    (row.df + 1) * row.precision * (theta[row.index] - row.mean) /
+        (row.df + row.precision * (theta[row.index] - row.mean)^2) :
+    row.kind === :residual_sd_gamma ?
+    row.rate * exp(theta[row.index]) - (row.shape - 1) :
+    row.precision * (theta[row.index] - row.mean)
 
 # Inspect the applied StatsModels terms, rather than guessing intercepts from
 # factor columns or substrings in their labels.
@@ -241,10 +291,15 @@ coefficients and depend on units and coding. `priors` may also be a
 Tables.jl-compatible prior table with `prior`, `class`, and `coef` columns;
 see the prior guide for supported distributions, selectors, and scale conventions.
 """
-function resolve_priors(f, fam; data, priors)
+function _resolve_priors_native(f, fam; data, priors)
     table_rows = Tables.istable(priors) ? _parse_prior_table(priors) : nothing
     sd_intent = table_rows !== nothing && any(r -> r.class == "ranef_sd", table_rows)
-    residual_sd_intent = table_rows !== nothing && any(r -> r.class == "residual_sd", table_rows)
+    residual_sd_intent = table_rows === nothing ?
+        (priors isa AbstractVector && any(p -> p isa ResidualSDGammaPrior, priors)) :
+        any(r -> r.class == "residual_sd", table_rows)
+    correlation_intent = table_rows === nothing ?
+        (priors isa AbstractVector && any(p -> p isa CorrelationLKJPrior && p.dpar === :mu, priors)) :
+        any(r -> r.class == "correlation" && r.dpar == "mu", table_rows)
     f isa DrmFormula && (fam isa Gaussian || (fam isa Binomial && fam.link === :logit)) ||
         throw(ArgumentError("resolve_priors supports Gaussian and fixed-effect binomial logit models"))
     residual_sd_intent && !(fam isa Gaussian) &&
@@ -262,10 +317,10 @@ function resolve_priors(f, fam; data, priors)
         throw(ArgumentError("resolve_priors does not support SD formulas"))
     for response in _formula_responses(f)
         response === nothing && continue
-        (sd_intent || (table_rows === nothing && any(p -> p isa SDGammaPrior, priors))) && any(ismissing, _table_column(data, response)) && throw(ArgumentError("SD priors require complete responses"))
+        (sd_intent || residual_sd_intent || (table_rows === nothing && any(p -> p isa Union{SDGammaPrior,ResidualSDGammaPrior}, priors))) && any(ismissing, _table_column(data, response)) && throw(ArgumentError("SD priors require complete responses"))
         _complete_response(_table_column(data, response)) || throw(ArgumentError("resolve_priors requires complete responses"))
     end
-    if sd_intent
+    if sd_intent || residual_sd_intent
         cols = Tables.columntable(data)
         for c in _predictor_columns(f)
             haskey(cols, c) && any(ismissing, cols[c]) && throw(ArgumentError("SD priors require complete predictors (missing in $c)"))
@@ -286,14 +341,29 @@ function resolve_priors(f, fam; data, priors)
     cache = Ref(Dict{Symbol,Any}())
     sd_groups = Symbol[]
     sd_group_indices = Vector{Int}[]
+    correlation_groups = String[]
+    correlation_slope = nothing
+    function re_kind_or_unsupported(term)
+        try
+            first(_re_kind(term))
+        catch
+            :unsupported
+        end
+    end
     for d in dpars
         rhs, re, meta, structured, structured_slope, temporal_term, structured_sd_slope = _split_ranef(forms[d]; allow_temporal=true)
-        allowed_re = fam isa Gaussian && d === :mu && 1 <= length(re) <= 2 && all(r -> _re_kind(r[1])[1] === :intercept, re)
+        allowed_re = fam isa Gaussian && d === :mu && 1 <= length(re) <= 2 && all(r -> re_kind_or_unsupported(r[1]) === :intercept, re)
+        allowed_q2 = correlation_intent && fam isa Gaussian && d === :mu && length(re) == 1 &&
+            re_kind_or_unsupported(first(re)[1]) === :corr
         allowed_phylo = phylo_preview && d === :mu && structured == only(markers) && isempty(re)
-        (isempty(re) || allowed_re) && meta === nothing &&
+        (isempty(re) || allowed_re || allowed_q2) && meta === nothing &&
             (structured === nothing || allowed_phylo) && structured_slope === nothing &&
             temporal_term === nothing && structured_sd_slope === nothing ||
-            throw(ArgumentError("resolve_priors supports up to two distinct Gaussian mean random intercepts or one phylogenetic SD-regression route"))
+            throw(ArgumentError("resolve_priors supports up to two distinct Gaussian mean random intercepts, one ordinary Gaussian q=2 intercept/slope correlation target, or one phylogenetic SD-regression route"))
+        if d === :sigma && residual_sd_intent
+            (isempty(re) && structured === nothing && isempty(_collect_structured(forms[d]))) ||
+                throw(ArgumentError("residual SD Gamma prior supports only a constant Gaussian sigma model"))
+        end
         if allowed_re
             for (_, grp) in re
                 push!(sd_groups, grp)
@@ -302,21 +372,53 @@ function resolve_priors(f, fam; data, priors)
             end
             length(sd_group_indices) == 2 && sd_group_indices[1] == sd_group_indices[2] && throw(ArgumentError("two random-intercept groups have identical partitions and their SDs cannot be identified separately"))
         end
+        if allowed_q2
+            (rl, grp) = only(re)
+            kind, var = _re_kind(rl)
+            kind === :corr && var !== nothing || throw(ArgumentError("random-effect LKJ priors require one ordinary (1 + x | group) block"))
+            all(v -> v isa Real && isfinite(v), _table_column(dat, f.response)) ||
+                throw(ArgumentError("random-effect correlation priors require finite responses"))
+            all(v -> v isa Real && isfinite(v), _table_column(dat, var)) ||
+                throw(ArgumentError("random-effect correlation priors require finite slope predictors"))
+            push!(correlation_groups, String(grp))
+            correlation_slope = String(var)
+        end
         rhs, _ = _extract_offset(rhs)
         _, X, nms = _design(f.response, rhs, dat; schema_cache=cache, schema_key=d)
+        allowed_q2 && all(isfinite, X) || !allowed_q2 ||
+            throw(ArgumentError("random-effect correlation priors require finite design predictors"))
         rank(X) == size(X, 2) || throw(ArgumentError("resolve_priors requires full-rank design matrices"))
         push!(names, d => nms)
         intercepts[d] = _fixed_intercept_index(f, d, rhs, nms; cache=cache)
     end
-    table_rows === nothing || (priors = _prior_table_specs(table_rows, String.(sd_groups)))
-    priors isa AbstractVector && all(p -> p isa Union{FixedPrior,SDGammaPrior,ResidualSDGammaPrior}, priors) || throw(ArgumentError("priors must be created by drm_priors"))
-    fixed = FixedPrior[p for p in priors if p isa FixedPrior]
+    table_rows === nothing || (priors = _prior_table_specs(table_rows, vcat(String.(sd_groups), correlation_groups)))
+    priors isa AbstractVector && all(p -> p isa Union{FixedPrior,SDGammaPrior,ResidualSDGammaPrior,CorrelationLKJPrior}, priors) || throw(ArgumentError("priors must be created by drm_priors"))
+    fixed = AbstractDrmPrior[p for p in priors if _is_coefficient_prior(p)]
     rows = _resolve_fixed_priors(fixed, names, intercepts)
     table_rows !== nothing && any(r -> r.coef == "all", rows) &&
         throw(ArgumentError("prior tables cannot select a coefficient literally named all"))
     sds = _resolve_sd_priors(priors, sd_groups, sum(length(last(n)) for n in names) + 1)
-    residual = _resolve_residual_sd_prior(priors, names)
-    residual === nothing || !any(r -> r.index == residual.index, rows) ||
+    residual_sds = _resolve_residual_sd_priors(priors, names, intercepts)
+    any(r -> any(f -> f.index == r.index, rows), residual_sds) &&
         throw(ArgumentError("residual_sd prior overlaps a fixed-effect prior on sigma:(Intercept)"))
-    vcat(rows, sds, residual === nothing ? NamedTuple[] : [residual])
+    corr_specs = CorrelationLKJPrior[p for p in priors if p isa CorrelationLKJPrior && p.dpar === :mu]
+    correlation_rows = NamedTuple[]
+    if !isempty(corr_specs)
+        length(corr_specs) == 1 || throw(ArgumentError("the Gaussian q=2 route accepts exactly one random-effect correlation LKJ prior"))
+        p = only(corr_specs)
+        length(correlation_groups) == 1 && p.group == only(correlation_groups) ||
+            throw(ArgumentError("random-effect LKJ group $(p.group) does not match the unique ordinary Gaussian q=2 block"))
+        p.from_coef == "(Intercept)" && p.to_coef == correlation_slope ||
+            throw(ArgumentError("random-effect LKJ coefficient pair does not match the unique Gaussian q=2 block"))
+        guard = DRM_Q2_CORRELATION_PRIOR_GUARD
+        log_normalizer = _lkj_log_normalizer(p.eta, guard)
+        push!(correlation_rows, (class=:random_effect_correlation, dpar=:mu,
+            group=p.group, block=:gaussian_q2, from_coef=p.from_coef,
+            to_coef=p.to_coef, scale=:natural_correlation, eta=p.eta,
+            guard=guard, support_guard=guard, log_normalizer=log_normalizer,
+            index=sum(length(last(n)) for n in names) + 1))
+    elseif correlation_intent
+        throw(ArgumentError("random-effect LKJ prior requires exactly one ordinary Gaussian q=2 intercept/slope block"))
+    end
+    vcat(rows, sds, residual_sds, correlation_rows)
 end

@@ -176,7 +176,9 @@ preview(form, fam, data, p) = resolve_priors(form, fam; data=data, priors=p)
             refrows = preview(form, Gaussian(), pt_data, legacy)
             @test Dict(r.group => (r.index,r.shape,r.rate) for r in rows) == Dict(r.group => (r.index,r.shape,r.rate) for r in refrows)
             @test Set(r.group for r in rows) == Set(["site", "observer"])
-            @test all(r -> r.scale == :sd && r.coef == "(Intercept)", rows)
+            @test all(r -> r.class === :ranef_sd && r.scale == :natural_sd && r.coef == "(Intercept)", rows)
+            @test all(r -> r.class === :ranef_sd && r.scale == :natural_sd &&
+                r.coef == "(Intercept)", refrows)
         end
         specific = pt(["gamma(1,3)", "gamma(0.6666666666666666,2)"],
                       ["ranef_sd", "ranef_sd"], ["observer", "site"])
@@ -207,8 +209,8 @@ preview(form, fam, data, p) = resolve_priors(form, fam; data=data, priors=p)
         d = (y=[0,0,0,1,0,1,1,1], x=[-3.,-2.,-1.,0.,.5,1.,2.,3.])
         table = pt(["ridge(1)","ridge(1)"], ["fixef","fixef"], ["(Intercept)","x"])
         old = drm_priors(drm_prior_ridge(dpar="mu",coef="all",intercept="include",lambda=1))
-        a = drm(pt_fixed, Binomial(); data=d, priors=table)
-        b = drm(pt_fixed, Binomial(); data=d, priors=old)
+        a = drm(pt_fixed, DRModels.Binomial(); data=d, priors=table)
+        b = drm(pt_fixed, DRModels.Binomial(); data=d, priors=old)
         @test a.theta ≈ b.theta atol=1e-6
         @test a.nll(a.theta) ≈ b.nll(b.theta) atol=1e-8
     end
@@ -250,7 +252,7 @@ preview(form, fam, data, p) = resolve_priors(form, fam; data=data, priors=p)
         @test_throws ArgumentError preview(bf(@formula(y ~ x + (1+x | site))), Gaussian(), pt_data, prior)
         @test_throws ArgumentError preview(bf(@formula(y ~ x + (1 | site) + (1 | observer) + (1 | year))), Gaussian(), pt_data, prior)
         @test_throws ArgumentError preview(pt_form, Gaussian(), merge(pt_data,(observer=pt_data.site,)), prior)
-        @test_throws ArgumentError preview(pt_form, Binomial(), pt_data, prior)
+        @test_throws ArgumentError preview(pt_form, DRModels.Binomial(), pt_data, prior)
         @test_throws ArgumentError drm(pt_form, Gaussian(); data=pt_data, priors=prior, weights=fill(2.,length(pt_data.y)))
         missingdata = merge(pt_data,(y=Union{Missing,Float64}[missing; pt_data.y[2:end]],))
         @test_throws ArgumentError drm(pt_form, Gaussian(); data=missingdata, priors=prior)

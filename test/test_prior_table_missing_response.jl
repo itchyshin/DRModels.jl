@@ -78,7 +78,7 @@ end
     end
     @testset "binomial" begin
         for pri in (fixed_table, fixed_legacy)
-            ok, msg = refused(() -> drm(bf(@formula(k ~ x)), Binomial(); data = (k = bin_miss, x = x), priors = pri))
+            ok, msg = refused(() -> drm(bf(@formula(k ~ x)), DRModels.Binomial(); data = (k = bin_miss, x = x), priors = pri))
             @test ok
         end
     end

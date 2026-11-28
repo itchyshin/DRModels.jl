@@ -194,8 +194,20 @@ end
 
 @testset "Arc 2 guard: neighbouring routes still match native" begin
     native = _arc2_native()
-    @testset "F1 sigma_only ML" begin _arc2_check(native, "F1", "sigma_only", "ML") end
-    @testset "F2 mu_sigma ML (coupled)" begin _arc2_check(native, "F2", "mu_sigma", "ML") end
+    @testset "F1 sigma_only ML" begin
+        fit = _arc2_check(native, "F1", "sigma_only", "ML")
+        @test fit.nll !== nothing
+        @test isfinite(fit.nll(fit.theta))
+        @test DRModels._relative_objective_gradient(fit) <=
+              DRModels._TWIN_RELATIVE_GRADIENT_TOLERANCE
+    end
+    @testset "F2 mu_sigma ML (coupled)" begin
+        fit = _arc2_check(native, "F2", "mu_sigma", "ML")
+        @test fit.nll !== nothing
+        @test isfinite(fit.nll(fit.theta))
+        @test DRModels._relative_objective_gradient(fit) <=
+              DRModels._TWIN_RELATIVE_GRADIENT_TOLERANCE
+    end
     # The mean-only phylo REML cell: a different route (sparse location-only spine).
     @testset "F2 mu_only REML" begin _arc2_check(native, "F2", "mu_only", "REML") end
 end

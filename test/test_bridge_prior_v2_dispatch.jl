@@ -83,6 +83,13 @@ end
         @test out["data_logLik"] ≈ -out["data_nll"]
         @test out["penalized_objective"] ≈ out["data_nll"] + out["fixed_prior_penalty"] + out["sd_prior_penalty"]
         @test out["penalized_gradient"] ≈ out["data_gradient"] + out["fixed_prior_gradient"] + out["sd_prior_gradient"]
+        @test out["penalised"] === true
+        @test out["logLik"] ≈ fit.loglik
+        @test out["objective"] ≈ out["logLik"] + out["log_prior"]
+        @test out["objective"] ≈ -out["penalized_objective"]
+        @test out["pd_hessian_unpenalised"] isa Union{Missing,Bool}
+        @test out["prior_held_params"] isa AbstractVector
+        @test out["se_type"] == "penalised"
         @test length(out["working_coordinates"]) == length(out["working_values"]) == length(fit.theta)
     end
 end
@@ -100,6 +107,12 @@ end
     out=DRModels.drm_bridge(;formula=formula,family="gaussian",data=data,options=opts)
     @test out["prior_contract"] == "parameter_priors_v2"
     @test out["estim_method"] == "MAP"
+    @test out["penalised"] === true
+    @test out["objective"] ≈ out["logLik"] + out["log_prior"]
+    @test out["pd_hessian_unpenalised"] isa Union{Missing,Bool}
+    @test out["prior_held_params"] isa AbstractVector
+    @test out["se_type"] == "penalised"
+    @test isnan(out["aic"]) && isnan(out["bic"])
     @test out["infocrit_basis"] == "unavailable"
 end
 
@@ -142,6 +155,8 @@ end
     # Existing non-v2 calls retain their prior parser behavior.
     plain = DRModels.drm_bridge(;formula=duplicated, family="gaussian", data=data)
     @test plain["estim_method"] == "ML"
+    @test all(!haskey(plain, key) for key in ("penalised", "objective", "logLik", "log_prior",
+                                             "pd_hessian_unpenalised", "prior_held_params", "se_type"))
     v1 = Dict("priors"=>[Dict("kind"=>"normal", "dpar"=>"mu", "coef"=>"x", "mean"=>0., "sd"=>2.)],
               "prior_expected"=>[Dict("dpar"=>"mu", "coef"=>"x")])
     fixed = DRModels.drm_bridge(;formula=duplicated, family="gaussian", data=data, options=v1)
@@ -196,7 +211,7 @@ end
     @test calls[] == 0
 end
 
-@testset "phylogenetic MAP retains existing bridge information criteria" begin
+@testset "phylogenetic MAP marks bridge information criteria unavailable" begin
     using Random, LinearAlgebra
     rng = MersenneTwister(244)
     tree = random_balanced_tree(8; branch_length=.3)
@@ -209,7 +224,10 @@ end
     fit = drm(form, Gaussian(); data=(; y,x,species), tree=tree, penalty=drm_phylo_penalty(sd_u=.6))
     @test fit.estim_method === :MAP
     out = DRModels._bridge_flatten(fit; family="gaussian")
-    @test out["aic"] == aic(fit)
-    @test out["bic"] == bic(fit)
-    @test out["infocrit_basis"] == "ml"
+    @test isnan(out["aic"])
+    @test isnan(out["bic"])
+    @test out["infocrit_basis"] == "unavailable"
+    @test out["loglik"] ≈ fit.loglik
+    @test_throws ArgumentError aic(fit)
+    @test_throws ArgumentError bic(fit)
 end

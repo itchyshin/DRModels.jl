@@ -148,15 +148,15 @@ This difference remains unresolved.
 
 Confidence intervals, likelihood comparisons, AIC, BIC and
 uncertainty-dependent prediction or simulation are refused for active priors.
-Calling `bootstrap_result(fit; data = ...)` on these prior fits is also refused;
-bootstrap coverage has not been qualified for them. An unpenalized comparison
+`bootstrap_result(fit; data = ...)` warns that its intervals describe the
+penalized estimator and that bootstrap coverage has not been validated. An unpenalized comparison
 requires unpenalized refits. Choosing the prior depends on the response units:
 changing units requires changing its rate.
 
 ## Specifying priors in a table
 
 A Tables.jl-compatible column table uses `prior`, `class` and `coef`, with
-optional `dpar`, `group` and `scale` columns. The `scale` column defaults to
+optional `dpar`, `group`, `scale`, `from_coef` and `to_coef` columns. The `scale` column defaults to
 `link` for `fixef` and `natural_sd` for `ranef_sd`; a `residual_sd` row must
 state `scale = "natural_sd"` explicitly. This interface follows a documented
 subset of glmmTMB's prior-table style; it does not accept every glmmTMB prior
@@ -202,9 +202,8 @@ This table convention uses **mean and shape**, whereas
 shape must exceed one. With no `group` column, `coef = "site"` selects the
 `site` intercept; a blank `coef` selects every supported random-intercept SD.
 Alternatively, specify `group = "site"` and `coef = "(Intercept)"`.
-Overlapping, unknown and unsupported selections are rejected. Random slopes,
-correlation priors, other structured effects and other families remain outside this
-slice. The original table is stored in `table_fit.penalty.input_table`; `update()`
+Overlapping, unknown and unsupported selections are rejected. Random-slope SD
+priors, other structured effects and other families remain outside this SD slice. The original table is stored in `table_fit.penalty.input_table`; `update()`
 replays the resolved targets rather than expanding a blank selector again.
 
 For a Gaussian model with an intercept-only `sigma` formula, `residual_sd`
@@ -228,3 +227,26 @@ with respect to `d(sigma)`. The prior is evaluated at `sigma = exp(eta_sigma)`
 without a log-SD Jacobian; the reported Gaussian residual variance is
 `sigma^2`. A sigma predictor such as `sigma ~ x` has coefficient targets on
 the link scale and cannot use this scalar residual-SD row.
+
+## Priors for correlations
+
+Use `lkj(eta)` with `class = "correlation"` and `scale = "natural_correlation"` to regularize a supported correlation. The density is applied to the correlation itself, rather than its transformed optimization coordinate. The current implementation requires a finite `eta` greater than 1 and normalizes the density over the guarded correlation interval.
+
+For the constant residual correlation of a bivariate Gaussian model, select `dpar = "rho12"` and `coef = "(Intercept)"`. The `sigma1` and `sigma2` formulas must be intercept-only for this route.
+
+```julia
+rho_prior = (prior = ["lkj(2)"], class = ["correlation"],
+             dpar = ["rho12"], coef = ["(Intercept)"],
+             scale = ["natural_correlation"])
+```
+
+For one ordinary Gaussian random-intercept and random-slope block, select `dpar = "mu"`, identify the group, and name the intercept and slope in `from_coef` and `to_coef`. The coefficient pair must match the fitted block. A blank `coef` distinguishes this pair target from the `rho12` intercept target.
+
+```julia
+slope_prior = (prior = ["lkj(2)"], class = ["correlation"],
+               dpar = ["mu"], coef = [""], group = ["site"],
+               from_coef = ["(Intercept)"], to_coef = ["x"],
+               scale = ["natural_correlation"])
+```
+
+These examples describe the supported constant residual-correlation and single ordinary intercept-slope targets. Other correlation structures are rejected. As with the other active priors, the resulting fit is penalized; the prior does not supply posterior samples.

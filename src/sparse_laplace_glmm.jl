@@ -1024,11 +1024,12 @@ function _fit_poisson_general_laplace(fam::Poisson, y, Xμ, Q, leaf_node, nmμ, 
     grad_fn = θ -> (g = zeros(length(θ)); grad!(g, θ); g)
     θ̂, conv, ml_nll, reml_nll, _ =
         _glsp_reml_refit_clean(nll, grad_fn, θ̂, pμ; ml_converged = converged)
+    reml_obj, reml_grad! = _glsp_reml_objective_and_gradient(nll, grad_fn, pμ)
     V = _glsp_reml_vcov(grad_fn, θ̂, pμ)
     means = Dict(:mu => exp.(Xμ * θ̂[1:pμ]))
     record_modes && _record_laplace_modes!(scales, mode_at, θ̂, last_b, leaf_node)   # at the REML θ̂
     fit = DrmFit(fam, blocks, names, θ̂, Matrix(V), -ml_nll, n, conv, means, obs, scales)
-    return _withreml(_withnll(fit, nll, grad!), -reml_nll, -ml_nll)
+    return _withreml(_withnll(fit, reml_obj, reml_grad!), -reml_nll, -ml_nll)
 end
 
 function _phylo_mean_mode(kind, aux, η0, leaf_node, Q, logσ; b0 = nothing,

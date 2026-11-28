@@ -30,7 +30,12 @@ using DRModels, Test, Random, LinearAlgebra
               sigma2 = @formula(sigma2 ~ 1 + phylo(1 | species)),
               rho12 = @formula(rho12 ~ 1))
     fit = drm(form, Gaussian(); data = dat, tree = phy)
-    @test is_converged(fit)
+    # The profile lower endpoint may be zero even when the fitted SD is not
+    # at an active boundary. This fit misses the relative-gradient tolerance,
+    # so its status remains not_converged while profile inference is usable.
+    @test DRModels.convergence_status(fit) === :not_converged
+    @test DRModels._relative_objective_gradient(fit) >
+          DRModels._TWIN_RELATIVE_GRADIENT_TOLERANCE
     @test haskey(fit.ranef, :prob)              # the fit stashes the problem for profiling
 
     pr = profile_sigma_a(fit; level = 0.90)

@@ -129,8 +129,33 @@ using LinearAlgebra
                  sigma1 = @formula(sigma1 ~ 1), sigma2 = @formula(sigma2 ~ 1),
                  rho12 = @formula(rho12 ~ 1))
 
+    # q4 runs below request no covariance, so their Hessian is not evaluated.
+    # The optimizer finishes and the raw score is finite, but the score after
+    # applying any identified active-bound KKT projection still fails the
+    # convergence tolerance. A boundary label must not hide that failure.
+    function _assert_q4_rejected_by_convergence_contract(fit, expected_status)
+        @test fit.converged
+        @test isfinite(fit.nll(fit.theta))
+        score = DRModels._relative_objective_gradient(fit)
+        @test isfinite(score) && score > DRModels._TWIN_RELATIVE_GRADIENT_TOLERANCE
+        constraints = DRModels._boundary_constraint_indices(fit)
+        gradient = DRModels._map_objective_gradient(fit)
+        projected_gradient = DRModels._projected_kkt_gradient(
+            gradient, constraints.lower, constraints.upper)
+        @test constraints.known
+        @test projected_gradient isa AbstractVector
+        projected_score = DRModels._relative_projected_gradient(fit, gradient, constraints)
+        @test isfinite(projected_score) &&
+              projected_score > DRModels._TWIN_RELATIVE_GRADIENT_TOLERANCE
+        @test fit.uncertainty === :skipped
+        @test all(isnan, fit.vcov)
+        @test convergence_status(fit) === expected_status
+    end
+
     @testset "q=4 phylo: identical to Gaussian(log y) across THREE tree heights" begin
-        for (bl, seed) in ((0.125, 47101), (0.3, 47102), (0.75, 47103))
+        for (bl, seed, expected_status) in ((0.125, 47101, :not_converged),
+                                             (0.3, 47102, :not_converged),
+                                             (0.75, 47103, :not_converged))
             phy, dat = _lognormal_q4_sim(bl, seed)
             h = phylo_tree_height(phy)
             @test !isapprox(h, 1.0; atol = 1e-6)   # never test only the invisible height-1 case
@@ -139,7 +164,8 @@ using LinearAlgebra
             gfit = drm(form_q4, Gaussian();  data = (; y1 = log.(dat.y1), y2 = log.(dat.y2),
                                                        x = dat.x, species = dat.species),
                        tree = phy, q4_vcov = false)
-            @test is_converged(fit) && is_converged(gfit)
+            _assert_q4_rejected_by_convergence_contract(fit, expected_status)
+            _assert_q4_rejected_by_convergence_contract(gfit, expected_status)
             # Same theta, same group-level Sigma_a — the scale trap would show up
             # here as a height-dependent MISMATCH between the two, not a mismatch
             # to the simulation truth (which is a separate, noisier question).
@@ -183,7 +209,8 @@ using LinearAlgebra
         fit  = drm(form, LogNormal(); data = dat, K = K, q4_vcov = false)
         gfit = drm(form, Gaussian();  data = (; y1 = log.(y1), y2 = log.(y2), x = x, g = grp),
                    K = K, q4_vcov = false)
-        @test is_converged(fit) && is_converged(gfit)
+        _assert_q4_rejected_by_convergence_contract(fit, :not_converged)
+        _assert_q4_rejected_by_convergence_contract(gfit, :not_converged)
         @test coef(fit) ≈ coef(gfit) atol = 1e-8
         @test fit.ranef.Sigma_a ≈ gfit.ranef.Sigma_a atol = 1e-8
     end

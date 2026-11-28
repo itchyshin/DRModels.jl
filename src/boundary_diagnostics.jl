@@ -192,7 +192,19 @@ function _warn_laplace_clamp(fit::DrmFit; logsigma = nothing)
     end
     logsigma === nothing ||
         push!(checks, "dispersion log sigma" => (collect(Float64, logsigma), -4.0, 4.0))
-    _warn_at_clamp("sparse Laplace", checks)
+    hits = _warn_at_clamp("sparse Laplace", checks)
+    if any(hit -> startswith(hit, "random-effect log SD at its "), hits)
+        r = _block_range(fit, :resd)
+        wall = [x for x in fit.theta[r]
+                if x <= -8.0 + _CLAMP_ACTIVE_TOL || x >= 3.0 - _CLAMP_ACTIVE_TOL]
+        if !isempty(wall)
+            # Record this mapped outer-optimizer bound separately from the
+            # inner conditional-mode wall, which has no outer theta index.
+            # exp(-8) is above the generic SD cutoff, so the explicit bound
+            # marker is needed to classify it as a boundary fit.
+            append!(get!(fit.scales, :optimizer_logsd_bound, Float64[]), wall)
+        end
+    end
     return fit
 end
 

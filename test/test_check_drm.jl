@@ -74,7 +74,10 @@ import ForwardDiff
         r = check_drm(fit)
         @test r.max_abs_grad == 0.0
         @test r.grad_source === :stored
-        @test r.ok
+        # A stored zero gradient alone is not enough: this diagnostic fixture's
+        # objective deliberately throws, so the fit cannot satisfy the objective gate.
+        @test !r.ok
+        @test r.convergence_status === :not_converged
     end
 
     @testset "a partial (NaN) covariance is REPORTED, not raised" begin
@@ -118,10 +121,9 @@ import ForwardDiff
         @test r.cond == Inf
         @test !r.ok                             # honestly not-ok, rather than an exception
         @test fit.converged                     # ...but the optimiser itself converged
-        # FX3b: a covariance that was requested and came back non-finite is not
-        # an interior optimum, so the twin status is :degenerate and
-        # `converged` (`is_converged`) is false.
-        @test r.convergence_status === :degenerate
+        # The synthetic fit has no stored objective, so stationarity is unchecked
+        # and the first failing gate is `:not_converged`, before covariance geometry.
+        @test r.convergence_status === :not_converged
         @test !r.converged
     end
 
@@ -306,13 +308,14 @@ import ForwardDiff
         base = DRModels.DrmFit(Gaussian(), blocks, coefnames, theta, V, -1.0, 2, true,
                           empty, empty, empty)
 
-        # (a) No objective at all: nothing to differentiate. This is the ORIGINAL
-        # meaning of a NaN magnitude and it must keep reporting `:none`.
+        # (a) No objective at all: nothing to differentiate. Keep reporting `:none`,
+        # and fail closed because stationarity/objective validity cannot be checked.
         none = check_drm(base)
         @test base.nll === nothing
         @test isnan(none.max_abs_grad)
         @test none.grad_source === :none
-        @test none.ok                        # unchanged behaviour on this path
+        @test !none.ok
+        @test none.convergence_status === :not_converged
 
         # (b) An objective that is stored but cannot be evaluated at all, so even
         # the finite-difference fallback has nothing to work with.
@@ -322,9 +325,10 @@ import ForwardDiff
         @test isnan(r.max_abs_grad)
         @test r.grad_source === :unavailable # NOT :none -- that is the whole point
         @test r.grad_source !== none.grad_source
-        # ...and it must SAY so, or `ok = true` here is indistinguishable from a
-        # fit whose stationarity was actually verified.
-        @test r.ok
+        # ...and it must fail closed as an uncheckable objective, not pass as if
+        # stationarity and objective validity had been established.
+        @test !r.ok
+        @test r.convergence_status === :not_converged
         @test_logs (:warn,) match_mode = :any check_drm(dead)
     end
 
