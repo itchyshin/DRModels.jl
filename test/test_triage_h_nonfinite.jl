@@ -59,7 +59,13 @@ _names_arg(e, needle) = e isa ArgumentError && occursin(needle, e.msg)
         ok = DrmFit(Gaussian(), blocks, names, [0.2], V, -4.0, length(y), true,
                     means, obs, scales)
         @test ok.converged
-        @test is_converged(ok)
+        # The compatibility constructor has no objective or score and cannot
+        # certify convergence until those diagnostics are attached.
+        @test !is_converged(ok)
+        objective = theta -> 4.0 + sum(abs2, theta .- 0.2) / 2
+        gradient! = (g, theta) -> (g .= theta .- 0.2)
+        complete = DRModels._withnll(ok, objective, gradient!)
+        @test is_converged(complete)
     end
 
     @testset "#1019 Student (1 | g) rejects Inf in the response" begin

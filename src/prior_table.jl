@@ -22,7 +22,8 @@ function _parse_prior_table(table)
         prior, class, coef = (String(cols[k][i]) for k in required)
         dpar = haskey(cols, :dpar) ? String(cols[:dpar][i]) : ""
         group = haskey(cols, :group) ? String(cols[:group][i]) : ""
-        scale = haskey(cols, :scale) ? String(cols[:scale][i]) : ""
+        scale = haskey(cols, :scale) ? String(cols[:scale][i]) :
+            class == "fixef" ? "link" : class == "ranef_sd" ? "natural_sd" : ""
         from_coef = haskey(cols, :from_coef) ? String(cols[:from_coef][i]) : ""
         to_coef = haskey(cols, :to_coef) ? String(cols[:to_coef][i]) : ""
         isempty(dpar) && (dpar = "mu")

@@ -724,9 +724,14 @@ function _glsp_joint_reml_fit(kind, y, Xμ, Xψ, gidx, G, Q, Zη, Zψ, Λfun, st
         P0 = prior_precision(Q, _ls_inv2x2(Λfun(v0)))
         ml0, _, ok0 = _ls_marginal_nll(kind, y, Xμ * β_start[1:pμ], Xψ * β_start[pμ+1:p],
                                        gidx, G, P0, Zη, Zψ)
+        # A rank-deficient mean design has no restricted objective or score.
+        # Preserve the optimizer result contract and fail closed in diagnostics.
+        degenerate_objective = _ -> Inf
+        degenerate_gradient! = (g, _) -> (fill!(g, NaN); g)
         return (θ = vcat(β_start, v0), v = v0, β = copy(β_start), reml_nll = NaN,
                 ml_nll = ok0 ? ml0 : NaN, converged = false, V = fill(NaN, np, np),
-                ci = [(sd_lo = NaN, sd_hi = NaN) for _ in profile_idx])
+                ci = [(sd_lo = NaN, sd_hi = NaN) for _ in profile_idx],
+                objective = degenerate_objective, gradient! = degenerate_gradient!)
     end
     warm_β = Ref(copy(β_start)); warm_a = Ref(zeros(2G))
     # Bound mode (`cor_edge`): v = [logL11, log sd_σ] at cor = edge_sign[]·cap, in the

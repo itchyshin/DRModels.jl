@@ -170,6 +170,12 @@ end
     data = (; y, species, x1, x2)
     form = bf(@formula(y ~ x1 + x2 + phylo(1 | species)), @formula(sigma ~ phylo(1 | species)))
     fit = drm(form, Gaussian(); data = data, tree = phy, method = :REML)
+    @test !fit.converged
+    @test fit.nll !== nothing
+    @test isinf(fit.nll.objective(fit.theta))
+    g = zeros(length(fit.theta))
+    fit.nllgrad(g, fit.theta)
+    @test all(isnan, g)
     rll = reml_loglik(fit)
     @test !(isfinite(rll) && abs(rll) > 1e16)            # NOT a 1e18-poisoned value
     @test isnan(rll)                                     # degenerate fit ⇒ NaN, reported honestly
