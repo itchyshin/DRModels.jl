@@ -140,7 +140,17 @@ function _lognormal_jacobian_shift(fam::LogNormal, gfit::DrmFit, y1, y2, obs1, o
         obs2[i] && (jac += log(y2[i]))
     end
     gnll = gfit.nll
-    lnll = gnll === nothing ? nothing : (θ -> gnll(θ) + jac)   # nll = -loglik, so the Jacobian ADDS
+    # Preserve the optimizer objective and score for convergence diagnostics;
+    # only the callable/profile likelihood receives the parameter-free Jacobian.
+    lnll = if gnll === nothing
+        nothing
+    elseif gnll isa _FitObjectiveGradient
+        _FitObjectiveGradient(gnll.objective, gnll.gradient!, θ -> gnll(θ) + jac)
+    elseif gfit.nllgrad !== nothing
+        _FitObjectiveGradient(gnll, gfit.nllgrad, θ -> gnll(θ) + jac)
+    else
+        θ -> gnll(θ) + jac
+    end
     reml_ll = isnan(gfit.reml_loglik) ? gfit.reml_loglik : gfit.reml_loglik - jac
     # `iterations` is passed through directly (rather than defaulted to -1 and
     # re-attached): this route borrows the Gaussian bivariate fit's optimiser run

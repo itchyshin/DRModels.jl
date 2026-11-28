@@ -171,9 +171,8 @@ end
     end
     @test chk.convergence_status === :converged && chk.converged && chk.ok
 
-    # `se = false` on a Poisson relmat route returns an all-NaN covariance.
-    # Optimisation may finish, but positive-definite curvature is unverified,
-    # so convergence is not established under the shared rule.
+    # `se = false` keeps covariance unavailable. The analytic score can still
+    # establish positive-definite curvature without reporting standard errors.
     G = 20
     C = [0.5^abs(i - j) for i in 1:G, j in 1:G]
     id = repeat(1:G, inner = 5)
@@ -185,8 +184,9 @@ end
     @test off.uncertainty === :skipped
     @test all(isnan, off.vcov)
     @test off.converged
-    @test convergence_status(off) === :degenerate
-    @test !is_converged(off)
+    @test DRModels._twin_objective_curvature(off).positive_definite
+    @test convergence_status(off) === :converged
+    @test is_converged(off)
     on = drm(form, Poisson(); data = (; y = yc, x = xc, id), K = C)
     @test on.uncertainty === :ok
     @test convergence_status(on) === :converged

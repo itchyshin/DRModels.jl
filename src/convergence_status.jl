@@ -336,7 +336,15 @@ function _twin_objective_curvature(fit::DrmFit)
     fit.nll === nothing && return nothing
     try
         objective = fit.estim_method === :MAP ? t -> _map_objective_nll(fit, t) : fit.nll
-        H = ForwardDiff.hessian(objective, fit.theta)
+        H = try
+            ForwardDiff.hessian(objective, fit.theta)
+        catch err
+            err isa InterruptException && rethrow()
+            # Nested Laplace objectives may not support dual numbers. In that
+            # case, differentiate their analytic score numerically instead.
+            (fit.estim_method === :MAP || fit.nllgrad === nothing) && return nothing
+            _finite_hessian_from_gradient(fit.nllgrad, fit.theta; require_pd=false)
+        end
         all(isfinite, H) || return nothing
         F = cholesky(Symmetric(Matrix{Float64}(H)); check=false)
         isposdef(F) || return (positive_definite=false, finite_se=false, inflated_se=false)
