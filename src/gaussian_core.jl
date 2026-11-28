@@ -1233,6 +1233,15 @@ them.
     # the fit of `y ~ x + offset(z)` is exactly the fit of `y - z ~ x` (the same
     # likelihood and the same estimates). Fit the shifted response, then put the
     # offset back into the fitted means and the observed response.
+    # #936: the simple fixed-effect / `(1 | g)` ML fit of a response whose SD is far from 1
+    # is fitted on y / sd(y) and mapped back (src/rescale_response.jl); `nothing` = not that slice.
+    plan = _y_rescale_plan(f, fam, kwargs, (:data, :g_tol))
+    if plan !== nothing
+        kw_s = merge((; kwargs...), (; data = plan.data))
+        fit_s = _apply_design_rank(_warn_variance_boundary(_drm_gaussian_fit(f, fam; kw_s...)))
+        fit_r = _y_rescale_restore(fit_s, plan)
+        fit_r === nothing || return _with_prior_table_input(fit_r, get(kwargs, :priors, nothing))
+    end
     f_fit, kw_fit, off = _gaussian_offset_shift(f, fam, kwargs)
     # `_drm_gaussian_fit` does not take `se`; strip only on the offset path (refusal above otherwise).
     strip_se = haskey(kwargs, :se) && off !== nothing
@@ -2274,11 +2283,14 @@ function _drm_gaussian_fit(f::DrmFormula, fam::Gaussian; data, K = nothing, A = 
         return _withformula(_fit_ranef_gaussian(fam, y, Xμ, Xσ, gidx, G, w, nmμ, nmσ, grp, g_tol;
                                                reml = reml_here, prior_w = prior_w), f)
     end
+    repeated_grp = Set(g for g in last.(re) if count(==(g), last.(re)) > 1)
     comps = map(zip(re, re_kinds)) do ((_, grp), (kind, var))  # multiple scalar components
         kind === :intercept || _require_finite_data_column(data, var)
         w = kind === :intercept ? ones(length(y)) : Float64.(getproperty(data, var))
         gidx, Gk = _group_index(getproperty(data, grp); col = grp)
-        (w, gidx, Gk, String(grp))
+        # a slope on a group that carries more than one component is labelled `g:x`, so
+        # `(1 | g) + (0 + x | g)` has unique SD labels (#1756); other labels are unchanged.
+        (w, gidx, Gk, (kind !== :intercept && grp in repeated_grp) ? "$(grp):$(var)" : String(grp))
     end
     return _withformula(_fit_multi_ranef_gaussian(fam, y, Xμ, Xσ, comps, nmμ, nmσ, g_tol;
                                                  reml = method === :REML), f)
@@ -3480,11 +3492,16 @@ end
 # E[Y] at `newdata` (drmTMB `predict(type = "mean")`): the component parameters
 # from `predict_parameters`, combined as in `fitted`. Population level.
 function _predict_mean(fit::DrmFit, newdata)
-    fit.family isa CumulativeLogit && throw(ArgumentError(
-        "predict: `type = :mean` is not available for CumulativeLogit; " *
-        "`fitted(fit)` is the expected category score"))
     fit.formula isa DrmFormula || throw(ArgumentError(
         "predict: `type = :mean` is defined for univariate fits; use `type = :response`"))
+    if fit.family isa CumulativeLogit
+        # expected category score at `newdata` (drmTMB `ordinal_expected_score()`): the
+        # intercept-free `Xβ̂` from `predict(type = :link)` and the fitted cutpoints.
+        η = predict(fit, newdata; type = :link)
+        δ = coef(fit, :cutpoints)
+        cuts = cumsum(vcat(δ[1], exp.(δ[2:end])))
+        return _cumulative_score(η, cuts, length(δ) + 1)
+    end
     pp = predict_parameters(fit, newdata)
     if fit.family isa ZeroOneBeta
         return (1 .- pp[:zoi]) .* pp[:mu] .+ pp[:zoi] .* pp[:coi]
@@ -4378,13 +4395,9 @@ function _simulate_once(fit::DrmFit, rng; mu = nothing, sigma = nothing)
         σ = sigma === nothing ? _scale_vector(fit, :sigma) : sigma
         a = _gamma_sigma_is_shape(fit) ? σ : inv.(abs2.(σ))
         return Float64[rand(rng, Distributions.Gamma(a[i], μ[i] / a[i])) for i in 1:n]
-    elseif fam isa LogNormal
-        σ = _scale_vector(fit, :sigma)
-        return Float64[exp(log(max(μ[i], eps())) + σ[i] * randn(rng)) for i in 1:n]
-    elseif fam isa Student
-        σ = _scale_vector(fit, :sigma)
-        ν = _scale_vector(fit, :nu)
-        return Float64[μ[i] + σ[i] * rand(rng, Distributions.TDist(ν[i])) for i in 1:n]
+    # `LogNormal`, `Student`, and `CumulativeLogit` draw via typed `DrmFit{...}`
+    # methods in `bivariate_lognormal.jl`, `bivariate_student.jl`, and
+    # `cumulative.jl` (generic branches here were unreachable; #1297).
     elseif fam isa ZeroOneBeta
         μb = _scale_vector(fit, :beta_mu)
         σ = _scale_vector(fit, :sigma); φ = @. 1 / (σ * σ)
@@ -4394,10 +4407,6 @@ function _simulate_once(fit::DrmFit, rng; mu = nothing, sigma = nothing)
         σ = _scale_vector(fit, :sigma)
         p = _scale_vector(fit, :nu)
         return Float64[_rand_tweedie(rng, μ[i], σ[i]^2, p[i]) for i in 1:n]
-    elseif fam isa CumulativeLogit
-        η = _scale_vector(fit, :ordinal_eta)
-        cuts = _scale_vector(fit, :ordinal_cuts)
-        return Float64[_rand_cumulative_logit(rng, η[i], cuts) for i in 1:n]
     elseif fam isa SkewNormal
         # Azzalini's stochastic representation. The PUBLIC parameters are the
         # MOMENT form (μ = mean of y, σ = SD of y, ν = slant α), so a draw has to

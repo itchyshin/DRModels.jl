@@ -22,6 +22,30 @@ control_info
 DRMControlReport
 ```
 
+`gradient(fit)` and `hessian(fit)` return the gradient and Hessian of the negative
+log-likelihood the optimiser minimised, in `coef(fit)` order (see
+[Convergence](../model-guides/convergence.md)).
+
+```@docs
+gradient
+hessian
+```
+
+## Fixed-effect priors
+
+Priors are built with `drm_priors` and passed to `drm`; `resolve_priors` shows how
+each prior maps onto a coefficient before fitting. See [Fixed-effect priors](../priors.md)
+for worked examples.
+
+```@docs
+AbstractDrmPrior
+drm_priors
+drm_prior_normal
+drm_prior_ridge
+drm_prior_sd_gamma
+resolve_priors
+```
+
 ## Coefficients and (co)variance
 
 ```@docs
