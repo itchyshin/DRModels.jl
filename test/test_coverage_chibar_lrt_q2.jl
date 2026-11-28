@@ -9,6 +9,14 @@ import Distributions: Chisq, ccdf
         @test chibar_pvalue(-1.0, 1) == 0.5
     end
 
+    @testset "chibar_pvalue q = 2: explicit mixture tail" begin
+        # 0.25·χ²(0) + 0.5·χ²(1) + 0.25·χ²(2) tail at a fixed statistic.
+        @test chibar_pvalue(4.0, 2) ≈ 0.5 * ccdf(Chisq(1), 4.0) + 0.25 * ccdf(Chisq(2), 4.0)
+        # The q = 2 mixture tail is not bounded by the χ²(1) tail: at 4 it is
+        # about 0.0566 against 0.0455, so no ordering against χ²(1) is asserted.
+        @test chibar_pvalue(4.0, 2) > ccdf(Chisq(1), 4.0)
+    end
+
     @testset "lrt_boundary with two nested random intercepts (q = 2)" begin
         Random.seed!(202611201)
         G = 40; m = 10; n = G * m
@@ -29,10 +37,6 @@ import Distributions: Chisq, ccdf
         @test t.pvalue == chibar_pvalue(t.statistic, 2)
         @test t.pvalue_naive == ccdf(Chisq(2), max(t.statistic, 0.0))
         @test t.pvalue <= t.pvalue_naive
-        if t.statistic > 0
-            naive1 = ccdf(Chisq(1), t.statistic)
-            @test t.pvalue >= chibar_pvalue(t.statistic, 1)
-            @test t.pvalue <= naive1
-        end
+        @test t.pvalue >= chibar_pvalue(t.statistic, 1)
     end
 end
