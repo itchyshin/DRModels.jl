@@ -168,7 +168,7 @@ end
     @test z.penalty.fixed_penalty == 0
     @test_throws ArgumentError aic(z)
     err = try aic(z); nothing catch e; e end
-    @test occursin("mixed-prior MAP fits", sprint(showerror, err))
+    @test occursin("penalized MAP fits", sprint(showerror, err))
     @test_throws ArgumentError confint(z)
     @test_throws ArgumentError simulate(z)
     floorq=copy(ORACLE_POINTS[1]); floorq[end]=-20.
