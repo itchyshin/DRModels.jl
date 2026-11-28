@@ -32,10 +32,11 @@ const DVG = DRModels
              0.0 0.0 0.0 0.0
              3.8 0.4 0.0 12.1]
         V = @test_logs (:warn,) DVG._vcov_from_hessian(H)
-        @test all(isfinite, V)
-        @test issymmetric(V)
-        # The flat coordinate must not acquire a spurious finite variance.
-        @test V[3, 3] == 0
+        @test all(isnan, V[3, :]) && all(isnan, V[:, 3])
+        @test all(isfinite, V[setdiff(1:4, 3), setdiff(1:4, 3)])
+        @test issymmetric(V[setdiff(1:4, 3), setdiff(1:4, 3)])
+        # The flat coordinate must not acquire a spurious finite variance (#1383).
+        @test isnan(V[3, 3])
     end
 
     @testset "near-singular Hessian is treated as singular on every platform" begin
@@ -45,8 +46,9 @@ const DVG = DRModels
              0.0 0.0 9.85e-16 0.0
              3.8 0.4 0.0 12.1]
         V = @test_logs (:warn,) DVG._vcov_from_hessian(H)
-        @test all(isfinite, V)
-        @test V[3, 3] < 1.0   # not the 1e15 a raw inverse would produce
+        @test all(isnan, V[3, :]) && all(isnan, V[:, 3])
+        @test all(isfinite, V[setdiff(1:4, 3), setdiff(1:4, 3)])
+        @test all(diag(V)[setdiff(1:4, 3)] .> 0)
     end
 
     @testset "regression: NB2 at r → ∞ on Poisson data does not throw" begin
@@ -66,7 +68,8 @@ const DVG = DRModels
         fit_nb = DRModels._fit_nb2_ranef_va(DRModels.NegBinomial2(), y, Xμ, Xσ, gidx, ng,
                                        ["(Intercept)", "x"], ["(Intercept)"], :g, 1e-8)
         @test all(isfinite, fit_nb.theta)
-        @test all(isfinite, fit_nb.vcov)
+        @test all(x -> isfinite(x) || isnan(x), fit_nb.vcov)
+        @test !any(v -> v < 0, diag(fit_nb.vcov))
     end
 end
 
@@ -108,9 +111,11 @@ end
         @test occursin("NOT trustworthy", captured)
         @test occursin("sparse-Laplace GLMM (general-mean nuisance)", captured)
 
-        # The pseudo-inverse fallback, not the old silent identity matrix.
-        @test all(isfinite, fit.vcov)
-        @test issymmetric(fit.vcov)
+        # Flagged boundary coordinates are NaN (#1383); others stay finite.
+        @test all(x -> isfinite(x) || isnan(x), fit.vcov)
+        @test !any(v -> v < 0, diag(fit.vcov))
+        finite = findall(!isnan, diag(fit.vcov))
+        @test issymmetric(fit.vcov[finite, finite])
     end
 
     @testset "well-conditioned fit on the same route stays silent" begin

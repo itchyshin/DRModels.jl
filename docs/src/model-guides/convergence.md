@@ -82,6 +82,12 @@ marginal approximation as the full fit: drop the term but keep another
 independent term, as in `(0 + x | g)` alone. A profile interval,
 `confint(fit; method = :profile)`, may not converge on a fit at the wall.
 
+When the fit flags a coordinate as flat (the warning names it as
+`flat_coordinates`), `vcov(fit)` holds `NaN` in that coordinate's row and
+column, and the other coordinates are inverted without it. `stderror(fit)` shows
+`Inf` there and the Wald interval is unbounded. Use a profile or bootstrap
+interval for that parameter.
+
 This advice applies to variance components estimated at zero. A Student-t
 shape parameter near its infinite-`nu` Gaussian limit is a different
 identification problem: the data may weakly distinguish large values of `nu`.
