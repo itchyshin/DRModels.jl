@@ -146,10 +146,12 @@ Currently, Julia's `@formula` collapses repeated identical terms such as
 therefore cannot reject that spelling as a duplicate; drmTMB in R rejects it.
 This difference remains unresolved.
 
-Confidence intervals, likelihood comparisons, AIC,
-BIC and uncertainty-dependent prediction or simulation are refused for active
-priors. An unpenalized comparison requires unpenalized refits. Choosing the
-prior depends on the response units: changing units requires changing its rate.
+Confidence intervals, likelihood comparisons, AIC, BIC and
+uncertainty-dependent prediction or simulation are refused for active priors.
+Calling `bootstrap_result(fit; data = ...)` on these prior fits is also refused;
+bootstrap coverage has not been qualified for them. An unpenalized comparison
+requires unpenalized refits. Choosing the prior depends on the response units:
+changing units requires changing its rate.
 
 ## Specifying priors in a table
 
