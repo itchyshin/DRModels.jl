@@ -1465,11 +1465,21 @@ function _binomial_animal_q2_prediction_fit(fit::DrmFit{Binomial})
     return _withformula(fit, prediction_formula)
 end
 
+function predict(fit::DrmFit{Binomial}; kwargs...)
+    prediction_fit = _binomial_animal_q2_prediction_fit(fit)
+    return invoke(predict, Tuple{DrmFit}, prediction_fit; kwargs...)
+end
+
 function predict(fit::DrmFit{Binomial}, newdata;
                  type::Symbol = :response, se::Bool = false)
     prediction_fit = _binomial_animal_q2_prediction_fit(fit)
     return invoke(predict, Tuple{DrmFit,Any}, prediction_fit, newdata;
                   type, se)
+end
+
+function predict_parameters(fit::DrmFit{Binomial}; kwargs...)
+    prediction_fit = _binomial_animal_q2_prediction_fit(fit)
+    return invoke(predict_parameters, Tuple{DrmFit}, prediction_fit; kwargs...)
 end
 
 function predict_parameters(fit::DrmFit{Binomial}, newdata;
