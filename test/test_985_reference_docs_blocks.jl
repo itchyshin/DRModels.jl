@@ -81,3 +81,21 @@ end
     @test r isa NTuple{6}
     @test all(x -> -1 <= x <= 1, r)
 end
+
+# #985 (recount 21 Nov 2026): the user-facing prior, fit-derivative and marker exports
+# that were still in no `@docs` block. `@formula` stays prose-only: it is StatsModels'
+# macro, so an `@docs` block for it finds no DRModels docstring and breaks the build.
+@testset "#985 prior, derivative and marker exports are listed in a reference page" begin
+    if !isdir(_REF_DIR)
+        @info "docs/src/reference not found; skipping #985 recount check"
+    else
+        listed = _reference_docs_names()
+        for nm in ("AbstractDrmPrior", "drm_priors", "drm_prior_normal", "drm_prior_ridge",
+                   "drm_prior_sd_gamma", "resolve_priors", "gradient", "hessian",
+                   "phylo_interaction")
+            @testset "$nm" begin
+                @test (nm in listed) || ("DRModels." * nm in listed)
+            end
+        end
+    end
+end

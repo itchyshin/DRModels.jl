@@ -41,11 +41,10 @@ _threw(f) = try; f(); false catch e; e isa ArgumentError; end
         @test sd(f2, data) === nothing
     end
 
-    @testset "correlated slope (1 + x | g): silent nothing" begin
+    @testset "correlated slope (1 + x | g): no simulator, now refused by name (#1387)" begin
         f = drm(bf(@formula(y ~ x + (1 + x | g1)), @formula(sigma ~ 1)), Gaussian(); data)
         @test sd(f, data) === nothing
-        @test_logs (:warn, r"conditional `simulate`") ms(f, data)
-        @test_broken _threw(() -> ms(f, data))
+        @test _threw(() -> ms(f, data))
     end
 
     @testset "meta_V-only fit: no warning (the conditional draw is the marginal)" begin
