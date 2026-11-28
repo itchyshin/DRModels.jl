@@ -217,12 +217,14 @@ end
     @test idx in upper_mapped.upper
 end
 
-@testset "skipping the covariance does not pass the Hessian convergence gate" begin
+@testset "skipped covariance is checked against objective curvature" begin
     x = repeat([-1.0, 0.0, 1.0], 4)
     y = [0.2, 0.8, 0.5, 1.4, 1.0, 1.6, 2.0, 1.3, 2.2, 1.8, 2.4, 2.1]
     fit = drm(bf(@formula(y ~ 1 + x)), Gaussian(); data=(; y, x),
               control=DRModels.DRMControl(se=false))
     @test fit.control_info.se === :skipped
-    @test convergence_status(fit) === :degenerate
-    @test !is_converged(fit)
+    @test DRModels._twin_objective_curvature(fit).positive_definite
+    @test convergence_status(fit) === :converged
+    @test is_converged(fit)
+    @test all(isnan, fit.vcov)
 end
