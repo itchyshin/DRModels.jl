@@ -1,7 +1,9 @@
-# DRModels.jl #1246 (items 4 and 6 only): `_va_scored_sigma` honours the
-# `:drm_quiet_boundary` guard like `_va_inner_converged`, and `_logfactorial` is O(1).
+# DRModels.jl #1246 follow-ups: items 4, 5, and 6.
+# `_va_scored_sigma` honours `:drm_quiet_boundary`; `_logfactorial` is O(1);
+# `marginal = :VA` fits accept `confint(...; method = :profile)` on fixed effects.
 using DRModels
-using Test, Logging
+using Test, Logging, Random
+import Distributions
 
 const DVI = DRModels
 
@@ -30,4 +32,29 @@ end
     @test quiet == loud == fill(exp(b), 5)
     # inside the band: silent either way, same value
     @test_logs DVI._va_scored_sigma(Xσ, [1.0], b, "_fit_nb2_ranef_va") == fill(exp(1.0), 5)
+end
+
+@testset "#1246 item 5: profile CIs on a Poisson marginal = :VA fit" begin
+    rng = MersenneTwister(202611241)
+    G = 12; per = 6; n = G * per
+    g = repeat(1:G, inner = per); x = randn(rng, n)
+    β = [0.35, -0.2]; σb = 0.45
+    bg = σb .* randn(rng, G)
+    λ = exp.(β[1] .+ β[2] .* x .+ bg[g])
+    y = Float64.([rand(rng, Distributions.Poisson(λi)) for λi in λ])
+    data = (; y, x, g)
+
+    fit = drm(bf(@formula(y ~ x + (1 | g))), DVI.Poisson();
+              data = data, marginal = :VA, se = false)
+    @test fit.marginal === :VA
+    @test is_converged(fit)
+
+    wald = confint(fit; method = :wald)
+    prof = confint(fit; method = :profile)
+    @test length(prof) == length(wald) == 3
+    @test [r.param for r in prof] == [r.param for r in wald]
+    @test all(r.lower < r.estimate < r.upper for r in prof)
+    pres = profile_result(fit)
+    @test pres.failed == 0
+    @test pres.ci == prof
 end
