@@ -3462,9 +3462,68 @@ end
 function _insample_location_link(fit::DrmFit)
     η = _insample_population_mu_link(fit)
     sc = fit.scales
-    haskey(sc, :cond_fit_eta_re) && !haskey(sc, :cond_fit_stored) &&
-        (η = η .+ sc[:cond_fit_eta_re])
+    haskey(sc, :cond_fit_stored) && return _fitted_used_rows(fit, η)   # already conditional
+    haskey(sc, :cond_fit_failed) && throw(ArgumentError(
+        "predict: the conditional modes could not be computed at the fitted parameters; " *
+        "pass `newdata` for population-level predictions."))
+    if haskey(sc, :cond_fit_eta_re)
+        η = η .+ sc[:cond_fit_eta_re]
+    elseif haskey(sc, :cond_eta_re) && length(sc[:cond_eta_re]) == length(η)
+        η = η .+ sc[:cond_eta_re]                  # structured-field export, as `fitted` reads it
+    elseif fit.ranef isa LocOnlyRanef && !(fit.family isa ZeroOneBeta || fit.family isa CumulativeLogit)
+        # sparse / EM phylo(1 | g): `means[:mu]` already holds the conditional mean.
+        η = _insample_stored_mu_link(fit)
+    elseif _fit_mean_has_random_term(fit)
+        reη = _insample_retained_mode_eta(fit, length(η))
+        reη === nothing && throw(ArgumentError(
+            "predict: without `newdata`, the in-sample prediction adds the fitted random-effect " *
+            "modes (as drmTMB's `predict(newdata = NULL)` does), and this route " *
+            "($(typeof(fit.family).name.name) fit with a random or structured mean effect) does " *
+            "not keep them per row. Pass `newdata` for population-level predictions."))
+        η = η .+ reη
+    end
     return _fitted_used_rows(fit, η)
+end
+
+# Link-scale value of the stored `means[:mu]`.
+function _insample_stored_mu_link(fit::DrmFit)
+    μ = collect(Float64, fit.means[:mu])
+    fit.family isa LogNormal && return log.(μ)
+    lk = _fitted_link(fit.family)
+    return lk === nothing ? μ : first(lk).(μ)
+end
+
+# Per-row mean random-effect contribution rebuilt from the retained modes, on routes
+# whose `fit.ranef` holds the mean-axis modes of one grouping factor in group-index
+# order and whose `scales[:sd_group_index]` maps rows to groups (the structured Tweedie
+# SD-regression route). `nothing` when the layout is not that one: the caller refuses.
+function _insample_retained_mode_eta(fit::DrmFit, n::Int)
+    fit.family isa Tweedie || return nothing
+    sc = fit.scales
+    haskey(sc, :sd_group_index) || return nothing
+    haskey(sc, :sigma_random_effect) && return nothing    # sigma-axis modes, not the mean
+    ra = fit.ranef
+    (ra isa AbstractDict && length(ra) == 1) || return nothing
+    b = first(values(ra))
+    b isa AbstractVector{<:Real} || return nothing
+    gidx = sc[:sd_group_index]
+    length(gidx) == n || return nothing
+    all(g -> isinteger(g) && 1 <= g <= length(b), gidx) || return nothing
+    return Float64[b[Int(g)] for g in gidx]
+end
+
+# A one-coefficient block is a constant only when it is a plain intercept: its single
+# coefficient is `(Intercept)` and its formula carries no function term (offset, random
+# or structured effect, ...). `sigma ~ 0 + x` also has one coefficient.
+function _insample_plain_intercept(fit::DrmFit, p::Symbol)
+    nm = get(Dict(fit.coefnames), p, nothing)
+    (nm !== nothing && length(nm) == 1 && nm[1] == "(Intercept)") || return false
+    f = fit.formula
+    f isa DrmFormula || return true
+    rhs = get(Dict(f.forms), p, nothing)
+    rhs === nothing && return true
+    terms = rhs isa Tuple ? collect(rhs) : Any[rhs]
+    return !any(t -> t isa FunctionTerm, terms)
 end
 
 function _insample_param_response(fit::DrmFit, p::Symbol, n::Int)
@@ -3473,7 +3532,7 @@ function _insample_param_response(fit::DrmFit, p::Symbol, n::Int)
     end
     if p === :sigma && fit.family isa Gaussian && _formula_has_meta_v(fit)
         βσ = coef(fit, :sigma)
-        length(βσ) == 1 || throw(ArgumentError(
+        _insample_plain_intercept(fit, :sigma) || throw(ArgumentError(
             "predict_parameters: in-sample `sigma` with `meta_V` and a varying σ formula requires `newdata`"))
         return _fitted_used_rows(fit, fill(exp(βσ[1]), n))
     end
@@ -3482,14 +3541,15 @@ function _insample_param_response(fit::DrmFit, p::Symbol, n::Int)
     haskey(fit.means, p) &&
         return _fitted_used_rows(fit, collect(Float64, fit.means[p]))
     β = coef(fit, p)
-    length(β) == 1 || throw(ArgumentError(
+    _insample_plain_intercept(fit, p) || throw(ArgumentError(
         "predict_parameters: in-sample `$p` requires the training `newdata` table on this route"))
     return _fitted_used_rows(fit, _param_response(fit.family, p, fill(β[1], n)))
 end
 
 function _insample_param_link(fit::DrmFit, p::Symbol, n::Int)
     β = coef(fit, p)
-    length(β) == 1 && return _fitted_used_rows(fit, fill(β[1], n))
+    _insample_plain_intercept(fit, p) && !(p === :sd || p === :sd_phylo) &&
+        return _fitted_used_rows(fit, fill(β[1], n))
     return _stored_to_link(fit.family, p, _insample_param_response(fit, p, n))
 end
 
@@ -3524,13 +3584,20 @@ function _stored_to_link(fam, p::Symbol, val::AbstractVector{<:Real})
     end
 end
 
+function _insample_has_row_values(fit::DrmFit, p::Symbol)
+    v = get(fit.scales, p, nothing)
+    return v isa AbstractVector{<:Real} && length(v) == _insample_nrows(fit)
+end
+
 function _predict_parameters_insample(fit::DrmFit; type::Symbol = :response)
     n = _insample_nrows(fit)
     out = Dict{Symbol,Vector{Float64}}()
     for (p, _) in fit.blocks
         p in (:cutpoints, :resd, :recov) && continue
         startswith(String(p), "sdtarget_") && continue
-        (p === :sd || p === :sd_phylo) && continue
+        # a random-effect SD block is returned only where the fit retains its per-row
+        # value (an SD-regression multiplier); a new marginal SD needs `newdata` / `K`.
+        (p === :sd || p === :sd_phylo) && !_insample_has_row_values(fit, p) && continue
         val = type === :link ?
             _insample_param_link(fit, p, n) :
             _insample_param_response(fit, p, n)
