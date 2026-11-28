@@ -10,6 +10,7 @@ phylo
 spatial
 animal
 relmat
+phylo_interaction
 ```
 
 ## Temporal random effects (AR1 / OU)
