@@ -14,4 +14,4 @@ The required engine regression benchmark also passed on the same tested code sou
 
 ## Integration status
 
-The candidate branch remains local and unpushed. Its `docs/src/priors.md` change overlaps open DRModels PRs #1327, #1328 and #1321, so I have not opened a DRModels PR or changed those branches. The gllvmTMB and GLLVModels.jl draft PRs remain on their validated heads. Their package-suite evidence is complete, but required GitHub checks remain pending or in progress. No PR has been merged and no package has been released.
+The candidate's `docs/src/priors.md` includes the existing prior guidance and overlaps open DRModels PRs #1327, #1328 and #1321. Reconcile that section during review; this candidate does not change those branches. The R-to-Julia bridge remains unvalidated because the embedded Julia startup failed in the test environment. No merge or release is authorized by this report.
