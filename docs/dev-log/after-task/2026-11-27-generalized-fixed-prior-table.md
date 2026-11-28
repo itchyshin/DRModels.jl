@@ -1,5 +1,7 @@
 # Generalized fixed-prior table
 
+This report records the 27 November candidate and its validation. The current combined candidate has since changed: its live R-to-Julia fixtures passed on a later source, and its latest Julia package suite is in progress. See PR #1631 for the current source and results. The bridge limitation below describes the earlier candidate.
+
 The prior table now accepts normalized Student-t densities for fixed-effect coefficients, alongside normal densities and ridge penalties. It retains the existing Gamma rows for Gaussian random-intercept and residual standard deviations. The table parser continues to reject unsupported classes, scales, selectors and distributions. These priors contribute to a penalized maximum-likelihood fit; they do not produce posterior samples or calibrated uncertainty.
 
 ## Validation
