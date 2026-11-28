@@ -507,8 +507,17 @@ _withmap(fit::DrmFit, pen_value::Real, spec) = DrmFit(fit.family, fit.blocks, fi
     :MAP, fit.reml_loglik, fit.ml_loglik, fit.marginal, Float64(pen_value), spec, fit.iterations, fit.phylo_scale,
     fit.uncertainty, fit.geometry)
 
-_is_fixed_prior_fit(fit::DrmFit) = fit.penalty isa NamedTuple && haskey(fit.penalty, :kind) && fit.penalty.kind in (:fixed_priors, :sd_priors)
-_prior_kind_label(fit::DrmFit) = fit.penalty.kind === :sd_priors ? "SD-prior" : "fixed-prior"
+_is_fixed_prior_fit(fit::DrmFit) = fit.penalty isa NamedTuple && haskey(fit.penalty, :kind) && fit.penalty.kind in (:fixed_priors, :sd_priors, :correlation_priors, :mixed_priors)
+function _prior_kind_label(fit::DrmFit)
+    specs = hasproperty(fit.penalty, :specs) ? fit.penalty.specs : AbstractDrmPrior[]
+    has_fixed = any(_is_coefficient_prior, specs)
+    has_sd = any(p -> p isa Union{SDGammaPrior,ResidualSDGammaPrior}, specs)
+    has_correlation = any(p -> p isa CorrelationLKJPrior, specs)
+    count(identity, (has_fixed, has_sd, has_correlation)) > 1 && return "mixed-prior"
+    has_correlation && return "correlation-prior"
+    has_sd && return "SD-prior"
+    return "fixed-prior"
+end
 
 function _with_prior_table_input(fit, input)
     Tables.istable(input) || return fit
@@ -524,8 +533,13 @@ end
 
 function _with_fixed_priors(fit::DrmFit, rows, data_nll; preserve_grad=false)
     active = !all(r -> r.kind === :ridge && r.precision == 0, rows)
-    specs = [FixedPrior(r.kind, r.dpar, r.coef, nothing, r.mean, r.precision, r.constant) for r in rows]
-    meta = (kind=:fixed_priors, rows=rows, data_nll=data_nll, specs=specs)
+    specs = AbstractDrmPrior[
+        r.kind === :residual_sd_gamma ? ResidualSDGammaPrior(r.mean, r.shape, r.rate) :
+        FixedPrior(r.kind, r.dpar, r.coef, nothing, r.mean, r.precision, r.constant, r.df)
+        for r in rows]
+    fixed_penalty = _fixed_prior_value(rows, fit.theta)
+    meta = (kind=:fixed_priors, rows=rows, data_nll=data_nll, specs=specs,
+            fixed_penalty=fixed_penalty, log_prior=-fixed_penalty, objective=fit.nll(fit.theta))
     grad! = preserve_grad ? fit.nllgrad : (g, theta) -> (g .= ForwardDiff.gradient(fit.nll, theta))
     DrmFit(fit.family, fit.blocks, fit.coefnames, fit.theta, fit.vcov, fit.loglik,
         fit.nobs, fit.converged, fit.means, fit.obs, fit.scales, fit.formula,
@@ -537,7 +551,9 @@ end
 function _with_sd_priors(fit::DrmFit, rows, sdrow, data_nll, specs)
     meta = (kind=:sd_priors, rows=rows, sd_row=sdrow, data_nll=data_nll,
             specs=copy(specs), fixed_penalty=_fixed_prior_value(rows, fit.theta),
-            sd_penalty=_sd_prior_value(sdrow, fit.theta), objective=fit.nll(fit.theta))
+            sd_penalty=_sd_prior_value(sdrow, fit.theta),
+            log_prior=-(_fixed_prior_value(rows, fit.theta) + _sd_prior_value(sdrow, fit.theta)),
+            objective=fit.nll(fit.theta))
     grad! = (g, theta) -> (g .= ForwardDiff.gradient(fit.nll, theta))
     DrmFit(fit.family, fit.blocks, fit.coefnames, fit.theta, fit.vcov, fit.loglik,
         fit.nobs, fit.converged, fit.means, fit.obs, fit.scales, fit.formula,
@@ -550,12 +566,45 @@ function _with_multi_sd_priors(fit::DrmFit, rows, sdrows, data_nll, specs)
     vals = [_sd_prior_value(r, fit.theta) for r in sdrows]
     meta = (kind=:sd_priors, rows=rows, sd_rows=sdrows, data_nll=data_nll,
             specs=copy(specs), fixed_penalty=_fixed_prior_value(rows, fit.theta),
-            sd_penalties=vals, sd_penalty=sum(vals), objective=fit.nll(fit.theta))
+            sd_penalties=vals, sd_penalty=sum(vals),
+            log_prior=-(_fixed_prior_value(rows, fit.theta) + sum(vals)),
+            objective=fit.nll(fit.theta))
     DrmFit(fit.family, fit.blocks, fit.coefnames, fit.theta, fit.vcov, fit.loglik,
         fit.nobs, fit.converged, fit.means, fit.obs, fit.scales, fit.formula,
         fit.nll, fit.nllgrad, fit.ranef, :MAP, fit.reml_loglik, fit.ml_loglik,
         fit.marginal, fit.phylo_penalty, meta, fit.iterations, fit.phylo_scale,
         fit.uncertainty, fit.geometry)
+end
+
+function _with_correlation_prior(fit::DrmFit, spec::CorrelationLKJPrior, row)
+    data_nll = fit.nll
+    objective = theta -> data_nll(theta) + _residual_correlation_prior_value(row, theta)
+    pen = _residual_correlation_prior_value(row, fit.theta)
+    meta = (kind=:correlation_priors, correlation_row=row, data_nll=data_nll,
+            correlation_penalty=pen, log_prior=-pen, objective=objective(fit.theta),
+            specs=CorrelationLKJPrior[spec])
+    grad! = (g, theta) -> (g .= ForwardDiff.gradient(objective, theta))
+    DrmFit(fit.family, fit.blocks, fit.coefnames, fit.theta, fit.vcov, fit.loglik,
+        fit.nobs, fit.converged, fit.means, fit.obs, fit.scales, fit.formula,
+        objective, grad!, fit.ranef, :MAP, fit.reml_loglik, fit.ml_loglik,
+        fit.marginal, fit.phylo_penalty, meta, fit.iterations, fit.phylo_scale,
+        fit.control_info, fit.uncertainty, fit.geometry)
+end
+
+function _with_random_effect_correlation_prior(fit::DrmFit, specs, rows, correlation_row, data_nll)
+    correlation_penalty = _random_effect_correlation_prior_value(correlation_row, fit.theta)
+    fixed_penalty = _fixed_prior_value(rows, fit.theta)
+    log_prior = -(correlation_penalty + fixed_penalty)
+    kind = isempty(rows) ? :correlation_priors : :mixed_priors
+    meta = (kind=kind, rows=rows, correlation_row=correlation_row,
+            data_nll=data_nll, fixed_penalty=fixed_penalty,
+            correlation_penalty=correlation_penalty, log_prior=log_prior,
+            objective=fit.nll(fit.theta), specs=copy(specs))
+    DrmFit(fit.family, fit.blocks, fit.coefnames, fit.theta, fit.vcov, fit.loglik,
+        fit.nobs, fit.converged, fit.means, fit.obs, fit.scales, fit.formula,
+        fit.nll, fit.nllgrad, fit.ranef, :MAP, fit.reml_loglik, fit.ml_loglik,
+        fit.marginal, fit.phylo_penalty, meta, fit.iterations, fit.phylo_scale,
+        fit.control_info, fit.uncertainty, fit.geometry)
 end
 
 # Tag the integral approximation (`:LA` default, `:Laplace`, `:VA` ELBO, `:AGHQ`). Does not
@@ -1357,8 +1406,12 @@ function _drm_gaussian_fit(f::DrmFormula, fam::Gaussian; data, K = nothing, A = 
             throw(ArgumentError("drm: `control.optimizer` requires the ordinary Gaussian ML route (`algorithm = :auto`, no alternate integration, imputation or profiling)"))
     end
     has_sd_prior = priors isa AbstractVector && any(p -> p isa SDGammaPrior, priors)
+    has_residual_sd_prior = priors isa AbstractVector && any(p -> p isa ResidualSDGammaPrior, priors)
+    has_correlation_prior = priors isa AbstractVector && any(p -> p isa CorrelationLKJPrior, priors)
     if priors !== nothing && (_has_joint_mi(f) || method !== :ML || penalty !== nothing || algorithm !== :auto || marginal !== :LA || profile_ci || phylo_coupled || sparse !== nothing || impute !== nothing || missing !== nothing)
         has_sd_prior && throw(ArgumentError("SD priors currently require ordinary Gaussian ML"))
+        has_residual_sd_prior && throw(ArgumentError("residual_sd priors currently require ordinary Gaussian ML"))
+        has_correlation_prior && throw(ArgumentError("random-effect correlation priors currently require ordinary Gaussian q=2 ML"))
         throw(ArgumentError("fixed-effect priors currently require ordinary fixed-effect Gaussian ML"))
     end
     if _has_joint_mi(f)
@@ -1376,6 +1429,8 @@ function _drm_gaussian_fit(f::DrmFormula, fam::Gaussian; data, K = nothing, A = 
     priors !== nothing && length(_table_column(data, f.response)) != original_rows &&
         throw(ArgumentError("fixed-effect priors currently require complete predictors"))
     rhs = Dict(f.forms)
+    has_correlation_prior && !all(p -> p.dpar === :mu, filter(p -> p isa CorrelationLKJPrior, priors)) &&
+        throw(ArgumentError("a univariate Gaussian random-effect fit accepts only dpar=mu correlation priors"))
     # `allow_phylo_slope = true`: the Gaussian mean is the one route that fits
     # `phylo(1 + x | g)` (#620, two independent phylogenetic fields); the slope
     # variable comes back in the fifth slot and is routed below.
@@ -1409,8 +1464,10 @@ function _drm_gaussian_fit(f::DrmFormula, fam::Gaussian; data, K = nothing, A = 
     structured_sd_slope === nothing || temporal_term === nothing ||
         throw(ArgumentError("drm: a structured slope-only effect cannot be combined with `temporal(...)`."))
     fixed_sigma, sigma_re, sigma_meta, structured_sigma = _split_ranef(rhs[:sigma])  # (1|g)→GHQ; structured_sigma = phylo(1|g) on σ
-    prior_ri = priors !== nothing && length(re) == 1 && _re_kind(first(re)[1])[1] === :intercept
-    prior_two_ri = priors !== nothing && length(re) == 2 && all(r -> _re_kind(r[1])[1] === :intercept, re) && length(unique(last.(re))) == 2
+    prior_re_kind(term) = try first(_re_kind(term)) catch; :unsupported end
+    prior_ri = priors !== nothing && length(re) == 1 && prior_re_kind(first(re)[1]) === :intercept
+    prior_two_ri = priors !== nothing && length(re) == 2 && all(r -> prior_re_kind(r[1]) === :intercept, re) && length(unique(last.(re))) == 2
+    prior_q2 = has_correlation_prior && length(re) == 1 && prior_re_kind(first(re)[1]) === :corr
     prior_phylo_lss = priors !== nothing && !has_sd_prior &&
         priors isa AbstractVector && all(p -> p isa FixedPrior && p.kind === :normal, priors) &&
         isempty(re) && isempty(sigma_re) && metav === nothing && sigma_meta === nothing &&
@@ -1419,10 +1476,11 @@ function _drm_gaussian_fit(f::DrmFormula, fam::Gaussian; data, K = nothing, A = 
         temporal_term === nothing && structured_slope === nothing && structured_sd_slope === nothing &&
         isempty(_sd_parts(f)) && length(_sdphylo_parts(f)) == 1 &&
         first(only(_sdphylo_parts(f))) === structured[2]
-    if priors !== nothing && !prior_phylo_lss && !((isempty(re) || prior_ri || prior_two_ri) && isempty(sigma_re) && metav === nothing && structured === nothing && structured_sigma === nothing && temporal_term === nothing && structured_slope === nothing && structured_sd_slope === nothing && isempty(_sd_parts(f)) && isempty(_sdphylo_parts(f)))
+    if priors !== nothing && !prior_phylo_lss && !((isempty(re) || prior_ri || prior_two_ri || prior_q2) && isempty(sigma_re) && metav === nothing && structured === nothing && structured_sigma === nothing && temporal_term === nothing && structured_slope === nothing && structured_sd_slope === nothing && isempty(_sd_parts(f)) && isempty(_sdphylo_parts(f)))
         if has_sd_prior
             throw(ArgumentError("SD priors currently support at most two distinct iid mean random intercepts without other random or structured effects or SD submodels"))
         end
+        has_correlation_prior && throw(ArgumentError("random-effect correlation priors currently support one ordinary Gaussian q=2 mean block and no other random or structured effects"))
         throw(ArgumentError("fixed-effect priors currently support at most two distinct iid mean random intercepts and no other random or structured effects"))
     end
     if has_sd_prior && any(ismissing, _table_column(data, f.response))
@@ -1468,13 +1526,17 @@ function _drm_gaussian_fit(f::DrmFormula, fam::Gaussian; data, K = nothing, A = 
     has_missing_response = !all(response_observed)
     if priors !== nothing
         has_missing_response && throw(ArgumentError(has_sd_prior ? "SD priors currently require complete responses" : "fixed-effect priors currently require complete responses"))
-        all(==(1), _ctl_weights(length(y))) || throw(ArgumentError("fixed-effect priors currently require unit weights"))
+        all(==(1), _ctl_weights(length(y))) || throw(ArgumentError(has_correlation_prior ? "random-effect correlation priors currently require unit weights" : "fixed-effect priors currently require unit weights"))
         rank(Xμ) == size(Xμ, 2) && rank(Xσ) == size(Xσ, 2) || throw(ArgumentError(has_sd_prior ? "SD priors require full-rank design matrices" : "fixed-effect priors require full-rank design matrices"))
         names = [:mu => nmμ, :sigma => nmσ]
         intercepts = Dict(:mu => _fixed_intercept_index(f, :mu, fixed_mu, nmμ), :sigma => _fixed_intercept_index(f, :sigma, fixed_sigma, nmσ))
-        priors isa AbstractVector && all(p -> p isa Union{FixedPrior,SDGammaPrior}, priors) || throw(ArgumentError("priors must be created by drm_priors"))
+        priors isa AbstractVector && all(p -> p isa Union{FixedPrior,SDGammaPrior,ResidualSDGammaPrior,CorrelationLKJPrior}, priors) || throw(ArgumentError("priors must be created by drm_priors"))
         fixed = FixedPrior[p for p in priors if p isa FixedPrior]
         rows = _resolve_fixed_priors(fixed, names, intercepts)
+        residual_row = _resolve_residual_sd_prior(priors, names)
+        residual_row === nothing || !any(r -> r.index == residual_row.index, rows) ||
+            throw(ArgumentError("residual_sd prior overlaps a fixed-effect prior on sigma:(Intercept)"))
+        residual_row === nothing || push!(rows, residual_row)
         if prior_phylo_lss
             fit = _drm_gaussian_lss_phylo(f, fam, _sdphylo_parts(f), re, structured,
                 structured_sigma, sigma_re, metav, has_missing_response, y, Xμ, Xσ,
@@ -1491,6 +1553,27 @@ function _drm_gaussian_fit(f::DrmFormula, fam::Gaussian; data, K = nothing, A = 
             comps[1][2] == comps[2][2] && throw(ArgumentError("two random-intercept groups have identical partitions and their SDs cannot be identified separately"))
             fit = _fit_multi_ranef_gaussian(fam, y, Xμ, Xσ, comps, nmμ, nmσ, g_tol;
                                             prior_rows=rows, sd_priors=sdrows, prior_specs=priors)
+            return _withformula(fit, f)
+        end
+        if prior_q2
+            corrrows = filter(r -> hasproperty(r, :class) && r.class === :random_effect_correlation,
+                _resolve_priors_native(f, fam; data=data, priors=priors))
+            length(corrrows) == 1 || throw(ArgumentError("random-effect correlation prior did not resolve to one Gaussian q=2 block"))
+            (_, grp) = only(re); (_, var) = _re_kind(first(re)[1])
+            gidx, G = _group_index(getproperty(data, grp); col=grp)
+            _require_finite_data_column(data, var)
+            xs = Float64.(getproperty(data, var))
+            all(isfinite, y) && all(isfinite, Xμ) && all(isfinite, Xσ) && all(isfinite, xs) ||
+                throw(ArgumentError("random-effect correlation priors require finite responses and predictors"))
+            fit = _fit_correlated_ranef_gaussian(fam, y, Xμ, Xσ, gidx, G, xs,
+                nmμ, nmσ, grp, g_tol; prior_rows=rows,
+                correlation_row=only(corrrows))
+            # The fitter returns the penalized objective. Subtracting the
+            # explicit prior terms preserves the raw data objective for metadata.
+            data_nll(θ) = fit.nll(θ) - _fixed_prior_value(rows, θ) -
+                _random_effect_correlation_prior_value(only(corrrows), θ)
+            fit = _with_random_effect_correlation_prior(fit, priors, rows,
+                only(corrrows), data_nll)
             return _withformula(fit, f)
         end
         sdrow = _resolve_sd_prior(priors, prior_ri ? only(re)[2] : nothing, length(nmμ) + length(nmσ) + 1)
@@ -2633,6 +2716,16 @@ function _fit_fixed_gaussian_reml(fam::Gaussian, y, Xμ, Xσ, nmμ, nmσ, g_tol)
         return s + const_2pi + 0.5 * ld - 0.5 * pμ * log(2π)
     end
 
+    # The returned fit retains the full ML objective for profile inference, but
+    # convergence is judged on the restricted objective actually optimized.
+    reml_full_nll(θ) = nll_reml(view(θ, (pμ + 1):length(θ)))
+    function reml_full_grad!(g, θ)
+        fill!(g, 0.0)
+        g[(pμ + 1):end] .= ForwardDiff.gradient(
+            nll_reml, view(θ, (pμ + 1):length(θ)))
+        return g
+    end
+
     # Warm-start β_σ from the homoscedastic residual scale (intercept), zeros else.
     βσ0 = zeros(pσ)
     βμ_ols = Xμ \ y
@@ -2708,7 +2801,10 @@ function _fit_fixed_gaussian_reml(fam::Gaussian, y, Xμ, Xσ, nmμ, nmσ, g_tol)
         _unitfree_converged(Hσ, ForwardDiff.gradient(nll_reml, βσ̂))
     fit = DrmFit(fam, blocks, names, θ̂, V, reml_ll, n,
                  converged && !_scale_runoff(scales), means, obs, scales)
-    return _withiterations(_withreml(_withnll(fit, nll_full), reml_ll, ml_ll), Optim.iterations(res))
+    reml_nll = _FitObjectiveGradient(reml_full_nll, reml_full_grad!, nll_full)
+    return _withiterations(
+        _withreml(_withnll(fit, reml_nll), reml_ll, ml_ll),
+        Optim.iterations(res))
 end
 
 # ---- accessors -----------------------------------------------------------
@@ -3187,7 +3283,8 @@ end
 function _scales_bookkeeping_key(k::Symbol)
     k === :spatial_range && return true
     k in (:q2_restarts, :sd, :sd_group, :sd_group_index, :aghq_nodes, :trials,
-          :cond_blup_unavailable, :cond_logsd_wall, :sigma_fixed, :sigma_random_effect,
+          :cond_blup_unavailable, :cond_logsd_wall, :optimizer_logsd_bound,
+          :sigma_fixed, :sigma_random_effect,
           :sigma_random_effect_slope, :sigma_group_index) && return true
     k in _COND_FIT_KEYS && return true
     startswith(String(k), "sdtarget_") && return true
@@ -4635,9 +4732,13 @@ models fit by **ML** (not REML) on the same data.
 On a **REML** fit this uses the restricted log-likelihood and is only valid for
 comparing models that differ in **variance structure only** (same mean structure);
 a one-time warning is emitted. Use ML for cross-mean-structure selection.
+
+`aic` is unavailable for penalized `:MAP` fits because `loglik` is the
+unpenalized data log-likelihood evaluated at a penalized estimate.
 """
 function aic(fit::DrmFit)
-    _is_fixed_prior_fit(fit) && fit.estim_method === :MAP && throw(ArgumentError("aic is unavailable for $(_prior_kind_label(fit)) MAP fits"))
+    fit.estim_method === :MAP && fit.penalty !== nothing && throw(ArgumentError(
+        "aic is unavailable for penalized MAP fits; refit without the penalty"))
     _va_infocrit_guard(fit, "aic")
     _reml_infocrit_warn(fit, "aic")
     _sentinel_infocrit_nan(fit, "aic") && return NaN
@@ -4651,9 +4752,13 @@ Bayesian (Schwarz) information criterion, `-2·loglik + dof·log(nobs)`.
 
 On a **REML** fit this carries the same variance-only-comparison caveat as
 [`aic`](@ref) and emits a one-time warning.
+
+`bic` is unavailable for penalized `:MAP` fits because `loglik` is the
+unpenalized data log-likelihood evaluated at a penalized estimate.
 """
 function bic(fit::DrmFit)
-    _is_fixed_prior_fit(fit) && fit.estim_method === :MAP && throw(ArgumentError("bic is unavailable for $(_prior_kind_label(fit)) MAP fits"))
+    fit.estim_method === :MAP && fit.penalty !== nothing && throw(ArgumentError(
+        "bic is unavailable for penalized MAP fits; refit without the penalty"))
     _va_infocrit_guard(fit, "bic")
     _reml_infocrit_warn(fit, "bic")
     _sentinel_infocrit_nan(fit, "bic") && return NaN

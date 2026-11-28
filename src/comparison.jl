@@ -803,16 +803,17 @@ function _nobs_compare_guard(a::DrmFit, b::DrmFit, verb::AbstractString)
         "`update` does not guarantee. Refit both on the same rows."))
 end
 
-# Convergence caveat (#1002): a finite log-likelihood from a fit whose optimiser
-# reported `converged = false` is still compared (the sentinel guard refuses the
+# Convergence caveat (#1002): a finite log-likelihood from a fit that failed the
+# shared convergence checks is still compared (the sentinel guard refuses the
 # plateau), but its LR statistic can be off in either direction. Warn, naming the
-# fit. A boundary fit (a variance pinned at its floor) has its own status from
-# `convergence_status` and is not "unconverged", so it is skipped here.
+# fit. A `:boundary` fit that passed its stationarity check has its own status
+# and is not an unconverged fit, so it is skipped here (projected KKT is used
+# only for true active optimizer bounds).
 function _unconverged_compare_warn(reduced::DrmFit, full::DrmFit, verb::AbstractString)
     bad = String[nm for (nm, f) in (("reduced", reduced), ("full", full))
-                 if !f.converged && convergence_status(f) !== :boundary]
+                 if !(convergence_status(f) in (:converged, :boundary))]
     isempty(bad) && return nothing
-    @warn "$verb: the $(join(bad, " and ")) fit did not converge (`converged = false`). " *
+    @warn "$verb: the $(join(bad, " and ")) fit did not converge (failed the shared convergence checks). " *
           "The likelihood-ratio statistic may be wrong in either direction; refit " *
           "(different start values, optimiser, or tolerance) before relying on the p-value."
     return nothing

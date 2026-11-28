@@ -1,0 +1,13 @@
+# Generalized prior-table integration
+
+This report records the combined DRModels.jl candidate for reviewers of PR #1631. It covers the supported coefficient, standard-deviation and correlation prior-table routes and their R bridge contracts. Active priors define penalized estimates; they do not provide posterior samples or establish interval calibration.
+
+The integration combines the prior resolver, density and objective changes with the existing convergence work. It preserves the data likelihood separately from the penalized objective. The scale-axis random-effect fitter retains its objective and score callbacks, and the bivariate LogNormal adapter retains the Gaussian optimizer objective for convergence diagnostics while including the Jacobian in the reported likelihood.
+
+The fixed-effect, random-intercept SD, correlation and residual-SD R-to-Julia fixture groups ran on Julia production source `d8ccb719` and passed 47, 12 and 17 assertions respectively. Two generated cases reported singular Hessians, so those checks do not establish uncertainty calibration. The prior guide rendered with its executable examples on the same production source. Its isolated build warned about omitted docstrings, the missing index, repository links and inventory; the full documentation site was not built.
+
+The eight-part package suite covered 731 assigned files. Six original sections passed; two original sections failed on test expectations and were replayed with test-only changes on the same production code. The boundary replay passed all 91 assigned files, and the MAP contract replay passed all 92. Their source snapshots matched. The complete reconciled receipt is `combined-source-reconciliation.json`, SHA-256 `eede4bdb0a9f539a8520d0ba9194a336b788f1209a80981eb760d8e1005e4a69`. The original suite controller summary had a malformed print command, so the individual logs, exit files and source snapshots are retained for reconciliation.
+
+For a near-boundary bivariate animal fit, separate equivalent fits can receive different non-converged categories when the numerical score is near a threshold. The test checks that neither fit is reported as an interior optimum and still compares their coefficients and covariance. The focused boundary test passed 30 assertions; this does not claim identical diagnostic categories at every boundary.
+
+Earlier source-pinned attempts and their failures remain available. The historical 27 November report describes an earlier source and has been marked accordingly; its benchmark difference has been corrected against the original log. The current review proposal contains the combined source and documentation. No merge or release has been performed.

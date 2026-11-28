@@ -73,7 +73,7 @@ _scored_sigma_soft(Xσ, θσ, lo, hi, m) = exp.(DRModels._softclamp.(Xσ * θσ,
         Random.seed!(20260915)
         n = 150
         y = 2.0 .* (1 .+ 2e-9 .* randn(n))
-        fit = drm(bf(@formula(y ~ 1), @formula(sigma ~ 1)), Gamma(); data = (; y))
+        fit = drm(bf(@formula(y ~ 1), @formula(sigma ~ 1)), DRModels.Gamma(); data = (; y))
 
         Xσ = ones(n, 1)
         ηraw = Xσ * coef(fit, :sigma)
@@ -95,7 +95,7 @@ _scored_sigma_soft(Xσ, θσ, lo, hi, m) = exp.(DRModels._softclamp.(Xσ * θσ,
         Random.seed!(20260915)
         n = 150
         y = 0.45 .+ 2e-9 .* randn(n)
-        fit = drm(bf(@formula(y ~ 1), @formula(sigma ~ 1)), Beta(); data = (; y))
+        fit = drm(bf(@formula(y ~ 1), @formula(sigma ~ 1)), DRModels.Beta(); data = (; y))
 
         Xσ = ones(n, 1)
         ηraw = Xσ * coef(fit, :sigma)
@@ -124,7 +124,7 @@ _scored_sigma_soft(Xσ, θσ, lo, hi, m) = exp.(DRModels._softclamp.(Xσ * θσ,
                                        round(Int, ycount[i])) for i in 1:n) ≈ loglik(fnb) rtol = 1e-12
 
         ygam = Float64[rand(Distributions.Gamma(6.0, exp(0.2 + 0.3 * xi) / 6.0)) for xi in x]
-        fg = drm(bf(@formula(y ~ x), @formula(sigma ~ x)), Gamma(); data = (; y = ygam, x))
+        fg = drm(bf(@formula(y ~ x), @formula(sigma ~ x)), DRModels.Gamma(); data = (; y = ygam, x))
         @test all(abs.(X * coef(fg, :sigma)) .< 15.0)
         @test sigma(fg) == exp.(X * coef(fg, :sigma))
         αg = 1 ./ sigma(fg) .^ 2
@@ -133,7 +133,7 @@ _scored_sigma_soft(Xσ, θσ, lo, hi, m) = exp.(DRModels._softclamp.(Xσ * θσ,
 
         mb = 1 ./ (1 .+ exp.(-(0.1 .+ 0.5 .* x)))
         ybet = Float64[rand(Distributions.Beta(mi * 14.0, (1 - mi) * 14.0)) for mi in mb]
-        fb = drm(bf(@formula(y ~ x), @formula(sigma ~ x)), Beta(); data = (; y = ybet, x))
+        fb = drm(bf(@formula(y ~ x), @formula(sigma ~ x)), DRModels.Beta(); data = (; y = ybet, x))
         @test all(abs.(X * coef(fb, :sigma)) .< 15.0)
         @test sigma(fb) == exp.(X * coef(fb, :sigma))
         φb = 1 ./ sigma(fb) .^ 2

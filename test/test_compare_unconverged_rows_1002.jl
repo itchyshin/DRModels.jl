@@ -1,12 +1,16 @@
-# Refs #1002 / #1053: lrtest and lrt_boundary warn when a compared fit did not
-# converge, stay silent for a boundary fit (own status), and keep refusing fits
-# estimated on different observed rows even when nobs is equal.
+# Refs #1002 / #1053: lrtest and lrt_boundary warn when a compared fit fails the
+# shared convergence checks, exempt a boundary fit only after its stationarity
+# check passes, and refuse fits estimated on different observed rows.
 using DRModels
 using Test, Random
 
 # Test-local copy of a fit with `converged = false`; `scales` can be overridden.
 _noconv(f::DRModels.DrmFit; scales = f.scales) = DRModels.DrmFit(f.family, f.blocks, f.coefnames,
     f.theta, f.vcov, f.loglik, f.nobs, false, f.means, f.obs, scales, f.formula, f.nll,
+    f.nllgrad, f.ranef, f.estim_method, f.reml_loglik, f.ml_loglik, f.marginal,
+    f.phylo_penalty, f.penalty, f.iterations, f.phylo_scale, f.uncertainty, f.geometry)
+_converged(f::DRModels.DrmFit; scales = f.scales) = DRModels.DrmFit(f.family, f.blocks, f.coefnames,
+    f.theta, f.vcov, f.loglik, f.nobs, true, f.means, f.obs, scales, f.formula, f.nll,
     f.nllgrad, f.ranef, f.estim_method, f.reml_loglik, f.ml_loglik, f.marginal,
     f.phylo_penalty, f.penalty, f.iterations, f.phylo_scale, f.uncertainty, f.geometry)
 
@@ -32,10 +36,17 @@ _noconv(f::DRModels.DrmFit; scales = f.scales) = DRModels.DrmFit(f.family, f.blo
         @test_warn "did not converge" lrt_boundary(bad, reduced)
     end
 
-    @testset "boundary fit is not called unconverged" begin
-        wall = _noconv(full; scales = merge(full.scales, Dict(:cond_logsd_wall => [-9.0])))
-        @test DRModels.convergence_status(wall) === :boundary
-        @test_logs lrtest(reduced, wall)
+    @testset "unmapped wall and optimizer failure have distinct statuses" begin
+        wall_scales = merge(full.scales, Dict(:cond_logsd_wall => [-9.0]))
+        failed_at_boundary = _noconv(full; scales = wall_scales)
+        @test DRModels.convergence_status(failed_at_boundary) === :not_converged
+        @test_warn "full fit did not converge" lrtest(reduced, failed_at_boundary)
+
+        wall_unmapped = _converged(full; scales = wall_scales)
+        @test DRModels.convergence_status(wall_unmapped) === :degenerate
+        # The optimizer flag alone does not certify a wall whose active
+        # conditional-mode coordinate cannot be mapped for the KKT check.
+        @test_warn "full fit did not converge" lrtest(reduced, wall_unmapped)
     end
 
     @testset "same nobs, different observed rows is refused" begin

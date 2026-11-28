@@ -1368,12 +1368,14 @@ function _fit_poisson_ranef(fam::Poisson, y, Xμ, gidx, G, nmμ, grp, g_tol; rem
         ml_nll = nll(θ̂)
         θ̂, conv, ml_nll, reml_nll, _ =
             _glsp_reml_refit_clean(nll, grad_fn, θ̂, pμ; ml_converged = conv)
+        reml_obj, reml_grad! = _glsp_reml_objective_and_gradient(nll, grad_fn, pμ)
         # Wald vcov under a restricted objective must be the inverse Hessian OF THAT
         # objective (#310), not the ML observed information.
         V = _glsp_reml_vcov(grad_fn, θ̂, pμ)
         means = Dict(:mu => exp.(Xμ * θ̂[1:pμ] .+ off)); obs = Dict(:mu => Vector{Float64}(y))
         _record_cond_fit_aghq!(scales, nll, θ̂, bcache, gidx, Zre)   # fitted-row modes for `fitted(fit)`
-        fit = _withnll(DrmFit(fam, blocks, names, θ̂, V, -ml_nll, n, conv, means, obs, scales), nll)
+        fit = _withnll(DrmFit(fam, blocks, names, θ̂, V, -ml_nll, n, conv, means, obs, scales),
+                       reml_obj, reml_grad!)
         return _withreml(fit, -reml_nll, -ml_nll)
     end
     V = _vcov_from_hessian(ForwardDiff.hessian(nll, θ̂))

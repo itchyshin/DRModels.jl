@@ -19,11 +19,27 @@ Tables.columnnames(::PriorTableDuplicateColumns) = (:prior, :class, :coef, :coef
         @test rows[1].dpar == "mu"
         gamma = (prior=["gamma(0.6666666666666666,2)"], class=["ranef_sd"], coef=["site"])
         @test only(_parse_prior_table(gamma)).arguments == (0.6666666666666666, 2.0)
+        student_t = (prior=["student_t(0.3,0.8,5)"], class=["fixef"], coef=["x"])
+        parsed_student_t = only(_parse_prior_table(student_t))
+        @test parsed_student_t.kind === :student_t
+        @test parsed_student_t.scale == "link"
+        @test parsed_student_t.arguments == (0.3, 0.8, 5.0)
+        residual_sd = (prior=["gamma(0.9,2.4)"], class=["residual_sd"],
+                       coef=["(Intercept)"], dpar=["sigma"], scale=["natural_sd"])
+        parsed_residual = only(_parse_prior_table(residual_sd))
+        @test parsed_residual.class == "residual_sd"
+        @test parsed_residual.dpar == "sigma"
+        @test parsed_residual.scale == "natural_sd"
+        @test parsed_residual.arguments == (0.9, 2.4)
         for text in ("normal(0,2);system('x')", "normal(1+1,2)", "normal(0,Inf)", "normal(0,1e-999)", "normal(1e-999,2)", "normal(0,1e200)", "ridge(-1)", "gamma(1,1)")
             @test_throws ArgumentError _parse_prior_table((prior=[text], class=[startswith(text,"gamma") ? "ranef_sd" : "fixef"], coef=["x"]))
         end
         @test only(_parse_prior_table((prior=["ridge(0)"], class=["fixef"], coef=["x"]))).arguments == (0.0,)
         @test_throws ArgumentError _parse_prior_table((prior=["gamma(1e-320,2)"], class=["ranef_sd"], coef=["site"]))
+        @test_throws ArgumentError _parse_prior_table((prior=["student_t(0,0,5)"], class=["fixef"], coef=["x"]))
+        @test_throws ArgumentError _parse_prior_table((prior=["student_t(0,1,0)"], class=["fixef"], coef=["x"]))
+        @test_throws ArgumentError _parse_prior_table((prior=["student_t(0,1)"], class=["fixef"], coef=["x"]))
+        @test_throws ArgumentError _parse_prior_table((prior=["student_t(0,1,5)"], class=["ranef_sd"], coef=["site"]))
         @test_throws ArgumentError _parse_prior_table((prior=["normal(0,2)"], class=["fixef_disp"], coef=["x"]))
         @test_throws ArgumentError _parse_prior_table((prior=["normal(0,2)"], class=["fixef"], coef=["all"]))
         @test_throws ArgumentError _parse_prior_table((prior=["normal(0,2)"], class=["fixef"], coef=["x"], group=["site"]))

@@ -142,7 +142,7 @@ end
     y = Float64.([rand(rng, Distributions.Gamma(shape, μi / shape)) for μi in μ])
 
     fit = drm(bf(@formula(y ~ x + relmat(1 | id)), @formula(sigma ~ 1)),
-              Gamma(); data = (; y, x, id), K = Matrix(C), se = false)
+              DRModels.Gamma(); data = (; y, x, id), K = Matrix(C), se = false)
 
     @test fit.converged
     @test coef(fit, :mu)[1] ≈ β[1] atol = 0.25       # intercept (mean(u) ≈ 0 here)
@@ -213,7 +213,7 @@ end
     yg = Float64.([rand(rng, Distributions.Gamma(6.0, μi / 6.0)) for μi in μ])
     # Gamma spatial(1|id) accepts a precomputed spatial covariance via `K = …`
     fit_s = drm(bf(@formula(y ~ x + spatial(1 | id)), @formula(sigma ~ 1)),
-                Gamma(); data = (; y = yg, x, id), K = Cm, se = false)
+                DRModels.Gamma(); data = (; y = yg, x, id), K = Cm, se = false)
     @test fit_s.converged
     @test haskey(re_sd(fit_s), :id)
 
@@ -221,7 +221,7 @@ end
     @test_throws ErrorException drm(bf(@formula(y ~ x + relmat(1 | id)), @formula(sigma ~ 1)),
                                     NegBinomial2(); data = (; y = yc, x, id), se = false)
     @test_throws ErrorException drm(bf(@formula(y ~ x + animal(1 | id)), @formula(sigma ~ 1)),
-                                    Gamma(); data = (; y = yg, x, id), se = false)
+                                    DRModels.Gamma(); data = (; y = yg, x, id), se = false)
     # coords-only spatial now fits on drmTMB's fixed-range kernel (it was refused before;
     # test_nb2_spatial_intercept_coords.jl pins the fit to drmTMB)
     fit_c = drm(bf(@formula(y ~ x + spatial(1 | id)), @formula(sigma ~ 1)),

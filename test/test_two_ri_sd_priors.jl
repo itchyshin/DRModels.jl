@@ -276,6 +276,11 @@ end
         @test out["sd_prior_penalty"] ≈ sum(x["penalty"] for x in out["sd_prior_contributions"])
         @test out["penalized_objective"] ≈ out["data_nll"] + out["fixed_prior_penalty"] + out["sd_prior_penalty"]
         @test out["penalized_gradient"] ≈ out["data_gradient"] + out["fixed_prior_gradient"] + out["sd_prior_gradient"]
+        @test out["penalised"] === true
+        @test out["objective"] ≈ out["logLik"] + out["log_prior"]
+        @test out["pd_hessian_unpenalised"] isa Union{Bool,Missing}
+        @test out["prior_held_params"] isa AbstractVector
+        @test out["se_type"] == "penalised"
     end
     bad=opts([s,o]); bad["prior_expected_v3"][1]["rate"]=4.
     @test_throws ArgumentError DRModels.drm_bridge(;formula=form,family="gaussian",data=data,options=bad)
@@ -299,6 +304,11 @@ end
     v1fit=DRModels.drm_bridge(;formula=form,family="gaussian",data=data,options=v1)
     @test v1fit["fixed_prior_contract"] == "fixed_effect_priors_v1"
     @test !haskey(v1fit,"prior_contract")
+    @test v1fit["penalised"] === true
+    @test v1fit["objective"] ≈ v1fit["logLik"] + v1fit["log_prior"]
+    @test v1fit["pd_hessian_unpenalised"] isa Union{Bool,Missing}
+    @test v1fit["prior_held_params"] isa AbstractVector
+    @test v1fit["se_type"] == "penalised"
     fn=Dict("kind"=>"fixed_normal","dpar"=>"mu","coef"=>"x","mean"=>0.,"sd"=>2.)
     fr=merge(fn,Dict("spec_index"=>2,"class"=>"fixed"))
     mixed=Dict("prior_contract"=>"parameter_priors_v3","priors_v3"=>[s,fn],"prior_expected_v3"=>[row(s,1),fr])
@@ -328,7 +338,12 @@ end
     @test g ≈ ForwardDiff.gradient(ff.nll,ff.theta) atol=1e-6
     @test update(ff,form;data=d).theta ≈ ff.theta atol=1e-6
     f=drm(form,Gaussian();data=d,priors=drm_priors(ps,po))
-    @test_throws ArgumentError DRModels._bootstrap_refit_kwargs(f)
+    bootstrap_kwargs=DRModels._bootstrap_refit_kwargs(f)
+    @test bootstrap_kwargs.priors == f.penalty.specs
+    freplay=drm(form,Gaussian();data=d,bootstrap_kwargs...)
+    replay_rows=sort([(r.group,r.coef,r.shape,r.rate) for r in freplay.penalty.sd_rows])
+    seed_rows=sort([(r.group,r.coef,r.shape,r.rate) for r in f.penalty.sd_rows])
+    @test replay_rows == seed_rows
     rows=f.penalty.sd_rows
     @test all(r -> DRModels._sd_prior_interior(f.theta[r.index]) && abs(f.theta[r.index]) < 30, rows)
     @test !DRModels._multi_sd_prior_converged(true,fill(1e-3,6),f.theta,rows)

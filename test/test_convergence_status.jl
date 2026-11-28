@@ -1,9 +1,9 @@
 # FX3b twin contract: `convergence_status` is :converged, :boundary or
 # :degenerate by the numeric rules of drmTMB `R/check.R`
 # (`drm_twin_convergence_status_from_parts`, drmTMB PR #1564) and
-# `docs/design/278-twin-convergence-status.md`. `is_converged` / `converged`
-# are true only for :converged. A fit whose standard errors were turned off
-# (`se = false`) skips the covariance rules: skipped is not failed (#1109).
+# `docs/design/278-twin-convergence-status.md`, extended by the current
+# optimizer, relative-gradient, boundary and positive-definite-Hessian contract.
+# `is_converged` / `converged` are true only for :converged.
 using DRModels
 using Test, Logging, Random, LinearAlgebra
 import Distributions
@@ -28,8 +28,11 @@ function _cs_fit(; V = Matrix(0.01I, 2, 2), loglik = -10.0, converged = true,
     end
     sc = copy(scales)
     rho12 === nothing || (sc[:rho12] = Float64.(rho12))
-    return DrmFit(family, blocks, names, theta, Matrix{Float64}(V), loglik, 10, converged,
-                  Dict(:mu => fill(1.0, 10)), Dict(:mu => Float64.(0:9)), sc)
+    fit = DrmFit(family, blocks, names, theta, Matrix{Float64}(V), loglik, 10, converged,
+                 Dict(:mu => fill(1.0, 10)), Dict(:mu => Float64.(0:9)), sc)
+    objective = θ -> -Float64(loglik) + sum(abs2, θ .- theta) / 2
+    objective_gradient = (g, θ) -> (g .= θ .- theta)
+    return DRModels._withnll(fit, objective, objective_gradient)
 end
 
 @testset "twin numeric constants (drmTMB R/check.R)" begin
@@ -77,11 +80,11 @@ end
     @test is_converged(base) && converged(base)
 
     # 1. optimiser gate and the -1e15 sentinel (strictly above)
-    @test convergence_status(_cs_fit(converged = false)) === :degenerate
-    @test convergence_status(_cs_fit(loglik = -1e15)) === :degenerate
+    @test convergence_status(_cs_fit(converged = false)) === :not_converged
+    @test convergence_status(_cs_fit(loglik = -1e15)) === :not_converged
     @test convergence_status(_cs_fit(loglik = -9.99e14)) === :converged
-    @test convergence_status(_cs_fit(loglik = NaN)) === :degenerate
-    @test convergence_status(_cs_fit(loglik = Inf)) === :degenerate
+    @test convergence_status(_cs_fit(loglik = NaN)) === :not_converged
+    @test convergence_status(_cs_fit(loglik = Inf)) === :not_converged
 
     # 2. geometry: a Poisson / NB2 MLE that does not exist
     @test convergence_status(_withgeometry(base, :count_mle_nonexistent)) === :degenerate
@@ -94,15 +97,29 @@ end
 
     # 6. boundary: random-effect SD strictly below 1e-4, |rho12| strictly above 0.98
     @test convergence_status(_cs_fit(resd = 5e-5)) === :boundary
-    @test convergence_status(_cs_fit(resd = 1e-4)) === :converged
+    # A direct `:resd` log-SD below -8 is already at the optimizer clamp, so
+    # use the scale helper to test the separate strict 1e-4 cut without
+    # confusing it with the more restrictive optimizer boundary.
+    @test !DRModels._twin_re_sd_below_boundary(_cs_fit(resd = 1e-4))
+    @test DRModels._twin_re_sd_below_boundary(_cs_fit(resd = prevfloat(1e-4)))
+    @test !DRModels._twin_re_sd_below_boundary(_cs_fit(resd = nextfloat(1e-4)))
+    @test convergence_status(_cs_fit(resd = 1e-4)) === :boundary
     @test convergence_status(_cs_fit(resd = 0.5)) === :converged
     @test convergence_status(_cs_fit(rho12 = [0.5, 0.981])) === :boundary
     @test convergence_status(_cs_fit(rho12 = [-0.99, 0.0])) === :boundary
     @test convergence_status(_cs_fit(rho12 = [0.98, -0.98])) === :converged
     @test convergence_status(_cs_fit(rho12 = [NaN, 0.5])) === :converged       # non-finite ignored
 
-    # degenerate wins over boundary
-    @test convergence_status(_cs_fit(V = fill(NaN, 2, 2), resd = 5e-5)) === :degenerate
+    # An explicitly detected boundary retains its status even when the
+    # covariance is unavailable; it is never classified as converged.
+    @test convergence_status(_cs_fit(V = fill(NaN, 2, 2), resd = 5e-5)) === :boundary
+    # An unmapped inner conditional-mode clamp cannot be certified with an
+    # outer-coordinate KKT score, so it fails closed even when `se = false`.
+    clamped = _withuncertainty(
+        _cs_fit(V = fill(NaN, 2, 2), resd = exp(-8),
+                scales = Dict(:cond_logsd_wall => [-8.0])), false)
+    @test convergence_status(clamped) === :degenerate
+    @test convergence_status(_cs_fit(scales = Dict(:cond_logsd_wall => [3.0]))) === :degenerate
 
     # is_converged / converged are `status === :converged`; the internal
     # optimiser-and-degeneracy gate keeps boundary fits
@@ -112,19 +129,19 @@ end
     @test b.converged
 end
 
-@testset "skipped uncertainty is not degenerate" begin
+@testset "unverified uncertainty cannot pass the Hessian convergence gate" begin
     nan_fit = _cs_fit(V = fill(NaN, 2, 2))
     @test nan_fit.uncertainty === :ok
     @test convergence_status(nan_fit) === :degenerate          # a FAILED covariance
     skipped = _withuncertainty(nan_fit, false)
     @test skipped.uncertainty === :skipped
-    @test convergence_status(skipped) === :converged            # a SKIPPED one
-    @test is_converged(skipped)
+    @test convergence_status(skipped) === :degenerate           # Hessian was not verified
+    @test !is_converged(skipped)
     @test _withuncertainty(nan_fit, true) === nan_fit           # se = true leaves the fit alone
-    # rules 3-5 are skipped, rules 1, 2 and 6 are not
-    @test convergence_status(_withuncertainty(_cs_fit(V = [0.01 0.0; 0.0 1.0e6]), false)) === :converged
+    # A skipped covariance still cannot pass the positive-definite Hessian gate.
+    @test convergence_status(_withuncertainty(_cs_fit(V = [0.01 0.0; 0.0 1.0e6]), false)) === :degenerate
     @test convergence_status(_withuncertainty(_cs_fit(V = fill(NaN, 2, 2), resd = 5e-5), false)) === :boundary
-    @test convergence_status(_withuncertainty(_cs_fit(V = fill(NaN, 2, 2), converged = false), false)) === :degenerate
+    @test convergence_status(_withuncertainty(_cs_fit(V = fill(NaN, 2, 2), converged = false), false)) === :not_converged
     @test convergence_status(_withgeometry(skipped, :count_mle_nonexistent)) === :degenerate
     # the record survives the copy helpers the fitters chain
     @test DRModels._withiterations(skipped, 7).uncertainty === :skipped
@@ -154,9 +171,8 @@ end
     end
     @test chk.convergence_status === :converged && chk.converged && chk.ok
 
-    # `se = false` on a Poisson relmat route returns an all-NaN covariance. That
-    # is the caller's choice, not a failure: drmTMB reads `drm_control(se =
-    # FALSE)` the same way.
+    # `se = false` keeps covariance unavailable. The analytic score can still
+    # establish positive-definite curvature without reporting standard errors.
     G = 20
     C = [0.5^abs(i - j) for i in 1:G, j in 1:G]
     id = repeat(1:G, inner = 5)
@@ -168,6 +184,7 @@ end
     @test off.uncertainty === :skipped
     @test all(isnan, off.vcov)
     @test off.converged
+    @test DRModels._twin_objective_curvature(off).positive_definite
     @test convergence_status(off) === :converged
     @test is_converged(off)
     on = drm(form, Poisson(); data = (; y = yc, x = xc, id), K = C)
@@ -177,12 +194,14 @@ end
     # still `:ok`, is a failed covariance
     failed = DrmFit(on.family, on.blocks, on.coefnames, on.theta, fill(NaN, size(on.vcov)),
                     on.loglik, on.nobs, on.converged, on.means, on.obs, on.scales)
+    failed = DRModels._withnll(failed, on.nll, on.nllgrad)
     @test convergence_status(failed) === :degenerate
 end
 
 # #1186: binomial (quasi-)complete separation is a geometry flag, as drmTMB's
 # `binomial_separation` reason in `drm_mle_nonexistent()` (R/mle-existence.R), so
-# it is `:degenerate` even when the SE steps are skipped (`se = false`).
+# it is `:degenerate` even when the SE steps are skipped (`se = false`). The
+# non-separated control can pass after its objective curvature is checked.
 @testset "binomial separation is a geometry flag, with or without SEs (#1186)" begin
     x = collect(range(-2, 2; length = 40))
     ysep = Float64.(x .> 0)                       # completely separated by x

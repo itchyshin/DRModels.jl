@@ -64,12 +64,14 @@ const ORACLE_OPTS = [
         @test_throws ArgumentError drm_prior_sd_gamma(dpar="mu", group="g", shape=a, rate=b)
     end
     dat = (y=ORACLE_CASES[1], x=ORACLE_X, g=ORACLE_GROUP)
-    row = only(resolve_priors(f, Gaussian(); data=dat, priors=prior()))
-    @test (row.class,row.dpar,row.group,row.block,row.coef,row.scale,row.shape,row.rate) == (:random_effect_sd,:mu,"g",:iid_intercept,"(Intercept)",:sd,2.,3.)
-    @test_throws ArgumentError resolve_priors(f, Gaussian(); data=dat, priors=prior(group="wrong"))
+    row = only(DRModels.resolve_priors(f, Gaussian(); data=dat, priors=prior()))
+    @test (row.class,row.dpar,row.group,row.block,row.coef,row.scale,row.shape,row.rate) == (:ranef_sd,:mu,"g",:iid_intercept,"(Intercept)",:natural_sd,2.,3.)
+    native_row = only(DRModels._resolve_priors_native(f, Gaussian(); data=dat, priors=prior()))
+    @test (native_row.class,native_row.scale) == (:random_effect_sd,:sd)
+    @test_throws ArgumentError DRModels.resolve_priors(f, Gaussian(); data=dat, priors=prior(group="wrong"))
     @test_throws ArgumentError drm(f, Gaussian(); data=dat, priors=prior(group="wrong"))
     p=drm_prior_sd_gamma(dpar="mu",group="g",shape=2,rate=3)
-    @test_throws ArgumentError resolve_priors(f,Gaussian(); data=dat,priors=drm_priors(p,p))
+    @test_throws ArgumentError DRModels.resolve_priors(f,Gaussian(); data=dat,priors=drm_priors(p,p))
     @test_throws ArgumentError drm(bf(@formula(y ~ x)), Gaussian(); data=dat, priors=prior())
     @test_throws ArgumentError drm(f, Gaussian(); data=dat, priors=prior(), method=:REML)
     @test_throws ArgumentError drm(f, Gaussian(); data=dat, priors=prior(), weights=fill(2.,9))
@@ -166,7 +168,7 @@ end
     @test z.penalty.fixed_penalty == 0
     @test_throws ArgumentError aic(z)
     err = try aic(z); nothing catch e; e end
-    @test occursin("SD-prior", sprint(showerror, err))
+    @test occursin("penalized MAP fits", sprint(showerror, err))
     @test_throws ArgumentError confint(z)
     @test_throws ArgumentError simulate(z)
     floorq=copy(ORACLE_POINTS[1]); floorq[end]=-20.
@@ -180,7 +182,17 @@ end
     @test plain.estim_method == :ML
     @test plain.penalty === nothing
     @test_throws ArgumentError lrtest(plain,z)
-    @test_throws ArgumentError DRModels._bootstrap_refit_kwargs(z)
+    bootstrap_kwargs = DRModels._bootstrap_refit_kwargs(z)
+    @test bootstrap_kwargs.priors == z.penalty.specs
+    z_replay = drm(f, Gaussian(); data=data, bootstrap_kwargs...)
+    @test z_replay.estim_method === :MAP
+    @test map(typeof, z_replay.penalty.specs) == map(typeof, z.penalty.specs)
+    replay_sd = only(filter(r -> hasproperty(r, :group), DRModels._resolve_priors_native(
+        f, Gaussian(); data=data, priors=z_replay.penalty.specs)))
+    seed_sd = only(filter(r -> hasproperty(r, :group), DRModels._resolve_priors_native(
+        f, Gaussian(); data=data, priors=z.penalty.specs)))
+    @test (replay_sd.group, replay_sd.coef, replay_sd.shape, replay_sd.rate) ==
+          (seed_sd.group, seed_sd.coef, seed_sd.shape, seed_sd.rate)
     @test_throws ArgumentError predict_parameters(z,data; se=true)
     @test_throws ArgumentError drm(f,Gaussian(); data=merge(data,(y=Union{Missing,Float64}[missing; data.y[2:end]],)),priors=drm_priors(p))
     @test_throws ArgumentError drm(bf(@formula(y ~ x + (1 + x | g)),@formula(sigma ~ x)),Gaussian();data=data,priors=drm_priors(p))

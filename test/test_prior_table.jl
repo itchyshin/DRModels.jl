@@ -1,4 +1,4 @@
-using Test, DRModels, ForwardDiff
+using Test, DRModels, ForwardDiff, SpecialFunctions
 
 # Tables.jl column tables are accepted directly via the existing `priors` keyword.
 # Expected cases are transcribed from the independently reviewed table contract;
@@ -42,6 +42,131 @@ preview(form, fam, data, p) = resolve_priors(form, fam; data=data, priors=p)
         @test aic(zfit) ≈ aic(zref)
         @test_throws ArgumentError drm(pt_fixed, Gaussian(); data=pt_data, priors=zero, weights=fill(2., length(pt_data.y)))
     end
+    @testset "normalized Student-t fixed-effect rows" begin
+        table = pt(["student_t(0.3,0.8,5)"], ["fixef"], ["x"])
+        rows = preview(pt_fixed, Gaussian(), pt_data, table)
+        row = only(rows)
+        @test (row.class, row.dpar, row.coef, row.scale) == (:fixef, :mu, "x", :link)
+        @test (row.kind, row.location, row.scale_parameter, row.df) ==
+              (:student_t, 0.3, 0.8, 5.0)
+
+        fit = drm(pt_fixed, Gaussian(); data=pt_data, priors=table)
+        direct = drm(pt_fixed, Gaussian(); data=pt_data,
+                     priors=drm_priors(drm_prior_student_t(
+                         dpar=:mu, coef="x", location=0.3, scale=0.8, df=5)))
+        plain = drm(pt_fixed, Gaussian(); data=pt_data)
+        theta = [0.4, -0.2, log(0.9)]
+        z = (theta[2] - 0.3) / 0.8
+        expected_penalty = t -> begin
+            zt = (t[2] - 0.3) / 0.8
+            SpecialFunctions.loggamma(5 / 2) - SpecialFunctions.loggamma(6 / 2) +
+            0.5log(5π) + log(0.8) + 0.5 * 6 * log1p(zt^2 / 5)
+        end
+        penalized_part = t -> fit.nll(t) - plain.nll(t)
+        direct_penalty = t -> direct.nll(t) - plain.nll(t)
+        @test penalized_part(theta) ≈ expected_penalty(theta) atol=1e-10
+        @test direct_penalty(theta) ≈ expected_penalty(theta) atol=1e-10
+        @test penalized_part(theta) ≈ direct_penalty(theta) atol=1e-12
+        @test ForwardDiff.gradient(penalized_part, theta) ≈
+              ForwardDiff.gradient(expected_penalty, theta) atol=1e-9
+        @test ForwardDiff.hessian(penalized_part, theta) ≈
+              ForwardDiff.hessian(expected_penalty, theta) atol=1e-8
+
+        # Independent Student-t tail oracle, frozen in
+        # generalized-prior-arc/oracle/expected.json (verification-20261126).
+        tail_table = pt(["student_t(0.1,0.7,4)"], ["fixef"], ["x"])
+        tail_fit = drm(pt_fixed, Gaussian(); data=pt_data, priors=tail_table)
+        tail_theta = [0.4, 3.0, log(0.9)]
+        tail_objective = t -> tail_fit.nll(t) - plain.nll(t)
+        tail_gradient = ForwardDiff.gradient(tail_objective, tail_theta)
+        tail_hessian = ForwardDiff.hessian(tail_objective, tail_theta)
+        @test tail_objective(tail_theta) ≈ 4.789085681570519 atol=1e-12
+        @test tail_gradient[2] ≈ 1.398264223722276 atol=1e-12
+        @test tail_hessian[2,2] ≈ -0.2998970585910511 atol=1e-12
+    end
+    @testset "natural Gaussian residual SD Gamma rows" begin
+        form = bf(@formula(y ~ x), @formula(sigma ~ 1))
+        table = pt(["gamma(0.6666666666666666,2)"], ["residual_sd"], ["(Intercept)"],
+                   dpar=["sigma"], scale=["natural_sd"])
+        row = only(preview(form, Gaussian(), pt_data, table))
+        @test (row.class, row.dpar, row.coef, row.scale, row.shape, row.rate, row.index) ==
+              (:residual_sd, :sigma, "(Intercept)", :natural_sd, 2.0, 3.0, 3)
+
+        fit = drm(form, Gaussian(); data=pt_data, priors=table)
+        plain = drm(form, Gaussian(); data=pt_data)
+        theta = [0.4, -0.2, log(0.8)]
+        penalty = t -> fit.nll(t) - plain.nll(t)
+        expected = t -> 3 * exp(t[3]) - t[3] - 2 * log(3) + SpecialFunctions.loggamma(2)
+        @test penalty(theta) ≈ expected(theta) atol=1e-12
+        @test penalty(theta) ≈ 0.4259189739779905 atol=1e-12
+        @test ForwardDiff.gradient(penalty, theta)[3] ≈ 1.4 atol=1e-12
+        @test ForwardDiff.hessian(penalty, theta)[3,3] ≈ 2.4 atol=1e-12
+        mode_theta = [theta[1], theta[2], log(1 / 3)]
+        @test ForwardDiff.gradient(penalty, mode_theta)[3] ≈ 0 atol=1e-12
+        @test ForwardDiff.hessian(penalty, mode_theta)[3,3] ≈ 1 atol=1e-12
+        @test update(fit, form; data=pt_data).nll(theta) ≈ fit.nll(theta) atol=1e-10
+
+        # Independent scalar Gaussian + natural-SD Gamma oracle, reviewed
+        # separately in residual-sd-independent-review-20261124/receipt.json.
+        oracle_table = pt(["gamma(0.9,2.4)"], ["residual_sd"], ["(Intercept)"],
+                          dpar=["sigma"], scale=["natural_sd"])
+        oracle_fit = drm(form, Gaussian(); data=pt_data, priors=oracle_table)
+        oracle_theta = [0.2, 0.3, log(0.8)]
+        @test oracle_fit.nll(oracle_theta) ≈ 27.46283070307948 atol=1e-11
+        @test ForwardDiff.gradient(oracle_fit.nll, oracle_theta) ≈
+              [-23.28125, 2.1875, -24.876041666666666] atol=1e-10
+        @test ForwardDiff.hessian(oracle_fit.nll, oracle_theta) ≈
+              [18.75 0.0 46.5625; 0.0 12.5 -4.375; 46.5625 -4.375 77.35208333333334] atol=1e-10
+
+        mixed = pt(["gamma(0.6666666666666666,2)", "normal(0,2)"],
+                   ["residual_sd", "fixef"], ["(Intercept)", "x"],
+                   dpar=["sigma", "mu"], scale=["natural_sd", "link"])
+        mixed_fit = drm(form, Gaussian(); data=pt_data, priors=mixed)
+        mixed_increment = t -> mixed_fit.nll(t) - plain.nll(t)
+        expected_mixed = t -> expected(t) + 0.5 * (t[2] / 2)^2 + log(2) + 0.5log(2π)
+        @test mixed_increment(theta) ≈ expected_mixed(theta) atol=1e-12
+
+        @test_throws ArgumentError resolve_priors(form, Gaussian(); data=pt_data,
+            priors=pt(["gamma(0.6666666666666666,2)"], ["residual_sd"], ["(Intercept)"], dpar=["sigma"]))
+        @test_throws ArgumentError resolve_priors(form, Gaussian(); data=pt_data,
+            priors=pt(["gamma(0.6666666666666666,2)"], ["residual_sd"], ["(Intercept)"],
+               dpar=["sigma"], scale=["link"]))
+        @test_throws ArgumentError drm(form, Gaussian(); data=pt_data,
+            priors=pt(["gamma(0.9,1)"], ["residual_sd"], ["(Intercept)"],
+                      dpar=["sigma"], scale=["natural_sd"]))
+        @test_throws ArgumentError drm(bf(@formula(y ~ x), @formula(sigma ~ x)), Gaussian();
+            data=pt_data, priors=table)
+        @test_throws ArgumentError drm(pt_fixed, Binomial(); data=pt_data,
+            priors=table)
+        overlap = pt(["gamma(0.6666666666666666,2)", "normal(0,1)"],
+                     ["residual_sd", "fixef"], ["(Intercept)", "(Intercept)"],
+                     dpar=["sigma", "sigma"], scale=["natural_sd", "link"])
+        @test_throws ArgumentError drm(form, Gaussian(); data=pt_data, priors=overlap)
+    end
+    @testset "fixed, residual SD and random-intercept SD rows compose" begin
+        form = bf(@formula(y ~ x + (1 | site)), @formula(sigma ~ 1))
+        table = pt(["normal(0,2)", "gamma(0.9,2.4)", "gamma(0.6666666666666666,2)"],
+                   ["fixef", "residual_sd", "ranef_sd"],
+                   ["x", "(Intercept)", "(Intercept)"],
+                   dpar=["mu", "sigma", "mu"], group=["", "", "site"],
+                   scale=["link", "natural_sd", "natural_sd"])
+        fit = drm(form, Gaussian(); data=pt_data, priors=table)
+        plain = drm(form, Gaussian(); data=pt_data)
+        theta = [0.4, 0.7, log(0.8), log(0.4)]
+        expected = t ->
+            0.5 * (t[2] / 2)^2 + log(2) + 0.5log(2π) +
+            (2.4 / 0.9) * exp(t[3]) - 1.4 * t[3] - 2.4 * log(2.4 / 0.9) +
+            SpecialFunctions.loggamma(2.4) + 3 * exp(t[4]) - t[4] - 2 * log(3) +
+            SpecialFunctions.loggamma(2)
+        increment = t -> fit.nll(t) - plain.nll(t)
+        @test increment(theta) ≈ expected(theta) atol=1e-11
+        @test ForwardDiff.gradient(increment, theta) ≈ ForwardDiff.gradient(expected, theta) atol=1e-9
+        @test ForwardDiff.hessian(increment, theta) ≈ ForwardDiff.hessian(expected, theta) atol=1e-8
+        replay = update(fit, form; data=pt_data)
+        @test replay.nll(theta) ≈ fit.nll(theta) atol=1e-10
+        @test_throws ArgumentError confint(fit)
+        @test_throws ArgumentError aic(fit)
+    end
     @testset "named and broad SD targets" begin
         broad = pt(["gamma(0.6666666666666666,2)"], ["ranef_sd"], [""])
         legacy = drm_priors(drm_prior_sd_gamma(dpar="mu",group="site",shape=2,rate=3),
@@ -51,7 +176,9 @@ preview(form, fam, data, p) = resolve_priors(form, fam; data=data, priors=p)
             refrows = preview(form, Gaussian(), pt_data, legacy)
             @test Dict(r.group => (r.index,r.shape,r.rate) for r in rows) == Dict(r.group => (r.index,r.shape,r.rate) for r in refrows)
             @test Set(r.group for r in rows) == Set(["site", "observer"])
-            @test all(r -> r.scale == :sd && r.coef == "(Intercept)", rows)
+            @test all(r -> r.class === :ranef_sd && r.scale == :natural_sd && r.coef == "(Intercept)", rows)
+            @test all(r -> r.class === :ranef_sd && r.scale == :natural_sd &&
+                r.coef == "(Intercept)", refrows)
         end
         specific = pt(["gamma(1,3)", "gamma(0.6666666666666666,2)"],
                       ["ranef_sd", "ranef_sd"], ["observer", "site"])
@@ -82,8 +209,8 @@ preview(form, fam, data, p) = resolve_priors(form, fam; data=data, priors=p)
         d = (y=[0,0,0,1,0,1,1,1], x=[-3.,-2.,-1.,0.,.5,1.,2.,3.])
         table = pt(["ridge(1)","ridge(1)"], ["fixef","fixef"], ["(Intercept)","x"])
         old = drm_priors(drm_prior_ridge(dpar="mu",coef="all",intercept="include",lambda=1))
-        a = drm(pt_fixed, Binomial(); data=d, priors=table)
-        b = drm(pt_fixed, Binomial(); data=d, priors=old)
+        a = drm(pt_fixed, DRModels.Binomial(); data=d, priors=table)
+        b = drm(pt_fixed, DRModels.Binomial(); data=d, priors=old)
         @test a.theta ≈ b.theta atol=1e-6
         @test a.nll(a.theta) ≈ b.nll(b.theta) atol=1e-8
     end
@@ -125,7 +252,7 @@ preview(form, fam, data, p) = resolve_priors(form, fam; data=data, priors=p)
         @test_throws ArgumentError preview(bf(@formula(y ~ x + (1+x | site))), Gaussian(), pt_data, prior)
         @test_throws ArgumentError preview(bf(@formula(y ~ x + (1 | site) + (1 | observer) + (1 | year))), Gaussian(), pt_data, prior)
         @test_throws ArgumentError preview(pt_form, Gaussian(), merge(pt_data,(observer=pt_data.site,)), prior)
-        @test_throws ArgumentError preview(pt_form, Binomial(), pt_data, prior)
+        @test_throws ArgumentError preview(pt_form, DRModels.Binomial(), pt_data, prior)
         @test_throws ArgumentError drm(pt_form, Gaussian(); data=pt_data, priors=prior, weights=fill(2.,length(pt_data.y)))
         missingdata = merge(pt_data,(y=Union{Missing,Float64}[missing; pt_data.y[2:end]],))
         @test_throws ArgumentError drm(pt_form, Gaussian(); data=missingdata, priors=prior)

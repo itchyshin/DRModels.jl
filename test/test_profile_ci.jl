@@ -121,7 +121,7 @@ end
     η = @. 0.2 + 0.45 * x + bg[gid] + bh[hid]
     y = Float64[rand(rng, Distributions.Poisson(exp(η[i]))) for i in 1:n]
 
-    fit = drm(bf(@formula(y ~ x + (1 | g) + (1 | h))), Poisson(); data = (; y, x, g, h))
+    fit = drm(bf(@formula(y ~ x + (1 | g) + (1 | h))), DRModels.Poisson(); data = (; y, x, g, h))
     @test fit.nllgrad !== nothing
     resd = confint(fit; method = :profile, parm = :resd)
 

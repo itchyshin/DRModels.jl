@@ -76,6 +76,8 @@ function drm_bridge(; formula, family::AbstractString, data, tree = nothing,
     version = _bridge_prior_contract(opts)
     v2_records = version === :v2 ? _bridge_enable_priors_v2!(opts, bundle, fam, dat, labels) : nothing
     v3_records = version === :v3 ? _bridge_enable_priors_v3!(opts, bundle, fam, dat, labels) : nothing
+    v4_records = version === :v4 ? _bridge_enable_priors_v4!(opts, bundle, fam, dat, labels) : nothing
+    v5_records = version === :v5 ? _bridge_enable_priors_v5!(opts, bundle, fam, dat, labels) : nothing
     if version === :v1 && haskey(opts, :priors)
         haskey(opts, :prior_expected) || throw(ArgumentError("drm_bridge: priors require prior_expected"))
         opts[:priors] = _bridge_prepare_fixed_priors(bundle, fam, labels, opts[:priors], opts[:prior_expected])
@@ -86,9 +88,29 @@ function drm_bridge(; formula, family::AbstractString, data, tree = nothing,
     fit = _bridge_fit(bundle, fam, dat; tree = tree, K = K, A = A,
                       Ainv = Ainv, coords = coords, options = opts)
     out = _bridge_flatten(fit; family = String(family), newdata = newdata,
-                          labels = labels, coef_labels = coef_labels)
+                          labels = labels, coef_labels = coef_labels,
+                          prior_contract_version=version)
+    _bridge_attach_prior_convergence_fields!(out, fit)
     v2_records === nothing || _bridge_attach_priors_v2!(out, fit, v2_records, labels)
     v3_records === nothing || _bridge_attach_priors_v3!(out, fit, v3_records, labels)
+    v4_records === nothing || _bridge_attach_priors_v4!(out, fit, v4_records, labels)
+    v5_records === nothing || _bridge_attach_priors_v5!(out, fit, v5_records, labels)
+    return out
+end
+
+# Keep the prior-aware fit summary consistent across bridge contract versions.
+# The helper is a no-op for ordinary fits, preserving their historical shape.
+function _bridge_attach_prior_convergence_fields!(out, fit::DrmFit)
+    fields = _prior_convergence_fields(fit)
+    isempty(fields) && return out
+    out["penalised"] = fields.penalised
+    out["objective"] = fields.objective
+    out["logLik"] = fields.logLik
+    out["log_prior"] = fields.log_prior
+    out["pd_hessian_unpenalised"] = fields.pd_hessian_unpenalised
+    out["prior_held_params"] = Any[Dict("name" => String(p.name), "kind" => String(p.kind))
+        for p in fields.prior_held_params]
+    out["se_type"] = String(fields.se_type)
     return out
 end
 
@@ -406,8 +428,16 @@ function drm_bridge_inference(; formula, family::AbstractString, data,
         end
     elseif version === :v1 && haskey(opts, :prior_expected)
         throw(ArgumentError("drm_bridge: prior_expected requires priors"))
-    elseif version in (:v2, :v3)
-        throw(ArgumentError("drm_bridge_inference: SD-prior inference is not supported"))
+    elseif version in (:v2, :v3, :v4, :v5)
+        throw(ArgumentError("drm_bridge_inference: prior-fit inference is not supported"))
+    end
+    if version === :v1 && haskey(opts, :priors)
+        priors = opts[:priors]
+        active_prior = any(priors) do prior
+            prior isa FixedPrior && (prior.precision != 0.0 || prior.constant != 0.0)
+        end
+        active_prior && throw(ArgumentError(
+            "drm_bridge_inference: prior-fit inference is not supported"))
     end
     bridge_method = lowercase(strip(String(method)))
     is_biv = bundle isa BivariateDrmFormula
@@ -806,7 +836,10 @@ end
 
 function _bridge_prior_safe_options(input)
     opts = _bridge_options(input)
-    if any(k -> haskey(opts, k), (:prior_contract, :priors_v2, :prior_expected_v2, :priors_v3, :prior_expected_v3))
+    if any(k -> haskey(opts, k), (:prior_contract, :priors_v2, :prior_expected_v2,
+                                  :priors_v3, :prior_expected_v3,
+                                  :priors_v4, :prior_expected_v4,
+                                  :priors_v5, :prior_expected_v5))
         return _bridge_v2_checked_options(input)
     end
     return opts
@@ -817,19 +850,640 @@ function _bridge_prior_contract(opts)
     v1 = any(k -> haskey(opts, k), (:priors, :prior_expected))
     has2 = any(k -> haskey(opts,k), (:priors_v2, :prior_expected_v2))
     has3 = any(k -> haskey(opts,k), (:priors_v3, :prior_expected_v3))
-    v1 && (has2 || has3 || haskey(opts,:prior_contract)) && throw(ArgumentError("drm_bridge: prior protocol keys cannot be combined"))
-    has2 && has3 && throw(ArgumentError("drm_bridge: prior protocol keys cannot be combined"))
+    has4 = any(k -> haskey(opts,k), (:priors_v4, :prior_expected_v4))
+    has5 = any(k -> haskey(opts,k), (:priors_v5, :prior_expected_v5))
+    v1 && (has2 || has3 || has4 || has5 || haskey(opts,:prior_contract)) && throw(ArgumentError("drm_bridge: prior protocol keys cannot be combined"))
+    count((has2, has3, has4, has5)) <= 1 || throw(ArgumentError("drm_bridge: prior protocol keys cannot be combined"))
     v1 && return :v1
-    !(has2 || has3 || haskey(opts,:prior_contract)) && return :none
+    !(has2 || has3 || has4 || has5 || haskey(opts,:prior_contract)) && return :none
     contract = get(opts,:prior_contract,nothing)
-    version = contract == "parameter_priors_v2" ? :v2 : contract == "parameter_priors_v3" ? :v3 : throw(ArgumentError("drm_bridge: unknown prior contract"))
-    ks = version === :v2 ? (:priors_v2,:prior_expected_v2) : (:priors_v3,:prior_expected_v3)
-    all(k -> haskey(opts,k),ks) && ((version === :v2 && !has3) || (version === :v3 && !has2)) || throw(ArgumentError("drm_bridge: incomplete or mixed prior request"))
+    version = contract == "parameter_priors_v2" ? :v2 :
+              contract == "parameter_priors_v3" ? :v3 :
+              contract == "parameter_priors_v4" ? :v4 :
+              contract == "parameter_priors_v5" ? :v5 :
+              throw(ArgumentError("drm_bridge: unknown prior contract"))
+    ks = version === :v2 ? (:priors_v2,:prior_expected_v2) :
+         version === :v3 ? (:priors_v3,:prior_expected_v3) :
+         version === :v4 ? (:priors_v4,:prior_expected_v4) :
+                           (:priors_v5,:prior_expected_v5)
+    has_version = version === :v2 ? has2 : version === :v3 ? has3 : version === :v4 ? has4 : has5
+    all(k -> haskey(opts,k),ks) && has_version &&
+        count((has2, has3, has4, has5)) == 1 || throw(ArgumentError("drm_bridge: incomplete or mixed prior request"))
     for k in ks
         value = opts[k]
         value isa AbstractVector && !isempty(value) || throw(ArgumentError("drm_bridge: $k must be a nonempty vector"))
     end
     return version
+end
+
+function _bridge_enable_priors_v4!(opts, form, fam, data, labels)
+    uppercase(String(get(opts, :method, "ML"))) == "ML" ||
+        throw(ArgumentError("drm_bridge: v4 prior tables require ML"))
+    records = _bridge_prepare_correlation_priors_v4(
+        form, fam, labels, data, opts[:priors_v4], opts[:prior_expected_v4])
+    for k in (:prior_contract, :priors_v4, :prior_expected_v4)
+        delete!(opts, k)
+    end
+    opts[:priors] = drm_priors(records.priors...)
+    return records.expected
+end
+
+function _bridge_enable_priors_v5!(opts, form, fam, data, labels)
+    uppercase(String(get(opts, :method, "ML"))) == "ML" ||
+        throw(ArgumentError("drm_bridge: v5 prior tables require ML"))
+    records = _bridge_prepare_residual_sd_priors_v5(
+        form, fam, labels, data, opts[:priors_v5], opts[:prior_expected_v5])
+    for k in (:prior_contract, :priors_v5, :prior_expected_v5)
+        delete!(opts, k)
+    end
+    opts[:priors] = drm_priors(records.priors...)
+    return records
+end
+
+function _bridge_prepare_residual_sd_priors_v5(form, fam, labels, data, prior_input, expected_input)
+    (form isa DrmFormula || form isa BivariateDrmFormula) && fam isa Gaussian ||
+        throw(ArgumentError("drm_bridge: v5 priors require a Gaussian model"))
+    prior_input isa AbstractVector && !isempty(prior_input) &&
+        expected_input isa AbstractVector && !isempty(expected_input) ||
+        throw(ArgumentError("drm_bridge: v5 prior and resolved records must be nonempty vectors"))
+    specs = [_bridge_v2_checked_options(x) for x in prior_input]
+    expected = [_bridge_v2_checked_options(x) for x in expected_input]
+    groups = [Dict{Symbol,Any}[] for _ in specs]
+    last_index = 0
+    for row in expected
+        i = get(row, :spec_index, nothing)
+        i isa Integer && !(i isa Bool) && 1 <= i <= length(specs) && i >= last_index ||
+            throw(ArgumentError("drm_bridge: invalid v5 spec_index order"))
+        push!(groups[i], row)
+        last_index = i
+    end
+    all(!isempty, groups) || throw(ArgumentError("drm_bridge: v5 is missing resolved target rows"))
+
+    priors = AbstractDrmPrior[]
+    fixed_input = Dict{Symbol,Any}[]
+    fixed_expected = Dict{Symbol,Any}[]
+    fixed_specs = Int[]
+    residual_specs = Int[]
+    sd_specs = Int[]
+    correlation_specs = Int[]
+    for (i, p) in enumerate(specs)
+        kind = get(p, :kind, nothing)
+        rows = groups[i]
+        if kind in ("fixed_normal", "fixed_student_t", "fixed_ridge")
+            coef = get(p, :coef, nothing)
+            coef isa AbstractString && !isempty(coef) || throw(ArgumentError("drm_bridge: invalid v5 fixed selector"))
+            dpar = get(p, :dpar, nothing)
+            allowed_fixed_dpars = form isa BivariateDrmFormula ? ("mu1", "mu2") : ("mu", "sigma")
+            dpar in allowed_fixed_dpars || throw(ArgumentError("drm_bridge: unsupported v5 fixed-effect dpar"))
+            required = kind == "fixed_normal" ? (:kind, :dpar, :coef, :mean, :sd) :
+                       kind == "fixed_student_t" ? (:kind, :dpar, :coef, :location, :scale, :df) :
+                       (:kind, :dpar, :coef, :lambda)
+            Set(keys(p)) == Set(required) || throw(ArgumentError("drm_bridge: invalid v5 fixed-effect specification fields"))
+            semantic = kind == "fixed_normal" ? (:mean, :sd) :
+                       kind == "fixed_student_t" ? (:location, :scale, :df) : (:lambda,)
+            for key in semantic
+                value = p[key]
+                value isa Real && !(value isa Bool) && isfinite(value) ||
+                    throw(ArgumentError("drm_bridge: invalid v5 fixed numeric field $key"))
+            end
+            kind == "fixed_normal" && p[:sd] <= 0 && throw(ArgumentError("drm_bridge: v5 normal sd must be positive"))
+            kind == "fixed_student_t" && (p[:scale] <= 0 || p[:df] <= 0) && throw(ArgumentError("drm_bridge: v5 Student-t scale and df must be positive"))
+            kind == "fixed_ridge" && p[:lambda] < 0 && throw(ArgumentError("drm_bridge: v5 ridge lambda must be nonnegative"))
+            extra = kind == "fixed_normal" ? (:mean, :sd) : kind == "fixed_student_t" ? (:location, :scale, :df) : (:lambda,)
+            all(Set(keys(r)) == Set((:spec_index, :kind, :class, :dpar, :coef, :index, :matrix_column, extra...)) for r in rows) ||
+                throw(ArgumentError("drm_bridge: invalid v5 fixed resolved-record fields"))
+            for row in rows
+                row[:kind] == kind && row[:class] == "fixed" && row[:dpar] == dpar &&
+                    all(k -> row[k] == p[k], extra) ||
+                    throw(ArgumentError("drm_bridge: v5 fixed prior record mismatch"))
+                push!(fixed_expected, Dict(:dpar=>row[:dpar], :coef=>row[:coef]))
+            end
+            legacy = copy(p)
+            legacy[:kind] = kind == "fixed_normal" ? "normal" :
+                            kind == "fixed_student_t" ? "student_t" : "ridge"
+            push!(fixed_input, legacy)
+            push!(fixed_specs, i)
+        elseif kind == "residual_sd_gamma"
+            form isa DrmFormula || throw(ArgumentError(
+                "drm_bridge: residual-SD Gamma priors are not supported on bivariate sigma1/sigma2 targets"))
+            Set(keys(p)) == Set((:kind, :dpar, :coef, :shape, :rate, :measure)) ||
+                throw(ArgumentError("drm_bridge: invalid v5 residual-SD specification fields"))
+            p[:dpar] == "sigma" && p[:coef] == "(Intercept)" && p[:measure] == "natural_sd" ||
+                throw(ArgumentError("drm_bridge: invalid v5 residual-SD target"))
+            p[:shape] isa Real && !(p[:shape] isa Bool) && isfinite(p[:shape]) && p[:shape] > 1 &&
+                p[:rate] isa Real && !(p[:rate] isa Bool) && isfinite(p[:rate]) && p[:rate] > 0 ||
+                throw(ArgumentError("drm_bridge: v5 Gamma residual-SD shape and rate are invalid"))
+            length(rows) == 1 || throw(ArgumentError("drm_bridge: v5 residual-SD prior must resolve once"))
+            row = only(rows)
+            normalizer = -p[:shape] * log(p[:rate]) + loggamma(p[:shape])
+            required_row = Dict(:spec_index=>i, :kind=>kind, :class=>"residual_sd",
+                :dpar=>"sigma", :coef=>"(Intercept)", :block=>"gaussian_residual",
+                :measure=>"natural_sd", :shape=>p[:shape], :rate=>p[:rate],
+                :log_normalizer=>normalizer)
+            Set(keys(row)) == Set((keys(required_row)..., :index)) &&
+                all(get(row, k, nothing) == v for (k,v) in required_row) ||
+                throw(ArgumentError("drm_bridge: v5 residual-SD record mismatch"))
+            push!(priors, drm_prior_residual_sd_gamma(dpar="sigma", coef="(Intercept)",
+                shape=p[:shape], rate=p[:rate]))
+            push!(residual_specs, i)
+        elseif kind == "ranef_sd_gamma"
+            Set(keys(p)) == Set((:kind, :dpar, :group, :coef, :block_kind,
+                                  :shape, :rate, :measure)) ||
+                throw(ArgumentError("drm_bridge: invalid v5 random-effect SD specification fields"))
+            p[:dpar] == "mu" && p[:coef] == "(Intercept)" &&
+                p[:block_kind] == "iid_random_intercept" && p[:measure] == "natural_sd" &&
+                p[:group] isa AbstractString && !isempty(p[:group]) ||
+                throw(ArgumentError("drm_bridge: invalid v5 random-effect SD target"))
+            p[:shape] isa Real && !(p[:shape] isa Bool) && isfinite(p[:shape]) && p[:shape] > 1 &&
+                p[:rate] isa Real && !(p[:rate] isa Bool) && isfinite(p[:rate]) && p[:rate] > 0 ||
+                throw(ArgumentError("drm_bridge: v5 random-effect Gamma shape and rate are invalid"))
+            length(rows) == 1 || throw(ArgumentError("drm_bridge: v5 random-effect SD prior must resolve once"))
+            row = only(rows)
+            expected_base = merge(copy(p), Dict(:spec_index=>i, :class=>"ranef_sd"))
+            Set(keys(row)) == Set((keys(expected_base)..., :index)) &&
+                all(get(row, k, nothing) == v for (k,v) in expected_base) ||
+                throw(ArgumentError("drm_bridge: v5 random-effect SD record mismatch"))
+            push!(priors, drm_prior_sd_gamma(dpar="mu", group=p[:group],
+                coef="(Intercept)", shape=p[:shape], rate=p[:rate]))
+            push!(sd_specs, i)
+        elseif kind in ("lkj_random_effect_correlation", "lkj_residual_correlation")
+            push!(correlation_specs, i)
+        else
+            throw(ArgumentError("drm_bridge: unsupported v5 prior kind $kind"))
+        end
+    end
+    if form isa DrmFormula
+        isempty(residual_specs) && (isempty(fixed_specs) || isempty(sd_specs)) && throw(ArgumentError("drm_bridge: univariate v5 requires a residual-SD prior or mixed fixed and random-SD priors"))
+    else
+        isempty(residual_specs) || throw(ArgumentError("drm_bridge: residual-SD priors are unsupported for bivariate sigma1/sigma2"))
+        length(correlation_specs) == 1 && specs[only(correlation_specs)][:kind] == "lkj_residual_correlation" ||
+            throw(ArgumentError("drm_bridge: bivariate v5 requires one residual rho12 LKJ prior"))
+    end
+    if !isempty(fixed_input)
+        append!(priors, _bridge_prepare_fixed_priors(form, fam, labels, fixed_input,
+            fixed_expected; allow_bivariate=form isa BivariateDrmFormula))
+    end
+    length(correlation_specs) <= 1 || throw(ArgumentError("drm_bridge: v5 supports at most one random-effect correlation prior"))
+    if !isempty(correlation_specs)
+        i = only(correlation_specs)
+        v4_keys = specs[i][:kind] == "lkj_residual_correlation" ?
+            (:spec_index, :kind, :class, :dpar, :block, :coef, :scale, :eta,
+             :support_guard, :log_normalizer) :
+            (:spec_index, :kind, :class, :dpar, :block, :group, :from_coef,
+             :to_coef, :scale, :eta, :support_guard, :log_normalizer)
+        corr_expected = [Dict{Symbol,Any}(k => (k === :spec_index ? 1 : row[k])
+            for k in v4_keys) for row in groups[i]]
+        corr_result = _bridge_prepare_correlation_priors_v4(
+            form, fam, labels, data, [specs[i]], corr_expected)
+        append!(priors, corr_result.priors)
+        # v4 performs the detailed correlation target and normalization checks;
+        # restore v5's original table index in the composed resolved receipt.
+        for row in corr_result.expected
+            actual = Dict{Symbol,Any}(Symbol(k)=>v for (k,v) in row)
+            actual[:spec_index] = i
+            groups[i] = [actual]
+        end
+    end
+    resolved = _resolve_priors_native(form, fam; data=data, priors=drm_priors(priors...))
+    native_fixed_rows = filter(r -> !hasproperty(r, :class) || r.class === :fixef, resolved)
+    for spec_index in fixed_specs
+        spec = specs[spec_index]
+        kind = spec[:kind]
+        target_records = Dict{Symbol,Any}[]
+        for supplied in groups[spec_index]
+            candidates = filter(r -> r.dpar === Symbol(spec[:dpar]) &&
+                r.coef == supplied[:coef], native_fixed_rows)
+            length(candidates) == 1 || throw(ArgumentError(
+                "drm_bridge: Julia did not uniquely resolve the v5 fixed target"))
+            row = only(candidates)
+            actual = Dict{Symbol,Any}(:spec_index=>spec_index, :kind=>kind,
+                :class=>"fixed", :dpar=>String(row.dpar), :coef=>row.coef,
+                :index=>row.index, :matrix_column=>row.matrix_column)
+            if kind == "fixed_normal"
+                actual[:mean] = row.mean; actual[:sd] = row.sd
+            elseif kind == "fixed_student_t"
+                actual[:location] = row.mean; actual[:scale] = row.scale_parameter; actual[:df] = row.df
+            else
+                actual[:lambda] = row.precision
+            end
+            all(get(supplied, k, nothing) == v for (k,v) in actual) ||
+                throw(ArgumentError("drm_bridge: Julia resolved fixed target differs from v5 record"))
+            push!(target_records, actual)
+        end
+        groups[spec_index] = target_records
+    end
+    residual_rows = filter(r -> hasproperty(r, :class) && r.class === :residual_sd, resolved)
+    length(residual_rows) == length(residual_specs) || throw(ArgumentError("drm_bridge: v5 residual-SD targets differ from the native resolver"))
+    for (spec_index, row) in zip(residual_specs, residual_rows)
+        actual = Dict{Symbol,Any}(:spec_index=>spec_index, :kind=>"residual_sd_gamma",
+            :class=>"residual_sd", :dpar=>String(row.dpar), :coef=>row.coef,
+            :block=>String(row.block), :measure=>String(row.scale), :shape=>row.shape,
+            :rate=>row.rate, :log_normalizer=>-row.shape * log(row.rate) + loggamma(row.shape),
+            :index=>row.index)
+        only(groups[spec_index]) == actual ||
+            throw(ArgumentError("drm_bridge: Julia resolved residual-SD target differs from v5 record"))
+        groups[spec_index] = [actual]
+    end
+    sd_rows = filter(r -> hasproperty(r, :class) && r.class === :random_effect_sd, resolved)
+    length(sd_rows) == length(sd_specs) || throw(ArgumentError("drm_bridge: v5 random-effect SD targets differ from the native resolver"))
+    for spec_index in sd_specs
+        spec = specs[spec_index]
+        matches = filter(r -> r.group == spec[:group], sd_rows)
+        length(matches) == 1 || throw(ArgumentError("drm_bridge: Julia did not resolve the v5 random-effect SD target"))
+        row = only(matches)
+        actual = Dict{Symbol,Any}(:spec_index=>spec_index, :kind=>"ranef_sd_gamma",
+            :class=>"ranef_sd", :dpar=>String(row.dpar), :group=>row.group,
+            :coef=>row.coef, :block_kind=>"iid_random_intercept",
+            :shape=>row.shape, :rate=>row.rate, :measure=>"natural_sd",
+            :index=>row.index)
+        supplied = only(groups[spec_index])
+        all(get(supplied, k, nothing) == v for (k,v) in actual) ||
+            throw(ArgumentError("drm_bridge: Julia resolved random-effect SD target differs from v5 record"))
+        groups[spec_index] = [actual]
+    end
+    # Preserve the caller's global spec order in the resolved receipt.
+    ordered = Dict{Symbol,Any}[]
+    for i in eachindex(specs)
+        append!(ordered, groups[i])
+    end
+    return (priors=priors, expected=ordered, residual_rows=residual_rows,
+            sd_rows=sd_rows, correlation_indices=correlation_specs)
+end
+
+function _bridge_attach_priors_v5!(out, fit, records, labels)
+    fit.estim_method === :MAP && _is_fixed_prior_fit(fit) ||
+        throw(ArgumentError("drm_bridge: v5 backend did not fit the requested prior table"))
+    residual_rows = filter(r -> hasproperty(r, :kind) && r.kind === :residual_sd_gamma, fit.penalty.rows)
+    length(residual_rows) == length(records.residual_rows) ||
+        throw(ArgumentError("drm_bridge: fitted residual-SD targets differ from v5 records"))
+    for (actual, expected) in zip(residual_rows, records.residual_rows)
+        actual.index == expected.index && actual.dpar === :sigma && actual.coef == "(Intercept)" &&
+            actual.shape == expected.shape && actual.rate == expected.rate ||
+            throw(ArgumentError("drm_bridge: fitted residual-SD target differs from v5 record"))
+    end
+    fitted_sd_rows = hasproperty(fit.penalty, :sd_rows) ? fit.penalty.sd_rows :
+        hasproperty(fit.penalty, :sd_row) && fit.penalty.sd_row !== nothing ? [fit.penalty.sd_row] : NamedTuple[]
+    length(fitted_sd_rows) == length(records.sd_rows) ||
+        throw(ArgumentError("drm_bridge: fitted random-effect SD targets differ from v5 records"))
+    for row in records.sd_rows
+        candidates = filter(r -> r.group == row.group, fitted_sd_rows)
+        length(candidates) == 1 || throw(ArgumentError("drm_bridge: fitted random-effect SD target differs from v5 record"))
+        fitted = only(candidates)
+        fitted.coef == row.coef && fitted.shape == row.shape && fitted.rate == row.rate ||
+            throw(ArgumentError("drm_bridge: fitted random-effect SD distribution differs from v5 record"))
+    end
+    corr_row = isempty(records.correlation_indices) ? nothing : fit.penalty.correlation_row
+    corr_record = isempty(records.correlation_indices) ? nothing : only(filter(
+        r -> get(r, :class, nothing) in ("random_effect_correlation", "residual_correlation"), records.expected))
+    if corr_row !== nothing
+        corr_record === nothing && throw(ArgumentError("drm_bridge: v5 correlation target is missing from resolved records"))
+        actual_corr = _bridge_v4_resolved_record(corr_row, corr_record[:kind],
+            Int(corr_record[:spec_index]))
+        _bridge_v4_records_match(_bridge_v2_checked_options(corr_record), actual_corr) ||
+            throw(ArgumentError("drm_bridge: fitted correlation target differs from v5 record"))
+    end
+    prior_fields = _prior_convergence_fields(fit)
+    isempty(prior_fields) && throw(ArgumentError("drm_bridge: v5 fit is missing prior-aware convergence metadata"))
+    data_nll = fit.penalty.data_nll
+    residual_penalty = _fixed_prior_value(residual_rows, fit.theta)
+    fixed_rows = filter(r -> !hasproperty(r, :kind) || r.kind !== :residual_sd_gamma, fit.penalty.rows)
+    fixed_penalty = _fixed_prior_value(fixed_rows, fit.theta)
+    random_sd_penalty = sum((_sd_prior_value(r, fit.theta) for r in fitted_sd_rows); init=0.0)
+    correlation_penalty = corr_row === nothing ? 0.0 : corr_row.class === :residual_correlation ?
+        _residual_correlation_prior_value(corr_row, fit.theta) :
+        _random_effect_correlation_prior_value(corr_row, fit.theta)
+    data_gradient = ForwardDiff.gradient(data_nll, fit.theta)
+    fixed_gradient = ForwardDiff.gradient(t -> _fixed_prior_value(fixed_rows, t), fit.theta)
+    residual_gradient = ForwardDiff.gradient(t -> _fixed_prior_value(residual_rows, t), fit.theta)
+    random_sd_gradient = ForwardDiff.gradient(t -> sum((_sd_prior_value(r, t) for r in fitted_sd_rows); init=zero(eltype(t))), fit.theta)
+    correlation_gradient = corr_row === nothing ? zeros(length(fit.theta)) :
+        corr_row.class === :residual_correlation ?
+            ForwardDiff.gradient(t -> _residual_correlation_prior_value(corr_row, t), fit.theta) :
+            ForwardDiff.gradient(t -> _random_effect_correlation_prior_value(corr_row, t), fit.theta)
+    out["prior_contract"] = "parameter_priors_v5"
+    out["resolved_priors_v5"] = Any[Dict{String,Any}(String(k)=>v for (k,v) in row)
+        for row in records.expected]
+    out["data_nll"] = data_nll(fit.theta)
+    out["data_logLik"] = -out["data_nll"]
+    out["fixed_prior_penalty"] = fixed_penalty
+    out["residual_sd_prior_penalty"] = residual_penalty
+    out["random_effect_sd_prior_penalty"] = random_sd_penalty
+    out["correlation_prior_penalty"] = correlation_penalty
+    out["penalized_objective"] = fit.nll(fit.theta)
+    out["data_gradient"] = data_gradient
+    out["fixed_prior_gradient"] = fixed_gradient
+    out["residual_sd_prior_gradient"] = residual_gradient
+    out["random_effect_sd_prior_gradient"] = random_sd_gradient
+    out["correlation_prior_gradient"] = correlation_gradient
+    out["prior_penalty"] = fixed_penalty + residual_penalty + random_sd_penalty + correlation_penalty
+    out["prior_gradient"] = fixed_gradient + residual_gradient + random_sd_gradient + correlation_gradient
+    out["penalized_gradient"] = ForwardDiff.gradient(fit.nll, fit.theta)
+    out["penalised"] = prior_fields.penalised
+    out["objective"] = prior_fields.objective
+    out["logLik"] = prior_fields.logLik
+    out["log_prior"] = prior_fields.log_prior
+    out["pd_hessian_unpenalised"] = prior_fields.pd_hessian_unpenalised
+    out["prior_held_params"] = Any[Dict("name"=>String(p.name), "kind"=>String(p.kind)) for p in prior_fields.prior_held_params]
+    out["se_type"] = String(prior_fields.se_type)
+    out["estim_method"] = "MAP"
+    out["infocrit_basis"] = "unavailable"
+    return out
+end
+
+function _bridge_v4_resolved_record(row, kind::AbstractString, spec_index::Int)
+    if kind == "lkj_residual_correlation"
+        row.class === :residual_correlation && row.dpar === :rho12 &&
+            row.block === :bivariate_residual ||
+            throw(ArgumentError("drm_bridge: v4 residual correlation resolved to the wrong target class"))
+        return Dict{Symbol,Any}(
+            :spec_index=>spec_index, :kind=>kind, :class=>String(row.class),
+            :dpar=>String(row.dpar), :block=>String(row.block),
+            :coef=>row.coef, :scale=>String(row.scale), :eta=>row.eta,
+            :support_guard=>row.guard, :log_normalizer=>_lkj_log_normalizer(row.eta, row.guard),
+            :guard=>row.guard, :index=>row.index)
+    elseif kind == "lkj_random_effect_correlation"
+        row.class === :random_effect_correlation && row.dpar === :mu &&
+            row.block === :gaussian_q2 ||
+            throw(ArgumentError("drm_bridge: v4 random-effect correlation resolved to the wrong target class"))
+        return Dict{Symbol,Any}(
+            :spec_index=>spec_index, :kind=>kind, :class=>String(row.class),
+            :dpar=>String(row.dpar), :block=>String(row.block),
+            :group=>row.group, :from_coef=>row.from_coef, :to_coef=>row.to_coef,
+            :scale=>String(row.scale), :eta=>row.eta,
+            :support_guard=>row.guard, :log_normalizer=>_lkj_log_normalizer(row.eta, row.guard),
+            :guard=>row.guard,
+            :index=>row.index)
+    end
+    throw(ArgumentError("drm_bridge: unknown v4 correlation prior kind"))
+end
+
+function _bridge_v4_records_match(expected, actual)
+    Set(keys(expected)) == Set(keys(actual)) || return false
+    for key in keys(expected)
+        x, y = expected[key], actual[key]
+        if x isa Real && y isa Real && !(x isa Bool) && !(y isa Bool)
+            isapprox(Float64(x), Float64(y); atol=1e-12, rtol=1e-12) || return false
+        else
+            isequal(x, y) || return false
+        end
+    end
+    return true
+end
+
+function _bridge_prepare_correlation_priors_v4(form, fam, labels, data, prior_input, expected_input)
+    fam isa Gaussian || throw(ArgumentError("drm_bridge: v4 prior tables require Gaussian"))
+    prior_input isa AbstractVector && !isempty(prior_input) &&
+        expected_input isa AbstractVector && !isempty(expected_input) ||
+        throw(ArgumentError("drm_bridge: v4 prior and resolved records must be nonempty vectors"))
+    specs = [_bridge_v2_checked_options(x) for x in prior_input]
+    expected = [_bridge_v2_checked_options(x) for x in expected_input]
+    groups = [Dict{Symbol,Any}[] for _ in specs]
+    last_index = 0
+    for row in expected
+        i = get(row, :spec_index, nothing)
+        i isa Integer && !(i isa Bool) && 1 <= i <= length(specs) && i >= last_index ||
+            throw(ArgumentError("drm_bridge: invalid v4 spec_index order"))
+        push!(groups[i], row)
+        last_index = i
+    end
+    all(!isempty, groups) || throw(ArgumentError("drm_bridge: v4 is missing resolved target rows"))
+
+    priors = AbstractDrmPrior[]
+    fixed_expected = Dict{Symbol,Any}[]
+    correlation_spec_index = 0
+    correlation_kind = nothing
+    for (i, p) in enumerate(specs)
+        kind = get(p, :kind, nothing)
+        rows = groups[i]
+        if kind in ("fixed_normal", "fixed_student_t", "fixed_ridge")
+            coef = get(p, :coef, nothing)
+            coef isa AbstractString && !isempty(coef) || throw(ArgumentError("drm_bridge: invalid v4 fixed-effect selector"))
+            dpar = get(p, :dpar, nothing)
+            dpar in ("mu", "sigma") || throw(ArgumentError("drm_bridge: unsupported v4 fixed-effect dpar"))
+            required = kind == "fixed_normal" ? (:kind, :dpar, :coef, :mean, :sd) :
+                       kind == "fixed_student_t" ? (:kind, :dpar, :coef, :location, :scale, :df) :
+                       (:kind, :dpar, :coef, :lambda)
+            coef == "all" && (required = (required..., :intercept))
+            Set(keys(p)) == Set(required) || throw(ArgumentError("drm_bridge: invalid v4 fixed-effect specification fields"))
+            inc = get(p, :intercept, nothing)
+            inc === nothing || inc in ("include", "exclude") || throw(ArgumentError("drm_bridge: invalid v4 intercept rule"))
+            numeric = kind == "fixed_normal" ? (:mean, :sd) :
+                      kind == "fixed_student_t" ? (:location, :scale, :df) : (:lambda,)
+            for key in numeric
+                x = get(p, key, nothing)
+                x isa Real && !(x isa Bool) || throw(ArgumentError("drm_bridge: invalid v4 fixed numeric field $key"))
+                x = try Float64(x) catch; throw(ArgumentError("drm_bridge: invalid v4 fixed numeric field $key")); end
+                isfinite(x) || throw(ArgumentError("drm_bridge: invalid v4 fixed numeric field $key"))
+                p[key] = x
+            end
+            if kind == "fixed_normal"
+                p[:sd] > 0 || throw(ArgumentError("drm_bridge: v4 normal sd must be positive"))
+            elseif kind == "fixed_student_t"
+                p[:scale] > 0 && p[:df] > 0 || throw(ArgumentError("drm_bridge: v4 Student-t scale and df must be positive"))
+            else
+                p[:lambda] >= 0 || throw(ArgumentError("drm_bridge: v4 ridge lambda must be nonnegative"))
+            end
+            ek = kind == "fixed_normal" ? Set((:spec_index, :kind, :class, :dpar, :coef, :mean, :sd)) :
+                 kind == "fixed_student_t" ? Set((:spec_index, :kind, :class, :dpar, :coef, :location, :scale, :df)) :
+                 Set((:spec_index, :kind, :class, :dpar, :coef, :lambda))
+            all(Set(keys(r)) == ek for r in rows) || throw(ArgumentError("drm_bridge: invalid v4 fixed resolved-record fields"))
+            all(r -> r[:kind] == kind && r[:class] == "fixed" && r[:dpar] == dpar, rows) ||
+                throw(ArgumentError("drm_bridge: v4 fixed prior record class mismatch"))
+            all(r -> r[:coef] isa AbstractString && !isempty(r[:coef]), rows) ||
+                throw(ArgumentError("drm_bridge: invalid v4 fixed resolved coefficient"))
+            paramkeys = kind == "fixed_normal" ? (:mean, :sd) : kind == "fixed_student_t" ? (:location, :scale, :df) : (:lambda,)
+            all(r -> all(k -> isequal(Float64(r[k]), p[k]), paramkeys), rows) ||
+                throw(ArgumentError("drm_bridge: v4 fixed prior parameters differ from resolved records"))
+            legacy_kind = kind == "fixed_normal" ? "normal" : kind == "fixed_student_t" ? "student_t" : "ridge"
+            legacy = Dict{Symbol,Any}(:kind=>legacy_kind, :dpar=>dpar, :coef=>coef)
+            inc === nothing || (legacy[:intercept] = inc)
+            if kind == "fixed_normal"
+                legacy[:mean] = p[:mean]; legacy[:sd] = p[:sd]
+            elseif kind == "fixed_student_t"
+                legacy[:location] = p[:location]; legacy[:scale] = p[:scale]; legacy[:df] = p[:df]
+            else
+                legacy[:lambda] = p[:lambda]
+            end
+            public_targets = [String(r[:coef]) for r in rows]
+            push!(priors, only(_bridge_prepare_fixed_priors(form, fam, labels, [legacy],
+                [Dict(:dpar=>dpar, :coef=>c) for c in public_targets])))
+            append!(fixed_expected, rows)
+        elseif kind in ("lkj_residual_correlation", "lkj_random_effect_correlation")
+            correlation_spec_index == 0 || throw(ArgumentError("drm_bridge: v4 supports at most one correlation prior"))
+            correlation_spec_index = i
+            correlation_kind = kind
+            length(rows) == 1 || throw(ArgumentError("drm_bridge: v4 correlation prior must resolve once"))
+            p[:eta] isa Real && !(p[:eta] isa Bool) || throw(ArgumentError("drm_bridge: invalid v4 numeric field eta"))
+            p[:eta] = try Float64(p[:eta]) catch; throw(ArgumentError("drm_bridge: invalid v4 numeric field eta")); end
+            isfinite(p[:eta]) && p[:eta] > 1 || throw(ArgumentError("drm_bridge: invalid v4 numeric field eta"))
+            if kind == "lkj_residual_correlation"
+                length(specs) == 1 && Set(keys(p)) == Set((:kind, :dpar, :coef, :eta, :measure)) &&
+                    p[:dpar] == "rho12" && p[:coef] == "(Intercept)" ||
+                    throw(ArgumentError("drm_bridge: rho12 v4 prior is admitted only as a constant correlation-only request"))
+                semantic_keys = Set((:spec_index, :kind, :class, :dpar, :block, :coef, :scale, :eta, :support_guard, :log_normalizer))
+                prior = drm_prior_lkj(dpar=:rho12, eta=p[:eta])
+            else
+                Set(keys(p)) == Set((:kind, :dpar, :group, :from_coef, :to_coef, :eta, :measure)) &&
+                    p[:dpar] == "mu" && p[:group] isa AbstractString && !isempty(p[:group]) &&
+                    p[:from_coef] isa AbstractString && !isempty(p[:from_coef]) &&
+                    p[:to_coef] isa AbstractString && !isempty(p[:to_coef]) &&
+                    p[:from_coef] != p[:to_coef] ||
+                    throw(ArgumentError("drm_bridge: invalid v4 random-effect-correlation target"))
+                semantic_keys = Set((:spec_index, :kind, :class, :dpar, :block, :group, :from_coef, :to_coef, :scale, :eta, :support_guard, :log_normalizer))
+                prior = drm_prior_lkj(dpar=:mu, group=p[:group], from_coef=p[:from_coef],
+                    to_coef=p[:to_coef], eta=p[:eta])
+            end
+            p[:measure] == "natural_correlation" || throw(ArgumentError("drm_bridge: v4 LKJ priors require natural_correlation measure"))
+            e = only(rows)
+            Set(keys(e)) == semantic_keys || throw(ArgumentError("drm_bridge: invalid v4 correlation resolved-record fields"))
+            e[:spec_index] == i && e[:kind] == kind && e[:eta] == p[:eta] &&
+                e[:scale] == "natural_correlation" || throw(ArgumentError("drm_bridge: v4 correlation prior record mismatch"))
+            guard = e[:support_guard]
+            guard isa Real && !(guard isa Bool) && isfinite(guard) && 0 < guard < 1 ||
+                throw(ArgumentError("drm_bridge: invalid v4 semantic support_guard"))
+            normalizer = e[:log_normalizer]
+            normalizer isa Real && !(normalizer isa Bool) && isfinite(normalizer) ||
+                throw(ArgumentError("drm_bridge: invalid v4 semantic log_normalizer"))
+            push!(priors, prior)
+        else
+            throw(ArgumentError("drm_bridge: unsupported v4 prior kind $kind"))
+        end
+    end
+    correlation_spec_index > 0 || throw(ArgumentError("drm_bridge: v4 requires one named LKJ correlation target"))
+    rows = _resolve_priors_native(form, fam; data=data, priors=drm_priors(priors...))
+    corrrows = filter(r -> hasproperty(r, :class) &&
+        r.class in (:residual_correlation, :random_effect_correlation), rows)
+    length(corrrows) == 1 || throw(ArgumentError("drm_bridge: v4 must resolve exactly one correlation target"))
+    fixedrows = filter(r -> !hasproperty(r, :class) || r.class === :fixef, rows)
+    length(fixedrows) == length(fixed_expected) || throw(ArgumentError("drm_bridge: Julia resolved a different number of fixed prior targets"))
+    resolved = Any[]
+    for expected_row in expected
+        i = expected_row[:spec_index]
+        spec = specs[i]
+        if spec[:kind] == "lkj_residual_correlation" || spec[:kind] == "lkj_random_effect_correlation"
+            actual = _bridge_v4_resolved_record(only(corrrows), spec[:kind], i)
+            actual[:support_guard] == expected_row[:support_guard] ||
+                throw(ArgumentError("drm_bridge: R and Julia correlation support guards differ"))
+            semantic = Dict(k=>actual[k] for k in keys(expected_row))
+            _bridge_v4_records_match(expected_row, semantic) ||
+                throw(ArgumentError("drm_bridge: Julia resolved correlation target differs from v4 record"))
+            push!(resolved, Dict{String,Any}(String(k)=>v for (k,v) in actual))
+        else
+            kind = spec[:kind]
+            candidates = filter(r -> r.dpar === Symbol(spec[:dpar]), fixedrows)
+            formula_rhs = first(_split_ranef(Dict(form.forms)[Symbol(spec[:dpar])]))
+            formula_rhs = first(_extract_offset(formula_rhs))
+            raw, public = _bridge_render_formula_block(form, Symbol(spec[:dpar]), formula_rhs, labels)
+            # Match by the formula's public coefficient name, then verify all
+            # target and distribution fields against Julia's resolver output.
+            idx = findfirst(==(String(expected_row[:coef])), public)
+            idx === nothing && throw(ArgumentError("drm_bridge: v4 fixed target is not a fitted coefficient"))
+            coef = raw[idx]
+            row_index = findfirst(r -> r.coef == coef, candidates)
+            row_index === nothing && throw(ArgumentError("drm_bridge: Julia did not resolve the v4 fixed target"))
+            row = candidates[row_index]
+            actual = Dict{Symbol,Any}(:spec_index=>i, :kind=>kind, :class=>"fixed",
+                :dpar=>String(row.dpar), :coef=>String(expected_row[:coef]),
+                :index=>row.index, :matrix_column=>row.matrix_column)
+            if kind == "fixed_normal"
+                actual[:mean]=row.mean; actual[:sd]=row.sd
+            elseif kind == "fixed_student_t"
+                actual[:location]=row.mean; actual[:scale]=row.scale_parameter; actual[:df]=row.df
+            else
+                actual[:lambda]=row.precision
+            end
+            semantic = Dict(k=>actual[k] for k in keys(expected_row))
+            _bridge_v4_records_match(expected_row, semantic) ||
+                throw(ArgumentError("drm_bridge: Julia resolved fixed target differs from v4 record"))
+            push!(resolved, Dict{String,Any}(String(k)=>v for (k,v) in actual))
+        end
+    end
+    # rho12 retains its own bivariate model class and is deliberately not mixed
+    # with fixed coefficient rows; the q2 natural-rho target can be mixed.
+    if correlation_kind == "lkj_random_effect_correlation"
+        length(corrrows) == 1 && only(corrrows).class === :random_effect_correlation ||
+            throw(ArgumentError("drm_bridge: unsupported q2 correlation multiplicity"))
+    end
+    return (priors=priors, expected=resolved)
+end
+
+function _bridge_attach_priors_v4!(out, fit, records, labels)
+    fit.estim_method === :MAP && _is_fixed_prior_fit(fit) &&
+        fit.penalty.kind in (:correlation_priors, :mixed_priors) ||
+        throw(ArgumentError("drm_bridge: v4 backend did not fit the requested prior table"))
+    row = fit.penalty.correlation_row
+    kind = row.class === :residual_correlation ? "lkj_residual_correlation" :
+           row.class === :random_effect_correlation ? "lkj_random_effect_correlation" :
+           throw(ArgumentError("drm_bridge: v4 fit retained an unsupported correlation target"))
+    corr_record = only(filter(r -> r["class"] in ("residual_correlation", "random_effect_correlation"), records))
+    corr_index = Int(corr_record["spec_index"])
+    actual = _bridge_v4_resolved_record(row, kind, corr_index)
+    _bridge_v2_checked_options(corr_record) == actual ||
+        throw(ArgumentError("drm_bridge: fitted correlation target differs from v4 record"))
+    theta = fit.theta
+    data_nll = fit.penalty.data_nll
+    fixed_rows = fit.penalty.kind === :mixed_priors ? fit.penalty.rows : NamedTuple[]
+    fixed_records = filter(r -> r["class"] == "fixed", records)
+    length(fixed_rows) == length(fixed_records) ||
+        throw(ArgumentError("drm_bridge: fitted fixed targets differ from v4 records"))
+    for record in fixed_records
+        candidates = filter(r -> r.index == record["index"], fixed_rows)
+        length(candidates) == 1 || throw(ArgumentError("drm_bridge: fitted fixed coordinate differs from v4 record"))
+        fitted = only(candidates)
+        fitted.dpar === Symbol(record["dpar"]) && fitted.matrix_column == record["matrix_column"] ||
+            throw(ArgumentError("drm_bridge: fitted fixed target differs from v4 record"))
+        expected_kind = record["kind"] == "fixed_normal" ? :normal :
+                        record["kind"] == "fixed_student_t" ? :student_t : :ridge
+        fitted.kind === expected_kind || throw(ArgumentError("drm_bridge: fitted fixed prior kind differs from v4 record"))
+        if expected_kind === :normal
+            isapprox(fitted.mean, record["mean"]; atol=1e-12, rtol=1e-12) &&
+                isapprox(fitted.sd, record["sd"]; atol=1e-12, rtol=1e-12) ||
+                throw(ArgumentError("drm_bridge: fitted normal prior differs from v4 record"))
+        elseif expected_kind === :student_t
+            isapprox(fitted.mean, record["location"]; atol=1e-12, rtol=1e-12) &&
+                isapprox(fitted.scale_parameter, record["scale"]; atol=1e-12, rtol=1e-12) &&
+                isapprox(fitted.df, record["df"]; atol=1e-12, rtol=1e-12) ||
+                throw(ArgumentError("drm_bridge: fitted Student-t prior differs from v4 record"))
+        else
+            isapprox(fitted.precision, record["lambda"]; atol=1e-12, rtol=1e-12) ||
+                throw(ArgumentError("drm_bridge: fitted ridge prior differs from v4 record"))
+        end
+    end
+    fixed_nll = t -> _fixed_prior_value(fixed_rows, t)
+    correlation_nll = t -> row.class === :residual_correlation ?
+        _residual_correlation_prior_value(row, t) :
+        _random_effect_correlation_prior_value(row, t)
+    data_gradient = ForwardDiff.gradient(data_nll, theta)
+    fixed_gradient = ForwardDiff.gradient(fixed_nll, theta)
+    correlation_gradient = ForwardDiff.gradient(correlation_nll, theta)
+    penalized_gradient = ForwardDiff.gradient(fit.nll, theta)
+    prior_fields = _prior_convergence_fields(fit)
+    isempty(prior_fields) && throw(ArgumentError("drm_bridge: v4 fit is missing prior-aware convergence metadata"))
+    names, values, _, _ = _bridge_coef_vector(fit; labels=labels)
+    out["prior_contract"] = "parameter_priors_v4"
+    out["resolved_priors_v4"] = records
+    out["working_coordinates"] = names
+    out["working_values"] = values
+    out["data_nll"] = data_nll(theta)
+    out["data_logLik"] = -out["data_nll"]
+    out["fixed_prior_penalty"] = fixed_nll(theta)
+    out["correlation_prior_penalty"] = correlation_nll(theta)
+    out["penalized_objective"] = fit.nll(theta)
+    out["data_gradient"] = data_gradient
+    out["fixed_prior_gradient"] = fixed_gradient
+    out["correlation_prior_gradient"] = correlation_gradient
+    out["penalized_gradient"] = penalized_gradient
+    out["penalised"] = prior_fields.penalised
+    out["objective"] = prior_fields.objective
+    out["logLik"] = prior_fields.logLik
+    out["log_prior"] = prior_fields.log_prior
+    out["pd_hessian_unpenalised"] = prior_fields.pd_hessian_unpenalised
+    out["prior_held_params"] = Any[Dict("name"=>String(p.name), "kind"=>String(p.kind))
+        for p in prior_fields.prior_held_params]
+    out["se_type"] = String(prior_fields.se_type)
+    out["estim_method"] = "MAP"
+    out["infocrit_basis"] = "unavailable"
+    return out
 end
 
 function _bridge_enable_priors_v3!(opts, form, fam, data, labels)
@@ -922,6 +1576,16 @@ function _bridge_attach_priors_v2!(out, fit, records, labels)
     out["fixed_prior_gradient"] = ForwardDiff.gradient(fixed_nll, theta)
     out["sd_prior_gradient"] = ForwardDiff.gradient(sd_nll, theta)
     out["penalized_gradient"] = ForwardDiff.gradient(fit.nll, theta)
+    prior_fields = _prior_convergence_fields(fit)
+    isempty(prior_fields) && throw(ArgumentError("drm_bridge: v2 fit is missing prior-aware convergence metadata"))
+    out["penalised"] = prior_fields.penalised
+    out["objective"] = prior_fields.objective
+    out["logLik"] = prior_fields.logLik
+    out["log_prior"] = prior_fields.log_prior
+    out["pd_hessian_unpenalised"] = prior_fields.pd_hessian_unpenalised
+    out["prior_held_params"] = Any[Dict("name"=>String(p.name), "kind"=>String(p.kind))
+        for p in prior_fields.prior_held_params]
+    out["se_type"] = String(prior_fields.se_type)
     out["estim_method"] = "MAP"
     out["infocrit_basis"] = "unavailable"
     return out
@@ -1006,19 +1670,21 @@ function _bridge_prepare_priors_v2(form, fam, data, labels, prior_input, expecte
     end
     (version === :v2 ? n_sd == 1 : 1 <= n_sd <= 2) || throw(ArgumentError("drm_bridge: invalid number of SD priors"))
     combined = drm_priors(priors...)
-    resolve_priors(form, fam; data=data, priors=combined)
+    _resolve_priors_native(form, fam; data=data, priors=combined)
     _, re, _, _ = _split_ranef(Dict(form.forms)[:mu])
     length(re) == (version === :v2 ? 1 : 2) || throw(ArgumentError("drm_bridge: prior protocol does not match random-intercept count"))
     return combined
 end
 
-function _bridge_prepare_fixed_priors(form, fam, labels, prior_input, expected_input)
-    form isa DrmFormula && (fam isa Gaussian || (fam isa Binomial && fam.link === :logit)) ||
-        throw(ArgumentError("drm_bridge: fixed priors require univariate Gaussian or binomial logit"))
+function _bridge_prepare_fixed_priors(form, fam, labels, prior_input, expected_input;
+                                      allow_bivariate::Bool=false)
+    (form isa DrmFormula && (fam isa Gaussian || (fam isa Binomial && fam.link === :logit))) ||
+        (allow_bivariate && form isa BivariateDrmFormula && fam isa Gaussian) ||
+        throw(ArgumentError("drm_bridge: fixed priors require Gaussian or binomial logit model terms supported by this route"))
     prior_input isa AbstractVector && expected_input isa AbstractVector ||
         throw(ArgumentError("drm_bridge: priors and prior_expected must be vectors of rows"))
     forms = Dict(form.forms)
-    dpars = fam isa Gaussian ? (:mu, :sigma) : (:mu,)
+    dpars = form isa BivariateDrmFormula ? (:mu1, :mu2) : fam isa Gaussian ? (:mu, :sigma) : (:mu,)
     names = Pair{Symbol,Vector{String}}[]; intercepts = Dict{Symbol,Union{Nothing,Int}}()
     public_names = Dict{Symbol,Vector{String}}()
     for d in dpars
@@ -1026,13 +1692,14 @@ function _bridge_prepare_fixed_priors(form, fam, labels, prior_input, expected_i
         raw, public = _bridge_render_formula_block(form, d, rhs, labels)
         length(unique(public)) == length(public) || throw(ArgumentError("drm_bridge: ambiguous public coefficient names"))
         push!(names, d => raw); public_names[d] = public
-        schema_data = _bridge_label_schema_data(form.response, labels.data)
-        ft = FormulaTerm(Term(form.response), rhs)
+        response = form isa BivariateDrmFormula ? (d === :mu1 ? form.response1 : form.response2) : form.response
+        schema_data = _bridge_label_schema_data(response, labels.data)
+        ft = FormulaTerm(Term(response), rhs)
         applied = apply_schema(ft, schema(ft, schema_data), StatisticalModel)
         intercepts[d] = StatsModels.hasintercept(applied) ? findfirst(==("(Intercept)"), raw) : nothing
         StatsModels.hasintercept(applied) && intercepts[d] === nothing && throw(ArgumentError("drm_bridge: cannot identify intercept"))
     end
-    priors = FixedPrior[]
+    priors = AbstractDrmPrior[]
     for item in prior_input
         p = _bridge_options(item)
         all(k -> haskey(p, k), (:kind, :dpar, :coef)) || throw(ArgumentError("drm_bridge: incomplete prior row"))
@@ -1047,6 +1714,10 @@ function _bridge_prepare_fixed_priors(form, fam, labels, prior_input, expected_i
         if kind == "normal"
             haskey(p, :sd) || throw(ArgumentError("drm_bridge: normal prior requires sd"))
             push!(priors, drm_prior_normal(dpar=d, coef=c, intercept=inc, mean=get(p, :mean, 0), sd=p[:sd]))
+        elseif kind == "student_t"
+            all(k -> haskey(p, k), (:scale, :df)) || throw(ArgumentError("drm_bridge: Student-t prior requires scale and df"))
+            push!(priors, drm_prior_student_t(dpar=d, coef=c, intercept=inc,
+                location=get(p, :location, 0), scale=p[:scale], df=p[:df]))
         elseif kind == "ridge"
             haskey(p, :lambda) || throw(ArgumentError("drm_bridge: ridge prior requires lambda"))
             push!(priors, drm_prior_ridge(dpar=d, coef=c, intercept=inc, lambda=p[:lambda]))
@@ -2167,7 +2838,8 @@ const _BRIDGE_FIT_FAILED_MESSAGE =
     "do not use this fit."
 
 function _bridge_flatten(fit; family::AbstractString, newdata = nothing,
-        labels::Union{Nothing,_BridgeFormulaLabels} = nothing, coef_labels = nothing)
+        labels::Union{Nothing,_BridgeFormulaLabels} = nothing, coef_labels = nothing,
+        prior_contract_version=nothing)
     cnames, cvals, raw_cnames, public_to_raw =
         _bridge_coef_vector(fit; labels = labels, coef_labels = coef_labels)
     # homtoep withholds Wald covariance (as drmTMB); the bridge ships NaN.
@@ -2187,8 +2859,8 @@ function _bridge_flatten(fit; family::AbstractString, newdata = nothing,
         "fit_failed" => _loglik_is_failed(fit.loglik, fit.converged),
         "fit_failed_message" => _loglik_is_failed(fit.loglik, fit.converged) ?
             _BRIDGE_FIT_FAILED_MESSAGE : "",
-        "aic" => _is_fixed_prior_fit(fit) && fit.estim_method === :MAP ? NaN : aic(fit),
-        "bic" => _is_fixed_prior_fit(fit) && fit.estim_method === :MAP ? NaN : bic(fit),
+        "aic" => fit.estim_method === :MAP && fit.penalty !== nothing ? NaN : aic(fit),
+        "bic" => fit.estim_method === :MAP && fit.penalty !== nothing ? NaN : bic(fit),
         "df" => dof(fit),
         "nobs" => nobs(fit),
         # The optimiser-degeneracy-and-geometry gate, NOT `is_converged` (FX3b):
@@ -2197,7 +2869,7 @@ function _bridge_flatten(fit; family::AbstractString, newdata = nothing,
         # `true`. A Poisson / NB2 fit whose MLE does not exist
         # (`geometry === :count_mle_nonexistent`) sends `false`. The Julia
         # classification travels as `convergence_status`.
-        "converged" => fit.geometry === :ok && _converged_nondegenerate(fit),
+        "converged" => is_converged(fit),
         "convergence_status" => String(convergence_status(fit)),
         # estim_method / ml_loglik / infocrit_basis are unconditional (#624): every
         # DrmFit carries `estim_method` and an always-set `ml_loglik` (the plain ML
@@ -2207,7 +2879,7 @@ function _bridge_flatten(fit; family::AbstractString, newdata = nothing,
         # Julia-side `@warn` that never crosses the boundary.
         "estim_method" => String(fit.estim_method),
         "ml_loglik" => _loglik_is_failed(fit.loglik, fit.converged) ? NaN : fit.ml_loglik,
-        "infocrit_basis" => _is_fixed_prior_fit(fit) && fit.estim_method === :MAP ? "unavailable" : fit.estim_method === :REML ? "reml" : "ml",
+        "infocrit_basis" => fit.estim_method === :MAP && fit.penalty !== nothing ? "unavailable" : fit.estim_method === :REML ? "reml" : "ml",
         # Optimiser iterations actually taken. -1 means the fitter does not record
         # it yet, which the R side must read as "unknown" -- NOT as zero. Before
         # 2026-08-24 this key did not exist at all, so `fit$bridge$iterations` was
@@ -2233,11 +2905,16 @@ function _bridge_flatten(fit; family::AbstractString, newdata = nothing,
         "corpairs" => _bridge_plain(corpairs(fit)),
         "dpars" => _bridge_dpars(fit),
     )
-    if _is_fixed_prior_fit(fit)
+    if _is_fixed_prior_fit(fit) && fit.penalty.kind !== :correlation_priors &&
+            prior_contract_version !== :v5
         rows = fit.penalty.rows
         out["fixed_prior_contract"] = "fixed_effect_priors_v1"
         publicmap = Dict(raw => public for (public, raw) in public_to_raw)
-        out["resolved_priors"] = [Dict("dpar"=>String(r.dpar), "coef"=>get(publicmap, "$(r.dpar)_$(r.coef)", "$(r.dpar)_$(r.coef)")[length(String(r.dpar))+2:end], "index"=>r.index, "matrix_column"=>r.matrix_column, "mean"=>r.mean, "sd"=>r.sd, "precision"=>r.precision, "kind"=>String(r.kind), "reason"=>String(r.reason)) for r in rows]
+        out["resolved_priors"] = [begin
+            item = Dict("dpar"=>String(r.dpar), "coef"=>get(publicmap, "$(r.dpar)_$(r.coef)", "$(r.dpar)_$(r.coef)")[length(String(r.dpar))+2:end], "index"=>r.index, "matrix_column"=>r.matrix_column, "mean"=>r.mean, "sd"=>r.sd, "precision"=>r.precision, "kind"=>String(r.kind), "reason"=>String(r.reason))
+            r.kind === :student_t && (item["scale"] = r.scale_parameter; item["df"] = r.df)
+            item
+        end for r in rows]
         out["fixed_prior_penalty"] = _fixed_prior_value(rows, fit.theta)
         out["likelihood_gradient"] = ForwardDiff.gradient(fit.penalty.data_nll, fit.theta)
         out["prior_gradient"] = ForwardDiff.gradient(t -> _fixed_prior_value(rows, t), fit.theta)
@@ -3125,7 +3802,7 @@ function _bridge_q2_point_export(fit; family::AbstractString = "biv_gaussian",
             "residual_sd" => residual_sd,
             "residual_correlation" => Float64(first(fit.scales[:rho12])),
             "loglik" => _bridge_loglik(Float64(fit.loglik), fit.converged),
-            "converged" => fit.geometry === :ok && _converged_nondegenerate(fit),   # as the top-level key (FX3b)
+            "converged" => is_converged(fit),   # same four checks as convergence_status
             "claim_boundary" => boundary,
         )
     end

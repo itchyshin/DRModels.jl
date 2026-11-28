@@ -167,7 +167,10 @@ _ls_fd_gate(g_an, obj, θ; hs = (1e-2, 3e-3, 1e-3, 3e-4, 1e-4)) =
         fit = drm(
             bf(@formula(y ~ x + phylo(1 | species)), @formula(sigma ~ x)),
             NegBinomial2(); data = data, tree = phy, se = false)
-        @test is_converged(fit)
+        # The optimizer reached the documented SD clamp, so the boundary
+        # status takes precedence over the Hessian skipped by se=false.
+        @test convergence_status(fit) === :boundary
+        @test !is_converged(fit)
         @test isfinite(loglik(fit))
     end
 end

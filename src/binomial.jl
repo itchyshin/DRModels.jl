@@ -457,7 +457,7 @@ function _fit_binomial(fam::Binomial, s, ntr, Xμ, nmμ, g_tol; offset = nothing
     n = length(s); pμ = size(Xμ, 2)
     active_prior = prior_rows !== nothing && !all(r -> r.kind === :ridge && r.precision == 0, prior_rows)
     if active_prior
-        penalized = Set(r.index for r in prior_rows if r.precision > 0)
+        penalized = Set(r.index for r in prior_rows if r.kind === :student_t || r.precision > 0)
         length(penalized) < pμ && @warn "Binomial prior leaves some coefficients unpenalized; a finite optimum requires every separating direction to be regularized. Check convergence and sensitivity."
     end
     sint = round.(Int, s); nint = round.(Int, ntr)

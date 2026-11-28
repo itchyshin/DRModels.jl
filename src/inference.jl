@@ -2291,7 +2291,6 @@ end
 # repeated by forwarding the stored `penalty` (the fitter does not take
 # `method = :MAP`).
 function _bootstrap_refit_kwargs(fit::DrmFit)
-    _is_fixed_prior_fit(fit) && fit.estim_method === :MAP && throw(ArgumentError("bootstrap: $(_prior_kind_label(fit)) refits are not yet qualified"))
     kw = Pair{Symbol,Any}[]
     if _is_gaussian_lss(fit)
         method = estimation_method(fit)
@@ -2325,6 +2324,20 @@ function _bootstrap_refit_kwargs(fit::DrmFit)
     return NamedTuple(kw)
 end
 
+_prior_spec_signature(p::AbstractDrmPrior) =
+    (typeof(p), ntuple(i -> getfield(p, i), fieldcount(typeof(p))))
+
+function _bootstrap_retain_prior_table(seed::DrmFit, refit::DrmFit)
+    _is_fixed_prior_fit(seed) || return refit
+    _is_fixed_prior_fit(refit) || throw(ArgumentError(
+        "bootstrap refit lost the seed fit's prior specifications"))
+    map(_prior_spec_signature, seed.penalty.specs) ==
+        map(_prior_spec_signature, refit.penalty.specs) || throw(ArgumentError(
+            "bootstrap refit resolved different prior targets or distributions"))
+    haskey(seed.penalty, :input_table) || return refit
+    return _with_prior_table_input(refit, seed.penalty.input_table)
+end
+
 # Estimator keywords the formula-based `bootstrap_result` forwards to `drm` for
 # the seed fit and every replicate. Defaults (`:ML`, `:LA`, no penalty) are left
 # off, matching `_bootstrap_refit_kwargs`. A MAP fit is requested with `penalty`,
@@ -2351,6 +2364,7 @@ _bootstrap_estimator(fit) = (:unknown, :unknown)
 function _bootstrap_bivariate_refit_kwargs(refit_options)
     kw = Pair{Symbol,Any}[]
     haskey(refit_options, :method) && push!(kw, :method => refit_options.method)
+    haskey(refit_options, :priors) && push!(kw, :priors => refit_options.priors)
     # Prior weights are part of the likelihood: every replicate refit uses them, as the
     # univariate path does (`_bootstrap_refit_kwargs`).
     haskey(refit_options, :weights) && push!(kw, :weights => refit_options.weights)
@@ -2470,6 +2484,13 @@ function _marginal_simulator(fit::DrmFit, data; K=nothing, A=nothing, tree=nothi
                              tree1=nothing, tree2=nothing,
                              Ainv=nothing, coords=nothing)
     sim = _marginal_simulator_build(fit, data; K, A, Ainv, tree, tree1, tree2, coords)
+    # Public `simulate` remains guarded for prior fits. For a Gaussian seed with
+    # no mean random effect, bootstrap can use the fitted response distribution
+    # directly without routing through that public method.
+    if sim === nothing && _is_fixed_prior_fit(fit) && fit.family isa Gaussian &&
+            !_mu_has_random_effect(fit)
+        return rng -> _simulate_once(fit, rng)
+    end
     sim === nothing && _refuse_multi_re_laplace(fit, "a simulation or bootstrap with fresh random effects")
     # `nothing` sends `bootstrap` to the CONDITIONAL `simulate`. On the Gaussian
     # `meta_V(...)` + random-effect route (`_fit_meta_gaussian_re`) that fallback
@@ -4363,6 +4384,8 @@ function _bootstrap_result(
     simulate_fn=nothing,
 )
     _check_bootstrap_failure_mode(failures)
+    prior_fit = _is_fixed_prior_fit(fit0) && fit0.estim_method === :MAP
+    prior_fit && @warn "bootstrap: intervals describe the penalized estimator; coverage has not been validated"
     B = _validate_bootstrap_B(B)
     level = _validate_ci_level(level; what="bootstrap")
     est = coef(fit0)
@@ -4391,6 +4414,7 @@ function _bootstrap_result(
             ysim = simulate_fn === nothing ? _simulate_all_rows(fit0; rng=rr, re=:zero) : simulate_fn(rr)
             datab = _bootstrap_data(formula, data, ysim)
             fitb = _without_boundary_warnings(() -> refit(datab))
+            fitb isa DrmFit && (fitb = _bootstrap_retain_prior_table(fit0, fitb))
             # Not the raw `.converged` field: this gate also rejects a degenerate
             # optimum (sigma collapsed, likelihood runaway), which the optimiser's
             # own flag happily calls converged (#461). Not `is_converged` either
@@ -4447,6 +4471,7 @@ function _bootstrap_result(
     end
     kept = draws[ok, :]
     summary = _homtoep_bootstrap_rows(fit0, _bootstrap_summary_rows(fit0, kept, est, level))
+    prior_fit && (summary = [merge(row, (penalised=true,)) for row in summary])
     boundary_params = _bootstrap_boundary_params(fit0, kept)
     failed_n = length(failure_rows)
     status = _finish_bootstrap_status(used, failed_n, boundary_params)
@@ -4457,7 +4482,7 @@ function _bootstrap_result(
     (refit_method, refit_marginal) == (seed_method, seed_marginal) ||
         seed_method === :unknown ||
         @warn "bootstrap replicates used a different estimator from the seed fit; the interval does not describe the point estimate's estimator" seed_method seed_marginal refit_method refit_marginal
-    return (
+    result = (
         summary=summary,
         failures=failure_rows,
         attempted=B,
@@ -4479,6 +4504,7 @@ function _bootstrap_result(
         status=status,
         boundary_params=boundary_params,
     )
+    return prior_fit ? merge(result, (penalised=true, interval_estimand=:penalized_estimator)) : result
 end
 
 function _check_bootstrap_failure_mode(failures::Symbol)
@@ -4749,6 +4775,17 @@ end
 function _check_max_abs_grad(fit::DrmFit)
     nll = fit.nll
     nll === nothing && return (magnitude = NaN, source = :none)
+    if fit.estim_method === :MAP
+        score = _map_objective_gradient(fit)
+        score === nothing || return (magnitude = maximum(abs, score), source = :objective)
+        return _check_grad_fallback(θ -> _map_objective_nll(fit, θ), fit.theta)
+    end
+    if nll isa _FitObjectiveGradient
+        score = _fit_objective_gradient(fit)
+        score === nothing ||
+            return (magnitude = maximum(abs, score), source = :objective)
+        return _check_grad_fallback(nll.objective, fit.theta)
+    end
     if nll isa _AGHQDiagnosticObjective && fit.nllgrad === nothing
         snapshot = copy(nll.bcache)
         isolated = θ -> nll.diagnostic(θ, copy(snapshot))
@@ -4778,6 +4815,193 @@ function _check_max_abs_grad(fit::DrmFit)
     return _check_grad_fallback(nll, fit.theta)
 end
 
+# Return prior targets whose working coordinates load on a near-null direction
+# of the unpenalised observed information. Correlation metadata uses different
+# index conventions: residual rho stores its direct theta index, while a q=2
+# random-effect correlation stores the covariance-block start and maps rho to
+# the third coordinate in that block.
+function _prior_held_parameters(H, penalty)
+    E = eigen(Symmetric(Matrix{Float64}(H)))
+    cutoff = isempty(E.values) ? Inf : max(maximum(abs, E.values), 1.0) * 1e-8
+    nullcols = findall(v -> abs(v) <= cutoff, E.values)
+    nullidx = Set{Int}()
+    for j in nullcols
+        v = abs.(E.vectors[:, j])
+        for i in eachindex(v)
+            v[i] >= 0.1 * maximum(v) && push!(nullidx, i)
+        end
+    end
+
+    rows = NamedTuple[]
+    for key in (:rows, :sd_rows)
+        hasproperty(penalty, key) || continue
+        append!(rows, getproperty(penalty, key))
+    end
+    for key in (:sd_row, :correlation_row)
+        hasproperty(penalty, key) || continue
+        row = getproperty(penalty, key)
+        row === nothing || push!(rows, row)
+    end
+
+    held = NamedTuple[]
+    for row in rows
+        hasproperty(row, :index) || continue
+        class = hasproperty(row, :class) ? row.class : :none
+        i = class === :random_effect_correlation ? row.index + 2 : row.index
+        i in nullidx || continue
+        name = if class === :random_effect_correlation
+            Symbol("rho[$(row.group)|$(row.dpar)|$(row.from_coef)|$(row.to_coef)]")
+        elseif class === :residual_correlation
+            Symbol(row.dpar)
+        elseif hasproperty(row, :coef)
+            Symbol(row.coef)
+        else
+            Symbol("theta_", i)
+        end
+        kind = hasproperty(row, :kind) ? row.kind : class
+        kind === :none && (kind = :prior)
+        push!(held, (name=name, kind=kind))
+    end
+    unique!(held)
+    return held
+end
+
+function _legacy_phylo_penalty_value(fit::DrmFit, θ)
+    pen = fit.penalty
+    pen isa PhyloPenalty || return 0.0
+    ranges = Dict(first(p) => last(p) for p in fit.blocks)
+    if haskey(ranges, :recov)
+        r = ranges[:recov]
+        length(r) == 3 || return NaN
+        internal = copy(θ)
+        internal[r] .= θ[[first(r), first(r) + 2, first(r) + 1]]
+        return _phylo_pen_apply_coupled!(nothing, pen, internal, first(r))
+    elseif haskey(ranges, :resd_mu) && haskey(ranges, :resd_sigma)
+        return _phylo_pen_apply_separate!(nothing, pen, θ,
+            first(ranges[:resd_mu]), first(ranges[:resd_sigma]))
+    elseif haskey(ranges, :resd_sigma)
+        return _phylo_pen_apply_single!(nothing, pen, θ, first(ranges[:resd_sigma]))
+    elseif haskey(ranges, :resd_mu)
+        return _phylo_pen_apply_single!(nothing, pen, θ, first(ranges[:resd_mu]))
+    elseif haskey(ranges, :resd)
+        # The sparse phylo-mean route stores [log sigma_e, log sigma_phylo]
+        # in its :resd block; the penalty targets the final coordinate.
+        return _phylo_pen_apply_single!(nothing, pen, θ, last(ranges[:resd]))
+    end
+    return NaN
+end
+
+_map_nll_includes_phylo_penalty(fit::DrmFit) =
+    fit.penalty isa PhyloPenalty && any(p -> first(p) in (:resd_mu, :resd_sigma, :recov), fit.blocks)
+
+function _prior_data_hessian(data_nll, θ::AbstractVector{<:Real})
+    H = try ForwardDiff.hessian(data_nll, θ) catch; nothing end
+    H isa AbstractMatrix && all(isfinite, H) && return Matrix{Float64}(H)
+    x = Float64.(θ)
+    n = length(x)
+    Hfd = fill(NaN, n, n)
+    h = eps(Float64)^(1 / 4) .* max.(1.0, abs.(x))
+    f0 = try Float64(data_nll(x)) catch; NaN end
+    isfinite(f0) || return nothing
+    for i in 1:n
+        xp = copy(x); xm = copy(x)
+        xp[i] += h[i]; xm[i] -= h[i]
+        fp = try Float64(data_nll(xp)) catch; NaN end
+        fm = try Float64(data_nll(xm)) catch; NaN end
+        Hfd[i, i] = (fp - 2f0 + fm) / h[i]^2
+        for j in (i + 1):n
+            xpp = copy(x); xpm = copy(x); xmp = copy(x); xmm = copy(x)
+            xpp[i] += h[i]; xpp[j] += h[j]
+            xpm[i] += h[i]; xpm[j] -= h[j]
+            xmp[i] -= h[i]; xmp[j] += h[j]
+            xmm[i] -= h[i]; xmm[j] -= h[j]
+            vals = try Float64[data_nll(xpp), data_nll(xpm), data_nll(xmp), data_nll(xmm)] catch; fill(NaN, 4) end
+            Hfd[i, j] = Hfd[j, i] = (vals[1] - vals[2] - vals[3] + vals[4]) / (4h[i] * h[j])
+        end
+    end
+    all(isfinite, Hfd) || return nothing
+    return Hfd
+end
+
+function _map_objective_nll(fit::DrmFit, θ=fit.theta)
+    fit.nll === nothing && return NaN
+    value = try fit.nll(θ) catch; NaN end
+    fit.estim_method === :MAP && fit.penalty isa PhyloPenalty || return value
+    _map_nll_includes_phylo_penalty(fit) && return value
+    penalty = _legacy_phylo_penalty_value(fit, θ)
+    return isfinite(value) && isfinite(penalty) ? value + penalty : NaN
+end
+
+function _map_objective_gradient(fit::DrmFit)
+    g = _fit_objective_gradient(fit)
+    g === nothing && return nothing
+    if fit.estim_method === :MAP && fit.penalty isa PhyloPenalty &&
+       !_map_nll_includes_phylo_penalty(fit)
+        pg = try ForwardDiff.gradient(θ -> _legacy_phylo_penalty_value(fit, θ), fit.theta) catch; nothing end
+        pg isa AbstractVector && all(isfinite, pg) || return nothing
+        g .+= pg
+    end
+    return g
+end
+
+# Prior-fit audit fields are additive only when a prior is active. Ordinary ML
+# `check_drm` reports retain their historical NamedTuple shape.
+function _prior_convergence_fields(fit::DrmFit)
+    (fit.estim_method === :MAP && (_is_fixed_prior_fit(fit) || fit.penalty isa PhyloPenalty)) || return NamedTuple()
+    objective = -_map_objective_nll(fit)
+    log_prior = objective - fit.loglik
+    data_nll = hasproperty(fit.penalty, :data_nll) ? fit.penalty.data_nll : nothing
+    if fit.penalty isa PhyloPenalty
+        data_nll = θ -> _map_objective_nll(fit, θ) - _legacy_phylo_penalty_value(fit, θ)
+    end
+    pd_unpen = missing
+    held = NamedTuple[]
+    if data_nll !== nothing
+        H = _prior_data_hessian(data_nll, fit.theta)
+        if H isa AbstractMatrix && all(isfinite, H)
+            ev = eigvals(Symmetric(Matrix{Float64}(H)))
+            cutoff = isempty(ev) ? Inf : max(maximum(abs, ev), 1.0) * 1e-8
+            pd_unpen = !isempty(ev) && minimum(ev) > cutoff
+            if !pd_unpen && !isempty(ev)
+                held = _prior_held_parameters(H, fit.penalty isa PhyloPenalty ?
+                    (sd_rows=_legacy_phylo_prior_rows(fit),) : fit.penalty)
+            end
+        end
+    end
+    return (penalised=true, objective=objective, logLik=fit.loglik,
+            log_prior=log_prior, pd_hessian_unpenalised=pd_unpen,
+            prior_held_params=held, se_type=:penalised)
+end
+
+function _legacy_phylo_prior_rows(fit::DrmFit)
+    ranges = Dict(first(p) => last(p) for p in fit.blocks)
+    keys = if haskey(ranges, :recov)
+        collect(ranges[:recov])
+    elseif haskey(ranges, :resd_mu) && haskey(ranges, :resd_sigma)
+        [first(ranges[:resd_mu]), first(ranges[:resd_sigma])]
+    elseif haskey(ranges, :resd_sigma)
+        [first(ranges[:resd_sigma])]
+    elseif haskey(ranges, :resd_mu)
+        [first(ranges[:resd_mu])]
+    elseif haskey(ranges, :resd)
+        [last(ranges[:resd])]
+    else
+        Int[]
+    end
+    rows = NamedTuple[]
+    for i in keys
+        name = "theta_$(i)"
+        for (block, range) in fit.blocks
+            i in range || continue
+            names = first(cn[2] for cn in fit.coefnames if cn[1] === block)
+            name = names[i - first(range) + 1]
+            break
+        end
+        push!(rows, (index=i, class=:phylo_penalty, coef=name, kind=:phylo_penalty))
+    end
+    return rows
+end
+
 """
     check_drm(fit) -> NamedTuple
 
@@ -4785,7 +5009,8 @@ Post-fit convergence / identifiability diagnostics — drmTMB's `check_drm()`.
 Returns a `NamedTuple` and logs a short report:
 
 - `convergence_status` — [`convergence_status`](@ref)`(fit)`: `:converged`,
-  `:boundary` or `:degenerate`, by the same rules as drmTMB (FX3b).
+  `:not_converged`, `:boundary` or `:degenerate`, by the shared optimizer,
+  relative-gradient, boundary and Hessian checks.
 - `converged` — [`is_converged`](@ref)`(fit)`, i.e. `convergence_status ===
   :converged`. A Gaussian fit whose scale collapsed is reported `false` here even
   when `fit.converged` is `true` (#949), and so is a `:boundary` fit (FX3b).
@@ -4843,18 +5068,16 @@ Returns a `NamedTuple` and logs a short report:
   `fixed_effect_rank_deficiency`). Such a fit is not converged (`is_converged` is
   `false`), the aliased coordinates' SEs are `NaN`, and `ok` is `false`. Detected on the
   Gaussian location-scale route.
-- `ok` — `true` when the optimiser converged at a non-degenerate optimum (the
-  test `is_converged` made before FX3b), the gradient is small, the covariance is
-  PD, and no fixed-effect design is rank-deficient. It does not read
-  `convergence_status`, which is reported in its own field: a `:boundary` fit, or
-  one the twin rules call `:degenerate` for an inflated standard error, can still
-  be `ok`.
-  On a phylogenetic-penalty fit the gradient criterion is **dropped** because
-  its stored objective is the unpenalized likelihood. Fixed-prior fits retain
-  the penalized objective and its gradient is checked. The criterion is also dropped
-  whenever `max_abs_grad` is `NaN`, so read `grad_source` before reading `ok`:
-  `ok = true` alongside `:none` or `:unavailable` means *converged and PD only*,
-  with stationarity untested.
+- `ok` — `true` only when `convergence_status === :converged`, the stored
+  covariance is positive definite, and no fixed-effect design is rank-deficient.
+  Boundary and degenerate fits are not `ok`.
+  MAP fits, including legacy phylogenetic-penalty fits, are checked on the
+  penalized objective and its gradient. The data `logLik` remains unpenalized;
+  `penalised`, `objective`, `log_prior`, and `se_type` make that distinction explicit.
+  `ok` requires the shared convergence status as well as a positive-definite
+  stored covariance and a full-rank fixed-effect design. If the gradient is
+  unavailable, the status cannot pass; inspect `grad_source` to distinguish a
+  missing callback from a failed derivative calculation.
 
 A non-`ok` result is informative, not an error: a model sitting on a variance
 boundary (Watanabe-singular) can be the data's MLE, with valid Wald SEs on the
@@ -4892,8 +5115,11 @@ function check_drm(fit::DrmFit; grad_tol::Real=1e-3)
     frd = _fixed_effect_rank_deficiency(fit)   # #1110: `nothing` unless a design is aliased
     conv = status === :converged       # is_converged(fit)
     fixed_prior = _is_fixed_prior_fit(fit) && penalized
-    ok = _converged_nondegenerate(fit) && ((penalized && !fixed_prior) || isnan(mag) || mag <= grad_tol) && pd && frd === nothing
-    report = (
+    # `convergence_status` applies the same four checks to ordinary and prior
+    # fits. In particular, an unavailable gradient or skipped Hessian cannot
+    # be counted as a pass, and MAP fits are checked on their penalized nll.
+    ok = status === :converged && pd && frd === nothing
+    report = merge((
         convergence_status=status,
         converged=conv,
         max_abs_grad=mag,
@@ -4908,7 +5134,7 @@ function check_drm(fit::DrmFit; grad_tol::Real=1e-3)
         skew_normal_nu_wald=snw,
         fixed_effect_rank_deficiency=frd,
         ok=ok,
-    )
+    ), _prior_convergence_fields(fit))
     @info "check_drm" convergence_status = report.convergence_status converged = report.converged max_abs_grad = report.max_abs_grad grad_source =
         report.grad_source vcov_complete = report.vcov_complete vcov_posdef = report.vcov_posdef min_eigval =
         report.min_eigval cond = report.cond penalized_map = report.penalized_map ok = report.ok
@@ -4929,20 +5155,21 @@ function check_drm(fit::DrmFit; grad_tol::Real=1e-3)
         "1e-6 relative precision, not to machine precision; `grad_source` is `:finite`."
     grad.source === :unavailable && @warn "check_drm: the gradient at the estimate could not be " *
         "computed on this fit: neither the stored objective's derivative nor a central finite " *
-        "difference of it produced a finite value, so `max_abs_grad` is NaN and `ok` was NOT " *
-        "scored against the gradient criterion: `ok = true` here means converged and " *
-        "positive-definite covariance ONLY, with stationarity untested. `grad_source` is " *
-        "`:unavailable`, which is NOT `:none` (a fit that stores no objective at all)."
+        "difference of it produced a finite value, so `max_abs_grad` is NaN and " *
+        "`convergence_status` is `:not_converged`; `ok` is false because stationarity was " *
+        "not verified. `grad_source` is `:unavailable`, which is NOT `:none` (a fit that stores " *
+        "no objective at all)."
     vbmsg = vb === nothing ? nothing : _variance_boundary_message(vb)
     vbmsg === nothing || @warn "check_drm: " * vbmsg
     (tb === nothing || isempty(tb)) || @warn "check_drm: " * _temporal_boundary_message(tb)
     (snw === nothing || !snw.near_zero) || @warn "check_drm: " * _skew_normal_nu_wald_message(snw)
     frd === nothing || @warn "check_drm: " * _design_rank_message(frd.blocks)
     # drmTMB emits the equivalent advisory from `check_penalized_fit()`.
-    fixed_prior && @warn "check_drm: $(_prior_kind_label(fit)) MAP fit — standard errors describe local penalized curvature; data log-likelihood and prior contribution are separate."
+    fixed_prior && @warn "check_drm: $(_prior_kind_label(fit)) MAP fit — standard errors describe local penalized curvature; data log-likelihood and prior contribution are separate. AIC/BIC and likelihood-ratio comparisons require unpenalized refits."
     penalized && !fixed_prior && @warn "check_drm: penalized (MAP) fit — standard errors come from the penalized " *
         "curvature and are credible-interval-shaped, not frequentist. `loglik` is the UNPENALIZED " *
         "data log-likelihood; the penalty is `fit.phylo_penalty`. `lrtest`/`anova` across " *
-        "penalized fits are refused."
+        "penalized fits are refused; AIC/BIC and likelihood-ratio comparisons require " *
+        "unpenalized refits."
     return report
 end

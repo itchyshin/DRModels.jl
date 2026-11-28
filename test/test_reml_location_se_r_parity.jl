@@ -55,6 +55,17 @@ const _REMLSE_FORMS = Dict(
         dname, form = _REMLSE_FORMS[tag]
         r = ref[tag]
         fit = drm(form, Gaussian(); data = _remlse_data(dname), method = :REML)
+        @test DRModels.convergence_status(fit) === :converged
+        @test DRModels._relative_objective_gradient(fit) <=
+              DRModels._TWIN_RELATIVE_GRADIENT_TOLERANCE
+        # The fit stores the REML convergence objective but remains callable as
+        # the ML objective used by profile inference.
+        @test fit.nllgrad === nothing
+        @test fit.nll(fit.theta) ≈ -fit.ml_loglik
+        fit_score = DRModels._fit_objective_gradient(fit)
+        check_score = DRModels._check_max_abs_grad(fit)
+        @test check_score.source === :objective
+        @test check_score.magnitude ≈ maximum(abs, fit_score)
         # The route's fixed-effect names, in R's order (mu then sigma).
         nms = r["names"]
         k = length(nms)

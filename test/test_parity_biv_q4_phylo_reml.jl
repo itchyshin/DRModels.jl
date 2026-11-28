@@ -88,14 +88,14 @@ _within(a, b, rtol, atol) = abs(a - b) <= max(atol, rtol * max(abs(a), abs(b)))
     @test estimation_method(fit) === :REML
     @test isfinite(reml_loglik(fit))
     @test isfinite(loglik(fit))
-    # #484 landed the automatic warm restart that lets drm()'s public REML
-    # route converge on this cell; the follow-up fixture re-derivation (same
-    # day) re-measured `status.julia_converged` so the TOML field is now an
-    # accurate statement about the public route. Read it directly, like every
-    # other [status] field checked above, instead of pinning `true` inline.
-    # See test/test_q4_reml_warm_restart.jl for the engine-level
-    # g_residual < g_tol check.
-    @test is_converged(fit) == expected["status"]["julia_converged"]
+    # The optimizer finished and this fixture's relative score is within the
+    # adopted tolerance, but the REML route does not provide verified curvature.
+    # The fit is therefore degenerate rather than converged or not-converged.
+    @test fit.converged == expected["status"]["julia_converged"]
+    @test DRModels.convergence_status(fit) === :degenerate
+    @test fit.uncertainty === :skipped
+    @test DRModels._relative_objective_gradient(fit) <=
+          DRModels._TWIN_RELATIVE_GRADIENT_TOLERANCE
 
     atol_ll = Float64(get(expected["tol"], "atol_loglik", 1e-3))
     atol_c = Float64(get(expected["tol"], "atol_coef", 1e-3))

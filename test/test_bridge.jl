@@ -315,7 +315,7 @@ using Test, Random, LinearAlgebra
         options = Dict(:phylo_coupled => true, :g_tol => 1e-5),
     )
     @test any(startswith("recov_"), lsbridged["coef_names"])
-    @test lsbridged["converged"] == true
+    @test lsbridged["converged"] == is_converged(lsnative)
     @test lsbridged["coefficients"] ≈ coef(lsnative)
     @test lsbridged["loglik"] ≈ loglik(lsnative)
     # Arc 2: the coupled block now fits REML (joint Laplace over the phylo effects

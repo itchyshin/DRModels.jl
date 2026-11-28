@@ -7,16 +7,16 @@
 # ACTUALLY do — a readiness flag that always says "ready" is worse than no flag,
 # because it converts a clear downstream error into a broken promise. So the
 # tests below pin readiness against the real dispatch on routes that differ:
-# a fixed-effect location-scale fit (profilable) and a σ-phylo fit (not, unless
-# it was fitted with `profile_ci = true`).
+# a fixed-effect location-scale fit and a σ-phylo fit whose objective is now
+# retained for generic profiles. `profile_ci = true` additionally supplies the
+# route's precomputed boundary-aware SD intervals.
 
 using DRModels
 using Test
 using Random
 using LinearAlgebra
 
-# σ-phylo on BOTH axes: the route with no re-optimisable objective, which is what
-# makes the `profile_ready` column non-trivial.
+# σ-phylo on BOTH axes: used to exercise the retained-objective profile route.
 function _introspect_phylo_fixture(seed::Int; G::Int = 12, m::Int = 6)
     rng = MersenneTwister(seed)
     phy = random_balanced_tree(G; branch_length = 0.4)
@@ -53,17 +53,18 @@ end
         @test length(pr.ci) == count(r -> r.profile_ready, tg)
     end
 
-    @testset "profile_targets is honest about a route that cannot profile" begin
+    @testset "profile_targets follows the retained σ-phylo objective" begin
         fx = _introspect_phylo_fixture(3)
         fit = drm(fx.form, Gaussian(); data = fx.data, tree = fx.tree)
         tg = profile_targets(fit)
         @test !isempty(tg)
-        @test all(r -> !r.profile_ready, tg)
-        # the note has to be actionable, not merely true
-        @test all(r -> occursin("profile_ci", r.profile_note), tg)
-        @test isempty(profile_targets(fit; ready_only = true))
-        # and the refusal it predicts is the refusal that actually happens
-        @test_throws ArgumentError profile_result(fit)
+        @test all(r -> r.profile_ready, tg)
+        @test all(r -> isempty(r.profile_note), tg)
+        @test length(profile_targets(fit; ready_only = true)) == length(tg)
+        # Readiness must agree with the actual generic profile dispatch.
+        pr = profile_result(fit)
+        @test length(pr.ci) == length(tg)
+        @test pr.attempted == length(tg)
     end
 
     @testset "profile_ci = true flips the σ-phylo rows to ready" begin

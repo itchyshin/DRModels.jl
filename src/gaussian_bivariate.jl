@@ -170,7 +170,33 @@ fit = drm(
              g_tol::Real = 1e-8, q4_g_tol::Real = 1e-3,
              q4_f_reltol::Real = 1e-7, q4_iterations::Int = 300, q4_n_newton::Int = 40,
              q4_vcov::Bool = true, method::Symbol = :ML, V = nothing,
-             marginal::Union{Nothing,Symbol} = nothing, missing = nothing)
+             marginal::Union{Nothing,Symbol} = nothing, missing = nothing, priors = nothing)
+    prior_table = priors !== nothing && Tables.istable(priors) ? priors : nothing
+    rho_prior = nothing
+    rho_prior_row = nothing
+    fixed_prior_rows = NamedTuple[]
+    if priors !== nothing
+        method === :ML || throw(ArgumentError("residual rho12 LKJ priors currently require method = :ML"))
+        V === nothing || throw(ArgumentError("residual rho12 LKJ priors are not supported with known sampling covariance `V`"))
+        for response in (f.response1, f.response2)
+            y = _table_column(data, response)
+            all(x -> x isa Real && isfinite(x), y) ||
+                throw(ArgumentError("residual rho12 LKJ priors require complete finite responses"))
+        end
+        n_input = length(_table_column(data, f.response1))
+        data = _drop_missing_predictor_rows(f, data)
+        length(_table_column(data, f.response1)) == n_input ||
+            throw(ArgumentError("residual rho12 LKJ priors require complete predictors"))
+        _ctl_weights_or_nothing(n_input) === nothing ||
+            all(==(1), _ctl_weights(n_input)) ||
+            throw(ArgumentError("residual rho12 LKJ priors require unit weights"))
+        prior_specs, rho_prior_row, fixed_prior_rows = _bivariate_residual_prior_specs(f, data, priors)
+        rho_prior = rho_prior_row === nothing ? nothing :
+            only(filter(p -> p isa CorrelationLKJPrior, prior_specs))
+    end
+    # Match drmTMB's rho12 support only when this explicit prior target is active.
+    # Default fits retain the established Julia RHO_GUARD exactly.
+    rho_guard = rho_prior_row === nothing ? RHO_GUARD : rho_prior_row.guard
     # #1094: this route has no `marginal` integrator choice. Refuse it by name
     # rather than with a bare MethodError; the default `:LA` is a no-op.
     (marginal === nothing || marginal === :LA) ||
@@ -208,8 +234,9 @@ fit = drm(
             "package: it is accepted only on the bivariate residual-correlation route, which " *
             "marginalises no random effect and so has nothing for a restricted likelihood to " *
             "correct — use method = :ML."))
-    # FX3b: `q4_vcov = false` is recorded on the fit (`DrmFit.uncertainty`), so
-    # `convergence_status` does not read the skipped (NaN) covariance as a failure.
+    # FX3b: `q4_vcov = false` is recorded on the fit (`DrmFit.uncertainty`) as a
+    # skipped Hessian, so this fit cannot be certified as converged. An earlier
+    # failed gate, such as a nonzero relative gradient, still determines its status.
     if structured_marker !== nothing && structured_marker[1] === :phylo_q4
         return _withuncertainty(_fit_bivariate_q4_phylo(
             f, fam, data, fixed, structured_marker, tree;
@@ -252,7 +279,14 @@ fit = drm(
     # and stays refused: that route marginalises nothing and keeps its permanent
     # scope boundary.
     method === :REML && return _fit_bivariate_residual_reml(f, fam, data, rhs, g_tol)
-    return _fit_bivariate_residual(f, fam, data, rhs, g_tol; V = V)
+    fit = _fit_bivariate_residual(f, fam, data, rhs, g_tol; V = V,
+        rho_prior=rho_prior, rho_guard=rho_guard, fixed_prior_rows=fixed_prior_rows)
+    if priors !== nothing
+        fit = _with_bivariate_prior_table(fit, prior_specs, fixed_prior_rows,
+            rho_prior_row, prior_table)
+        prior_table === nothing || (fit = _with_prior_table_input(fit, prior_table))
+    end
+    return fit
 end
 
 # Finite, data-scaled log-σ seed for a residual-σ intercept. `resid` is the OLS
@@ -300,7 +334,83 @@ function _biv_residual_designs(f::BivariateDrmFormula, rhs, data)
             n, obs1, obs2, n_like, ps, offs)
 end
 
-function _fit_bivariate_residual(f::BivariateDrmFormula, fam::Gaussian, data, rhs, g_tol::Real; V = nothing)
+"""Resolve bivariate fixed-effect priors on `mu1`/`mu2` and an optional residual `rho12` LKJ row."""
+function _resolve_priors_native(f::BivariateDrmFormula, fam::Gaussian; data, priors)
+    table_rows = Tables.istable(priors) ? _parse_prior_table(priors) : nothing
+    specs = if table_rows === nothing
+        priors
+    else
+        all(r -> (r.class == "correlation" && r.dpar == "rho12") ||
+                 (r.class == "fixef" && r.dpar in ("mu1", "mu2")), table_rows) ||
+            throw(ArgumentError("bivariate prior tables support fixed effects on mu1/mu2 and a residual rho12 LKJ prior; residual-SD and other targets are unsupported"))
+        _prior_table_specs(table_rows, String[])
+    end
+    specs isa AbstractVector && all(p -> _is_coefficient_prior(p) ||
+        (p isa CorrelationLKJPrior && p.dpar === :rho12), specs) ||
+        throw(ArgumentError("bivariate priors must be fixed coefficient priors on mu1/mu2 and/or one residual rho12 LKJ prior"))
+    corr_specs = CorrelationLKJPrior[p for p in specs if p isa CorrelationLKJPrior]
+    length(corr_specs) <= 1 || throw(ArgumentError("bivariate residual fits accept at most one rho12 LKJ prior"))
+    all(p -> p.dpar in (:mu1, :mu2), filter(_is_coefficient_prior, specs)) ||
+        throw(ArgumentError("bivariate fixed-effect priors are supported only for mu1 and mu2 coefficients"))
+    rhs = Dict(f.forms)
+    fixed, marker = _bivariate_q4_marker(rhs)
+    marker === nothing || throw(ArgumentError("bivariate prior tables are not supported with structured or phylogenetic effects"))
+    d = _biv_residual_designs(f, rhs, data)
+    if !isempty(corr_specs)
+        length(d.nmr) == 1 && only(d.nmr) == "(Intercept)" ||
+            throw(ArgumentError("residual rho12 LKJ priors currently require a constant rho12 formula (`rho12 ~ 1`)"))
+    end
+    names = Pair{Symbol,Vector{String}}[:mu1=>d.nm1, :mu2=>d.nm2]
+    intercepts = Dict{Symbol,Union{Nothing,Int}}()
+    for (dp, response, nms) in ((:mu1, f.response1, d.nm1), (:mu2, f.response2, d.nm2))
+        applied = apply_schema(FormulaTerm(Term(response), first(_split_ranef(rhs[dp]))),
+            f.schema_cache[][dp], StatisticalModel)
+        intercepts[dp] = StatsModels.hasintercept(applied) ? findfirst(==("(Intercept)"), nms) : nothing
+    end
+    fixed_rows = _resolve_fixed_priors(filter(_is_coefficient_prior, specs), names, intercepts)
+    correlation_rows = isempty(corr_specs) ? NamedTuple[] :
+        [_resolve_residual_correlation_prior(corr_specs, last(d.offs))]
+    return vcat(fixed_rows, correlation_rows)
+end
+
+function _bivariate_residual_prior_specs(f, data, priors)
+    specs = if Tables.istable(priors)
+        rows = _parse_prior_table(priors)
+        _prior_table_specs(rows, String[])
+    else
+        priors
+    end
+    resolved = _resolve_priors_native(f, Gaussian(); data=data, priors=specs)
+    fixed_rows = filter(r -> !hasproperty(r, :class) || r.class === :fixef, resolved)
+    corr_rows = filter(r -> hasproperty(r, :class) && r.class === :residual_correlation, resolved)
+    return specs, isempty(corr_rows) ? nothing : only(corr_rows), fixed_rows
+end
+
+function _with_bivariate_prior_table(fit::DrmFit, specs, fixed_rows, correlation_row, input_table)
+    data_nll = fit.nll
+    fixed_penalty = _fixed_prior_value(fixed_rows, fit.theta)
+    correlation_penalty = correlation_row === nothing ? 0.0 :
+        _residual_correlation_prior_value(correlation_row, fit.theta)
+    kind = isempty(fixed_rows) ? :correlation_priors :
+        correlation_row === nothing ? :fixed_priors : :mixed_priors
+    objective = θ -> data_nll(θ) + _fixed_prior_value(fixed_rows, θ) +
+        (correlation_row === nothing ? zero(eltype(θ)) : _residual_correlation_prior_value(correlation_row, θ))
+    meta = (kind=kind, rows=fixed_rows, correlation_row=correlation_row,
+        data_nll=data_nll, fixed_penalty=fixed_penalty,
+        correlation_penalty=correlation_penalty,
+        log_prior=-(fixed_penalty + correlation_penalty),
+        objective=objective(fit.theta), specs=copy(specs), input_table=input_table)
+    grad! = (g, theta) -> (g .= ForwardDiff.gradient(objective, theta))
+    DrmFit(fit.family, fit.blocks, fit.coefnames, fit.theta, fit.vcov,
+        -data_nll(fit.theta), fit.nobs, fit.converged, fit.means, fit.obs,
+        fit.scales, fit.formula, objective, grad!, fit.ranef, :MAP,
+        fit.reml_loglik, fit.ml_loglik, fit.marginal, fit.phylo_penalty, meta,
+        fit.iterations, fit.phylo_scale, fit.control_info, fit.uncertainty, fit.geometry)
+end
+
+function _fit_bivariate_residual(f::BivariateDrmFormula, fam::Gaussian, data, rhs, g_tol::Real;
+                                 V = nothing, rho_prior=nothing, rho_guard=RHO_GUARD,
+                                 fixed_prior_rows=NamedTuple[])
     d = _biv_residual_designs(f, rhs, data)
     y1, X1, nm1 = d.y1, d.X1, d.nm1
     y2, X2, nm2 = d.y2, d.X2, d.nm2
@@ -334,7 +444,7 @@ function _fit_bivariate_residual(f::BivariateDrmFormula, fam::Gaussian, data, rh
         if meta_v === nothing
             @inbounds for i in 1:n
                 if obs1[i] && obs2[i]
-                    ρ = RHO_GUARD * tanh(ηr[i])    # guard ρ off ±1 (tanh saturates to ±1.0 in
+                    ρ = rho_guard * tanh(ηr[i])    # guard ρ off ±1 (tanh saturates to ±1.0 in
                     om = 1 - ρ * ρ                 # Float64 for large η → om=0 → NaN); matches the
                                                    # q4 engine's RHO_GUARD + drmTMB's guarded link
                     z1 = (y1[i] - η1[i]) * exp(-ls1[i])     # standardised residuals
@@ -356,7 +466,7 @@ function _fit_bivariate_residual(f::BivariateDrmFormula, fam::Gaussian, data, rh
         else
             @inbounds for i in 1:n
                 if obs1[i] && obs2[i]
-                    ρ = RHO_GUARD * tanh(ηr[i])
+                    ρ = rho_guard * tanh(ηr[i])
                     σ1 = exp(ls1[i]); σ2 = exp(ls2[i])
                     S11 = meta_v.v1[i] + σ1 * σ1
                     S22 = meta_v.v2[i] + σ2 * σ2
@@ -383,6 +493,12 @@ function _fit_bivariate_residual(f::BivariateDrmFormula, fam::Gaussian, data, rh
         return s
     end
 
+    correlation_row = rho_prior === nothing ? nothing :
+        _resolve_residual_correlation_prior([rho_prior], last(offs))
+    objective = isempty(fixed_prior_rows) && rho_prior === nothing ? nll :
+        θ -> nll(θ) + _fixed_prior_value(fixed_prior_rows, θ) +
+            (rho_prior === nothing ? zero(eltype(θ)) : _residual_correlation_prior_value(correlation_row, θ))
+
     θ0 = zeros(offs[end])
     X1_obs = Matrix{Float64}(X1[obs1, :])
     X2_obs = Matrix{Float64}(X2[obs2, :])
@@ -403,9 +519,9 @@ function _fit_bivariate_residual(f::BivariateDrmFormula, fam::Gaussian, data, rh
     # rho12 block (rng(5)) intentionally left at 0 (atanh scale ⇒ ρ = 0).
     θ0[rng(5)] .= 0.0
 
-    res = Optim.optimize(nll, θ0, Optim.LBFGS(), Optim.Options(g_tol = g_tol); autodiff = :forward)
+    res = Optim.optimize(objective, θ0, Optim.LBFGS(), Optim.Options(g_tol = g_tol); autodiff = :forward)
     θ̂ = Optim.minimizer(res)
-    V = _vcov_from_hessian(ForwardDiff.hessian(nll, θ̂); context = "bivariate Gaussian")
+    V = _vcov_from_hessian(ForwardDiff.hessian(objective, θ̂); context = "bivariate Gaussian")
 
     blocks = [:mu1 => rng(1), :mu2 => rng(2), :sigma1 => rng(3), :sigma2 => rng(4), :rho12 => rng(5)]
     names = [:mu1 => nm1, :mu2 => nm2, :sigma1 => nms1, :sigma2 => nms2, :rho12 => nmr]
@@ -413,7 +529,7 @@ function _fit_bivariate_residual(f::BivariateDrmFormula, fam::Gaussian, data, rh
     obs = Dict(:mu1 => Vector{Float64}(y1), :mu2 => Vector{Float64}(y2))
     scales = Dict(:sigma1 => exp.(Xs1 * θ̂[rng(3)]),
                   :sigma2 => exp.(Xs2 * θ̂[rng(4)]),
-                  :rho12 => RHO_GUARD .* tanh.(Xr * θ̂[rng(5)]))   # report the model's guarded ρ
+                  :rho12 => rho_guard .* tanh.(Xr * θ̂[rng(5)]))   # report the model's guarded ρ
     return _withiterations(
         _withformula(_withnll(DrmFit(fam, blocks, names, θ̂, V, -nll(θ̂), n_like, Optim.converged(res), means, obs, scales), nll), f),
         Optim.iterations(res))
@@ -587,6 +703,16 @@ function _fit_bivariate_residual_reml(f::BivariateDrmFormula, fam::Gaussian, dat
         return _ml_nll(β, a, b, c, logdetS) + 0.5 * logdet(H) - 0.5 * pβ * log(2π)
     end
 
+    # Keep the full ML closure for profile inference, and report stationarity
+    # against the restricted objective over the profiled mean and scale blocks.
+    reml_full_nll(θ) = nll_reml(view(θ, (pβ + 1):length(θ)))
+    function reml_full_grad!(g, θ)
+        fill!(g, 0.0)
+        g[(pβ + 1):end] .= ForwardDiff.gradient(
+            nll_reml, view(θ, (pβ + 1):length(θ)))
+        return g
+    end
+
     # Warm start: the ML fitter's own residual-sigma seeds, rho at 0.
     X1_obs = Matrix{Float64}(X1[obs1, :])
     X2_obs = Matrix{Float64}(X2[obs2, :])
@@ -638,7 +764,9 @@ function _fit_bivariate_residual_reml(f::BivariateDrmFormula, fam::Gaussian, dat
 
     fit = DrmFit(fam, blocks, names, θ̂, V, reml_ll, n_like, Optim.converged(res), means, obs, scales)
     return _withiterations(
-        _withformula(_withreml(_withnll(fit, nll_full), reml_ll, ml_ll), f),
+        _withformula(_withreml(
+        _withnll(fit, _FitObjectiveGradient(reml_full_nll, reml_full_grad!, nll_full)),
+            reml_ll, ml_ll), f),
         Optim.iterations(res))
 end
 
@@ -1306,6 +1434,7 @@ function _fit_bivariate_q4_phylo(f::BivariateDrmFormula, fam::Gaussian, data, fi
     end
     reml_ll = NaN
     ml_ll = NaN
+    reml_fit = nothing
     if method === :REML
         # REML (Patterson–Thompson): β_μ profiled out via the bordered augmented
         # state; fit_q4_reml warm-starts from an internal ML fit. We rebuild a
@@ -1319,6 +1448,7 @@ function _fit_bivariate_q4_phylo(f::BivariateDrmFormula, fam::Gaussian, data, fi
             n_newton = q4_n_newton,
             lc_zero = lc_zero,
         )
+        reml_fit = rr
         β_reml = (mu1 = rr.beta.mu1, mu2 = rr.beta.mu2,
                   s1 = rr.beta.s1, s2 = rr.beta.s2, rho = rr.beta.rho)
         θ_reml = pack_theta(β_reml, rr.Lambda)   # full 17-vec θ̂ (β + log-Cholesky Λ)
@@ -1364,6 +1494,35 @@ function _fit_bivariate_q4_phylo(f::BivariateDrmFormula, fam::Gaussian, data, fi
         _, gg, _, _ = marginal_and_exact_grad(prob, Q_cond, Vector{Float64}(θ); n_newton = q4_n_newton)
         copyto!(g, gg)
         return g
+    end
+    fit_nll = if method === :REML
+        p_beta = k1 + k2 + ks1 + ks2
+        function reml_nll(θ)
+            phi = Vector{Float64}(view(θ, (p_beta + 1):length(θ)))
+            return reml_nll_exact(
+                prob, Q_cond, phi; u0 = reml_fit.u_hat,
+                beta0 = reml_fit.beta, n_newton = q4_n_newton)
+        end
+        function reml_nll_grad!(g, θ)
+            fill!(g, 0.0)
+            phi = Vector{Float64}(view(θ, (p_beta + 1):length(θ)))
+            value, phi_gradient, _, _, _, gz = reml_nll_and_exact_grad(
+                prob, Q_cond, phi; u0 = reml_fit.u_hat,
+                beta0 = reml_fit.beta, n_newton = q4_n_newton)
+            if !(isfinite(value) && all(isfinite, phi_gradient) &&
+                 isfinite(gz) && gz < 1e-6)
+                fill!(g, NaN)
+                return g
+            end
+            copyto!(view(g, (p_beta + 1):length(g)), phi_gradient)
+            return g
+        end
+        # Convergence uses the exact profiled REML value and score on the active
+        # (rho, log-Cholesky) coordinates. Calling the wrapper itself still
+        # returns the full ML objective required by profile-likelihood inference.
+        _FitObjectiveGradient(reml_nll, reml_nll_grad!, nll)
+    else
+        nll
     end
     # S5 change (c): compute û at θ̂ ONCE, before the vcov call, and reuse it as
     # a warm u0 for every _q4_fd_vcov perturbed evaluation (moved up from
@@ -1418,7 +1577,16 @@ function _fit_bivariate_q4_phylo(f::BivariateDrmFormula, fam::Gaussian, data, fi
     q4_converged = r.converged && _q2_lambda_admissible(Matrix{Float64}(r.Λ))
     fit = DrmFit(fam, blocks, names, θ̂, V, r.loglik, length(y1), q4_converged, means, obs, scales)
     fit = method === :REML ? _withreml(fit, reml_ll, ml_ll) : fit
-    return _withranef(_withformula(_withnll(fit, nll, nllgrad!), f), re)
+    if method === :REML
+        # q4_vcov is the ML marginal Hessian at the REML point, not restricted
+        # curvature. Retain its matrix for the existing ML-based inference path,
+        # but fail closed for REML convergence: the restricted Hessian is not
+        # available, so a positive-definite ML matrix cannot certify this fit.
+        fit = _withuncertainty(fit, false)
+        fit = _withgeometry(fit, :reml_curvature_unavailable)
+    end
+    fit_nllgrad! = method === :REML ? nothing : nllgrad!
+    return _withranef(_withformula(_withnll(fit, fit_nll, fit_nllgrad!), f), re)
 end
 
 _as_augmented_phy(tree::AugmentedPhy) = tree

@@ -173,6 +173,9 @@ end
 @testset "#952: the issue's default fit on the raw tree" begin
     fit = _fit952(_NWK952)
     @test loglik(fit) > -1e15                                   # never the sentinel
+    @test fit.nll !== nothing && fit.nllgrad !== nothing         # convergence needs live stationarity evidence
+    @test fit.nll(fit.theta) ≈ -loglik(fit) atol = 1e-10         # unpenalized ML objective
+    @test isfinite(_D952._relative_objective_gradient(fit))
     @test is_converged(fit)
     @test abs(loglik(fit) - (-111.94867803)) < 1e-3   # drmTMB ca3ddef, correlation held at 0
 end

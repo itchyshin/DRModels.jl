@@ -60,6 +60,12 @@ end
         DRModels._fit_sigma_axis_re(DRModels.Gamma(), Val(:gamma), y, Xμ, Xψ, gidx, G,
                                     ["(Intercept)"], ["(Intercept)"], "g";
                                     link = :log, se = false), false)
+    # The internal route bypasses drm(), which normally attaches this report.
+    report = DRModels.DRMControlReport(DRModels.DRMControl(se = false), Float64[],
+                                       0, true, :skipped, nothing)
+    fit = DRModels._withcontrolinfo(fit, fit.vcov, report)
+    @test fit.nll !== nothing
+    @test fit.nllgrad !== nothing
     @test is_converged(fit)
     @test isfinite(loglik(fit))
     τ̂ = re_sd(fit)[:g_logsigma]     # scale-axis RE SD keyed on the log-σ axis

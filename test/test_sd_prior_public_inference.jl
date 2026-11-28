@@ -8,8 +8,13 @@ using Test, DRModels
     fit = drm(formula, Gaussian(); data=data, priors=prior)
     plain = drm(formula, Gaussian(); data=data)
     @test fit.estim_method === :MAP
-    for call in (() -> bootstrap_result(fit; data=data, B=2),
-                 () -> confint(fit; method=:profile), () -> profile_result(fit),
+    # Bootstrap remains available for MAP fits, but the package reports that
+    # coverage for the penalized estimator has not been validated.
+    @test_logs (:warn, r"bootstrap: intervals describe the penalized estimator") begin
+        result = bootstrap_result(fit; data=data, B=2)
+        @test result.attempted == 2
+    end
+    for call in (() -> confint(fit; method=:profile), () -> profile_result(fit),
                  () -> predict(fit, data; se=true), () -> predict_parameters(fit, data; se=true),
                  () -> aic(fit), () -> bic(fit), () -> lrt_boundary(fit, plain; q=1),
                  () -> DRModels.lrtest(plain, fit))

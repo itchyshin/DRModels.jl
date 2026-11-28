@@ -221,11 +221,10 @@ end
 # the FD refit, but the flag fires honestly and the search is a handful of steps.
 #
 # Returns (θ̂, converged, ml_nll, reml_nll, n_steps).
-function _glsp_reml_refit_clean(obj, grad_fn, θ̂_ml, pμ::Int; ml_converged::Bool = true)
-    penalty(θ)  = _glsp_reml_penalty(grad_fn, θ, pμ)
+function _glsp_reml_objective_and_gradient(obj, grad_fn, pμ::Int; h::Real = 1e-4)
+    penalty(θ) = _glsp_reml_penalty(grad_fn, θ, pμ)
     reml_obj(θ) = obj(θ) + penalty(θ)
     function reml_grad!(g, θ)
-        h = 1e-4
         g .= grad_fn(θ)                                  # exact analytic ML gradient
         @inbounds for j in eachindex(θ)
             θp = copy(θ); θp[j] += h
@@ -234,6 +233,11 @@ function _glsp_reml_refit_clean(obj, grad_fn, θ̂_ml, pμ::Int; ml_converged::B
         end
         return g
     end
+    return reml_obj, reml_grad!
+end
+
+function _glsp_reml_refit_clean(obj, grad_fn, θ̂_ml, pμ::Int; ml_converged::Bool = true)
+    reml_obj, reml_grad! = _glsp_reml_objective_and_gradient(obj, grad_fn, pμ)
     # Guard the line search: near the variance boundary a probe can still hit a non-finite
     # value; on failure fall back to the ML estimate (the n→n−pμ REML correction is negligible
     # at the σ→0 boundary). Without this guard, drm(method=:REML) crashed on ~5–8% of
@@ -720,20 +724,25 @@ function _glsp_joint_reml_fit(kind, y, Xμ, Xψ, gidx, G, Q, Zη, Zψ, Λfun, st
         P0 = prior_precision(Q, _ls_inv2x2(Λfun(v0)))
         ml0, _, ok0 = _ls_marginal_nll(kind, y, Xμ * β_start[1:pμ], Xψ * β_start[pμ+1:p],
                                        gidx, G, P0, Zη, Zψ)
+        # A rank-deficient mean design has no restricted objective or score.
+        # Preserve the optimizer result contract and fail closed in diagnostics.
+        degenerate_objective = _ -> Inf
+        degenerate_gradient! = (g, _) -> (fill!(g, NaN); g)
         return (θ = vcat(β_start, v0), v = v0, β = copy(β_start), reml_nll = NaN,
                 ml_nll = ok0 ? ml0 : NaN, converged = false, V = fill(NaN, np, np),
-                ci = [(sd_lo = NaN, sd_hi = NaN) for _ in profile_idx])
+                ci = [(sd_lo = NaN, sd_hi = NaN) for _ in profile_idx],
+                objective = degenerate_objective, gradient! = degenerate_gradient!)
     end
     warm_β = Ref(copy(β_start)); warm_a = Ref(zeros(2G))
     # Bound mode (`cor_edge`): v = [logL11, log sd_σ] at cor = edge_sign[]·cap, in the
     # whitened coordinates (loadings Zη·L, Zψ·L; prior Q ⊗ I).
     edge_mode = Ref(false); edge_sign = Ref(1.0)
     P_edge = cor_edge ? prior_precision(Q, Matrix(1.0I, 2, 2)) : nothing
-    edge_v(w) = (sdσ = exp(w[2]); c = edge_sign[] * _GLSP_COR_CAP;
+    edge_v(w, sign = edge_sign[]) = (sdσ = exp(w[2]); c = sign * _GLSP_COR_CAP;
                  [w[1], c * sdσ, w[2] + 0.5 * log1p(-c^2)])
-    function model_at(v)
-        if edge_mode[]
-            ve = edge_v(v)
+    function model_at(v; use_edge::Bool = edge_mode[], sign::Real = edge_sign[])
+        if use_edge
+            ve = edge_v(v, sign)
             L = [exp(ve[1]) 0.0; ve[2] exp(ve[3])]          # Λ = L Lᵀ, as `_glsp_coupled_Λ`
             all(isfinite, L) || return nothing
             return P_edge, Zη * L, Zψ * L
@@ -744,13 +753,14 @@ function _glsp_joint_reml_fit(kind, y, Xμ, Xψ, gidx, G, Q, Zη, Zψ, Λfun, st
         all(isfinite, nonzeros(P)) || return nothing
         return P, Zη, Zψ
     end
-    function eval_v(v; update::Bool = true)
-        m = model_at(v)
+    function eval_v(v; update::Bool = true,
+                    use_edge::Bool = edge_mode[], sign::Real = edge_sign[])
+        m = model_at(v; use_edge, sign)
         m === nothing && return Inf, warm_β[], warm_a[], nothing, false
         P, Zηv, Zψv = m
         solve(β0, a0) = try
             _glsp_joint_reml_nll(kind, y, Xμ, Xψ, gidx, G, P, Zηv, Zψv, β0, a0;
-                                 noise_floor = cor_edge)
+                                 noise_floor = use_edge)
         catch err
             err isa InterruptException && rethrow(err)
             (Inf, warm_β[], warm_a[], nothing, false)
@@ -984,8 +994,53 @@ function _glsp_joint_reml_fit(kind, y, Xμ, Xψ, gidx, G, Q, Zη, Zψ, Λfun, st
                      (nllP(vp) - nllP(vm)) / (2h)) for i in eachindex(v)]
         _glsp_profile_ci(nllP, gradP, best_v, j)
     end
+    # The optimizer acts only on the profiled covariance coordinates: beta and the
+    # latent mode are re-solved inside `eval_v`. Retain that restricted objective and
+    # its active-coordinate score for the convergence gate, separately from the ML
+    # profile objective stored on the fit. On the correlation edge the active
+    # coordinates are w = (logL11, log sd_sigma); logL22 is the second coordinate
+    # plus the fixed boundary Jacobian, and L21 is constrained by rho = ±cap.
+    on_cor_edge = edge_w !== nothing
+    edge_offset = 0.5 * log1p(-_GLSP_COR_CAP^2)
+    function callback_active(v)
+        on_cor_edge ? [v[1], v[3] - edge_offset] : collect(v)
+    end
+    function callback_objective(θ)
+        v = @view θ[(p+1):length(θ)]
+        active = callback_active(v)
+        r = eval_v(active; update = false, use_edge = on_cor_edge,
+                   sign = on_cor_edge ? best_sign : 1.0)
+        r[5] ? r[1] : 1e18
+    end
+    function callback_gradient!(g, θ)
+        fill!(g, 0.0)                         # profiled beta coordinates are inactive
+        v = @view θ[(p+1):length(θ)]
+        active = callback_active(v)
+        ga = similar(active, Float64)
+        for j in eachindex(active)
+            ap = copy(active); ap[j] += h
+            am = copy(active); am[j] -= h
+            rp = eval_v(ap; update = false, use_edge = on_cor_edge,
+                        sign = on_cor_edge ? best_sign : 1.0)
+            rm = eval_v(am; update = false, use_edge = on_cor_edge,
+                        sign = on_cor_edge ? best_sign : 1.0)
+            fp = rp[5] ? rp[1] : 1e18
+            fm = rm[5] ? rm[1] : 1e18
+            ga[j] = (fp - fm) / (2h)
+        end
+        if on_cor_edge
+            # A representative full-coordinate score whose dot product with the
+            # feasible boundary tangent equals the active-coordinate score.
+            g[p+1] = ga[1]
+            g[p+3] = ga[2]
+        else
+            g[(p+1):end] .= ga
+        end
+        return g
+    end
     return (θ = vcat(β̂, best_v), v = best_v, β = β̂, reml_nll = nll_r, ml_nll = ml_nll,
-            converged = best_conv, V = V, ci = ci)
+            converged = best_conv, V = V, ci = ci,
+            objective = callback_objective, gradient! = callback_gradient!)
 end
 
 # Log-SD below which a REML variance coordinate counts as on the boundary (SD < 2.5e-3).
@@ -1378,12 +1433,75 @@ function _glsp_unscale_fit(fit::DrmFit, c::Float64, penalty)
     for k in (:lambda_sd_mu, :lambda_sd_sigma, :profile_ci_sd_mu, :profile_ci_sd_sigma)
         haskey(scales, k) && (scales[k] = scales[k] .* r)
     end
+    # The fitted objective is stored on the unit-height parameterization. Keep
+    # convergence and derivative accessors valid after mapping the reported fit
+    # back to raw branch lengths.
+    to_unit(theta_raw) = begin
+        out = copy(theta_raw)
+        for (blk, rng) in fit.blocks
+            if blk === :resd_mu || blk === :resd_sigma
+                out[rng] .+= shift
+            elseif blk === :recov
+                i = first(rng)
+                out[i] += shift; out[i+1] += shift; out[i+2] /= r
+            end
+        end
+        out
+    end
+    nllgrad = if fit.nllgrad === nothing
+        nothing
+    else
+        function (g, theta_raw)
+            grad_unit = zeros(length(theta_raw))
+            fit.nllgrad(grad_unit, to_unit(theta_raw))
+            g .= grad_unit
+            for (blk, rng) in fit.blocks
+                if blk === :recov
+                    i = first(rng)
+                    g[i+2] /= r
+                end
+            end
+            g
+        end
+    end
+    nll = if fit.nll isa _FitObjectiveGradient
+        objective = _nll_pinned(x -> fit.nll.objective(to_unit(x)), θ,
+                                fit.nll.objective(fit.theta))
+        profile = _nll_pinned(x -> fit.nll.profile_objective(to_unit(x)), θ,
+                              fit.nll.profile_objective(fit.theta))
+        _FitObjectiveGradient(objective, nllgrad, profile)
+    elseif fit.nll === nothing
+        nothing
+    else
+        _nll_pinned(x -> fit.nll(to_unit(x)), θ, fit.nll(fit.theta))
+    end
     return DrmFit(fit.family, fit.blocks, fit.coefnames, θ, V, fit.loglik, fit.nobs,
-                  fit.converged, fit.means, fit.obs, scales, fit.formula, fit.nll,
-                  fit.nllgrad, fit.ranef, fit.estim_method, fit.reml_loglik, fit.ml_loglik,
+                  fit.converged, fit.means, fit.obs, scales, fit.formula, nll,
+                  nllgrad, fit.ranef, fit.estim_method, fit.reml_loglik, fit.ml_loglik,
                   fit.marginal, fit.phylo_penalty,
                   penalty === nothing ? fit.penalty : penalty, fit.iterations,
                   fit.phylo_scale)
+end
+
+# Attach the optimizer's restricted objective/score for convergence while keeping
+# the ordinary ML objective callable for profile and inference routines.
+function _glsp_attach_reml_diagnostics(fit::DrmFit, rf, ml_obj;
+                                       to_internal = identity,
+                                       to_public_gradient = identity)
+    θ̂ = fit.theta
+    θ_to_internal(θ) = to_internal(θ)
+    objective = _nll_pinned(θ -> rf.objective(θ_to_internal(θ)), θ̂,
+                            rf.objective(θ_to_internal(θ̂)))
+    profile_objective = _nll_pinned(θ -> ml_obj(θ_to_internal(θ)), θ̂,
+                                    ml_obj(θ_to_internal(θ̂)))
+    function gradient!(g, θ)
+        g_internal = zeros(length(θ))
+        rf.gradient!(g_internal, θ_to_internal(θ))
+        g .= to_public_gradient(g_internal)
+        return g
+    end
+    wrapper = _FitObjectiveGradient(objective, gradient!, profile_objective)
+    return _withnll(fit, wrapper, gradient!)
 end
 
 # ---------------------------------------------------------------------------
@@ -1550,7 +1668,15 @@ function _glsp_fit(fam::Gaussian, y, Xμ, Xψ, gidx, G, Q,
             scales[:profile_ci_sd_sigma] = [ci_s.sd_lo, ci_s.sd_hi]
         end
         fit = DrmFit(fam, blocks, names, θ̂, V, -nll_val, n, conv, means, obs, scales)
+        if !reml
+            # The asymmetric ML route fits `pen_obj`; retain that exact surface
+            # and its score so the common convergence classifier can check it.
+            fit = _withnll(fit,
+                _nll_pinned(pen_obj, θ̂, pen_obj(θ̂)),
+                (g, θ) -> (g .= pen_gradf(θ); g))
+        end
         fit = reml ? _withreml(fit, -reml_nll, -ml_nll) : fit
+        reml && (fit = _glsp_attach_reml_diagnostics(fit, rf, asym_obj))
         if penalty !== nothing
             fit = _withmap(fit, _phylo_pen_apply_single!(nothing, penalty, θ̂, _ipen), penalty)
         end
@@ -1674,7 +1800,16 @@ function _glsp_fit(fam::Gaussian, y, Xμ, Xψ, gidx, G, Q,
             scales[:profile_ci_sd_mu]    = [ci_m.sd_lo, ci_m.sd_hi]
         end
         fit = DrmFit(fam, blocks, names, θ̂, V, -nll_val, n, conv, means, obs, scales)
+        if !reml
+            # Convergence is judged on the objective that was optimized. This is
+            # the ML likelihood without a penalty and the penalized objective for
+            # the legacy phylo penalty; `fit.loglik` remains the data likelihood.
+            fit = _withnll(fit,
+                _nll_pinned(pen_obj, θ̂, pen_obj(θ̂)),
+                (g, θ) -> (g .= pen_gradf(θ); g))
+        end
         fit = reml ? _withreml(fit, -reml_nll, -ml_nll) : fit
+        reml && (fit = _glsp_attach_reml_diagnostics(fit, rf, sep_obj))
         if penalty !== nothing
             fit = _withmap(fit, _phylo_pen_apply_separate!(nothing, penalty, θ̂, _isd1, _isd2), penalty)
         end
@@ -1814,6 +1949,20 @@ function _glsp_fit(fam::Gaussian, y, Xμ, Xψ, gidx, G, Q,
         scales[:lambda_cor]      = [comp.cor_mu_psi]
         fit = DrmFit(fam, blocks, names, theta_out, V_out, -nll_val, n, conv, means, obs, scales)
         fit = reml ? _withreml(fit, -reml_nll, -ml_nll) : fit
+        if reml
+            to_internal(θ) = θ[perm]
+            to_public_gradient(g) = g[perm]
+            fit = _glsp_attach_reml_diagnostics(
+                fit, rf, coup_obj; to_internal, to_public_gradient)
+        else
+            # `theta_out` stores the public covariance order, whereas the
+            # coupled objective uses [logL11, L21, logL22]. Keep the objective
+            # and gradient in the public fit order for convergence checks and
+            # downstream replay.
+            fit_nll = _nll_pinned(θ -> pen_obj(θ[perm]), theta_out, pen_obj(θ̂))
+            fit_nllgrad! = (g, θ) -> (g .= pen_gradf(θ[perm])[perm]; g)
+            fit = _withnll(fit, fit_nll, fit_nllgrad!)
+        end
         if penalty !== nothing
             fit = _withmap(fit, _phylo_pen_apply_coupled!(nothing, penalty, θ̂, _i0), penalty)
         end
